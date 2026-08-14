@@ -1,0 +1,98 @@
+# CyberLab Agent v4.7
+# llm/prompt_builder.py — Grounded Prompt Builder
+
+import json
+import os
+from lab_v4_dev.core.project_context import CYBERLAB_ROOT, get_active_project
+
+ROADMAP_FILE = "project_data/roadmap.json"
+
+def _index_file() -> str:
+    proj = get_active_project()
+    if proj.root == CYBERLAB_ROOT:
+        return "workspace/project_index/project_index.json"
+    return "workspace/external_index/project_index.json"
+
+def _load_index() -> dict:
+    try:
+        with open(_index_file(), "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def _load_roadmap() -> dict:
+    try:
+        with open(ROADMAP_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def build_project_context() -> str:
+    """يبني سياق المشروع من البيانات الحقيقية فقط"""
+    index   = _load_index()
+    roadmap = _load_roadmap()
+
+    # الملفات الحقيقية فقط
+    real_files = list(index.keys())
+    layers = {}
+    for path, info in index.items():
+        layer = info.get("layer","?")
+        layers.setdefault(layer, []).append(path)
+
+    # الملفات ذات الأدوار المعروفة فقط
+    known = {p: i["role"] for p, i in index.items() if i.get("role")}
+
+    ctx = f"""أنت مساعد هندسي لمشروع CyberLab Agent.
+
+=== قواعد صارمة ===
+1. استخدم فقط المعلومات أدناه — لا تخترع ملفات أو وظائف
+2. إذا لم تجد المعلومة في البيانات أدناه → قل "غير موجود في البيانات المتاحة"
+3. لا تستخدم معرفتك العامة عن Python أو البرمجة لاختراع ملفات
+
+=== الملفات الحقيقية في المشروع ({len(real_files)} ملف) ===
+{json.dumps(list(layers.keys()), ensure_ascii=False)}
+
+=== الطبقات ===
+{chr(10).join(f"- {layer}: {len(files)} ملف" for layer, files in layers.items())}
+
+=== الملفات ذات الأدوار المعروفة ===
+{chr(10).join(f"- {path}: {role}" for path, role in list(known.items())[:20])}
+
+=== حالة التطوير ===
+الإصدار: {roadmap.get('version','?')}
+التركيز: {roadmap.get('current_focus','?')}
+مكتمل: {', '.join(roadmap.get('completed',[]))}
+"""
+    return ctx
+
+def build_search_prompt(query: str, results: list) -> str:
+    """prompt للبحث في الكود — مقيد بالنتائج الحقيقية فقط"""
+    if not results:
+        return f"البحث عن '{query}' لم يعطِ نتائج في ملفات المشروع الحقيقية."
+
+    results_text = "\n".join(
+        f"- {r['path']}: {r.get('role','')}" for r in results
+    )
+    return f"""البحث عن '{query}' في المشروع أعطى هذه النتائج الحقيقية فقط:
+
+{results_text}
+
+تعليمات صارمة:
+- لا تكتب أي كود أو محتوى لهذه الملفات — أنت لا تعرف محتواها الفعلي.
+- لا تخترع أسماء متغيرات أو دوال أو إعدادات (مثل قواعد البيانات، SMTP، إلخ).
+- اشرح فقط دور الملف بناءً على اسمه ومساره ودوره المذكور أعلاه، بجملة أو جملتين.
+- إذا لم تكن متأكداً من التفاصيل، قل ذلك صريحاً."""
+
+def build_release_prompt(version: str, content: str, question: str) -> str:
+    """prompt لتحليل إصدار — مقيد بمحتوى التقرير الحقيقي"""
+    return f"""أنت مساعد هندسي. حلل تقرير الإصدار {version} أدناه فقط.
+
+قواعد:
+- أجب فقط من محتوى التقرير
+- لا تخمن معلومات غير موجودة
+- إذا لم تجد المعلومة قل "غير مذكور في التقرير"
+
+=== تقرير {version} ===
+{content[:1000]}
+
+السؤال: {question}"""

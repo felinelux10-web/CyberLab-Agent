@@ -1,0 +1,32 @@
+project:
+  name: CyberLab Agent
+  version: 5.9.13-dev
+  reference_version: "5.9.10.O"
+  architecture_status: LOCKED
+  philosophy: Small Stable Evolutions
+
+hard_limits:
+  max_ram_mb: 150
+  max_cpu_percent: 40
+  max_tasks_per_hour: 10
+  max_file_edits_per_session: 5
+  max_shell_commands_per_task: 20
+  max_consecutive_failures: 3
+  task_timeout_sec: 30
+  idle_sleep_sec: 5
+  log_max_size_mb: 50
+  queue_max_age_sec: 300
+
+current_phase: 1
+next_phase: 2
+
+phases:
+  - id: 0
+    name: Infrastructure
+    status: done
+  - id: 1
+    name: Memory
+    status: done
+  - id: 2
+    name: Awareness
+    status: in_progress

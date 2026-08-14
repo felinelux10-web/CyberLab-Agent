@@ -1,0 +1,87 @@
+# تعليق تجريبي
+"""
+v5.8 — Daily Cleaner
+تنظيف يومي تلقائي للهاتف
+"""
+import os
+import shutil
+from datetime import datetime, timedelta
+
+HOME = os.path.expanduser("~")
+
+def get_free_space_mb() -> float:
+    """
+    إرجاع مساحة الحافظة المجانية بالميغابايت
+    """
+    st = os.statvfs(HOME)
+    return round(st.f_bavail * st.f_frsize / 1024 / 1024, 1)
+
+def _dir_size(path: str) -> int:
+    """
+    إرجاع حجم المجلد المحدد بالبايت
+    """
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            total_size += os.path.getsize(fp)
+    return total_size
+
+def clean_pycache() -> dict:
+    """
+    تنظيف cache التلقائي
+    """
+    removed = 0
+    size    = 0
+    for root, dirs, files in os.walk(HOME):
+        # تخطي المجلدات الحساسة
+        dirs[:] = [d for d in dirs if d not in [".ssh", "storage"]]
+        for d in dirs:
+            if d == "__pycache__":
+                full = os.path.join(root, d)
+                try:
+                    s = _dir_size(full)
+                    shutil.rmtree(full)
+                    removed += 1
+                    size += s
+                except:
+                    pass
+        for f in files:
+            if f.endswith(".pyc"):
+                full = os.path.join(root, f)
+                try:
+                    size += os.path.getsize(full)
+                    os.remove(full)
+                    removed += 1
+                except:
+                    pass
+    return {"type": "pycache", "removed": removed, "size_kb": round(size/1024, 1)}
+
+def clean_tmp() -> dict:
+    """
+    تنظيف الملفات المؤقتة التلقائي
+    """
+    removed = 0
+    size    = 0
+    tmp_dirs = [
+        os.path.join(HOME, "cyberlab_agent", "workspace", "temp"),
+        os.path.join(HOME, ".cache"),
+        "/data/data/com.termux/files/usr/tmp",
+    ]
+    for tmp in tmp_dirs:
+        if not os.path.exists(tmp):
+            continue
+        for f in os.listdir(tmp):
+            full = os.path.join(tmp, f)
+            try:
+                if os.path.isfile(full):
+                    size += os.path.getsize(full)
+                    os.remove(full)
+                    removed += 1
+                elif os.path.isdir(full):
+                    size += _dir_size(full)
+                    shutil.rmtree(full)
+                    removed += 1
+            except:
+                pass
+    return {"type": "tmp", "removed": removed, "size_kb": round(size/1024, 1)}

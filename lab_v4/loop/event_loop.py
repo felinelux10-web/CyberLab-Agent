@@ -1,0 +1,124 @@
+# CyberLab Agent v4.0
+# loop/event_loop.py
+
+from lab_v4.intent.parser import parse
+from lab_v4.intent.clarifier import clarify
+from lab_v4.intent.decomposer import decompose
+from lab_v4.planner.planner import Planner
+from lab_v4.monitor.health_check import check_health
+from lab_v4.monitor.budget import Budget
+from lab_v4.executor.executor import Executor
+from lab_v4.memory.task_history import TaskHistory
+from lab_v4.memory.lessons import Lessons
+from lab_v4.loop.idle_manager import IdleManager
+from lab_v4.loop.scheduler import Scheduler
+from lab_v4.core.config import HARD_LIMITS
+
+class EventLoop:
+
+    def __init__(self, state, db, session=None):
+        self.state     = state
+        self.db        = db
+        self.planner   = Planner(db)
+        self.executor  = Executor(state, db, session)
+        self.budget    = Budget()
+        self.history   = TaskHistory(db)
+        self.lessons   = Lessons(db)
+        self.idle      = IdleManager()
+        self.scheduler = Scheduler()
+        self.running   = False
+
+    def submit(self, user_input: str):
+        self.scheduler.add({"input": user_input})
+
+    def _process(self, task: dict) -> dict:
+        user_input = task.get("input", "")
+
+        # 1. health check
+        health = check_health(self.state)
+        if not health["healthy"]:
+            return {"status": "blocked", "reason": "system unhealthy"}
+
+        # 2. budget check
+        budget_check = self.budget.can_run_task()
+        if not budget_check["ok"]:
+            return {"status": "blocked", "reason": budget_check["reason"]}
+
+        # 3. parse intent
+        parsed = parse(user_input)
+
+        # 4. clarify if needed
+        clarification = clarify(parsed)
+        if clarification["needed"]:
+            return {
+                "status"  : "needs_clarification",
+                "question": clarification["question"],
+            }
+
+        # 5. decompose
+        decomposed = decompose(parsed)
+        if not decomposed["ok"]:
+            return {"status": "failed", "reason": decomposed["reason"]}
+
+        # 6. build plan
+        plan = self.planner.build(parsed)
+        if not plan["ok"]:
+            return {"status": "failed", "reason": plan["reason"]}
+
+        # 7. execute steps
+        task_id = self.history.add(user_input)
+        results = []
+
+        for step in plan["steps"]:
+            action = step.get("action")
+
+            if action == "shell":
+                r = self.executor.run_command(step["command"])
+            elif action == "write_file":
+                r = self.executor.write_file(step["file"], step.get("content", ""))
+            elif action == "read_file":
+                try:
+                    content = open(step["file"]).read()
+                    r = {"status": "ok", "output": content[:200]}
+                except Exception as e:
+                    r = {"status": "failed", "reason": str(e)}
+            else:
+                r = {"status": "skipped"}
+
+            results.append(r)
+
+            if r["status"] == "failed":
+                self.budget.record_failure()
+                self.state.record_failure()
+                failures = self.state.consecutive_failures
+                if failures >= HARD_LIMITS["max_consecutive_failures"]:
+                    self.state.enter_safe_mode("max failures reached")
+                break
+
+        # 8. update history
+        all_ok = all(r["status"] == "ok" for r in results)
+        final_status = "done" if all_ok else "failed"
+        self.history.update_status(task_id, final_status)
+        self.budget.record_task()
+
+        if all_ok:
+            self.budget.record_success()
+            self.state.record_success()
+
+        return {
+            "status" : final_status,
+            "task_id": task_id,
+            "results": results,
+        }
+
+    def tick(self) -> dict | None:
+        if not self.scheduler.has_tasks():
+            self.idle.sleep()
+            return None
+
+        self.idle.reset()
+        task = self.scheduler.next()
+        return self._process(task)
+
+    def stop(self):
+        self.running = False

@@ -1,0 +1,117 @@
+"""
+v5.8 — Daily Cleaner
+تنظيف يومي تلقائي للهاتف
+"""
+import os
+import shutil
+from datetime import datetime, timedelta
+
+HOME = os.path.expanduser("~")
+
+def get_free_space_mb() -> float:  # TEST_EDIT
+    """
+    حساب المساحة المجانية في النظام بالميغابايت
+    """
+    st = os.statvfs(HOME)
+    return round(st.f_bavail * st.f_frsize / 1024 / 1024, 1)
+
+def clean_pycache() -> dict:
+    removed = 0
+    size    = 0
+    for root, dirs, files in os.walk(HOME):
+        # تخطي المجلدات الحساسة
+        dirs[:] = [d for d in dirs if d not in [".ssh", "storage"]]
+        for d in dirs:
+            if d == "__pycache__":
+                full = os.path.join(root, d)
+                try:
+                    s = _dir_size(full)
+                    shutil.rmtree(full)
+                    removed += 1
+                    size += s
+                except:
+                    pass
+        for f in files:
+            if f.endswith(".pyc"):
+                full = os.path.join(root, f)
+                try:
+                    size += os.path.getsize(full)
+                    os.remove(full)
+                    removed += 1
+                except:
+                    pass
+    return {"type": "pycache", "removed": removed, "size_kb": round(size/1024, 1)}
+
+def clean_tmp() -> dict:
+    removed = 0
+    size    = 0
+    tmp_dirs = [
+        os.path.join(HOME, "cyberlab_agent", "workspace", "temp"),
+        os.path.join(HOME, ".cache"),
+        "/data/data/com.termux/files/usr/tmp",
+    ]
+    for tmp in tmp_dirs:
+        if not os.path.exists(tmp):
+            continue
+        for f in os.listdir(tmp):
+            full = os.path.join(tmp, f)
+            try:
+                if os.path.isfile(full):
+                    size += os.path.getsize(full)
+                    os.remove(full)
+                    removed += 1
+                elif os.path.isdir(full):
+                    size += _dir_size(full)
+                    shutil.rmtree(full)
+                    removed += 1
+            except:
+                pass
+    return {"type": "tmp", "removed": removed, "size_kb": round(size/1024, 1)}
+
+def clean_old_logs(days: int = 7) -> dict:
+    removed = 0
+    size    = 0
+    log_dir = os.path.join(HOME, "cyberlab_agent", "workspace", "error_log")
+    cutoff  = datetime.now() - timedelta(days=days)
+    if not os.path.exists(log_dir):
+        return {"type": "logs", "removed": 0, "size_kb": 0}
+    for f in os.listdir(log_dir):
+        full = os.path.join(log_dir, f)
+        try:
+            mtime = datetime.fromtimestamp(os.path.getmtime(full))
+            if mtime < cutoff:
+                size += os.path.getsize(full)
+                os.remove(full)
+                removed += 1
+        except:
+            pass
+    return {"type": "logs", "removed": removed, "size_kb": round(size/1024, 1)}
+
+def run_full_clean() -> dict:
+    before = get_free_space_mb()
+    results = [
+        clean_pycache(),
+        clean_tmp(),
+        clean_old_logs(),
+    ]
+    import time; time.sleep(1); after = get_free_space_mb()
+    total   = sum(r["size_kb"] for r in results)
+    return {
+        "status"    : "success",
+        "before_mb" : before,
+        "after_mb"  : after,
+        "freed_kb"  : round(total, 1),
+        "freed_mb"  : round(total/1024, 2),
+        "details"   : results,
+        "timestamp" : datetime.now().isoformat(),
+    }
+
+def _dir_size(path: str) -> int:
+    total = 0
+    for root, dirs, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.path.getsize(os.path.join(root, f))
+            except:
+                pass
+    return total

@@ -1,0 +1,48 @@
+[
+  {
+    "event": "simulation",
+    "data": {
+      "status": "simulation_ready",
+      "results": [
+        {
+          "file": "lab_v4_dev/core/agent.py",
+          "priority": "critical",
+          "simulation": "needs_backup"
+        },
+        {
+          "file": "lab_v4_dev/core/orchestrator.py",
+          "priority": "high",
+          "simulation": "review_required"
+        },
+        {
+          "file": "run.py",
+          "priority": "high",
+          "simulation": "review_required"
+        }
+      ]
+    }
+  },
+  {
+    "event": "simulation_decision",
+    "data": {
+      "status": "decision_ready",
+      "decisions": [
+        {
+          "file": "lab_v4_dev/core/agent.py",
+          "action": "backup_required",
+          "simulation": "needs_backup"
+        },
+        {
+          "file": "lab_v4_dev/core/orchestrator.py",
+          "action": "manual_review",
+          "simulation": "review_required"
+        },
+        {
+          "file": "run.py",
+          "action": "manual_review",
+          "simulation": "review_required"
+        }
+      ]
+    }
+  }
+]

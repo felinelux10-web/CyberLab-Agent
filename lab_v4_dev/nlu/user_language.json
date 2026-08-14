@@ -1,0 +1,8 @@
+{
+  "dialect": "arabic_formal_flexible",
+  "description": "عربية فصحى مرنة — لا عامية مشرقية ولا دارجة مغربية",
+  "prefer_formal": true,
+  "writing_style": "فصحى غير صارمة في الإعراب",
+  "custom_patterns": {},
+  "learned_phrases": []
+}

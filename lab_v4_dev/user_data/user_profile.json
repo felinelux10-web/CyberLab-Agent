@@ -1,0 +1,33 @@
+{
+  "explanation_style": {
+    "depth": "deep",
+    "step_by_step": true,
+    "show_reasoning": true,
+    "show_risks": true,
+    "language": "arabic_simple",
+    "examples_required": true
+  },
+  "engineering_style": {
+    "analyze_before_modify": true,
+    "require_impact_analysis": true,
+    "prefer_safe_changes": true,
+    "smoke_test_required": true,
+    "versioning_required": true,
+    "release_report_required": true
+  },
+  "memory_policy": {
+    "auto_save": false,
+    "manual_approval_required": true,
+    "quality_check_required": true
+  },
+  "trust_policy": {
+    "allow_guessing": false,
+    "require_source_for_facts": true,
+    "prefer_local_over_groq": true
+  },
+  "project_preferences": {
+    "default_project": "cyberlab_agent",
+    "excluded_dirs": ["stable", "releases", "workspace", "project_indices"],
+    "versioning_pattern": "vX.Y.Z.Letter"
+  }
+}

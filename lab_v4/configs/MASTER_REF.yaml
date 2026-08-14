@@ -1,0 +1,80 @@
+agent_states:
+  transitions:
+  - decision: automatic
+    from: normal
+    to: safe
+    trigger: 3 consecutive failures
+  - decision: manual
+    from: safe
+    to: normal
+    trigger: explicit user approval
+  - decision: automatic
+    from: normal
+    to: frozen
+    trigger: critical limit exceeded
+  - decision: manual
+    from: frozen
+    to: normal
+    trigger: manual restart
+  - decision: automatic
+    from: safe
+    to: frozen
+    trigger: rollback failure
+  valid:
+  - normal
+  - safe
+  - frozen
+critical_thresholds:
+  archive_failures_before_warning: 3
+  boot_failures_before_frozen: 3
+  loop_instability_before_safe: 5
+current_phase: 1
+frozen_zones:
+- stable/
+- tests/
+- run.py
+- lab_v4/configs/MASTER_REF.yaml
+hard_limits:
+  idle_sleep_sec: 5
+  log_max_size_mb: 50
+  max_consecutive_failures: 3
+  max_cpu_percent: 40
+  max_file_edits_per_session: 5
+  max_ram_mb: 150
+  max_shell_commands_per_task: 20
+  max_tasks_per_hour: 10
+  queue_max_age_sec: 300
+  task_timeout_sec: 30
+next_phase: 1
+phases:
+- id: 0
+  name: Infrastructure
+  status: in_progress
+- id: 1
+  name: Memory
+  status: pending
+- id: 2
+  name: Recovery
+  status: pending
+- id: 3
+  name: Executor + Monitor
+  status: pending
+- id: 4
+  name: Planner
+  status: pending
+- id: 5
+  name: Awareness
+  status: pending
+- id: 6
+  name: Intent
+  status: pending
+- id: 7
+  name: Autonomous Loop
+  status: pending
+project:
+  architecture_status: LOCKED
+  current_focus: v5.9.10.I — Search & Compare Fix
+  name: CyberLab Agent
+  philosophy: Small Stable Evolutions
+  reference_version: 5.9.10.I
+  version: 5.9.10.I
