@@ -4,6 +4,7 @@
 from lab_v4_dev.intent.dictionary import DICTIONARY
 from lab_v4_dev.intent.normalizer import normalize
 from lab_v4_dev.intent.intents import Intent
+from lab_v4_dev.intent.fuzzy_normalizer import deep_normalize
 import re
 
 def _build_dict():
@@ -26,18 +27,20 @@ def _word_search(key: str, text: str) -> bool:
         return key in text
 
 def match(user_input: str) -> dict:
+    # normalize both the plain and deep-normalized variants to ensure exact-match wins
     text  = normalize(user_input)
+    alt_text = normalize(deep_normalize(user_input))
     items = _build_dict()
 
-    # 1. تطابق كامل
+    # 1. تطابق كامل — exact match must win (check both normalization variants)
     for key, intent in items:
-        if key == text:
+        if key == text or key == alt_text:
             return {"intent":intent,"confidence":1.0,
                     "method":"exact","raw":user_input}
 
     # 2. تطابق على حدود الكلمات — تجنب التطابقات الجزئية المضللة
     for key, intent in items:
-        if _word_search(key, text):
+        if _word_search(key, text) or _word_search(key, alt_text):
             return {"intent":intent,"confidence":0.85,
                     "method":"word","raw":user_input}
 

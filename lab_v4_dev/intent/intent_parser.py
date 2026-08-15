@@ -11,6 +11,7 @@ from lab_v4_dev.intent.intents import Intent
 TEMPORAL_KEYWORDS = ["اخر","آخر","اخير","السابق","اليوم","امس"]
 FILE_INDICATORS   = ["ملف","file","مجلد"]
 
+
 def detect_context(text: str) -> str:
     if any(w in text for w in ["كاملة","الكل","شامل"]):
         return "full"
@@ -25,6 +26,7 @@ def detect_context(text: str) -> str:
     if any(w in text for w in ["اخر","آخر","تعديل","تغيير"]):
         return "temporal"
     return "general"
+
 
 def _extract_target(text: str) -> str:
     # أولاً: مسار كامل يبدأ بـ ~/ أو /
@@ -41,11 +43,14 @@ def _extract_target(text: str) -> str:
         return m.group(1)
     return ""
 
+
 def _is_temporal(word: str) -> bool:
     return any(t in normalize(word) for t in TEMPORAL_KEYWORDS)
 
+
 # مفتاح تعطيل NLU — اجعله False لتعطيل الطبقة بالكامل
 NLU_ENABLED = True
+
 
 def _token_has_word(text_norm: str, w: str) -> bool:
     try:
@@ -53,6 +58,7 @@ def _token_has_word(text_norm: str, w: str) -> bool:
         return bool(re.search(pattern, text_norm, flags=re.UNICODE))
     except re.error:
         return w in text_norm
+
 
 def parse(user_input: str) -> dict:
     # 0. NLU Layer — فهم الأنماط اللغوية الطبيعية
@@ -105,7 +111,11 @@ def parse(user_input: str) -> dict:
                     code_indicators   = ["كود", "الكود", "مشروع", "المشروع", "project", "ملف"]
 
                     def _has_word(w):
-                        return _token_has_word(_txt_norm, w)
+                        try:
+                            pattern = r"(?<!\w)" + re.escape(w) + r"(?!\w)"
+                            return bool(re.search(pattern, _txt_norm, flags=re.UNICODE))
+                        except re.error:
+                            return w in _txt_norm
 
                     chosen_intent = nlu_result["intent"]
                     chosen_conf   = nlu_result.get("confidence", 0.0)
@@ -113,9 +123,12 @@ def parse(user_input: str) -> dict:
                     # promote to clean_device if explicit device token present
                     if any(_has_word(w) for w in device_indicators):
                         chosen_intent = Intent.CLEAN_DEVICE
-                    # promote to cleanup_code if explicit code/project token present
-                    elif any(_has_word(w) for w in code_indicators):
-                        chosen_intent = Intent.CLEANUP_CODE
+                    else:
+                        # Only promote to cleanup_code when NLU implies a cleaning action
+                        clean_indicators = ["نظف", "تنظيف", "نظفه", "نظّف", "مسح", "إزالة", "تفريغ", "clean", "clear"]
+                        if any(_token_has_word(_txt_norm, c) for c in clean_indicators) or chosen_intent == Intent.CLEAN:
+                            if any(_has_word(w) for w in code_indicators):
+                                chosen_intent = Intent.CLEANUP_CODE
 
                     # if NLU says a delete action but there's an explicit file target -> DELETE_FILE
                     if re.search(r"\bاحذ?ف\b", _txt_norm) and (any(_has_word(w) for w in FILE_INDICATORS) or _extract_target(user_input)):
@@ -206,15 +219,18 @@ def parse(user_input: str) -> dict:
         code_indicators   = ["كود", "الكود", "مشروع", "المشروع", "project", "ملف"]
 
         def _has_word(w):
+            # token-aware check using unicode word boundaries
             return _token_has_word(_txt_norm, w)
 
         # If explicit device token present, promote to CLEAN_DEVICE
         if any(_has_word(w) for w in device_indicators):
             intent = Intent.CLEAN_DEVICE
 
-        # If explicit code/project token present, promote to CLEANUP_CODE (but do not override explicit device)
+        # If explicit code/project token present, promote to CLEANUP_CODE only when cleaning signal present
+        clean_indicators = ["نظف", "تنظيف", "نظفه", "نظّف", "مسح", "إزالة", "تفريغ", "clean", "clear"]
         if intent != Intent.CLEAN_DEVICE and any(_has_word(w) for w in code_indicators):
-            intent = Intent.CLEANUP_CODE
+            if intent == Intent.CLEAN or any(_token_has_word(_txt_norm, c) for c in clean_indicators):
+                intent = Intent.CLEANUP_CODE
 
         # If resolved intent is generic CLEAN but no explicit device/code target — treat as unsupported (ambiguous)
         if intent == Intent.CLEAN:
