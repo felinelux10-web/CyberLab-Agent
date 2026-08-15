@@ -2,7 +2,7 @@
 # intent/intent_parser.py
 
 import re
-from lab_v4_dev.intent.matcher import match
+from lab_v4_dev.intent.matcher import match as dict_match
 from lab_v4_dev.intent.normalizer import normalize
 from lab_v4_dev.intent.fuzzy_normalizer import deep_normalize
 from lab_v4_dev.intent.keyword_families import match_family
@@ -29,9 +29,8 @@ def detect_context(text: str) -> str:
 def _extract_target(text: str) -> str:
     # أولاً: مسار كامل يبدأ بـ ~/ أو /
     m = re.search(r"(?:^|\s)([~/][\w./_~-]+\.\w+)", text)
-    if m: return m.group(1)
     if m:
-        return m.group(0)
+        return m.group(1)
     # ثانياً: مسار نسبي أو اسم ملف
     m = re.search(r"(?<![؀-ۿ])([\w][\w./:-]*\.\w+)", text)
     if m:
@@ -47,6 +46,13 @@ def _is_temporal(word: str) -> bool:
 
 # مفتاح تعطيل NLU — اجعله False لتعطيل الطبقة بالكامل
 NLU_ENABLED = True
+
+def _token_has_word(text_norm: str, w: str) -> bool:
+    try:
+        pattern = r"(?<!\w)" + re.escape(w) + r"(?!\w)"
+        return bool(re.search(pattern, text_norm, flags=re.UNICODE))
+    except re.error:
+        return w in text_norm
 
 def parse(user_input: str) -> dict:
     # 0. NLU Layer — فهم الأنماط اللغوية الطبيعية
@@ -71,42 +77,76 @@ def parse(user_input: str) -> dict:
             from lab_v4_dev.nlu.semantic_normalizer import analyze as nlu_analyze
             from lab_v4_dev.nlu.context_resolver import resolve as ctx_resolve, save_state
             nlu_result = nlu_analyze(user_input)
-            if nlu_result["intent"] and nlu_result["confidence"] >= 0.85:
+            if nlu_result["intent"] and nlu_result.get("confidence", 0) >= 0.85:
                 # Context Resolver — استكمال العناصر الناقصة
                 nlu_result = ctx_resolve(nlu_result)
-                target = nlu_result.get("target", "")
-                # احفظ الحالة للسياق القادم
+
+                # Save resolved entity state as before
                 entity = nlu_result.get("entity", {})
                 entity_val = entity.get("value", "") if isinstance(entity, dict) else ""
                 if entity_val:
                     save_state(nlu_result["intent"], entity_val,
                                entity.get("type", "") if isinstance(entity, dict) else "")
+
+                # Before accepting NLU, prefer deterministic / explicit signals
+                # 1) If dictionary (exact/word) finds a mapping, prefer it
+                dict_result = dict_match(user_input)
+                if dict_result.get("method") != "none":
+                    chosen_intent = dict_result["intent"]
+                    chosen_conf   = dict_result["confidence"]
+                else:
+                    # 2) Token-aware explicit target checks (device / code / file)
+                    _txt_norm = normalize(user_input)
+                    device_indicators = [
+                        "هاتف", "الهاتف", "جهاز", "الجهاز", "جهازي",
+                        "مساحة", "المساحة", "المساحه", "مساحة التخزين",
+                        "تنظيف الهاتف", "نظف الهاتف", "نظف المساحة"
+                    ]
+                    code_indicators   = ["كود", "الكود", "مشروع", "المشروع", "project", "ملف"]
+
+                    def _has_word(w):
+                        return _token_has_word(_txt_norm, w)
+
+                    chosen_intent = nlu_result["intent"]
+                    chosen_conf   = nlu_result.get("confidence", 0.0)
+
+                    # promote to clean_device if explicit device token present
+                    if any(_has_word(w) for w in device_indicators):
+                        chosen_intent = Intent.CLEAN_DEVICE
+                    # promote to cleanup_code if explicit code/project token present
+                    elif any(_has_word(w) for w in code_indicators):
+                        chosen_intent = Intent.CLEANUP_CODE
+
+                    # if NLU says a delete action but there's an explicit file target -> DELETE_FILE
+                    if re.search(r"\bاحذ?ف\b", _txt_norm) and (any(_has_word(w) for w in FILE_INDICATORS) or _extract_target(user_input)):
+                        chosen_intent = Intent.DELETE_FILE
+
                 return {
-                    "intent"           : nlu_result["intent"],
-                    "target"           : target,
+                    "intent"           : chosen_intent,
+                    "target"           : nlu_result.get("target", ""),
                     "context"          : detect_context(user_input),
-                    "confidence"       : nlu_result["confidence"],
+                    "confidence"       : chosen_conf,
                     "raw"              : user_input,
                     "source"           : "nlu",
                     "context_inherited": nlu_result.get("context_inherited", False),
                 }
-        except:
+        except Exception:
             pass
 
     # 1. تطبيع عميق (يحل الأخطاء الإملائية)
     normalized_input = deep_normalize(user_input)
 
     # 2. جرب dictionary match
-    match_result = match(normalized_input)
+    match_result = dict_match(normalized_input)
     intent       = match_result["intent"]
-    confidence   = match_result["confidence"]
+    confidence   = match_result.get("confidence", 0.0)
 
     # 3. إذا unclear → جرب النص الأصلي (تطابق دقيق له أولوية)
     if intent == Intent.UNCLEAR:
-        match_result2 = match(user_input)
+        match_result2 = dict_match(user_input)
         if match_result2["intent"] != Intent.UNCLEAR:
             intent     = match_result2["intent"]
-            confidence = match_result2["confidence"]
+            confidence = match_result2.get("confidence", 0.0)
 
     # 4. إذا لا يزال unclear → جرب keyword families
     if intent == Intent.UNCLEAR:
@@ -166,9 +206,7 @@ def parse(user_input: str) -> dict:
         code_indicators   = ["كود", "الكود", "مشروع", "المشروع", "project", "ملف"]
 
         def _has_word(w):
-            # token-aware check using whitespace boundaries
-            pattern = r"(?<!\S)" + re.escape(w) + r"(?!\S)"
-            return bool(re.search(pattern, _txt_norm))
+            return _token_has_word(_txt_norm, w)
 
         # If explicit device token present, promote to CLEAN_DEVICE
         if any(_has_word(w) for w in device_indicators):
