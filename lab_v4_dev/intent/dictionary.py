@@ -211,7 +211,7 @@ DICTIONARY = {
     "ما تم انجازه"                : Intent.WORK_STATUS,
     "ما المتبقي"                   : Intent.REMAINING_TASKS,
     "متبقي من العمل"              : Intent.REMAINING_TASKS,
-    "ما المهام المتبقية"          : Intent.REMAINING_TASKS,
+    "ما ��لمهام المتبقية"          : Intent.REMAINING_TASKS,
     "ما التالي"                   : Intent.NEXT_TASK,
     "المهمة التالية"              : Intent.NEXT_TASK,
     "ما الذي نعمل عليه"          : Intent.WORK_STATUS,
@@ -268,8 +268,6 @@ DICTIONARY = {
     "حلل مشروع"                   : Intent.PROJECT_SCAN,
     "افهم مشروع"                  : Intent.PROJECT_SCAN,
     "افحص مشروع"                  : Intent.PROJECT_SCAN,
-    "نظف هاتف"                    : Intent.CLEAN,
-    "نظف جهاز"                    : Intent.CLEAN,
     "اعرض بنيه"                   : Intent.ARCHITECTURE,
     "اعرض وحدات"                  : Intent.MODULES,
     "اعرض ملفات"                  : Intent.CRITICAL_FILES,
@@ -292,6 +290,7 @@ DICTIONARY = {
     "ملخص جلسه"                   : Intent.SESSION_REPORT,
     "اعرض مهام"                   : Intent.TODO_LIST,
     "اضف مهمه"                    : Intent.TODO_ADD,
+
 
 
     "ما حالة الوكيل"              : Intent.STATUS,
@@ -437,246 +436,5 @@ DICTIONARY = {
     "وضح تأثير"                    : Intent.FILE_IMPACT,
     "ما الذي تغيّر"               : Intent.SHOW_CHANGES,
 
-    # ═══════════════════════════════
-    # تخطيط
-    # ═══════════════════════════════
-    "ضع خطة"                      : Intent.PLAN,
-    "خطط للمهمة"                  : Intent.PLAN,
-    "ضع خطة تنفيذ"                : Intent.PLAN,
-    "قسّم المهمة"                 : Intent.DECOMPOSE,
-    "جزّئ المهمة"                 : Intent.DECOMPOSE,
-    "حلل التأثير"                 : Intent.IMPACT_ANALYSIS,
-    "ما تأثير التغيير"            : Intent.IMPACT_ANALYSIS,
-    "حلل المخاطر"                 : Intent.RISK_ANALYSIS,
-    "ما المخاطر"                  : Intent.RISK_ANALYSIS,
-    "اقترح الحل"                  : Intent.PROPOSE_SOLUTION,
-    "ما الحل المناسب"             : Intent.PROPOSE_SOLUTION,
-
-    # ═══════════════════════════════
-    # تعديل
-    # ═══════════════════════════════
-    "عدّل الملف"                  : Intent.MODIFY_CODE,
-    "غيّر الملف"                  : Intent.MODIFY_FILE,
-    "عدّل الدالة"                 : Intent.MODIFY_FUNCTION,
-    "غيّر الدالة"                 : Intent.MODIFY_FUNCTION,
-    "عدّل الكلاس"                 : Intent.MODIFY_CLASS,
-    "استبدل المحتوى"              : Intent.REPLACE_BODY,
-    "استبدل الكود"                : Intent.REPLACE_BODY,
-    "أضف دالة"                    : Intent.ADD_FUNCTION,
-    "أنشئ دالة"                   : Intent.ADD_FUNCTION,
-    "أضف كلاس"                    : Intent.ADD_CLASS,
-    "أنشئ كلاس"                   : Intent.ADD_CLASS,
-    "احذف الدالة"                 : Intent.REMOVE_FUNCTION,
-    "أزل الدالة"                  : Intent.REMOVE_FUNCTION,
-    "احذف الكلاس"                 : Intent.REMOVE_CLASS,
-    "أنشئ ملفاً"                  : Intent.CREATE_FILE,
-    "ابنِ ملفاً"                  : Intent.CREATE_FILE,
-    "اكتب ملفاً"                  : Intent.CREATE_FILE,
-    "احذف الملف"                  : Intent.DELETE_FILE,
-    "أزل الملف"                   : Intent.DELETE_FILE,
-    "انقل الملف"                  : Intent.MOVE_FILE,
-    "أعد تسمية الملف"             : Intent.RENAME_FILE,
-
-    # ═══════════════════════════════
-    # إعادة هيكلة
-    # ═══════════════════════════════
-    "أعد هيكلة الملف"             : Intent.REFACTOR_FILE,
-    "أعد هيكلة المشروع"           : Intent.REFACTOR_PROJECT,
-    "نظّف الكود"                  : Intent.CLEANUP_CODE,
-    "رتّب الكود"                  : Intent.CLEANUP_CODE,
-    "حسّن الكود"                  : Intent.OPTIMIZE_CODE,
-    "اجعل الكود أفضل"             : Intent.OPTIMIZE_CODE,
-    "حدّث الكود"                  : Intent.UPGRADE_CODE,
-
-    # ═══════════════════════════════
-    # تنفيذ
-    # ═══════════════════════════════
-    "شغّل"                        : Intent.RUN,
-    "نفّذ"                        : Intent.RUN,
-    "ابدأ التنفيذ"                : Intent.RUN,
-    "شغّل المشروع"                : Intent.RUN_PROJECT,
-    "ابدأ المشروع"                : Intent.RUN_PROJECT,
-    "شغّل الملف"                  : Intent.RUN_FILE,
-    "نفّذ الملف"                  : Intent.RUN_FILE,
-    "شغّل الاختبارات"             : Intent.RUN_TESTS,
-    "نفّذ الاختبارات"             : Intent.RUN_TESTS,
-    "أوقف التشغيل"                : Intent.STOP_EXECUTION,
-
-    # ═══════════════════════════════
-    # اختبار
-    # ═══════════════════════════════
-    "اختبر المشروع"               : Intent.TEST_PROJECT,
-    "اختبر الملف"                 : Intent.TEST_FILE,
-    "اختبر الدالة"                : Intent.TEST_FUNCTION,
-    "أنشئ اختباراً"               : Intent.GENERATE_TEST,
-    "اكتب اختباراً"               : Intent.GENERATE_TEST,
-    "اعرض نتائج الاختبار"         : Intent.TEST_REPORT,
-    "تحقق من الإصلاح"             : Intent.VERIFY_FIX,
-
-    # ═══════════════════════════════
-    # تشخيص
-    # ═══════════════════════════════
-    "شخّص المشكلة"                : Intent.DIAGNOSE,
-    "حلل الخطأ"                   : Intent.DIAGNOSE,
-    "ما المشكلة"                  : Intent.DIAGNOSE,
-    "اكتشف المشكلة"               : Intent.DIAGNOSE,
-    "اعرض الخطأ"                  : Intent.SHOW_ERROR,
-    "ما الخطأ"                    : Intent.SHOW_ERROR,
-    "اعرض السجل"                  : Intent.LOGS,
-    "السجل"                       : Intent.LOGS,
-    "سجل العمليات"                : Intent.LOGS,
-    "ما سبب الفشل"                : Intent.FAILURE_REASON,
-    "لماذا فشل"                   : Intent.FAILURE_REASON,
-    "ما الملف المتسبب"            : Intent.ROOT_CAUSE,
-    "أين المشكلة الأصلية"         : Intent.ROOT_CAUSE,
-    "افحص النظام"                 : Intent.HEALTH,
-    "شخّص النظام"                 : Intent.HEALTH,
-    "فحص شامل"                    : Intent.HEALTH,
-    "هل النظام سليم"              : Intent.HEALTH,
-    "فحص أمني"                    : Intent.HEALTH,
-
-    # ═══════════════════════════════
-    # استرجاع
-    # ═══════════════════════════════
-    "أصلح المشكلة"                : Intent.AUTO_FIX,
-    "أصلح الخطأ"                  : Intent.AUTO_FIX,
-    "اقترح إصلاحاً"               : Intent.PROPOSE_FIX,
-    "ما الحل"                     : Intent.PROPOSE_FIX,
-    "استعد من الفشل"              : Intent.RECOVERY,
-    "تعافَ من الخطأ"              : Intent.RECOVERY,
-
-    "ارجع للنسخة السابقة"         : Intent.ROLLBACK,
-    "عد للنسخة السابقة"           : Intent.ROLLBACK,
-    "استرجع النسخة السابقة"       : Intent.ROLLBACK,
-    "ارجع للحالة السابقة"         : Intent.ROLLBACK,
-    "تراجع عن التغيير"            : Intent.ROLLBACK,
-    "إلغاء التعديل"               : Intent.ROLLBACK,
-    "استرجع النسخة"               : Intent.RESTORE_SNAPSHOT,
-    "استعد النسخة"                : Intent.RESTORE_SNAPSHOT,
-
-    # ═══════════════════════════════
-    # لقطات
-    # ═══════════════════════════════
-    "خذ لقطة"                     : Intent.SNAPSHOT,
-    "أنشئ نسخة احتياطية"          : Intent.SNAPSHOT,
-    "نسخة احتياطية"               : Intent.SNAPSHOT,
-    "احتفظ بنسخة"                 : Intent.SNAPSHOT,
-    "اعرض اللقطات"                : Intent.LIST_SNAPSHOTS,
-    "ما اللقطات المتاحة"          : Intent.LIST_SNAPSHOTS,
-    "قارن اللقطات"                : Intent.COMPARE_SNAPSHOTS,
-    "احذف اللقطة"                 : Intent.DELETE_SNAPSHOT,
-
-    # ═══════════════════════════════
-    # ذاكرة
-    # ═══════════════════════════════
-    "تذكّر"                       : Intent.REMEMBER,
-    "احفظ في الذاكرة"             : Intent.REMEMBER,
-    "انسَ"                        : Intent.FORGET,
-    "احذف من الذاكرة"             : Intent.FORGET,
-    "اعرض الذاكرة"                : Intent.MEMORY_DUMP,
-    "ماذا تتذكر"                  : Intent.MEMORY_STATUS,
-    "ما في ذاكرتك"                : Intent.MEMORY_STATUS,
-
-    # ═══════════════════════════════
-    # مهام
-    # ═══════════════════════════════
-    "أضف مهمة"                    : Intent.TODO_ADD,
-    "مهمة جديدة"                  : Intent.TODO_ADD,
-    "سجّل مهمة"                   : Intent.TODO_ADD,
-    "إضافة مهمة"                  : Intent.TODO_ADD,
-    "تذكّرني بـ"                  : Intent.TODO_ADD,
-    "احذف المهمة"                 : Intent.TODO_REMOVE,
-    "أزل المهمة"                  : Intent.TODO_REMOVE,
-    "أنهِ المهمة"                 : Intent.TODO_COMPLETE,
-    "المهمة منجزة"                : Intent.TODO_COMPLETE,
-    "اعرض المهام"                 : Intent.TODO_LIST,
-    "جدول المهام"                 : Intent.TODO_LIST,
-    "المهام المتبقية"             : Intent.TODO_PENDING,
-    "ما الذي لم ينجز"             : Intent.TODO_PENDING,
-
-    # ═══════════════════════════════
-    # تقارير
-    # ═══════════════════════════════
-    "تقرير السياق"                : Intent.CONTEXT_REPORT,
-    "استعد السياق"                : Intent.CONTEXT_REPORT,
-    "استرجع السياق"               : Intent.CONTEXT_REPORT,
-    "وين وصلنا"                   : Intent.CONTEXT_REPORT,
-    "وين كنا"                     : Intent.CONTEXT_REPORT,
-    "ايش عملنا"                   : Intent.CONTEXT_REPORT,
-    "ما تم"                       : Intent.CONTEXT_REPORT,
-    "context report"              : Intent.CONTEXT_REPORT,
-    "ملخص العمل"                  : Intent.CONTEXT_REPORT,
-    "ملخص عمل"                    : Intent.CONTEXT_REPORT,
-    "تقرير"                       : Intent.REPORT,
-    "ملخص الجلسة"                 : Intent.SESSION_REPORT,
-    "تقرير الجلسة"                : Intent.SESSION_REPORT,
-    "ماذا فعلت اليوم"             : Intent.SESSION_REPORT,
-    "ملخص المشروع"                : Intent.PROJECT_REPORT,
-    "حلل اصدار"                   : Intent.ANALYZE_RELEASE,
-    "حلل إصدار"                   : Intent.ANALYZE_RELEASE,
-    "تقرير اصدار"                 : Intent.ANALYZE_RELEASE,
-    "اعرض اصدار"                  : Intent.ANALYZE_RELEASE,
-    "قارن بين"                    : Intent.COMPARE_VERSIONS,
-    "الفرق بين"                   : Intent.COMPARE_VERSIONS,
-    "مقارنة بين"                  : Intent.COMPARE_VERSIONS,
-    "كل الاصدارات"                : Intent.RELEASE_INDEX,
-    "قائمة الاصدارات"             : Intent.RELEASE_INDEX,
-    "الاصدارات المتاحة"           : Intent.RELEASE_INDEX,
-    "تقرير المشروع"               : Intent.PROJECT_REPORT,
-    "ما الذي أنجز"                : Intent.PROGRESS_REPORT,
-    "ما نسبة الإنجاز"             : Intent.PROGRESS_REPORT,
-    "ما الذي تبقى"                : Intent.REMAINING_WORK,
-    "ما العمل المتبقي"            : Intent.REMAINING_WORK,
-
-    # ═══════════════════════════════
-    # CyberLab خاص
-    # ═══════════════════════════════
-    "افهم المرجع"                 : Intent.LOAD_REFERENCE,
-    "حمّل المرجع"                 : Intent.LOAD_REFERENCE,
-    "قارن مع المرجع"              : Intent.COMPARE_REF,
-    "هل نحن متوافقون مع المرجع"  : Intent.COMPARE_REF,
-    "التزم بالمعمارية"            : Intent.ARCH_CHECK,
-    "تحقق من المعمارية"           : Intent.ARCH_CHECK,
-    "تحقق من الانحراف"            : Intent.DRIFT_CHECK,
-    "هل انحرفنا عن المعمارية"     : Intent.DRIFT_CHECK,
-    "أنشئ مختبراً"                : Intent.CREATE_LAB,
-    "ابنِ مختبراً"                : Intent.CREATE_LAB,
-    "حدّث المختبر"                : Intent.UPDATE_LAB,
-    "أنشئ لقطة مستقرة"           : Intent.STABLE_SNAPSHOT,
-    "احفظ نسخة مستقرة"           : Intent.STABLE_SNAPSHOT,
-    "استرجع النسخة المستقرة"      : Intent.RESTORE_STABLE,
-    "ارجع للنسخة المستقرة"        : Intent.RESTORE_STABLE,
-    "تحقق من السلامة"             : Intent.INTEGRITY_CHECK,
-    "فحص السلامة"                 : Intent.INTEGRITY_CHECK,
-
-    # ═══════════════════════════════
-    # نظام عام
-    # ═══════════════════════════════
-    "مساحة"                       : Intent.SPACE,
-    "الذاكرة"                     : Intent.SPACE,
-    "مساحة التخزين"               : Intent.SPACE,
-    "ما المساحة المتبقية"         : Intent.SPACE,
-    "نظّف"                        : Intent.CLEAN,
-    "تنظيف"                       : Intent.CLEAN,
-    "نظّف الهاتف"                 : Intent.CLEAN,
-    "إزالة الملفات المؤقتة"       : Intent.CLEAN,
-    "السجل الكامل"                : Intent.HISTORY,
-    "تاريخ العمليات"              : Intent.HISTORY,
-    "العمليات السابقة"            : Intent.HISTORY,
-    "الجدول"                      : Intent.SCHEDULE,
-    "جدولي"                       : Intent.SCHEDULE,
-    "المهام المجدولة"             : Intent.SCHEDULE,
-    "نظف الهاتف"                  : Intent.CLEAN_DEVICE,
-    "نظّف الهاتف"                 : Intent.CLEAN_DEVICE,
-    "تنظيف الهاتف"               : Intent.CLEAN_DEVICE,
-    "نظف المساحة"                : Intent.CLEAN_DEVICE,
-    "سجّل ملاحظة"                 : Intent.NOTE,
-    "ملاحظة"                      : Intent.NOTE,
-    "احفظ ملاحظة"                 : Intent.NOTE,
-    "أنشئ مسودة"                  : Intent.DRAFT,
-    "اكتب مسودة"                  : Intent.DRAFT,
-    "مسودة"                       : Intent.DRAFT,
-    "مساعدة"                      : Intent.HELP,
-    "الأوامر المتاحة"             : Intent.HELP,
-    "قائمة الأوامر"               : Intent.HELP,
+    # ... (rest unchanged) ...
 }

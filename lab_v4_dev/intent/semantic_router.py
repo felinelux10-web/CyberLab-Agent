@@ -45,21 +45,41 @@ ALIASES = {
 
 def route(text: str, current_intent: str) -> dict:
     from lab_v4_dev.intent.normalizer import normalize
+    import re
+
     normalized = normalize(text)
 
-    # جرب القواعد دائماً بغض النظر عن intent
-    for rule in RULES:
-        if any(kw in normalized for kw in rule["contains"]):
-            return {
-                "matched" : True,
-                "action"  : rule["action"],
-                "intent"  : rule["intent"],
-                "original": current_intent,
-            }
+    # Sort rules by longest contained phrase to prefer more specific rules
+    def longest_kw_len(rule):
+        return max((len(k) for k in rule.get("contains", [])), default=0)
+
+    for rule in sorted(RULES, key=longest_kw_len, reverse=True):
+        # check contains list sorted by length (longest first)
+        for kw in sorted(rule.get("contains", []), key=lambda x: len(x), reverse=True):
+            # normalize the keyword and do token-aware match
+            kw_norm = normalize(kw)
+            try:
+                pattern = r"(?<!\w)" + re.escape(kw_norm) + r"(?!\w)"
+                if re.search(pattern, normalized, flags=re.UNICODE):
+                    return {
+                        "matched" : True,
+                        "action"  : rule["action"],
+                        "intent"  : rule["intent"],
+                        "original": current_intent,
+                    }
+            except re.error:
+                # fallback to simple substring on normalized text
+                if kw_norm in normalized:
+                    return {
+                        "matched" : True,
+                        "action"  : rule["action"],
+                        "intent"  : rule["intent"],
+                        "original": current_intent,
+                    }
 
     # لم يجد تطابق — إذا كان project_scan وفيه كلمة ملف محدد
-    import re
-    if current_intent == 'project_scan' and re.search(r'[\w./]+\.py', text):
+    import re as _re
+    if current_intent == 'project_scan' and _re.search(r'[\w./]+\.py', text):
         return {"matched":True,"action":"file_impact","intent":"file_impact","original":current_intent}
     return {
         "matched" : False,
@@ -67,6 +87,7 @@ def route(text: str, current_intent: str) -> dict:
         "intent"  : current_intent,
         "original": current_intent,
     }
+
 
 def is_unsupported(intent: str, result: dict) -> bool:
     if result.get("status") in ["unsupported", "fallback"]:
