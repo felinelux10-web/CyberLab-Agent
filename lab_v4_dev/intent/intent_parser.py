@@ -201,7 +201,7 @@ def parse(user_input: str) -> dict:
 
     # 7.5 — إذا لا يزال unclear بعد كل المحاولات → unsupported
     if intent == Intent.UNCLEAR or intent == Intent.HELP:
-        intent = "unsupported"
+        intent = Intent.UNSUPPORTED
 
     # 8. استخراج الهدف
     target = _extract_target(user_input)
@@ -238,7 +238,7 @@ def parse(user_input: str) -> dict:
             explicit_device = any(_has_word(w) for w in device_indicators)
             explicit_code   = any(_has_word(w) for w in code_indicators)
             if not explicit_device and not explicit_code and not target:
-                intent = "unsupported"
+                intent = Intent.UNSUPPORTED
     except Exception:
         pass
 
