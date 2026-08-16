@@ -61,6 +61,36 @@ def _token_has_word(text_norm: str, w: str) -> bool:
 
 
 def parse(user_input: str) -> dict:
+    # --- Early deterministic detectors (high precedence) ---
+    try:
+        raw = user_input.strip()
+        # Comparison patterns: قارن X و Y, قارن بين X و Y, مقارنة X و Y, ما الفرق بين X و Y
+        if re.search(r"\b(قارن|قارن بين|مقارنة|ما الفرق بين|الفرق بين|قارن الملف|قارن ملف)\b", raw):
+            files = re.findall(r"[\w./]+\.\w+", raw)
+            if len(files) >= 2:
+                # Route to COMPARE_FILES and keep raw for orchestrator to extract operands
+                return {
+                    "intent": Intent.COMPARE_FILES,
+                    "target": "",
+                    "context": detect_context(raw),
+                    "confidence": 0.95,
+                    "raw": user_input,
+                }
+        # Existence patterns: هل يوجد ملف X, هل X موجود, هل الملف X موجود
+        if re.search(r"\bهل\s+يوجد\b|\bهل\b.*\bموجود\b|\bهل\s+هناك\b", raw):
+            files = re.findall(r"[\w./]+\.\w+", raw)
+            if files:
+                # Treat as a project search/existence check — SEARCH_CODE returns text
+                return {
+                    "intent": Intent.SEARCH_CODE,
+                    "target": files[0],
+                    "context": detect_context(raw),
+                    "confidence": 0.90,
+                    "raw": user_input,
+                }
+    except Exception:
+        pass
+
     # 0. NLU Layer — فهم الأنماط اللغوية الطبيعية
     if NLU_ENABLED:
         try:
