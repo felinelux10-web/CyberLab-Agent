@@ -32,6 +32,7 @@ class Intent:
     READ_FUNCTION    = "read_function"
     READ_CLASS       = "read_class"
     SHOW_CHANGES     = "show_changes"
+    SHOW_LAST_RESULT = "show_last_result"
     PLAN             = "plan"
     DECOMPOSE        = "decompose"
     IMPACT_ANALYSIS  = "impact_analysis"
