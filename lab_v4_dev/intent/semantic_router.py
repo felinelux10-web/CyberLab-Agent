@@ -1,6 +1,8 @@
 # CyberLab Agent v5.0.1
 # intent/semantic_router.py
 
+from lab_v4_dev.intent.intents import Intent
+
 RULES = [
     {
         "contains": ["كل الملفات", "كل ملفات", "الملفات المتاثرة", "الملفات المتضررة"],
@@ -43,6 +45,16 @@ ALIASES = {
     "الثغرات"  : "ثغرات",
 }
 
+# Map rule intent string names to canonical Intent constants when available
+_INTENT_MAP = {
+    "dependency_map": Intent.DEPENDENCY_MAP,
+    "file_impact":    Intent.FILE_IMPACT,
+    "release_index":  Intent.RELEASE_INDEX,
+    "self_diagnose":  Intent.SELF_DIAGNOSE,
+    # keep show_last_result as literal string because several callers expect that exact token
+}
+
+
 def route(text: str, current_intent: str) -> dict:
     from lab_v4_dev.intent.normalizer import normalize
     import re
@@ -61,26 +73,33 @@ def route(text: str, current_intent: str) -> dict:
             try:
                 pattern = r"(?<!\w)" + re.escape(kw_norm) + r"(?!\w)"
                 if re.search(pattern, normalized, flags=re.UNICODE):
+                    intent_val = rule["intent"]
+                    # map to canonical Intent when possible
+                    canonical = _INTENT_MAP.get(intent_val, intent_val)
                     return {
                         "matched" : True,
                         "action"  : rule["action"],
-                        "intent"  : rule["intent"],
+                        "intent"  : canonical,
                         "original": current_intent,
                     }
             except re.error:
                 # fallback to simple substring on normalized text
                 if kw_norm in normalized:
+                    intent_val = rule["intent"]
+                    canonical = _INTENT_MAP.get(intent_val, intent_val)
                     return {
                         "matched" : True,
                         "action"  : rule["action"],
-                        "intent"  : rule["intent"],
+                        "intent"  : canonical,
                         "original": current_intent,
                     }
 
     # لم يجد تطابق — إذا كان project_scan وفيه كلمة ملف محدد
     import re as _re
-    if current_intent == 'project_scan' and _re.search(r'[\w./]+\.py', text):
-        return {"matched":True,"action":"file_impact","intent":"file_impact","original":current_intent}
+    if current_intent == Intent.PROJECT_SCAN and _re.search(r'[\w./]+\.py', text):
+        # return canonical FILE_IMPACT
+        return {"matched":True,"action":"file_impact","intent":_INTENT_MAP.get("file_impact","file_impact"),"original":current_intent}
+
     return {
         "matched" : False,
         "action"  : None,
@@ -90,6 +109,9 @@ def route(text: str, current_intent: str) -> dict:
 
 
 def is_unsupported(intent: str, result: dict) -> bool:
+    # Accept Intent.UNSUPPORTED canonical marker as unsupported
+    if intent == Intent.UNSUPPORTED:
+        return True
     if result.get("status") in ["unsupported", "fallback"]:
         return True
     if result.get("executed") is False:
