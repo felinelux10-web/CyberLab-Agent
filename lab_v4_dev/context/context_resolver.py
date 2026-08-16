@@ -13,7 +13,7 @@ def bind_context(intent: str, text: str, store) -> dict:
     resolved = store.resolve(text)
 
     if any(kw in text for kw in RESULT_KEYWORDS):
-        return {"intent": Intent.SHOW_CHANGES if hasattr(Intent, 'SHOW_CHANGES') else 'show_last_result',
+        return {"intent": Intent.SHOW_CHANGES if hasattr(Intent, 'SHOW_CHANGES') else Intent.SHOW_LAST_RESULT,
                 "target": store.last_target,
                 "data": store.last_result,
                 "subject": resolved["subject"]}
@@ -26,8 +26,14 @@ def bind_context(intent: str, text: str, store) -> dict:
 
     # DNI-10: تفعيل فقط إذا كانت النية المُحلَّلة أصلاً مقارنة أو غير معروفة —
     # يمنع اختطاف نوايا أخرى ناجحة (مثل قراءة ملف) لمجرد ورود كلمة "قارن" في جملة مركبة
-    _compare_intents = (Intent.COMPARE_SNAPSHOTS, Intent.COMPARE_REF,
-                         Intent.COMPARE_VERSIONS, Intent.COMPARE_FILES)
+    _compare_names = [
+        'COMPARE_SNAPSHOTS',
+        'COMPARE_REF',
+        'COMPARE_VERSIONS',
+        'COMPARE_FILES',
+    ]
+    _compare_intents = tuple(getattr(Intent, n) for n in _compare_names if hasattr(Intent, n))
+
     if any(kw in text for kw in COMPARE_KEYWORDS) and (
         intent in _compare_intents or intent == Intent.UNCLEAR
     ):
@@ -35,13 +41,13 @@ def bind_context(intent: str, text: str, store) -> dict:
         return {"intent": _cmp_intent,
                 "target": text,
                 "subject": resolved["subject"],
-                "version": resolved["version"]}
+                "version": resolved.get("version")}
 
     if resolved["is_reference"] and resolved["subject"]:
         return {"intent": intent,
                 "target": resolved["subject"],
                 "subject": resolved["subject"],
-                "version": resolved["version"],
+                "version": resolved.get("version"),
                 "injected": True}
 
     if intent == Intent.UNCLEAR:
@@ -52,4 +58,4 @@ def bind_context(intent: str, text: str, store) -> dict:
     return {"intent": intent,
             "target": None,
             "subject": resolved["subject"],
-            "version": resolved["version"]}
+            "version": resolved.get("version")}
