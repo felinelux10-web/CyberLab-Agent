@@ -78,7 +78,6 @@ class Intent:
     RESTORE_SNAPSHOT = "restore_snapshot"
     SNAPSHOT         = "snapshot"
     LIST_SNAPSHOTS   = "list_snapshots"
-    COMPARE_SNAPSHOTS= "compare_snapshots"
     DELETE_SNAPSHOT  = "delete_snapshot"
     REMEMBER         = "remember"
     FORGET           = "forget"
@@ -161,3 +160,5 @@ class Intent:
     COMPLETE_TASK    = "complete_task"
     ADD_TASK         = "add_task"
     COMPARE_FILES    = "compare_files"
+    # canonical unsupported marker
+    UNSUPPORTED      = "unsupported"
