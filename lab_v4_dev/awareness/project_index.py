@@ -94,12 +94,69 @@ ARABIC_SEARCH = {
     "مهام"    : "task",
 }
 
-def search_index(query: str) -> list:
+
+def _is_canonical_index(obj) -> bool:
+    """Return True when obj is the canonical project index structure.
+
+    Canonical index is a dict mapping relative path -> metadata dict with at least
+    'path' and 'layer' keys. An empty dict is considered valid (no python files).
+    """
+    if not isinstance(obj, dict):
+        return False
+    if not obj:
+        return True
+    for k, v in obj.items():
+        if not isinstance(k, str):
+            return False
+        if not isinstance(v, dict):
+            return False
+        # require minimal keys
+        if 'path' not in v or 'layer' not in v:
+            return False
+    return True
+
+
+def _load_or_rebuild_index() -> dict:
+    """Load the project index file and ensure it follows the canonical schema.
+
+    If the file is missing or invalid (e.g. produced by ProjectReader), rebuild
+    the canonical index using save_index() and return the rebuilt index. The
+    rebuilt index is written to the canonical index file for this active project.
+    """
     try:
         with open(_index_file(), "r", encoding="utf-8") as f:
             index = json.load(f)
-    except:
-        index = build_index()
+    except Exception:
+        # missing or unreadable -> rebuild and persist
+        try:
+            save_index()
+        except Exception:
+            # as a last resort return an in-memory build
+            return build_index()
+        try:
+            with open(_index_file(), "r", encoding="utf-8") as f:
+                index = json.load(f)
+        except Exception:
+            return build_index()
+
+    # validate schema
+    if not _is_canonical_index(index):
+        # detected a foreign or corrupted schema; rebuild and persist
+        try:
+            save_index()
+        except Exception:
+            return build_index()
+        try:
+            with open(_index_file(), "r", encoding="utf-8") as f:
+                index = json.load(f)
+        except Exception:
+            return build_index()
+
+    return index
+
+
+def search_index(query: str) -> list:
+    index = _load_or_rebuild_index()
 
     # ترجم العربية إذا لزم
     query_en = ARABIC_SEARCH.get(query.strip(), query)
@@ -115,12 +172,9 @@ def search_index(query: str) -> list:
 
     return sorted(results, key=lambda x: x["score"], reverse=True)[:5]
 
+
 def get_layer_map() -> dict:
-    try:
-        with open(_index_file(), "r", encoding="utf-8") as f:
-            index = json.load(f)
-    except:
-        index = build_index()
+    index = _load_or_rebuild_index()
 
     layers = {}
     for path, info in index.items():
