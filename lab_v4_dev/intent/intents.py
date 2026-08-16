@@ -96,6 +96,10 @@ class Intent:
     REMAINING_WORK   = "remaining_work"
     LOAD_REFERENCE   = "load_reference"
     COMPARE_REF      = "compare_reference"
+    # Added missing compare-related constants
+    COMPARE_SNAPSHOTS = "compare_snapshots"
+    COMPARE_FILES     = "compare_files"
+    COMPARE_VERSIONS  = "compare_versions"
     ARCH_CHECK       = "architecture_check"
     DRIFT_CHECK      = "drift_check"
     CREATE_LAB       = "create_lab"
