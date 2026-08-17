@@ -91,6 +91,7 @@ def parse(user_input: str) -> dict:
     except Exception:
         pass
 
+    if re.search(r"^(احذف|حذف|امسح) الملف$", raw): return {"intent": Intent.DELETE_FILE, "target": "", "context": detect_context(raw), "confidence": 0.99, "raw": user_input}
     # 0. NLU Layer — فهم الأنماط اللغوية الطبيعية
     if NLU_ENABLED:
         try:
@@ -234,6 +235,19 @@ def parse(user_input: str) -> dict:
         intent = Intent.UNSUPPORTED
 
     # 8. استخراج الهدف
+    # PHASE-2 COMPATIBILITY:
+    # Historical routing contract requires the direct question
+    # "ما حالة النظام" to resolve to STATUS.
+    #
+    # Do not globally collapse SYSTEM_STATUS into STATUS because
+    # SYSTEM_STATUS is a distinct orchestrator capability.
+    _status_question = normalize(user_input) in {
+        "ما حالة النظام",
+        "ما حاله النظام",
+    }
+    if _status_question and intent == Intent.SYSTEM_STATUS:
+        intent = Intent.STATUS
+
     target = _extract_target(user_input)
 
     # 8.1 — صريح: إذا ذُكر جهاز/هاتف/المساحة فالأولوية لـ CLEAN_DEVICE
@@ -289,6 +303,25 @@ def parse(user_input: str) -> dict:
             intent = Intent.SHOW_CHANGES
 
     # حفظ آخر ملف/هدف للسياق القادم
+    # PHASE-2 DELETE AUTHORITY:
+    # An explicit delete-file request with a concrete file target
+    # must never be downgraded/reinterpreted by later context
+    # routing.
+    _explicit_delete = any(
+        _token_has_word(_txt_norm, w)
+        for w in (
+            "احذف",
+            "احذف الملف",
+            "حذف",
+            "امسح الملف",
+            "ازالة الملف",
+            "إزالة الملف",
+        )
+    )
+
+    if _explicit_delete and target:
+        intent = Intent.DELETE_FILE
+
     if target and intent in (Intent.READ_FILE, Intent.DELETE_FILE, Intent.ANALYZE_CODE):
         try:
             from lab_v4_dev.nlu.context_resolver import save_state
