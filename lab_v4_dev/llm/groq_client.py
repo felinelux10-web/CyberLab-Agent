@@ -5,13 +5,13 @@ import os
 import requests
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL   = "llama-3.1-8b-instant"
+GROQ_MODEL   = "openai/gpt-oss-120b"
 
 # نماذج متاحة حسب نوع المهمة
 MODELS = {
-    "fast"  : "llama-3.1-8b-instant",    # سريع — للمهام البسيطة
-    "smart" : "llama-3.3-70b-versatile", # ذكي — للتحليل والشرح
-    "code"  : "llama-3.3-70b-versatile", # للكود والأمن السيبراني
+    "fast"  : "openai/gpt-oss-120b",    # سريع — للمهام البسيطة
+    "smart" : "openai/gpt-oss-120b", # ذكي — للتحليل والشرح
+    "code"  : "openai/gpt-oss-120b", # للكود والأمن السيبراني
 }
 ENV_FILE     = "lab_v4_dev/configs/.env"
 
