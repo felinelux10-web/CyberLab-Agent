@@ -24,7 +24,9 @@ DISCUSSION_PATTERNS = [
 ]
 
 QUESTION_PATTERNS = [
-    "اشرح لي","ما هو","ما هي","عرفني على",
+    "اشرح لي","اشرح","ما هو","ما هي","ما وظيفة","ما وظيفته",
+    "ما وظيفتها","ما دور","ما دوره","ما دورها","كيف يعمل",
+    "كيف تعمل","عرفني على",
     "ماذا تعرف عن",
     "ما رأيك","هل تعتقد","هل تظن","ما اقتراحك",
     "ماذا تقترح","كيف ترى","ما وجهة نظرك",
@@ -102,9 +104,14 @@ def detect_mode(text: str) -> str:
     if any(p in t for p in DISCUSSION_PATTERNS):
         return "DISCUSSION"
 
-    # CHAT
+    # TASK — explicit task language must win over incidental chat words.
+    # Example: "اكتب سكريبت يطبع مرحبا" is a TASK, not CHAT.
+    if any(p in t for p in TASK_PATTERNS):
+        return "TASK"
+
+    # CHAT — only when no stronger semantic/task signal exists.
     if any(p in t for p in CHAT_PATTERNS):
         return "CHAT"
 
-    # TASK — الافتراضي
+    # TASK — conservative legacy default.
     return "TASK"

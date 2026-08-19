@@ -88,20 +88,37 @@ def extract_version(text: str) -> str | None:
 
 def extract_component(text: str) -> str | None:
     """استخراج اسم المكون أو الوحدة"""
-    # أسماء Python modules/files بدون امتداد
     m = re.search(r"(?:وحدة|مكون|module|class|دالة|function)\s+([\w_]+)", text)
-    if m: return m.group(1)
+    if m:
+        return m.group(1)
 
-    # كلمات تبدو كأسماء مكونات (snake_case أو camelCase)
-    m = re.search(r"\b([a-zA-Z][a-zA-Z0-9_]{2,}(?:\.[a-zA-Z][a-zA-Z0-9_]*)?)\b", text)
+    m = re.search(
+        r"\b([a-zA-Z][a-zA-Z0-9_]{2,}(?:\.[a-zA-Z][a-zA-Z0-9_]*)?)\b",
+        text,
+    )
     if m:
         candidate = m.group(1)
-        # تجاهل الكلمات الإنجليزية الشائعة
-        common = {"the", "and", "for", "not", "with", "from", "import"}
-        if candidate.lower() not in common:
+
+        common = {
+            "the", "and", "for", "not", "with", "from", "import",
+            "this", "that", "what", "how", "does", "are", "is",
+            "can", "could", "should", "would", "why", "where",
+            "which", "about", "please", "show", "read", "open",
+            "explain", "tell", "give", "example", "work", "works",
+        }
+
+        if candidate.lower() in common:
+            return None
+
+        if (
+            "_" in candidate
+            or "." in candidate
+            or re.search(r"[A-Z]", candidate[1:])
+        ):
             return candidate
 
     return None
+
 
 def extract(text: str, intent: str = "") -> dict:
     """

@@ -12,7 +12,7 @@ from lab_v4_dev.planner.impact_analyzer import analyze_impact
 from lab_v4_dev.core.logger import log
 from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.context.context_resolver import bind_context
-from lab_v4_dev.intent.semantic_router import route as semantic_route, is_unsupported
+from lab_v4_dev.core.contracts import Request, Context, Response
 from lab_v4_dev.llm.router import route as llm_route, needs_llm
 from lab_v4_dev.llm.gateway import ask
 from lab_v4_dev.config.provider_config import get_active_provider
@@ -21,13 +21,16 @@ import shutil
 
 class Orchestrator:
 
-    def __init__(self, agent):
+    def __init__(self, agent, context=None):
         self.agent    = agent
         self.history  = []
         self.active   = True
         self.phase    = "5-full-control"
         self.pipeline = None
-        self.context  = ContextStore()
+
+        # Canonical ContextStore is owned by Agent.
+        # Fallback preserves standalone Orchestrator compatibility.
+        self.context  = context if context is not None else ContextStore()
         self._analyzed_files  = set()
         self._impact_analyzed = set()
         # ─── تعيين المشروع النشط الصحيح عند البدء ───
@@ -44,16 +47,25 @@ class Orchestrator:
             self.pipeline = SafePipeline(self.agent.db)
         return self.pipeline
 
-    def handle(self, request: str) -> dict:
+    def handle(self, request: str, parsed: dict | None = None) -> dict:
+        request = Request.from_input(request)
+        raw_request = request.raw_text
+
         # DNI-10: ربط task_chain.py (كان معزولاً تماماً — صفر استدعاء في كل المشروع)
         from lab_v4_dev.core.task_chain import is_chain, detect_chain, execute_chain
-        if is_chain(request):
-            steps = detect_chain(request)
+        if is_chain(raw_request):
+            steps = detect_chain(raw_request)
             if len(steps) > 1:
                 return execute_chain(steps, self)
 
         timestamp = datetime.now().isoformat()
-        parsed    = parse(request)
+
+        # Intent authority:
+        # ConversationManager may already have resolved the request.
+        # Never resolve the same request a second time.
+        if parsed is None:
+            parsed = parse(raw_request)
+
         intent    = parsed["intent"]
         target    = parsed["target"]
         ctx_hint  = parsed["context"]
@@ -67,22 +79,24 @@ class Orchestrator:
             "status"   : "pending",
         }
 
-        bound  = bind_context(intent, request, self.context)
-        intent = bound["intent"]
+        # INTENT REBUILD — PATCH 01
+        #
+        # parse() is the canonical Intent resolution boundary.
+        #
+        # Context binding may enrich target/context metadata, but the
+        # Orchestrator MUST NOT replace the Intent already resolved by
+        # the parser.
+        #
+        # Semantic Router remains available for compatibility elsewhere,
+        # but it is not permitted to re-classify this request here.
+
+        operational_context = Context.from_store(self.context)
+        bound = bind_context(intent, raw_request, self.context)
+
         if bound.get("target"):
             target = bound["target"]
-        # ─── السياق المتعدد: إذا injected وموضوع سابق → CYBER_EXPLAIN ───
-        if bound.get("injected") and self.context.current_subject:
-            from lab_v4_dev.intent.intents import Intent as _I
-            if intent in (_I.UNCLEAR, _I.STATUS, "unclear", "unsupported"):
-                intent = _I.CYBER_EXPLAIN
-                request = f"{request} (السياق: {self.context.current_subject})"
-        # Semantic Router — يحل الأوامر ويصحح الـ intent
-        sr = semantic_route(request, intent)
-        if sr["matched"]:
-            intent = sr["intent"]
         # ─── Pre-handler Policy ───
-        blocked = self._pre_handler_policy(intent, target, request)
+        blocked = self._pre_handler_policy(intent, target, raw_request)
         if blocked:
             return blocked
         # ─── Runtime Execution (Series 9) ───
@@ -98,7 +112,7 @@ class Orchestrator:
                 _rt.update_active_file(target)
             except:
                 pass
-        result = self._route(intent, target, ctx_hint, request)
+        result = self._route(intent, target, ctx_hint, raw_request)
         if _rt:
             try:
                 _rt.end({
@@ -495,53 +509,149 @@ class Orchestrator:
 
         # ─── مقارنة إصدارين ───
         elif intent == Intent.COMPARE_FILES:
+            # Resolve comparison operands through the canonical project index.
+            # This follows the same project-file resolution contract used by
+            # READ_FILE and avoids stale/static inventory snapshots.
             import re as _re3
-            # استخرج أسماء الملفات من الأمر
-            _files = _re3.findall(r"[\w./]+\.\w+", raw)
+            from pathlib import Path as _Path
+            from lab_v4_dev.awareness.project_index import search_index
+
+            _files = _re3.findall(
+                r"[A-Za-z0-9_./~-]+\.[A-Za-z0-9_]+",
+                raw
+            )
+
             if len(_files) < 2:
-                return {"status":"needs_target","intent":intent,
-                        "message":"حدد ملفين للمقارنة. مثال: ما الفرق بين orchestrator.py و agent.py"}
+                return {
+                    "status": "needs_target",
+                    "intent": intent,
+                    "message": (
+                        "حدد ملفين للمقارنة. مثال: "
+                        "ما الفرق بين orchestrator.py و agent.py"
+                    ),
+                }
+
             _f1, _f2 = _files[0], _files[1]
-            # ابحث عن المسار الكامل في inventory
-            inv_path = "lab_v4_dev/project_knowledge/inventory.json"
-            import json as _jj2
-            _inv_files = []
-            try:
-                _inv = _jj2.load(open(inv_path, encoding="utf-8"))
-                _inv_files = _inv.get("files", [])
-            except Exception:
-                pass
-            def _find_path(name):
-                for f in _inv_files:
-                    if f["filename"] == name or f["path"].endswith(name):
-                        return f["path"]
+
+            def _resolve_compare_file(name):
+                candidate = _Path(name).expanduser()
+
+                # 1. Explicit absolute path.
+                if candidate.is_absolute() and candidate.is_file():
+                    return candidate.resolve()
+
+                # 2. Direct path relative to CyberLab-Agent.
+                _project_root = (_Path.home() / "cyberlab_agent").resolve()
+                direct = (_project_root / name).resolve()
+
+                try:
+                    direct.relative_to(_project_root)
+                    if direct.is_file():
+                        return direct
+                except ValueError:
+                    pass
+
+                # 3. Canonical project index lookup.
+                try:
+                    matches = search_index(name)
+                except Exception:
+                    matches = []
+
+                for match in matches:
+                    candidate_path = match.get("path", "")
+                    if candidate_path:
+                        resolved = _Path(candidate_path).expanduser().resolve()
+                        if resolved.is_file():
+                            return resolved
+
+                # 4. Dynamic fallback over the actual CyberLab-Agent tree.
+                # This handles basename requests such as cleaner.py/state.py
+                # when the active project index points elsewhere.
+                try:
+                    matches = []
+
+                    for path in _project_root.rglob(candidate.name):
+                        if not path.is_file():
+                            continue
+
+                        rel = path.resolve().relative_to(_project_root)
+                        rel_s = str(rel).replace("\\", "/")
+
+                        # Ignore generated/archive trees.
+                        if any(
+                            part in rel.parts
+                            for part in ("__pycache__", ".git", "releases", "stable")
+                        ):
+                            continue
+
+                        wanted = str(candidate).replace("\\", "/").lstrip("./")
+
+                        if (
+                            rel_s == wanted
+                            or rel_s.endswith("/" + wanted)
+                            or candidate.name == path.name
+                        ):
+                            matches.append(path.resolve())
+
+                    if matches:
+                        return sorted(
+                            matches,
+                            key=lambda x: len(str(x.relative_to(_project_root)))
+                        )[0]
+
+                except Exception:
+                    pass
+
                 return None
-            _p1 = _find_path(_f1)
-            _p2 = _find_path(_f2)
-            if not _p1 or not _p2:
-                missing = _f1 if not _p1 else _f2
-                return {"status":"success","intent":intent,
-                        "text":f"❌ لم أجد '{missing}' في ملفات المشروع"}
-            # اقرأ الملفين
+
+            _full1 = _resolve_compare_file(_f1)
+            _full2 = _resolve_compare_file(_f2)
+
+            if not _full1 or not _full2:
+                missing = _f1 if not _full1 else _f2
+                return {
+                    "status": "failed",
+                    "intent": intent,
+                    "text": f"❌ لم أجد '{missing}' في ملفات المشروع",
+                }
+
             try:
-                _root = "lab_v4_dev"
-                _c1 = open(os.path.join(_root, _p1), encoding="utf-8").read()
-                _c2 = open(os.path.join(_root, _p2), encoding="utf-8").read()
+                _c1 = _full1.read_text(encoding="utf-8")
+                _c2 = _full2.read_text(encoding="utf-8")
             except Exception as _e:
-                return {"status":"failed","intent":intent,"message":str(_e)}
+                return {
+                    "status": "failed",
+                    "intent": intent,
+                    "message": str(_e),
+                }
+
             prompt = (
                 "قارن بين هذين الملفين من مشروع Python:\n\n"
-                f"=== {_f1} ===\n" + _c1[:600] + "\n\n"
-                f"=== {_f2} ===\n" + _c2[:600] + "\n\n"
-                "أجب بالعربية: ما الفروقات الرئيسية في الوظيفة والمسؤولية?"
+                f"=== {_full1} ===\n{_c1[:6000]}\n\n"
+                f"=== {_full2} ===\n{_c2[:6000]}\n\n"
+                "أجب بالعربية: ما الفروقات الرئيسية "
+                "في الوظيفة والمسؤولية؟"
             )
-            system = "أنت مساعد هندسي. قارن فقط بناءً على الكود المعطى. لا تخترع معلومات."
-            result = ask(prompt, system=system, max_tokens=400)
+
+            system = (
+                "أنت مساعد هندسي. قارن فقط بناءً على الكود المعطى. "
+                "لا تخترع معلومات."
+            )
+
+            result = ask(
+                prompt,
+                system=system,
+                max_tokens=400
+            )
+
             return {
                 "status": result["status"],
                 "intent": intent,
-                "source": result.get("provider_used", get_active_provider()),
-                "text"  : result.get("text",""),
+                "source": result.get(
+                    "provider_used",
+                    get_active_provider()
+                ),
+                "text": result.get("text", ""),
             }
 
         elif intent == Intent.COMPARE_VERSIONS:

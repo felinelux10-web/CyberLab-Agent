@@ -10,6 +10,7 @@ from lab_v4_dev.memory.session import Session
 from lab_v4_dev.monitor.health_check import check_health
 from lab_v4_dev.loop.event_loop import EventLoop
 from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.core.contracts import Request, Response
 from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.dni.dni_core import DNICore
 
@@ -65,8 +66,8 @@ class Agent:
         # 6. تهيئة Loop و Context
         self.executor = None
         self.loop    = EventLoop(self.state, self.db, self.session)
-        self.orchestrator = Orchestrator(self)
         self.context = ContextStore()
+        self.orchestrator = Orchestrator(self, context=self.context)
 
         self.dni = DNICore()
 
@@ -111,6 +112,8 @@ class Agent:
         return True
 
     def run(self, user_input: str) -> dict:
+        request = Request.from_input(user_input)
+
         if not self.loop:
             return {"status": "error", "reason": "agent not booted"}
 
@@ -118,9 +121,9 @@ class Agent:
             return {"status": "frozen", "reason": "manual intervention required"}
 
         # Conversation Layer هو المسار الرئيسي (H.8.5)
-        result = self.conv_manager.process(user_input)
+        result = self.conv_manager.process(request.raw_text)
 
-        self.dialogue_memory.update(user_input, result)
+        self.dialogue_memory.update(request.raw_text, result)
 
         if result.get("status") == "unsupported":
             return result

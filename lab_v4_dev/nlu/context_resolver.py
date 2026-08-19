@@ -72,7 +72,8 @@ def is_incomplete(nlu_result: dict) -> bool:
 def resolve(nlu_result: dict) -> dict:
     """
     يستكمل العناصر الناقصة من السياق السابق.
-    لا يغير intent، فقط يضيف entity/target إذا كانا فارغين.
+    لا يغير intent، فقط يضيف entity/target إذا كانا فارغين
+    وكان نوع الكيان السابق متوافقاً مع الـ intent الحالي.
     """
     if not is_incomplete(nlu_result):
         return nlu_result
@@ -81,12 +82,35 @@ def resolve(nlu_result: dict) -> dict:
     if not last:
         return nlu_result
 
-    # استكمال من السياق
     inherited_entity = last.get("entity", "")
+    inherited_type = last.get("entity_type", "")
+    previous_action = last.get("action", "")
+
     if inherited_entity:
-        nlu_result = nlu_result.copy()
-        nlu_result["target"] = inherited_entity
-        nlu_result["context_inherited"] = True
-        nlu_result["inherited_from"] = last.get("action", "")
+        compatible = True
+        intent = nlu_result.get("intent", "")
+
+        if intent in {
+            "read_file",
+            "analyze_code",
+            "file_impact",
+            "dependencies",
+            "dependents_query",
+            "impact_chain_query",
+            "delete_file",
+        }:
+            compatible = inherited_type in {"FILE", "COMPONENT"}
+
+        elif intent == "cyber_explain":
+            compatible = inherited_type in {"CONCEPT", "FILE", "COMPONENT"}
+
+        elif intent == "current_version":
+            compatible = inherited_type == "VERSION"
+
+        if compatible:
+            nlu_result = nlu_result.copy()
+            nlu_result["target"] = inherited_entity
+            nlu_result["context_inherited"] = True
+            nlu_result["inherited_from"] = previous_action
 
     return nlu_result

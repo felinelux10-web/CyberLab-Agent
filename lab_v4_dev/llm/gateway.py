@@ -3,7 +3,8 @@ CyberLab LLM Gateway
 v5.9.13-dev
 """
 
-from lab_v4_dev.llm.provider_registry import get_provider
+from lab_v4_dev.llm.provider_registry import get_provider, is_provider_available
+from lab_v4_dev.config.provider_config import is_provider_enabled
 from lab_v4_dev.dni.privacy_engine import PrivacyEngine
 from lab_v4_dev.llm.model_router import route
 from lab_v4_dev.config.provider_config import (
@@ -48,6 +49,15 @@ def ask(
     last_error = None
 
     for name in providers:
+
+        # Skip providers that are not actually implemented.
+        if not is_provider_available(name):
+            continue
+
+        # Respect explicit provider enable/disable configuration.
+        # DUMMY remains available as the final emergency fallback.
+        if name != "dummy" and not is_provider_enabled(name):
+            continue
 
         provider = get_provider(name)
 

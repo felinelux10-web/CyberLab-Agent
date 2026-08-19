@@ -32,7 +32,7 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"[\u0610-\u061A\u064B-\u065F]", "", text)
     # توحيد الهمزات
     text = re.sub(r"[أإآ]", "ا", text)
-    text = re.sub(r"ة\\b", "ه", text)
+    text = re.sub(r"ة(?=\s|$)", "ه", text)
     return text
 
 def match_pattern(text: str) -> tuple:

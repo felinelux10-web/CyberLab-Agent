@@ -7,6 +7,7 @@ from lab_v4_dev.intent.normalizer import normalize
 from lab_v4_dev.intent.fuzzy_normalizer import deep_normalize
 from lab_v4_dev.intent.keyword_families import match_family
 from lab_v4_dev.intent.intents import Intent
+from lab_v4_dev.intent.intent_contract import IntentResult
 
 TEMPORAL_KEYWORDS = ["اخر","آخر","اخير","السابق","اليوم","امس"]
 FILE_INDICATORS   = ["ملف","file","مجلد"]
@@ -60,7 +61,12 @@ def _token_has_word(text_norm: str, w: str) -> bool:
         return w in text_norm
 
 
-def parse(user_input: str) -> dict:
+
+# ============================================================
+# P04 / Canonical Intent Contract Boundary
+# ============================================================
+
+def _interpret(user_input: str) -> dict:
     # --- Early deterministic detectors (high precedence) ---
     try:
         raw = user_input.strip()
@@ -336,3 +342,43 @@ def parse(user_input: str) -> dict:
         "confidence": confidence,
         "raw"       : user_input,
     }
+
+
+def parse(user_input):
+    """
+    Canonical public intent entrypoint.
+
+    The historical semantic implementation is preserved privately in
+    _interpret(). This adapter exposes the unified IntentResult contract
+    without changing the underlying semantic precedence.
+    """
+    if isinstance(user_input, IntentResult):
+        result = user_input
+        result.validate()
+        return result
+
+    if not isinstance(user_input, str):
+        raise TypeError("intent parser input must be a string")
+
+    legacy = _interpret(user_input)
+
+    if isinstance(legacy, IntentResult):
+        legacy.validate()
+        return legacy
+
+    if not isinstance(legacy, dict):
+        raise TypeError(
+            f"intent parser returned unsupported type: {type(legacy).__name__}"
+        )
+
+    result = IntentResult(
+        intent=legacy.get("intent"),
+        confidence=float(legacy.get("confidence", 0.0)),
+        target=legacy.get("target"),
+        action=legacy.get("action"),
+        context=legacy.get("context"),
+        raw=legacy.get("raw", user_input),
+    )
+
+    result.validate()
+    return result
