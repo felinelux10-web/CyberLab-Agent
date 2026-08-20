@@ -232,7 +232,7 @@ def _interpret(user_input: str) -> dict:
     )
 
     if intent == Intent.UNCLEAR and not any(user_input.startswith(x) for x in dialogue_followups):
-        from lab_v4_dev.intent.groq_intent_resolver import resolve
+        from lab_v4_dev.intent.llm_intent_resolver import resolve
         intent     = resolve(user_input)
         confidence = 0.8
 

@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.expanduser("~/cyberlab_agent"))
 from lab_v4_dev.conversation.mode_detector import detect_mode
 from lab_v4_dev.conversation.assistant_style import clean_response, single_question
 from lab_v4_dev.memory.db import Database
-from lab_v4_dev.awareness.context_store import ContextStore
+from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 
 def run_tests():

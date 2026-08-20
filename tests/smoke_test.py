@@ -57,10 +57,12 @@ def run_smoke_test():
     failed = 0
     for cmd, expected_statuses, expected_keys in TESTS:
         try:
-            # reset context بين الاختبارات
-            agent.orchestrator.context.last_intent = None
-            agent.orchestrator.context.last_result = None
-            r = agent.orchestrator.handle(cmd)
+            # P06 — reset complete conversational lifecycle
+            agent.reset_conversation_context()
+
+            # P06 — production path:
+            # Agent.run -> ConversationManager -> Orchestrator
+            r = agent.run(cmd)
             status    = r.get("status", "?")
             ok_status = status in expected_statuses
             ok_keys   = all(k in r and r[k] for k in expected_keys)

@@ -8,22 +8,27 @@ from lab_v4_dev.planner.planner import Planner
 from lab_v4_dev.monitor.health_check import check_health
 from lab_v4_dev.monitor.budget import Budget
 from lab_v4_dev.executor.executor import Executor
-from lab_v4_dev.memory.task_history import TaskHistory
-from lab_v4_dev.memory.lessons import Lessons
 from lab_v4_dev.loop.idle_manager import IdleManager
 from lab_v4_dev.loop.scheduler import Scheduler
 from lab_v4_dev.core.config import HARD_LIMITS
 
 class EventLoop:
 
-    def __init__(self, state, db, session=None):
+    def __init__(self, state, db, session=None, memory=None):
         self.state     = state
         self.db        = db
-        self.planner   = Planner(db)
+        self.memory    = memory
+
+        # P07 — canonical Memory ownership.
+        # Legacy callers may still provide only session.
+        if self.memory is None:
+            self.memory = getattr(session, "memory", None)
+
+        self.planner   = Planner(db, memory=self.memory)
         self.executor  = Executor(state, db, session)
         self.budget    = Budget()
-        self.history   = TaskHistory(db)
-        self.lessons   = Lessons(db)
+        self.history   = self.memory.tasks if self.memory is not None else None
+        self.lessons   = self.memory.lessons if self.memory is not None else None
         self.idle      = IdleManager()
         self.scheduler = Scheduler()
         self.running   = False

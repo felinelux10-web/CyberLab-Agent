@@ -3,13 +3,13 @@
 
 from lab_v4_dev.planner.step_builder import shell_step, write_step, read_step, validate_steps
 from lab_v4_dev.planner.validator import validate_plan
-from lab_v4_dev.memory.lessons import Lessons
 
 class Planner:
 
-    def __init__(self, db):
+    def __init__(self, db, memory=None):
         self.db = db
-        self.lessons = Lessons(db)
+        self.memory = memory
+        self.lessons = memory.lessons if memory is not None else None
 
     def build(self, intent: dict) -> dict:
         action = intent.get("action")

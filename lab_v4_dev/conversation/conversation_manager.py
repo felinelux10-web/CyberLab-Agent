@@ -114,7 +114,16 @@ class ConversationManager:
                 ),
             })
 
-        # DialogueMemory.update() remains exclusively in Agent.run().
+        # ConversationManager owns dialogue-state lifecycle.
+        # Agent remains only the runtime facade.
+        if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
+            self.dialogue_memory.update(
+                user_input,
+                result,
+                mode=mode,
+                parsed=parsed,
+            )
+
         return result
 
     def _dispatch(self, text: str, mode: str, parsed: dict) -> dict:

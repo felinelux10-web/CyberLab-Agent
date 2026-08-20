@@ -291,9 +291,7 @@ class Orchestrator:
 
         # ─── التغييرات ───
         elif intent == Intent.SHOW_CHANGES:
-            from lab_v4_dev.memory.task_history import TaskHistory
-            th    = TaskHistory(self.agent.db)
-            tasks = th.recent(10)
+            tasks = self.agent.memory.recent_tasks(10)
             lines = ["آخر التعديلات:"]
             for t in tasks:
                 icon = "✅" if t["status"] == "success" else "❌"
@@ -405,10 +403,8 @@ class Orchestrator:
         # ─── تقرير السياق ───
         elif intent == Intent.CONTEXT_REPORT:
             from lab_v4_dev.core.project_metadata import ProjectMetadata
-            from lab_v4_dev.memory.task_history import TaskHistory
             _meta = ProjectMetadata()
-            th = TaskHistory(self.agent.db)
-            tasks = th.recent(10)
+            tasks = self.agent.memory.recent_tasks(10)
             releases = sorted([
                 d for d in os.listdir("releases")
                 if os.path.isdir(f"releases/{d}")
@@ -438,9 +434,7 @@ class Orchestrator:
 
         # ─── سجل المهام ───
         elif intent == Intent.HISTORY:
-            from lab_v4_dev.memory.task_history import TaskHistory
-            th    = TaskHistory(self.agent.db)
-            tasks = th.recent(10)
+            tasks = self.agent.memory.recent_tasks(10)
             return {
                 "status": "success",
                 "intent": intent,
@@ -1744,9 +1738,7 @@ SOURCE CODE:
                 lines.append("\nلا يوجد تقرير محفوظ")
 
             # 2. آخر المهام
-            from lab_v4_dev.memory.task_history import TaskHistory
-            th = TaskHistory(self.agent.db)
-            tasks = th.recent(5)
+            tasks = self.agent.memory.recent_tasks(5)
             if tasks:
                 lines.append("\n📋 آخر المهام:")
                 for t in tasks:

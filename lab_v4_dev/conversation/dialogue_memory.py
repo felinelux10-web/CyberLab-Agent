@@ -1,171 +1,260 @@
 """
-Dialogue Memory — Series 10-B
-طبقة إدارة خفيفة تبني فوق ContextStore الموجود.
-لا تنشئ قاعدة بيانات جديدة.
+P05 — Dialogue Memory.
+
+Owns dialogue state and reference resolution.
+Does not route, execute, call providers, or decide intent.
 """
+
+from __future__ import annotations
+
+from lab_v4_dev.conversation.dialogue_contract import DialogueState
 
 
 class DialogueMemory:
+    """
+    Conversation-owned dialogue coordinator.
+
+    Responsibilities:
+        - maintain DialogueState
+        - maintain bounded dialogue history
+        - resolve conversational references
+        - manage pending topics
+
+    Explicitly out of scope:
+        - intent classification
+        - routing
+        - execution
+        - provider selection
+        - persistence
+        - project/runtime state ownership
+    """
 
     def __init__(self, context_store):
-        self.context        = context_store
-        self.last_topic     = None
-        self.pending_topic  = None
-        self.last_list      = []
+        self.context = context_store
+        self.state = DialogueState()
+
+    # --------------------------------------------------------
+    # Compatibility properties
+    # --------------------------------------------------------
+
+    @property
+    def last_topic(self):
+        return self.state.last_topic
+
+    @last_topic.setter
+    def last_topic(self, value):
+        self.state.last_topic = value
+
+    @property
+    def pending_topic(self):
+        return self.state.pending_topic
+
+    @pending_topic.setter
+    def pending_topic(self, value):
+        self.state.pending_topic = value
+
+    @property
+    def last_list(self):
+        return self.state.history
+
+    @property
+    def last_items(self):
+        return self.state.last_items
+
+    @last_items.setter
+    def last_items(self, value):
+        self.state.last_items = list(value or [])
+
+    # --------------------------------------------------------
+    # State lifecycle
+    # --------------------------------------------------------
 
 
-    def update(self, text: str, result: dict):
-        if result.get("text"):
-            # حفظ الموضوع الرئيسي بدل السؤال كامل
-            topic = text
+    def reset(self) -> None:
+        """
+        P06 — Reset dialogue-owned state.
 
-            if "orchestrator.py" in text:
-                topic = "orchestrator.py"
-            elif "memory/db.py" in text:
-                topic = "memory/db.py"
-            else:
-                for part in text.split():
-                    if ".py" in part:
-                        topic = part
-                        break
+        DialogueMemory owns DialogueState.
+        Canonical execution ContextStore remains owned externally.
+        """
+        self.state = DialogueState()
 
-            # لا تغير الموضوع الرئيسي عند أسئلة المتابعة
-            follow_up = any(x in text for x in (
-                "هل هذا",
-                "ما دوره",
-                "ما وظيفته",
-                "ما علاقته",
-                "كيف يعمل",
-                "أخبرني عن علاقته",
-                "وماذا عن",
-                "ماذا عن",
-            ))
+    def update(
+        self,
+        text: str,
+        result: dict,
+        *,
+        mode: str | None = None,
+        parsed: dict | None = None,
+    ) -> None:
 
-            if not follow_up:
-                self.last_topic = topic
+        if not isinstance(result, dict):
+            return
 
-            self.last_list.append({
-                "role": "user",
-                "content": text,
-            })
+        if not result.get("text"):
+            return
 
-            self.last_list.append({
-                "role": "assistant",
-                "content": result.get("text", ""),
-            })
+        parsed = parsed or {}
 
-            self.last_list = self.last_list[-8:]
+        intent = parsed.get("intent") or result.get("intent")
+        target = parsed.get("target") or result.get("target")
+        confidence = parsed.get("confidence", result.get("confidence", 0.0))
+
+        self.state.last_mode = mode or result.get("mode")
+        self.state.last_intent = intent
+        self.state.last_target = target
+
+        try:
+            self.state.last_confidence = float(confidence or 0.0)
+        except (TypeError, ValueError):
+            self.state.last_confidence = 0.0
+
+        topic = self._derive_topic(text, target)
+
+        # Follow-up turns do not replace the active topic.
+        if self.state.last_mode != "FOLLOW_UP" and topic:
+            self.state.last_topic = topic
+
+        self.state.add_turn(
+            role="user",
+            content=text,
+            mode=self.state.last_mode,
+            intent=intent,
+            target=target,
+            confidence=self.state.last_confidence,
+        )
+
+        self.state.add_turn(
+            role="assistant",
+            content=result.get("text", ""),
+            mode=self.state.last_mode,
+            intent=intent,
+            target=target,
+            confidence=self.state.last_confidence,
+        )
 
         items = result.get("items") or result.get("files") or []
         if items:
-            self.last_items = items
+            self.state.last_items = list(items)
+
+    def _derive_topic(self, text: str, target=None):
+        if target:
+            return str(target)
+
+        for token in str(text).split():
+            cleaned = token.strip(".,،؛:!?؟()[]{}\"'")
+            if cleaned.endswith(".py"):
+                return cleaned
+
+        return text.strip() or None
+
+    # --------------------------------------------------------
+    # Topic lifecycle
+    # --------------------------------------------------------
 
     def save_pending(self, topic: str):
-        self.pending_topic = topic
+        self.state.pending_topic = topic
 
     def restore_pending(self) -> str | None:
-        t = self.pending_topic
-        self.pending_topic = None
-        return t
+        topic = self.state.pending_topic
+        self.state.pending_topic = None
+        return topic
+
+    # --------------------------------------------------------
+    # Reference resolution
+    # --------------------------------------------------------
 
     def resolve_references(self, text: str) -> str:
-        REFS = {
-            "هذا"           : getattr(self.context, "current_file", None) or getattr(self.context, "current_subject", None),
-            "هذه"           : getattr(self.context, "current_file", None) or getattr(self.context, "current_subject", None),
-            "ذلك"           : getattr(self.context, "current_subject", None),
-            "تلك"           : getattr(self.context, "current_subject", None),
-            "السابق"        : getattr(self.context, "current_subject", None),
-            "السابقة"       : getattr(self.context, "current_subject", None),
-            "الملف السابق"  : getattr(self.context, "current_file", None),
-            "نفسه"          : getattr(self.context, "current_file", None) or getattr(self.context, "current_subject", None),
-            "نفسها"         : getattr(self.context, "current_file", None) or getattr(self.context, "current_subject", None),
+        text = str(text)
+        topic = self.state.last_topic
+
+        if not topic:
+            return text
+
+        replacements = {
+            "هذا": topic,
+            "هذه": topic,
+            "ذلك": topic,
+            "تلك": topic,
+            "نفسه": topic,
+            "نفسها": topic,
+            "بهذا": topic,
+            "بهذه": topic,
+            "لهذا": topic,
+            "السابق": topic,
+            "السابقة": topic,
         }
+
         resolved = text
 
-        # متابعة آخر موضوع في الحوار
-        # معالجة الأسئلة المرتبطة بالموضوع قبل استبدال الضمائر
-        if self.last_topic:
+        # Specific constructions first.
+        specific = (
+            ("علاقته بهذا", f"ما علاقة {topic} بالمشروع؟"),
+            ("علاقته بهذه", f"ما علاقة {topic} بالمشروع؟"),
+            ("دوره في هذا", f"{topic} ما دوره في المشروع؟"),
+            ("دوره في هذه", f"{topic} ما دوره في المشروع؟"),
+        )
 
-            if "علاقته بهذا" in text or "علاقته بهذه" in text:
-                return "ما علاقة " + self.last_topic + " بالمشروع؟"
+        for source, replacement in specific:
+            if source in resolved:
+                return replacement
 
-            if "ما دوره في المشروع" in text:
-                return self.last_topic + " ما دوره في المشروع؟"
+        # Follow-up questions that omit the subject.
+        prefixes = (
+            "ما دوره",
+            "ما وظيفته",
+            "ما علاقتة",
+            "ما علاقته",
+            "كيف يعمل",
+            "هل هو مهم",
+            "هل تنصحني",
+        )
 
-            if "كيف يعمل" in text:
-                return self.last_topic + " كيف يعمل؟"
+        if resolved.strip() == text.strip():
+            stripped = text.strip()
 
-            if "ما وظيفته" in text:
-                return self.last_topic + " ما وظيفته؟"
+            if stripped.startswith("ولماذا"):
+                return f"{topic} لماذا؟"
 
-            if text.startswith("ولماذا"):
-                return self.last_topic + " لماذا؟"
-            if text.startswith("لماذا"):
-                return self.last_topic + " لماذا؟"
-            if text.startswith("وماذا عن"):
-                return self.last_topic + " " + text[1:]
-            if text.startswith("ماذا عن"):
-                return self.last_topic + " " + text
-            if text.startswith("وما علاقته"):
-                return self.last_topic + " " + text
-            if text.startswith("ما علاقته"):
-                return self.last_topic + " " + text
-            if text.startswith("هل تنصحني"):
-                return self.last_topic + " " + text
-            if text.startswith("وأيهما"):
-                return self.last_topic + " " + text[1:]
-        for ref, value in REFS.items():
-            if ref in resolved and value:
-                resolved = resolved.replace(ref, value)
+            if stripped.startswith("لماذا"):
+                return f"{topic} لماذا؟"
 
-        # معالجة التراكيب قبل الاستبدال العام للمراجع
-        if self.last_topic:
-            if "علاقته بهذا" in resolved:
-                return "ما علاقة " + self.last_topic + " بالمشروع؟"
+            if stripped.startswith("ماذا عن"):
+                return f"{topic} {stripped}"
 
-            if "علاقته بهذه" in resolved:
-                return "ما علاقة " + self.last_topic + " بالمشروع؟"
+            if stripped.startswith("وماذا عن"):
+                return f"{topic} {stripped[1:]}"
 
-            if "دوره في هذا" in resolved:
-                return self.last_topic + " ما دوره في المشروع؟"
+            if stripped.startswith("وما علاقته"):
+                return f"{topic} {stripped[1:]}"
 
-        # استبدال المراجع العامة باستخدام آخر موضوع معروف
-        if self.last_topic:
-            for ref in ("هذا", "هذه", "ذلك", "تلك", "نفسه", "نفسها"):
-                if ref in resolved:
-                    resolved = resolved.replace(ref, self.last_topic)
+            if stripped.startswith("ما علاقته"):
+                return f"{topic} {stripped}"
 
-            # معالجة المراجع الملحقة مثل: علاقته بهذا / دوره في هذا
+            if stripped.startswith("وأيهما"):
+                return f"{topic} {stripped[1:]}"
 
-            if "علاقته بهذا" in resolved:
-                return "ما علاقة " + self.last_topic + " بالمشروع؟"
+            if stripped.startswith(prefixes):
+                return f"{topic} {stripped}"
 
-            if "علاقته بهذه" in resolved:
-                return "ما علاقة " + self.last_topic + " بالمشروع؟"
+        for source, replacement in replacements.items():
+            if source in resolved:
+                resolved = resolved.replace(source, replacement)
 
-            if "دوره في هذا" in resolved:
-                return self.last_topic + " ما دوره في المشروع؟"
+        if (
+            "الحل الثاني" in resolved
+            and len(self.state.last_items) >= 2
+        ):
+            resolved = resolved.replace(
+                "الحل الثاني",
+                str(self.state.last_items[1]),
+            )
 
-            if "بهذا" in resolved:
-                resolved = resolved.replace("بهذا", self.last_topic)
-
-            if "بهذه" in resolved:
-                resolved = resolved.replace("بهذه", self.last_topic)
-
-            if "لهذا" in resolved:
-                resolved = resolved.replace("لهذا", self.last_topic)
-
-            # أسئلة متابعة عامة بدون مرجع صريح
-            if resolved == text and any(
-                x in text for x in (
-                    "ما دوره",
-                    "ما وظيفته",
-                    "ما علاقته",
-                    "هل هو مهم",
-                    "كيف يعمل",
-                )
-            ):
-                resolved = "ما " + self.last_topic + " " + text[3:]
-        if "الحل الثاني" in resolved and hasattr(self,"last_items") and len(self.last_items) >= 2:
-            resolved = resolved.replace("الحل الثاني", self.last_items[1])
         return resolved
+
+    # --------------------------------------------------------
+    # Read-only inspection
+    # --------------------------------------------------------
+
+    def snapshot(self) -> dict:
+        return self.state.snapshot()

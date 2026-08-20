@@ -89,9 +89,7 @@ def handle_special(cmd, agent):
         return report
 
     if c == "history":
-        from lab_v4_dev.memory.task_history import TaskHistory
-        th = TaskHistory(agent.db)
-        tasks = th.recent(10)
+        tasks = agent.memory.recent_tasks(10)
         if not tasks:
             return "no tasks yet"
         lines = ["Last 10 Tasks:"]

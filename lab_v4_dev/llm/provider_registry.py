@@ -7,13 +7,14 @@ from lab_v4_dev.llm.groq_provider import provider as groq_provider
 from lab_v4_dev.llm.dummy_provider import provider as dummy_provider
 from lab_v4_dev.llm.gemini_provider import provider as gemini_provider
 from lab_v4_dev.llm.openrouter_provider import provider as openrouter_provider
+from lab_v4_dev.llm.provider_adapter import LegacyProviderAdapter
 
 REGISTRY = {
-    GROQ: groq_provider,
-    DUMMY: dummy_provider,
+    GROQ: LegacyProviderAdapter(GROQ, groq_provider),
+    DUMMY: LegacyProviderAdapter(DUMMY, dummy_provider),
+    GEMINI: LegacyProviderAdapter(GEMINI, gemini_provider),
+    OPENROUTER: LegacyProviderAdapter(OPENROUTER, openrouter_provider),
 
-    GEMINI: gemini_provider,
-    OPENROUTER: openrouter_provider,
     OPENAI: None,
     LOCAL: None,
 }
