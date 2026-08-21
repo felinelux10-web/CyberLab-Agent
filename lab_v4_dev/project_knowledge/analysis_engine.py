@@ -1,22 +1,23 @@
 """
-PIE-001H — Analysis Engine
+P09 — Analysis Engine.
 
-المسؤولية:
-- اختيار المحلل المناسب حسب امتداد الملف.
-- تشغيل عملية التحليل.
-- إعادة AnalysisResult.
+Responsibility:
+    Select the appropriate analyzer and analyze one file.
 
-لا يقوم بـ:
-- حفظ النتائج.
-- تحديث قاعدة المعرفة.
-- تحليل مشروع كامل.
+The engine is deliberately PURE with respect to persistence:
+    - no database writes
+    - no relationship persistence
+    - no knowledge-store access
+
+Persistence and relationship coordination belong to
+ProjectKnowledgeCore.
 """
+
+from __future__ import annotations
 
 import os
 
 from .analyzer_registry import get_registry
-from .knowledge_store import store_analysis, save_relationships
-from .relationship_engine import RelationshipEngine
 
 
 class AnalysisEngine:
@@ -47,12 +48,4 @@ class AnalysisEngine:
 
         analyzer = info.analyzer_class()
 
-        result = analyzer.analyze(file_path)
-
-        relationships = RelationshipEngine().build(result)
-
-        save_relationships(relationships)
-
-        store_analysis(result)
-
-        return result
+        return analyzer.analyze(file_path)
