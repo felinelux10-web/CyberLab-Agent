@@ -1,66 +1,69 @@
-# CyberLab Agent v4.0
-# planner/planner.py
+from __future__ import annotations
 
-from lab_v4_dev.planner.step_builder import shell_step, write_step, read_step, validate_steps
-from lab_v4_dev.planner.validator import validate_plan
+from typing import Any
+
+from lab_v4_dev.planner.contracts import Plan, PlanStep
+
 
 class Planner:
+    """
+    Declarative planning subsystem.
 
-    def __init__(self, db, memory=None):
-        self.db = db
-        self.memory = memory
-        self.lessons = memory.lessons if memory is not None else None
+    Planner converts an intent into a reviewable Plan.
+    It MUST NOT execute commands, mutate files, manage permissions,
+    create snapshots, or perform recovery.
+    """
 
-    def build(self, intent: dict) -> dict:
-        action = intent.get("action")
-        target = intent.get("target", "")
-        content = intent.get("content", "")
+    def plan(
+        self,
+        intent: dict[str, Any],
+        steps: list[PlanStep] | tuple[PlanStep, ...],
+        *,
+        plan_id: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> Plan:
+        if not isinstance(intent, dict):
+            raise TypeError("intent must be a dict")
 
-        steps = []
+        normalized_steps = tuple(steps)
 
-        if action == "shell":
-            steps = [shell_step(target)]
+        return Plan(
+            plan_id=plan_id,
+            intent=dict(intent),
+            steps=normalized_steps,
+            metadata=dict(metadata or {}),
+        )
 
-        elif action == "write_file":
-            steps = [write_step(target, content)]
+    def from_actions(
+        self,
+        intent: dict[str, Any],
+        actions: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+        *,
+        plan_id: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> Plan:
+        """
+        Convert declarative action descriptions into the Plan contract.
 
-        elif action == "read_file":
-            steps = [read_step(target)]
+        This method performs no execution.
+        """
+        steps = tuple(
+            PlanStep(
+                step_id=action["step_id"],
+                action=action["action"],
+                parameters=dict(action.get("parameters", {})),
+                depends_on=tuple(action.get("depends_on", ())),
+                description=action.get("description", ""),
+            )
+            for action in actions
+        )
 
-        elif action == "create_and_run":
-            steps = [
-                write_step(target, content),
-                shell_step(f"python3 {target}"),
-            ]
+        return self.plan(
+            intent,
+            steps,
+            plan_id=plan_id,
+            metadata=metadata,
+        )
 
-        else:
-            return {
-                "ok"    : False,
-                "reason": f"unknown action: {action}",
-            }
 
-        plan = {"intent": intent, "steps": steps}
-        validation = validate_plan(plan)
-
-        if not validation["ok"]:
-            return {
-                "ok"    : False,
-                "reason": validation["errors"],
-            }
-
-        return {
-            "ok"   : True,
-            "plan" : plan,
-            "steps": steps,
-            "count": len(steps),
-        }
-
-    def check_known_error(self, error: str) -> dict | None:
-        lesson = self.lessons.find(error)
-        if lesson and lesson["total_count"] > 0:
-            return {
-                "known"    : True,
-                "solution" : lesson["solution"],
-                "rate"     : lesson["success_count"] / lesson["total_count"],
-            }
-        return None
+__all__ = ["Planner"]

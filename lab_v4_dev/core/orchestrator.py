@@ -713,13 +713,24 @@ class Orchestrator:
             target_file = m.group(0)
             try:
                 from lab_v4_dev.project_knowledge.analysis_engine import AnalysisEngine
-                from lab_v4_dev.project_knowledge.change_planner import ChangePlanner
+                from lab_v4_dev.dni.knowledge_router import create_p10_plan_from_change
+
                 engine = AnalysisEngine()
                 if os.path.exists(target_file):
                     engine.analyze_file(target_file)
-                plan = ChangePlanner().create_plan(target_file)
-                impacted = plan.get('impacted', [])
-                exec_plan = plan.get('execution_plan', [])
+
+                plan = create_p10_plan_from_change(
+                    target_file,
+                    plan_id=f"pie-{target_file}",
+                    metadata={"source": "orchestrator.plan_change"},
+                )
+
+                impacted = [
+                    step.parameters.get("file")
+                    for step in plan.steps
+                    if step.parameters.get("file")
+                ]
+                exec_plan = plan.steps
                 lines = ["خطة تعديل " + target_file + ":"]
                 if impacted:
                     lines.append("الملفات المتأثرة (" + str(len(impacted)) + "):")
@@ -729,8 +740,16 @@ class Orchestrator:
                     lines.append("✅ لا توجد ملفات متأثرة مباشرة")
                 if exec_plan:
                     lines.append("خطوات التنفيذ (" + str(len(exec_plan)) + "):")
-                    for step in exec_plan[:3]:
-                        lines.append("  [" + str(step.get('step','?')) + "] " + step.get('file','') + " — " + step.get('action','') + " (" + step.get('priority','') + ")")
+                    for index, step in enumerate(exec_plan[:3], start=1):
+                        file_path = step.parameters.get("file", "")
+                        priority = step.parameters.get("priority", "")
+                        lines.append(
+                            "  [" + str(index) + "] "
+                            + file_path
+                            + " — "
+                            + step.action
+                            + " (" + priority + ")"
+                        )
                 lines.append("ℹ️ هذه خطة معاينة فقط — لا يتم أي تعديل حتى الآن.")
                 return {"status":"success","intent":intent,"source":"pie",
                         "text":"\n".join(lines)}

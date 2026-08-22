@@ -36,3 +36,46 @@ def query_file_risk(file_path: str) -> dict:
     """استعلام موحد: اعتماديات + تأثير + خطورة (risk_level مُضمَّن داخلياً)"""
     from lab_v4_dev.awareness.query_engine import query_file
     return query_file(file_path)
+
+# ─── P10 Declarative Planner ───
+
+def create_p10_plan(
+    intent: dict,
+    actions: list[dict] | tuple[dict, ...],
+    *,
+    plan_id: str = "",
+    metadata: dict | None = None,
+):
+    """Create a declarative P10 Plan without executing anything."""
+    from lab_v4_dev.planner.planner import Planner
+
+    return Planner().from_actions(
+        intent,
+        actions,
+        plan_id=plan_id,
+        metadata=metadata,
+    )
+
+
+
+def create_p10_plan_from_change(
+    target_file: str,
+    *,
+    plan_id: str = "",
+    metadata: dict | None = None,
+):
+    """Adapt the legacy ChangePlanner execution plan into a P10 Plan."""
+    from lab_v4_dev.project_knowledge.change_planner import ChangePlanner
+    from lab_v4_dev.planner.legacy_adapter import LegacyExecutionPlanAdapter
+
+    legacy = ChangePlanner().create_plan(target_file)
+
+    return LegacyExecutionPlanAdapter().convert(
+        {
+            "action": "change_file",
+            "target": target_file,
+        },
+        legacy["execution_plan"],
+        plan_id=plan_id,
+        metadata=metadata,
+    )

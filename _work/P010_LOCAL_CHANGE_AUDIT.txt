@@ -1,0 +1,1430 @@
+============================================================
+ P010 LOCAL CHANGE AUDIT
+ Generated: Sat Aug 22 16:37:52 +01 2026
+ Repository: /data/data/com.termux/files/home/cyberlab_agent
+============================================================
+
+===== 1. CURRENT GIT STATE =====
+work/BASELINE-01-intent-infrastructure
+ M execution_audit.json
+ M lab_v4_dev/conversation/assistant_style.py
+ M lab_v4_dev/conversation/conversation_manager.py
+ M lab_v4_dev/conversation/dialogue_memory.py
+ M lab_v4_dev/conversation/mode_detector.py
+ M lab_v4_dev/core/orchestrator.py
+ M lab_v4_dev/dni/knowledge_router.py
+ M lab_v4_dev/llm/prompt_builder.py
+ M lab_v4_dev/loop/event_loop.py
+ M lab_v4_dev/planner/impact_analyzer.py
+ M lab_v4_dev/planner/planner.py
+ M lab_v4_dev/planner/validator.py
+?? .dni_backups/
+?? _work/
+?? "ed -n 1,320p "
+?? lab_v4_dev/conversation/conversation_manager.py.bak-intent-unification-20260818_085218
+?? lab_v4_dev/conversation/conversation_manager.py.bak-intent-unification-p02-20260818_085640
+?? lab_v4_dev/conversation/conversation_manager.py.bak-p02-20260818_124518
+?? lab_v4_dev/conversation/semantic_contract.py.bak-p02-20260818_124518
+?? lab_v4_dev/core/agent.py.bak-intent-unification-20260818_085218
+?? lab_v4_dev/core/agent.py.bak-intent-unification-p02-20260818_085640
+?? lab_v4_dev/core/agent.py.bak-p00-20260818_123721
+?? lab_v4_dev/core/agent.py.bak-p02-20260818_124518
+?? lab_v4_dev/core/orchestrator.py.bak-intent-p01-20260817_003310
+?? lab_v4_dev/core/orchestrator.py.bak-intent-unification-20260818_085218
+?? lab_v4_dev/core/orchestrator.py.bak-intent-unification-p02-20260818_085640
+?? lab_v4_dev/core/orchestrator.py.bak-p00-20260818_123721
+?? lab_v4_dev/core/orchestrator.py.bak-p02-20260818_124518
+?? lab_v4_dev/intent/intent_parser.py.bak-intent-unification-20260818_085218
+?? lab_v4_dev/intent/intent_parser.py.bak-p01-20260818_124417
+?? lab_v4_dev/intent/intent_parser.py.bak-phase2-20260817_004637
+?? lab_v4_dev/intent/intent_parser.py.bak-phase2-20260817_004658
+?? lab_v4_dev/intent/intents.py.bak-p01-20260818_124417
+?? lab_v4_dev/intent/semantic_router.py.bak-p01-20260818_124417
+?? lab_v4_dev/intent/semantic_router.py.bak-phase2-20260817_004637
+?? lab_v4_dev/intent/semantic_router.py.bak-phase2-20260817_004658
+?? lab_v4_dev/llm/gateway.py.bak-provider-fallback
+?? lab_v4_dev/llm/groq_client.py.bak-provider-migration
+?? lab_v4_dev/planner/contracts.py
+?? lab_v4_dev/planner/decision_contracts.py
+?? lab_v4_dev/planner/execution_decision.py
+?? lab_v4_dev/planner/impact_reasoning.py
+?? lab_v4_dev/planner/legacy_adapter.py
+?? lab_v4_dev/planner/priority_planner.py
+?? lab_v4_dev/planner/risk_assessor.py
+?? tests/test_p10_decision_contracts.py
+?? tests/test_p10_execution_decision.py
+?? tests/test_p10_impact_analyzer.py
+?? tests/test_p10_impact_reasoning.py
+?? tests/test_p10_plan_contract.py
+?? tests/test_p10_planner.py
+?? tests/test_p10_priority_planner.py
+?? tests/test_p10_risk_assessor.py
+?? tests/test_p10_validator.py
+717daa1 (HEAD -> work/BASELINE-01-intent-infrastructure, origin/work/BASELINE-01-intent-infrastructure) feat: complete P09 project knowledge contracts
+
+===== 2. RECENT COMMITS =====
+717daa1 (HEAD -> work/BASELINE-01-intent-infrastructure, origin/work/BASELINE-01-intent-infrastructure) feat: complete P09 project knowledge contracts
+38ea52f feat: complete P05 P06 P07 P08 architecture work
+e65ea0e feat: unify intent conversation and NLU infrastructure
+7ee05ea fix: migrate Groq model to GPT OSS 120B
+9146b58 docs: add INTENT phase 2 closure reference
+2dca367 docs: close INTENT phase 2 stable reference
+3317989 intent: detect comparison and existence patterns early; route to COMPARE_FILES and SEARCH_CODE
+1d15fa1 intent: add missing compare-related constants and ensure canonical names
+6d2eed9 context: avoid AttributeError by building compare intents list defensively; use canonical Intent constants
+30917a7 intent: add SHOW_LAST_RESULT canonical constant
+7846bdb intent: semantic_router returns canonical Intent constants where possible and treats Intent.UNSUPPORTED
+f9762a0 context: return canonical Intent.UNSUPPORTED and canonical intent constants
+9697f6a intent: return canonical Intent.UNSUPPORTED instead of literal 'unsupported'
+a0ee31b intent: add canonical UNSUPPORTED constant
+f866ed0 Fix: validate loaded project_index.json and rebuild if schema mismatches; avoid collision with ProjectReader output
+b4ac47d FIX-02: minimal fixes for routing matrix failures (matcher exact-match precedence, add health mapping, restrict cleanup_code promotion)
+7daa31d FIX-02: Complete Intent routing hardening and collision verification
+b854693 FIX-02: Harden NLU early-return and deterministic precedence in intent_parser
+08d4f41 FIX: repair corrupted keyword_families.py (remove patch artifacts); apply CLEAN family FIX-01 token-aware matching
+f09e78c FIX-01: Repair intent_parser.py — remove patch markers and preserve FIX-01 disambiguation
+2af9c49 FIX-01: Repair intent_parser.py — remove patch markers and preserve FIX-01 disambiguation
+db1935c FIX-01: Add regression tests for CLEAN family routing (fix01)
+92f3698 FIX-01: Harden CLEAN-family routing - keyword_families: token-aware family matching and shrink CLEAN keywords to exclude delete terms
+544244d FIX-01: Harden CLEAN-family routing - intent_parser: target-disambiguation and precedence for device vs code
+cb26af8 FIX-01: Harden CLEAN-family routing - matcher: use word-boundary matching to avoid substring collisions
+bd9ebf3 (origin/main) Initial public CyberLab Agent snapshot
+
+===== 3. COMMITS MENTIONING P010 / BATCH 10 =====
+
+===== 4. ALL FILES MENTIONING P010 / BATCH 10 =====
+./tests/test_p10_planner.py:103:def test_knowledge_router_exposes_p10_planner():
+./tests/test_p10_planner.py:106:    assert hasattr(knowledge_router, "create_p10_plan")
+./tests/test_p10_planner.py:155:def test_knowledge_router_can_bridge_legacy_change_plan_to_p10():
+./tests/test_p10_planner.py:156:    from lab_v4_dev.dni.knowledge_router import create_p10_plan_from_change
+./tests/test_p10_planner.py:158:    plan = create_p10_plan_from_change(
+./tests/test_p10_planner.py:160:        plan_id="p10-bridge-test",
+./tests/test_p10_planner.py:163:    assert plan.plan_id == "p10-bridge-test"
+./lab_v4_dev/core/orchestrator.py:716:                from lab_v4_dev.dni.knowledge_router import create_p10_plan_from_change
+./lab_v4_dev/core/orchestrator.py:722:                plan = create_p10_plan_from_change(
+./lab_v4_dev/loop/event_loop.py:27:        # P10 — Planner is declarative and has no runtime dependencies.
+./lab_v4_dev/loop/event_loop.py:70:        # 6. build P10 declarative plan
+./lab_v4_dev/planner/impact_analyzer.py:61:    New P10 code should consume ImpactAssessment through ImpactAnalyzer.
+./lab_v4_dev/planner/contracts.py:7:PLAN_SCHEMA_VERSION = "p10.v1"
+./lab_v4_dev/planner/legacy_adapter.py:9:    """Convert the legacy execution_plan representation into P10 Plan."""
+./lab_v4_dev/dni/knowledge_router.py:40:# ─── P10 Declarative Planner ───
+./lab_v4_dev/dni/knowledge_router.py:42:def create_p10_plan(
+./lab_v4_dev/dni/knowledge_router.py:49:    """Create a declarative P10 Plan without executing anything."""
+./lab_v4_dev/dni/knowledge_router.py:61:def create_p10_plan_from_change(
+./lab_v4_dev/dni/knowledge_router.py:67:    """Adapt the legacy ChangePlanner execution plan into a P10 Plan."""
+./_work/P010_LOCAL_CHANGE_AUDIT.txt:2: P010 LOCAL CHANGE AUDIT
+./_work/P010_LOCAL_CHANGE_AUDIT.txt:54:?? tests/test_p10_decision_contracts.py
+./_work/P010_LOCAL_CHANGE_AUDIT.txt:55:?? tests/test_p10_execution_decision.py
+./_work/P010_LOCAL_CHANGE_AUDIT.txt:56:?? tests/test_p10_impact_analyzer.py
+./_work/P010_LOCAL_CHANGE_AUDIT.txt:57:?? tests/test_p10_impact_reasoning.py
+./_work/P010_LOCAL_CHANGE_AUDIT.txt:58:?? tests/test_p10_plan_contract.py
+./_work/P010_LOCAL_CHANGE_AUDIT.txt:59:?? tests/test_p10_planner.py
+./_work/P010_LOCAL_CHANGE_AUDIT.txt:60:?? tests/test_p10_priority_planner.py
+./_work/P010_LOCAL_CHANGE_AUDIT.txt:61:?? tests/test_p10_risk_assessor.py
+./_work/P010_LOCAL_CHANGE_AUDIT.txt:62:?? tests/test_p10_validator.py
+./_work/P010_LOCAL_CHANGE_AUDIT.txt:93:===== 3. COMMITS MENTIONING P010 / BATCH 10 =====
+./_work/P010_LOCAL_CHANGE_AUDIT.txt:95:===== 4. ALL FILES MENTIONING P010 / BATCH 10 =====
+./.pytest_cache/v/cache/nodeids:113:  "tests/test_p10_decision_contracts.py::test_impact_assessment_is_structured",
+./.pytest_cache/v/cache/nodeids:114:  "tests/test_p10_decision_contracts.py::test_invalid_decision_levels_are_rejected[<lambda>0]",
+./.pytest_cache/v/cache/nodeids:115:  "tests/test_p10_decision_contracts.py::test_invalid_decision_levels_are_rejected[<lambda>1]",
+./.pytest_cache/v/cache/nodeids:116:  "tests/test_p10_decision_contracts.py::test_invalid_decision_levels_are_rejected[<lambda>2]",
+./.pytest_cache/v/cache/nodeids:117:  "tests/test_p10_decision_contracts.py::test_priority_assessment_is_structured",
+./.pytest_cache/v/cache/nodeids:118:  "tests/test_p10_decision_contracts.py::test_risk_assessment_is_structured",
+./.pytest_cache/v/cache/nodeids:119:  "tests/test_p10_decision_contracts.py::test_risk_requires_valid_priority",
+./.pytest_cache/v/cache/nodeids:120:  "tests/test_p10_execution_decision.py::test_engine_maps_priority_to_decision",
+./.pytest_cache/v/cache/nodeids:121:  "tests/test_p10_execution_decision.py::test_engine_preserves_assessment_data",
+./.pytest_cache/v/cache/nodeids:122:  "tests/test_p10_execution_decision.py::test_engine_rejects_invalid_input",
+./.pytest_cache/v/cache/nodeids:123:  "tests/test_p10_execution_decision.py::test_execution_decision_is_structured",
+./.pytest_cache/v/cache/nodeids:124:  "tests/test_p10_execution_decision.py::test_execution_decision_rejects_invalid_action",
+./.pytest_cache/v/cache/nodeids:125:  "tests/test_p10_impact_analyzer.py::test_impact_analyzer_returns_contract",
+./.pytest_cache/v/cache/nodeids:126:  "tests/test_p10_impact_analyzer.py::test_impact_analyzer_without_dependents",
+./.pytest_cache/v/cache/nodeids:127:  "tests/test_p10_impact_analyzer.py::test_legacy_wrapper_returns_dict",
+./.pytest_cache/v/cache/nodeids:128:  "tests/test_p10_impact_reasoning.py::test_classifier_produces_structured_items",
+./.pytest_cache/v/cache/nodeids:129:  "tests/test_p10_impact_reasoning.py::test_reasoner_produces_explanations",
+./.pytest_cache/v/cache/nodeids:130:  "tests/test_p10_plan_contract.py::test_duplicate_step_ids_are_rejected",
+./.pytest_cache/v/cache/nodeids:131:  "tests/test_p10_plan_contract.py::test_plan_is_serializable",
+./.pytest_cache/v/cache/nodeids:132:  "tests/test_p10_plan_contract.py::test_plan_round_trip",
+./.pytest_cache/v/cache/nodeids:133:  "tests/test_p10_plan_contract.py::test_plan_step_is_declarative",
+./.pytest_cache/v/cache/nodeids:134:  "tests/test_p10_plan_contract.py::test_unknown_dependencies_are_deferred_to_validator",
+./.pytest_cache/v/cache/nodeids:135:  "tests/test_p10_plan_contract.py::test_unknown_dependencies_are_rejected",
+./.pytest_cache/v/cache/nodeids:136:  "tests/test_p10_planner.py::test_knowledge_router_can_bridge_legacy_change_plan_to_p10",
+./.pytest_cache/v/cache/nodeids:137:  "tests/test_p10_planner.py::test_knowledge_router_exposes_p10_planner",
+./.pytest_cache/v/cache/nodeids:138:  "tests/test_p10_planner.py::test_legacy_execution_plan_adapter",
+./.pytest_cache/v/cache/nodeids:139:  "tests/test_p10_planner.py::test_legacy_execution_plan_adapter_rejects_invalid_input",
+./.pytest_cache/v/cache/nodeids:140:  "tests/test_p10_planner.py::test_planner_does_not_execute",
+./.pytest_cache/v/cache/nodeids:141:  "tests/test_p10_planner.py::test_planner_from_actions_builds_declarative_plan",
+./.pytest_cache/v/cache/nodeids:142:  "tests/test_p10_planner.py::test_planner_preserves_dependencies",
+./.pytest_cache/v/cache/nodeids:143:  "tests/test_p10_planner.py::test_planner_rejects_invalid_intent",
+./.pytest_cache/v/cache/nodeids:144:  "tests/test_p10_planner.py::test_planner_returns_plan_contract",
+./.pytest_cache/v/cache/nodeids:145:  "tests/test_p10_priority_planner.py::test_direct_impact_becomes_critical",
+./.pytest_cache/v/cache/nodeids:146:  "tests/test_p10_priority_planner.py::test_empty_input_returns_empty_tuple",
+./.pytest_cache/v/cache/nodeids:147:  "tests/test_p10_priority_planner.py::test_invalid_input_type_is_rejected",
+./.pytest_cache/v/cache/nodeids:148:  "tests/test_p10_priority_planner.py::test_invalid_item_type_is_rejected",
+./.pytest_cache/v/cache/nodeids:149:  "tests/test_p10_priority_planner.py::test_priority_mapping_is_complete",
+./.pytest_cache/v/cache/nodeids:150:  "tests/test_p10_priority_planner.py::test_results_are_sorted_by_priority",
+./.pytest_cache/v/cache/nodeids:151:  "tests/test_p10_risk_assessor.py::test_critical_priority_becomes_high_risk",
+./.pytest_cache/v/cache/nodeids:152:  "tests/test_p10_risk_assessor.py::test_empty_input_returns_empty_tuple",
+./.pytest_cache/v/cache/nodeids:153:  "tests/test_p10_risk_assessor.py::test_invalid_input_type_is_rejected",
+./.pytest_cache/v/cache/nodeids:154:  "tests/test_p10_risk_assessor.py::test_invalid_item_type_is_rejected",
+./.pytest_cache/v/cache/nodeids:155:  "tests/test_p10_risk_assessor.py::test_priority_is_preserved",
+./.pytest_cache/v/cache/nodeids:156:  "tests/test_p10_risk_assessor.py::test_risk_mapping_is_complete",
+./.pytest_cache/v/cache/nodeids:157:  "tests/test_p10_validator.py::test_validator_accepts_forward_dependency",
+./.pytest_cache/v/cache/nodeids:158:  "tests/test_p10_validator.py::test_validator_accepts_valid_plan",
+./.pytest_cache/v/cache/nodeids:159:  "tests/test_p10_validator.py::test_validator_does_not_perform_execution_security_checks",
+./.pytest_cache/v/cache/nodeids:160:  "tests/test_p10_validator.py::test_validator_rejects_invalid_dependency",
+./.pytest_cache/v/cache/nodeids:161:  "tests/test_p10_validator.py::test_validator_rejects_non_plan",
+./.pytest_cache/v/cache/lastfailed:452:  "tests/test_p10_plan_contract.py::test_unknown_dependencies_are_rejected": true,
+
+===== 5. P010-NAMED FILES =====
+./tests/__pycache__/test_p10_plan_contract.cpython-313-pytest-9.1.1.pyc
+./tests/__pycache__/test_p10_planner.cpython-313-pytest-9.1.1.pyc
+./tests/__pycache__/test_p10_validator.cpython-313-pytest-9.1.1.pyc
+./tests/__pycache__/test_p10_decision_contracts.cpython-313-pytest-9.1.1.pyc
+./tests/__pycache__/test_p10_impact_analyzer.cpython-313-pytest-9.1.1.pyc
+./tests/__pycache__/test_p10_impact_reasoning.cpython-313-pytest-9.1.1.pyc
+./tests/__pycache__/test_p10_priority_planner.cpython-313-pytest-9.1.1.pyc
+./tests/__pycache__/test_p10_risk_assessor.cpython-313-pytest-9.1.1.pyc
+./tests/__pycache__/test_p10_execution_decision.cpython-313-pytest-9.1.1.pyc
+./tests/test_p10_plan_contract.py
+./tests/test_p10_planner.py
+./tests/test_p10_validator.py
+./tests/test_p10_decision_contracts.py
+./tests/test_p10_impact_analyzer.py
+./tests/test_p10_impact_reasoning.py
+./tests/test_p10_priority_planner.py
+./tests/test_p10_risk_assessor.py
+./tests/test_p10_execution_decision.py
+./_work/P010_LOCAL_CHANGE_AUDIT.txt
+
+===== 6. RECENTLY MODIFIED SOURCE / TEST / REPORT FILES =====
+_work/P010_LOCAL_CHANGE_AUDIT.txt
+lab_v4_dev/cache/state.json
+lab_v4_dev/cli/commands.py
+lab_v4_dev/conversation/assistant_style.py
+lab_v4_dev/conversation/conversation_manager.py
+lab_v4_dev/conversation/conversation_manager.py.bak-p02-20260818_124518
+lab_v4_dev/conversation/dialogue_contract.py
+lab_v4_dev/conversation/dialogue_memory.py
+lab_v4_dev/conversation/mode_detector.py
+lab_v4_dev/core/agent.py
+lab_v4_dev/core/agent.py.bak-p00-20260818_123721
+lab_v4_dev/core/agent.py.bak-p02-20260818_124518
+lab_v4_dev/core/architecture.py
+lab_v4_dev/core/contracts.py
+lab_v4_dev/core/orchestrator.py
+lab_v4_dev/core/orchestrator.py.bak-p00-20260818_123721
+lab_v4_dev/core/orchestrator.py.bak-p02-20260818_124518
+lab_v4_dev/dni/knowledge_router.py
+lab_v4_dev/intent/groq_intent_resolver.py
+lab_v4_dev/intent/intent_contract.py
+lab_v4_dev/intent/intent_contract.py.P04_PREVIOUS_20260818_152029.bak
+lab_v4_dev/intent/intent_parser.py
+lab_v4_dev/intent/intent_parser.py.P04_MOD01_20260818_152103.bak
+lab_v4_dev/intent/intent_parser.py.P04_MOD02_PRE_CANONICAL_20260819_164759.bak
+lab_v4_dev/intent/llm_intent_resolver.py
+lab_v4_dev/llm/base_provider.py
+lab_v4_dev/llm/contracts.py
+lab_v4_dev/llm/dummy_provider.py
+lab_v4_dev/llm/gateway.py
+lab_v4_dev/llm/gemini_provider.py
+lab_v4_dev/llm/groq_client.py
+lab_v4_dev/llm/groq_provider.py
+lab_v4_dev/llm/openrouter_provider.py
+lab_v4_dev/llm/prompt_builder.py
+lab_v4_dev/llm/provider_adapter.py
+lab_v4_dev/llm/provider_registry.py
+lab_v4_dev/logs/agent.log
+lab_v4_dev/logs/debug.log
+lab_v4_dev/loop/event_loop.py
+lab_v4_dev/memory/__init__.py
+lab_v4_dev/memory/agent.db
+lab_v4_dev/memory/contracts.py
+lab_v4_dev/memory/store.py
+lab_v4_dev/nlu/context_resolver.py
+lab_v4_dev/nlu/entity_extractor.py
+lab_v4_dev/nlu/nlu_context.json
+lab_v4_dev/nlu/semantic_normalizer.py
+lab_v4_dev/planner/contracts.py
+lab_v4_dev/planner/decision_contracts.py
+lab_v4_dev/planner/execution_decision.py
+lab_v4_dev/planner/impact_analyzer.py
+lab_v4_dev/planner/impact_reasoning.py
+lab_v4_dev/planner/legacy_adapter.py
+lab_v4_dev/planner/planner.py
+lab_v4_dev/planner/priority_planner.py
+lab_v4_dev/planner/risk_assessor.py
+lab_v4_dev/planner/validator.py
+lab_v4_dev/project_knowledge/__init__.py
+lab_v4_dev/project_knowledge/analysis_engine.py
+lab_v4_dev/project_knowledge/contracts.py
+lab_v4_dev/project_knowledge/core.py
+lab_v4_dev/project_knowledge/knowledge.db
+lab_v4_dev/project_knowledge/knowledge_store.py
+releases/P05_FINAL_RELEASE_REPORT.md
+tests/smoke_test.py
+tests/test_conversation.py
+tests/test_p00_contracts.py
+tests/test_p01_intent_infrastructure.py
+tests/test_p02_conversation_intent.py
+tests/test_p03_nlu_hardening.py
+tests/test_p05_architecture_contract.py
+tests/test_p05_dialogue_lifecycle.py
+tests/test_p05_dialogue_state.py
+tests/test_p06_context_ownership.py
+tests/test_p07_memory_ownership.py
+tests/test_p09_knowledge_contract.py
+tests/test_p10_decision_contracts.py
+tests/test_p10_execution_decision.py
+tests/test_p10_impact_analyzer.py
+tests/test_p10_impact_reasoning.py
+tests/test_p10_plan_contract.py
+tests/test_p10_planner.py
+tests/test_p10_priority_planner.py
+tests/test_p10_risk_assessor.py
+tests/test_p10_validator.py
+
+===== 7. UNCOMMITTED FILES =====
+ M execution_audit.json
+ M lab_v4_dev/conversation/assistant_style.py
+ M lab_v4_dev/conversation/conversation_manager.py
+ M lab_v4_dev/conversation/dialogue_memory.py
+ M lab_v4_dev/conversation/mode_detector.py
+ M lab_v4_dev/core/orchestrator.py
+ M lab_v4_dev/dni/knowledge_router.py
+ M lab_v4_dev/llm/prompt_builder.py
+ M lab_v4_dev/loop/event_loop.py
+ M lab_v4_dev/planner/impact_analyzer.py
+ M lab_v4_dev/planner/planner.py
+ M lab_v4_dev/planner/validator.py
+?? .dni_backups/
+?? _work/
+?? "ed -n 1,320p "
+?? lab_v4_dev/conversation/conversation_manager.py.bak-intent-unification-20260818_085218
+?? lab_v4_dev/conversation/conversation_manager.py.bak-intent-unification-p02-20260818_085640
+?? lab_v4_dev/conversation/conversation_manager.py.bak-p02-20260818_124518
+?? lab_v4_dev/conversation/semantic_contract.py.bak-p02-20260818_124518
+?? lab_v4_dev/core/agent.py.bak-intent-unification-20260818_085218
+?? lab_v4_dev/core/agent.py.bak-intent-unification-p02-20260818_085640
+?? lab_v4_dev/core/agent.py.bak-p00-20260818_123721
+?? lab_v4_dev/core/agent.py.bak-p02-20260818_124518
+?? lab_v4_dev/core/orchestrator.py.bak-intent-p01-20260817_003310
+?? lab_v4_dev/core/orchestrator.py.bak-intent-unification-20260818_085218
+?? lab_v4_dev/core/orchestrator.py.bak-intent-unification-p02-20260818_085640
+?? lab_v4_dev/core/orchestrator.py.bak-p00-20260818_123721
+?? lab_v4_dev/core/orchestrator.py.bak-p02-20260818_124518
+?? lab_v4_dev/intent/intent_parser.py.bak-intent-unification-20260818_085218
+?? lab_v4_dev/intent/intent_parser.py.bak-p01-20260818_124417
+?? lab_v4_dev/intent/intent_parser.py.bak-phase2-20260817_004637
+?? lab_v4_dev/intent/intent_parser.py.bak-phase2-20260817_004658
+?? lab_v4_dev/intent/intents.py.bak-p01-20260818_124417
+?? lab_v4_dev/intent/semantic_router.py.bak-p01-20260818_124417
+?? lab_v4_dev/intent/semantic_router.py.bak-phase2-20260817_004637
+?? lab_v4_dev/intent/semantic_router.py.bak-phase2-20260817_004658
+?? lab_v4_dev/llm/gateway.py.bak-provider-fallback
+?? lab_v4_dev/llm/groq_client.py.bak-provider-migration
+?? lab_v4_dev/planner/contracts.py
+?? lab_v4_dev/planner/decision_contracts.py
+?? lab_v4_dev/planner/execution_decision.py
+?? lab_v4_dev/planner/impact_reasoning.py
+?? lab_v4_dev/planner/legacy_adapter.py
+?? lab_v4_dev/planner/priority_planner.py
+?? lab_v4_dev/planner/risk_assessor.py
+?? tests/test_p10_decision_contracts.py
+?? tests/test_p10_execution_decision.py
+?? tests/test_p10_impact_analyzer.py
+?? tests/test_p10_impact_reasoning.py
+?? tests/test_p10_plan_contract.py
+?? tests/test_p10_planner.py
+?? tests/test_p10_priority_planner.py
+?? tests/test_p10_risk_assessor.py
+?? tests/test_p10_validator.py
+
+===== 8. UNCOMMITTED DIFF STAT =====
+ execution_audit.json                            |  10 ---
+ lab_v4_dev/conversation/assistant_style.py      |  10 +--
+ lab_v4_dev/conversation/conversation_manager.py |  23 ++---
+ lab_v4_dev/conversation/dialogue_memory.py      |   4 +-
+ lab_v4_dev/conversation/mode_detector.py        |  92 +++++++++++++++----
+ lab_v4_dev/core/orchestrator.py                 |  31 +++++--
+ lab_v4_dev/dni/knowledge_router.py              |  43 +++++++++
+ lab_v4_dev/llm/prompt_builder.py                | 102 +++++++++++++--------
+ lab_v4_dev/loop/event_loop.py                   |  51 ++++++++---
+ lab_v4_dev/planner/impact_analyzer.py           | 112 +++++++++++++-----------
+ lab_v4_dev/planner/planner.py                   | 109 ++++++++++++-----------
+ lab_v4_dev/planner/validator.py                 |  84 ++++++++++++------
+ 12 files changed, 442 insertions(+), 229 deletions(-)
+
+===== 9. UNCOMMITTED DIFF — FILE NAMES =====
+M	execution_audit.json
+M	lab_v4_dev/conversation/assistant_style.py
+M	lab_v4_dev/conversation/conversation_manager.py
+M	lab_v4_dev/conversation/dialogue_memory.py
+M	lab_v4_dev/conversation/mode_detector.py
+M	lab_v4_dev/core/orchestrator.py
+M	lab_v4_dev/dni/knowledge_router.py
+M	lab_v4_dev/llm/prompt_builder.py
+M	lab_v4_dev/loop/event_loop.py
+M	lab_v4_dev/planner/impact_analyzer.py
+M	lab_v4_dev/planner/planner.py
+M	lab_v4_dev/planner/validator.py
+
+===== 10. UNSTAGED DIFF =====
+diff --git a/lab_v4_dev/conversation/assistant_style.py b/lab_v4_dev/conversation/assistant_style.py
+index ec84ff2..ff2ca94 100644
+--- a/lab_v4_dev/conversation/assistant_style.py
++++ b/lab_v4_dev/conversation/assistant_style.py
+@@ -41,10 +41,10 @@ def format_response(text: str, mode: str = "TASK") -> str:
+ 
+ def single_question(text: str) -> str:
+     """
+-    يتأكد أن الرد لا يحتوي أكثر من سؤال واحد.
+-    إذا وجد أكثر من علامة استفهام يبقي الأول فقط.
++    Compatibility wrapper.
++
++    لا نحذف الأسئلة من رد المساعد.
++    الرد الطبيعي قد يحتوي عدة أسئلة أو أمثلة أو نقاطاً
++    ويجب ألا تقوم طبقة العرض بإتلاف محتواه.
+     """
+-    parts = text.split("؟")
+-    if len(parts) > 2:
+-        return parts[0] + "؟"
+     return text
+diff --git a/lab_v4_dev/conversation/conversation_manager.py b/lab_v4_dev/conversation/conversation_manager.py
+index a7b22ca..b5fac00 100644
+--- a/lab_v4_dev/conversation/conversation_manager.py
++++ b/lab_v4_dev/conversation/conversation_manager.py
+@@ -100,8 +100,9 @@ class ConversationManager:
+         # Presentation layer only.
+         # ----------------------------------------------------
+         if result.get("text"):
+-            result["text"] = single_question(
+-                format_response(result["text"], mode)
++            result["text"] = format_response(
++                result["text"],
++                mode,
+             )
+ 
+         if self.dni:
+@@ -211,15 +212,15 @@ class ConversationManager:
+         result = {}
+ 
+         try:
+-            history = (
+-                getattr(
+-                    self.dialogue_memory,
+-                    "last_list",
+-                    [],
+-                )
+-                if self.dialogue_memory
+-                else []
+-            )
++            history = []
++            if self.dialogue_memory:
++                state = getattr(self.dialogue_memory, "state", None)
++                if state is not None:
++                    history = list(getattr(state, "history", []) or [])
++                else:
++                    history = list(
++                        getattr(self.dialogue_memory, "last_list", []) or []
++                    )
+ 
+             system, prompt = build_chat_prompt(
+                 text,
+diff --git a/lab_v4_dev/conversation/dialogue_memory.py b/lab_v4_dev/conversation/dialogue_memory.py
+index 5d7e578..bd3845a 100644
+--- a/lab_v4_dev/conversation/dialogue_memory.py
++++ b/lab_v4_dev/conversation/dialogue_memory.py
+@@ -55,7 +55,9 @@ class DialogueMemory:
+ 
+     @property
+     def last_list(self):
+-        return self.state.history
++        """Compatibility view of the bounded dialogue history."""
++        history = getattr(self.state, "history", [])
++        return list(history or [])
+ 
+     @property
+     def last_items(self):
+diff --git a/lab_v4_dev/conversation/mode_detector.py b/lab_v4_dev/conversation/mode_detector.py
+index 04ca563..3914792 100644
+--- a/lab_v4_dev/conversation/mode_detector.py
++++ b/lab_v4_dev/conversation/mode_detector.py
+@@ -81,37 +81,97 @@ CHAT_PATTERNS = [
+ 
+ def detect_mode(text: str) -> str:
+     """
+-    يعيد: TASK / SYSTEM / DISCUSSION / QUESTION / FOLLOW_UP / CHAT
++    يعيد: TASK / SYSTEM / DISCUSSION / QUESTION / FOLLOW_UP / CHAT.
++
++    FOLLOW_UP له أولوية على QUESTION عندما تكون الرسالة متابعة قصيرة
++    واضحة، بينما DISCUSSION يحتفظ بأولوية أعلى عندما تكون صيغة الرأي/النقاش صريحة.
+     """
+     t = text.strip()
+ 
+-    # SYSTEM أولاً — أوامر تخص الوكيل نفسه
++    if not t:
++        return "CHAT"
++
++    # SYSTEM — أوامر الوكيل نفسه.
+     if any(p in t for p in SYSTEM_PATTERNS):
+         return "SYSTEM"
+ 
+-    # FOLLOW_UP — المتابعات الحوارية قبل الأسئلة
+-    words = t.split()
+-    if words and words[0] in FOLLOW_UP_PATTERNS:
++    # TASK — الأوامر التنفيذية الصريحة لها الأولوية.
++    if any(p in t for p in TASK_PATTERNS):
++        return "TASK"
++
++    # FOLLOW_UP — المتابعات القصيرة الواضحة يجب أن تسبق QUESTION.
++    stripped = t
++
++    exact_followups = {
++        "كيف يعمل؟", "كيف يعمل",
++        "لماذا؟", "لماذا",
++        "ما دوره؟", "ما دوره",
++        "ما وظيفته؟", "ما وظيفته",
++        "ما علاقته؟", "ما علاقته",
++        "ماذا عنه؟", "ماذا عنه",
++        "ماذا عن ذلك؟", "ماذا عن ذلك",
++        "ماذا عن هذا؟", "ماذا عن هذا",
++        "ماذا عن السابق؟", "ماذا عن السابق",
++        "ما التالي؟", "ما التالي",
++        "ثم ماذا؟", "ثم ماذا",
++        "وماذا بعد؟", "وماذا بعد",
++        "لخصه", "لخصها", "لخصهما",
++        "أكمل", "اكمل", "تابع",
++    }
++
++    if stripped in exact_followups:
+         return "FOLLOW_UP"
+-    if any(p in t for p in FOLLOW_UP_PATTERNS):
++
++    reference_prefixes = (
++        "ولماذا",
++        "وما علاقته",
++        "وماذا عن",
++        "وأيهما",
++    )
++
++    if any(stripped.startswith(p) for p in reference_prefixes):
+         return "FOLLOW_UP"
+ 
+-    # QUESTION
+-    if any(p in t for p in QUESTION_PATTERNS):
+-        return "QUESTION"
++    # صيغ مرجعية صريحة من نوع:
++    # "ماذا عن هذا التصميم؟"
++    # "ما علاقته بهذا؟"
++    #
++    # لا نعتمد على وجود "هذا" وحدها؛ يجب أن تكون الصيغة
++    # واحدة من البنى المرجعية المعروفة.
++    if stripped.startswith("ماذا عن "):
++        return "FOLLOW_UP"
+ 
+-    # DISCUSSION
++    if stripped.startswith("ما علاقته "):
++        return "FOLLOW_UP"
++
++    if stripped.startswith("وما علاقته "):
++        return "FOLLOW_UP"
++
++    # DISCUSSION — الرأي والمقارنة والنقاش الصريح.
+     if any(p in t for p in DISCUSSION_PATTERNS):
+         return "DISCUSSION"
+ 
+-    # TASK — explicit task language must win over incidental chat words.
+-    # Example: "اكتب سكريبت يطبع مرحبا" is a TASK, not CHAT.
+-    if any(p in t for p in TASK_PATTERNS):
+-        return "TASK"
++    # QUESTION — الأسئلة الكاملة العامة.
++    if any(p in t for p in QUESTION_PATTERNS):
++        return "QUESTION"
+ 
+-    # CHAT — only when no stronger semantic/task signal exists.
++    # CHAT — التحية والمحادثة الاجتماعية البسيطة.
+     if any(p in t for p in CHAT_PATTERNS):
+         return "CHAT"
+ 
+-    # TASK — conservative legacy default.
++    # أسئلة عامة شائعة.
++    if any(
++        p in t
++        for p in (
++            "ماذا لدينا",
++            "ماذا يوجد",
++            "ما لدينا",
++            "ما الموجود",
++            "كيف حالك",
++            "كيف الحال",
++        )
++    ):
++        return "QUESTION"
++
++    # المحافظة على السلوك القديم كـ TASK افتراضي.
+     return "TASK"
+diff --git a/lab_v4_dev/core/orchestrator.py b/lab_v4_dev/core/orchestrator.py
+index ba02db7..55eacdc 100644
+--- a/lab_v4_dev/core/orchestrator.py
++++ b/lab_v4_dev/core/orchestrator.py
+@@ -713,13 +713,24 @@ class Orchestrator:
+             target_file = m.group(0)
+             try:
+                 from lab_v4_dev.project_knowledge.analysis_engine import AnalysisEngine
+-                from lab_v4_dev.project_knowledge.change_planner import ChangePlanner
++                from lab_v4_dev.dni.knowledge_router import create_p10_plan_from_change
++
+                 engine = AnalysisEngine()
+                 if os.path.exists(target_file):
+                     engine.analyze_file(target_file)
+-                plan = ChangePlanner().create_plan(target_file)
+-                impacted = plan.get('impacted', [])
+-                exec_plan = plan.get('execution_plan', [])
++
++                plan = create_p10_plan_from_change(
++                    target_file,
++                    plan_id=f"pie-{target_file}",
++                    metadata={"source": "orchestrator.plan_change"},
++                )
++
++                impacted = [
++                    step.parameters.get("file")
++                    for step in plan.steps
++                    if step.parameters.get("file")
++                ]
++                exec_plan = plan.steps
+                 lines = ["خطة تعديل " + target_file + ":"]
+                 if impacted:
+                     lines.append("الملفات المتأثرة (" + str(len(impacted)) + "):")
+@@ -729,8 +740,16 @@ class Orchestrator:
+                     lines.append("✅ لا توجد ملفات متأثرة مباشرة")
+                 if exec_plan:
+                     lines.append("خطوات التنفيذ (" + str(len(exec_plan)) + "):")
+-                    for step in exec_plan[:3]:
+-                        lines.append("  [" + str(step.get('step','?')) + "] " + step.get('file','') + " — " + step.get('action','') + " (" + step.get('priority','') + ")")
++                    for index, step in enumerate(exec_plan[:3], start=1):
++                        file_path = step.parameters.get("file", "")
++                        priority = step.parameters.get("priority", "")
++                        lines.append(
++                            "  [" + str(index) + "] "
++                            + file_path
++                            + " — "
++                            + step.action
++                            + " (" + priority + ")"
++                        )
+                 lines.append("ℹ️ هذه خطة معاينة فقط — لا يتم أي تعديل حتى الآن.")
+                 return {"status":"success","intent":intent,"source":"pie",
+                         "text":"\n".join(lines)}
+diff --git a/lab_v4_dev/dni/knowledge_router.py b/lab_v4_dev/dni/knowledge_router.py
+index fdd3dba..e8c0d6a 100644
+--- a/lab_v4_dev/dni/knowledge_router.py
++++ b/lab_v4_dev/dni/knowledge_router.py
+@@ -36,3 +36,46 @@ def query_file_risk(file_path: str) -> dict:
+     """استعلام موحد: اعتماديات + تأثير + خطورة (risk_level مُضمَّن داخلياً)"""
+     from lab_v4_dev.awareness.query_engine import query_file
+     return query_file(file_path)
++
++# ─── P10 Declarative Planner ───
++
++def create_p10_plan(
++    intent: dict,
++    actions: list[dict] | tuple[dict, ...],
++    *,
++    plan_id: str = "",
++    metadata: dict | None = None,
++):
++    """Create a declarative P10 Plan without executing anything."""
++    from lab_v4_dev.planner.planner import Planner
++
++    return Planner().from_actions(
++        intent,
++        actions,
++        plan_id=plan_id,
++        metadata=metadata,
++    )
++
++
++
++def create_p10_plan_from_change(
++    target_file: str,
++    *,
++    plan_id: str = "",
++    metadata: dict | None = None,
++):
++    """Adapt the legacy ChangePlanner execution plan into a P10 Plan."""
++    from lab_v4_dev.project_knowledge.change_planner import ChangePlanner
++    from lab_v4_dev.planner.legacy_adapter import LegacyExecutionPlanAdapter
++
++    legacy = ChangePlanner().create_plan(target_file)
++
++    return LegacyExecutionPlanAdapter().convert(
++        {
++            "action": "change_file",
++            "target": target_file,
++        },
++        legacy["execution_plan"],
++        plan_id=plan_id,
++        metadata=metadata,
++    )
+diff --git a/lab_v4_dev/llm/prompt_builder.py b/lab_v4_dev/llm/prompt_builder.py
+index 12cfda5..83b3ffe 100644
+--- a/lab_v4_dev/llm/prompt_builder.py
++++ b/lab_v4_dev/llm/prompt_builder.py
+@@ -215,8 +215,11 @@ def _chat_domain(user_input: str):
+ 
+ def build_chat_prompt(user_input: str, history: list = None) -> tuple:
+     """
+-    يبني system prompt و user prompt للمحادثة الطبيعية.
+-    يعيد (system, prompt).
++    Natural conversation prompt.
++
++    Conversation history is context, not an instruction source.
++    The LLM remains a conversational responder only when the
++    canonical IntentParser did not resolve an executable intent.
+     """
+     domain = _chat_domain(user_input)
+ 
+@@ -227,64 +230,91 @@ def build_chat_prompt(user_input: str, history: list = None) -> tuple:
+             + build_project_context()
+             + """
+ 
+-تعليمات إضافية:
+-- إذا كان السؤال يتعلق بالمشروع فاستخدم معلومات المشروع الحالية فقط.
+-- اعتمد على project_index الحقيقي.
+-- لا تخترع ملفات أو وظائف.
+-- إذا لم تجد المعلومة فقل: غير موجود في البيانات المتاحة.
+-- أجب بالعربية وباختصار."""
+-
++=== CONVERSATION RULES ===
++- تحدث مع المستخدم بصورة طبيعية ومباشرة.
++- لا تحوّل كل رسالة إلى أمر تنفيذي.
++- لا تختصر الإجابة بلا سبب.
++- استخدم سياق الحوار السابق عندما يكون السؤال تابعاً له.
++- لا تخترع معلومات عن المشروع.
++- إذا كانت المعلومة غير موجودة في بيانات المشروع، صرّح بذلك.
++"""
+         )
+ 
+     elif domain == "cyber":
+-        system = """أنت خبير أمن سيبراني ومبرمج محترف.
+-
+-قواعد:
+-- أجب بالعربية الفصحى.
+-- اعتمد على الحقائق التقنية المعروفة.
+-- إذا لم تكن متأكداً من معلومة تاريخية أو تقنية فلا تخمن، بل اذكر أنك غير متأكد.
+-- لا تربط السؤال بمشروع CyberLab إلا إذا طلب المستخدم ذلك.
+-- احتفظ بالمصطلحات التقنية الإنجليزية مثل SQL Injection و Linux و Provider عند الحاجة ولا تترجمها ترجمة حرفية خاطئة.
+-- اشرح المفاهيم مع أمثلة واضحة ودقيقة."""
++        system = """أنت مساعد تقني متخصص في البرمجة والأمن السيبراني.
++
++=== الأسلوب ===
++- تحدث مع المستخدم بصورة طبيعية.
++- أجب بالعربية الواضحة.
++- اشرح بالتفصيل المناسب للسؤال، ولا تختصر الرد آلياً.
++- حافظ على المصطلحات التقنية الأصلية عند الحاجة.
++- لا تفترض أن السؤال متعلق بـ CyberLab إلا إذا ذكره المستخدم أو كان السياق واضحاً.
++
++=== الحوار ===
++- اعتبر الرسائل السابقة سياقاً للمحادثة.
++- إذا كان السؤال متابعة لسؤال سابق، استخدم السياق بدلاً من البدء من الصفر.
++- لا تكرر السؤال الذي طرحه المستخدم.
++"""
+ 
+     else:
+-        system = """أنت مساعد عام.
++        system = """أنت مساعد عربي للمحادثة الطبيعية.
+ 
+-قواعد:
+-- أجب بالعربية الفصحى.
++=== الأسلوب ===
++- تحدث بصورة طبيعية ومباشرة.
++- أجب على قدر السؤال، ويمكنك التفصيل عندما يحتاج الموضوع ذلك.
++- لا تبدأ بعبارات حشو مثل: بالطبع، رائع، ممتاز.
++- لا تكرر كلام المستخدم بلا فائدة.
+ - لا تختلق معلومات.
+-- إذا لم تكن متأكداً فاذكر ذلك.
+-- لا تفترض أن السؤال يتعلق بمشروع CyberLab إلا إذا ذكره المستخدم صراحة.
+-- احتفظ بالمصطلحات التقنية بلغتها الأصلية عند الحاجة بدلاً من ترجمتها ترجمة خاطئة."""
++- إذا لم تعرف شيئاً، قل ذلك بوضوح.
++- لا تفترض أن الحديث عن CyberLab إلا إذا كان السياق يدل على ذلك.
+ 
++=== الحوار ===
++- حافظ على سياق المحادثة السابقة.
++- افهم الأسئلة القصيرة والمتابعات في ضوء الحوار السابق.
++- لا تتعامل مع كل رسالة كأنها طلب مستقل.
++"""
+ 
+-    # توجيه خاص لأسئلة المتابعة المرجعية
+     if "ما علاقة" in user_input:
+         system += """
+-- السؤال عن العلاقة بين ملف ومكونات المشروع.
+-- لا تشرح وظيفة الملف فقط.
+-- ركز على الاعتماد، التواصل، والموقع داخل المعمارية.
++- السؤال عن العلاقة بين عناصر أو ملفات في المشروع.
++- ركز على الاعتماد والتواصل والموقع المعماري.
+ """
+ 
+     elif "ما دوره" in user_input or "ما وظيفته" in user_input:
+         system += """
+ - السؤال عن الدور داخل المشروع.
+-- اشرح المسؤوليات الأساسية للملف ومكانه في النظام.
++- اشرح المسؤوليات والموقع في النظام.
+ """
+ 
+     elif "كيف يعمل" in user_input:
+         system += """
+ - السؤال عن طريقة العمل.
+-- اشرح تسلسل التنفيذ أو تدفق البيانات خطوة بخطوة.
++- اشرح التدفق وتسلسل التنفيذ خطوة بخطوة.
+ """
+ 
++    prompt = str(user_input)
+ 
+-    prompt = user_input
+     if history:
+-        context = "\n".join(
+-            f"{'\u0645\u0633\u062a\u062e\u062f\u0645' if h['role'] == 'user' else '\u0648\u0643\u064a\u0644'}: {h['content']}"
+-            for h in history[-4:]
+-        )
+-        prompt = context + "\n\u0645\u0633\u062a\u062e\u062f\u0645: " + user_input
++        turns = []
++        for h in history[-8:]:
++            if not isinstance(h, dict):
++                continue
++
++            role = h.get("role")
++            content = h.get("content")
++
++            if not content:
++                continue
++
++            label = "المستخدم" if role == "user" else "الوكيل"
++            turns.append(f"{label}: {content}")
++
++        if turns:
++            prompt = (
++                "=== سياق المحادثة السابق ===\n"
++                + "\n".join(turns)
++                + "\n\n=== الرسالة الحالية ===\n"
++                + str(user_input)
++            )
+ 
+     return system, prompt
+diff --git a/lab_v4_dev/loop/event_loop.py b/lab_v4_dev/loop/event_loop.py
+index b5f06df..d3ada26 100644
+--- a/lab_v4_dev/loop/event_loop.py
++++ b/lab_v4_dev/loop/event_loop.py
+@@ -24,7 +24,8 @@ class EventLoop:
+         if self.memory is None:
+             self.memory = getattr(session, "memory", None)
+ 
+-        self.planner   = Planner(db, memory=self.memory)
++        # P10 — Planner is declarative and has no runtime dependencies.
++        self.planner   = Planner()
+         self.executor  = Executor(state, db, session)
+         self.budget    = Budget()
+         self.history   = self.memory.tasks if self.memory is not None else None
+@@ -66,25 +67,50 @@ class EventLoop:
+         if not decomposed["ok"]:
+             return {"status": "failed", "reason": decomposed["reason"]}
+ 
+-        # 6. build plan
+-        plan = self.planner.build(parsed)
+-        if not plan["ok"]:
+-            return {"status": "failed", "reason": plan["reason"]}
++        # 6. build P10 declarative plan
++        actions = []
++
++        for index, step in enumerate(decomposed["steps"], start=1):
++            action = step.get("action")
++            parameters = {
++                key: value
++                for key, value in step.items()
++                if key != "action"
++            }
++
++            actions.append({
++                "step_id": f"step-{index}",
++                "action": action,
++                "parameters": parameters,
++            })
++
++        try:
++            plan = self.planner.from_actions(
++                parsed,
++                actions,
++                metadata={"source": "event_loop"},
++            )
++        except Exception as e:
++            return {"status": "failed", "reason": str(e)}
+ 
+         # 7. execute steps
+-        task_id = self.history.add(user_input)
++        task_id = self.history.add(user_input) if self.history is not None else None
+         results = []
+ 
+-        for step in plan["steps"]:
+-            action = step.get("action")
++        for step in plan.steps:
++            action = step.action
++            parameters = step.parameters
+ 
+             if action == "shell":
+-                r = self.executor.run_command(step["command"])
++                r = self.executor.run_command(parameters["command"])
+             elif action == "write_file":
+-                r = self.executor.write_file(step["file"], step.get("content", ""))
++                r = self.executor.write_file(
++                    parameters["file"],
++                    parameters.get("content", ""),
++                )
+             elif action == "read_file":
+                 try:
+-                    content = open(step["file"]).read()
++                    content = open(parameters["file"]).read()
+                     r = {"status": "ok", "output": content[:200]}
+                 except Exception as e:
+                     r = {"status": "failed", "reason": str(e)}
+@@ -104,7 +130,8 @@ class EventLoop:
+         # 8. update history
+         all_ok = all(r["status"] == "ok" for r in results)
+         final_status = "done" if all_ok else "failed"
+-        self.history.update_status(task_id, final_status)
++        if self.history is not None and task_id is not None:
++            self.history.update_status(task_id, final_status)
+         self.budget.record_task()
+ 
+         if all_ok:
+diff --git a/lab_v4_dev/planner/impact_analyzer.py b/lab_v4_dev/planner/impact_analyzer.py
+index 9c742e2..69fe4f8 100644
+--- a/lab_v4_dev/planner/impact_analyzer.py
++++ b/lab_v4_dev/planner/impact_analyzer.py
+@@ -1,54 +1,66 @@
+-# CyberLab Agent v4.6-prep
+-# planner/impact_analyzer.py
++from __future__ import annotations
+ 
+-import json
+-from lab_v4_dev.awareness.project_memory import load_memory
++import os
++
++from lab_v4_dev.planner.decision_contracts import ImpactAssessment
++from lab_v4_dev.project_knowledge.graph_query import get_importers
++
++
++class ImpactAnalyzer:
++    """
++    Declarative impact analysis.
++
++    Determines which project components are affected by a target.
++    It performs no planning execution, permission checks, mutation,
++    snapshotting, or recovery.
++    """
++
++    def analyze(self, file_path: str) -> ImpactAssessment:
++        if not isinstance(file_path, str):
++            raise TypeError("file_path must be a string")
++
++        if not file_path:
++            raise ValueError("file_path must not be empty")
++
++        affected: list[str] = []
++        visited: set[str] = set()
++        queue: list[str] = [file_path]
++
++        while queue:
++            current = queue.pop(0)
++
++            dependents = get_importers(current)
++
++            if not dependents and "." in current:
++                dependents = get_importers(
++                    os.path.splitext(current)[0]
++                )
++
++            for item in dependents:
++                if item in visited or item == file_path:
++                    continue
++
++                visited.add(item)
++                affected.append(item)
++                queue.append(item)
++
++        level = "direct" if affected else "unknown"
++
++        return ImpactAssessment(
++            target=file_path,
++            affected=tuple(affected),
++            level=level,
++            reason="dependency impact analysis",
++        )
+ 
+-RISK_SCORES = {"high": 3, "medium": 2, "low": 1}
+ 
+ def analyze_impact(file_path: str) -> dict:
+-    memory = load_memory()
+-    deps   = memory.get("dependencies", {})
+-    short  = file_path.replace("lab_v4_dev/", "")
+-
+-    # من يعتمد على هذا الملف؟
+-    affected = []
+-    for f, f_deps in deps.items():
+-        for d in f_deps:
+-            if short.replace("/", ".").replace(".py", "") in d:
+-                affected.append(f)
+-
+-    # هل الملف حرج؟
+-    is_critical = any(
+-        c["file"] == file_path
+-        for c in memory.get("critical_files", [])
+-    )
+-
+-    # حساب درجة الخطر
+-    risk_score = len(affected) * 2
+-    if is_critical:
+-        risk_score += 5
+-
+-    if risk_score >= 8:
+-        risk_level = "high"
+-    elif risk_score >= 4:
+-        risk_level = "medium"
+-    else:
+-        risk_level = "low"
+-
+-    return {
+-        "file"        : file_path,
+-        "affected"    : affected,
+-        "affected_count": len(affected),
+-        "is_critical" : is_critical,
+-        "risk_score"  : risk_score,
+-        "risk_level"  : risk_level,
+-        "recommendation": _recommend(risk_level, affected),
+-    }
+-
+-def _recommend(risk_level: str, affected: list) -> str:
+-    if risk_level == "high":
+-        return "تحذير: تعديل خطير — خذ snapshot كامل أولاً"
+-    elif risk_level == "medium":
+-        return "تنبيه: تعديل متوسط الخطر — تحقق من الملفات المتأثرة"
+-    return "آمن: تعديل منخفض الخطر"
++    """
++    Compatibility wrapper for legacy callers.
++
++    New P10 code should consume ImpactAssessment through ImpactAnalyzer.
++    """
++    return ImpactAnalyzer().analyze(file_path).to_dict()
++
++
++__all__ = ["ImpactAnalyzer", "analyze_impact"]
+diff --git a/lab_v4_dev/planner/planner.py b/lab_v4_dev/planner/planner.py
+index ae2cf88..b1037c4 100644
+--- a/lab_v4_dev/planner/planner.py
++++ b/lab_v4_dev/planner/planner.py
+@@ -1,66 +1,69 @@
+-# CyberLab Agent v4.0
+-# planner/planner.py
++from __future__ import annotations
+ 
+-from lab_v4_dev.planner.step_builder import shell_step, write_step, read_step, validate_steps
+-from lab_v4_dev.planner.validator import validate_plan
++from typing import Any
+ 
+-class Planner:
+-
+-    def __init__(self, db, memory=None):
+-        self.db = db
+-        self.memory = memory
+-        self.lessons = memory.lessons if memory is not None else None
++from lab_v4_dev.planner.contracts import Plan, PlanStep
+ 
+-    def build(self, intent: dict) -> dict:
+-        action = intent.get("action")
+-        target = intent.get("target", "")
+-        content = intent.get("content", "")
+ 
+-        steps = []
++class Planner:
++    """
++    Declarative planning subsystem.
+ 
+-        if action == "shell":
+-            steps = [shell_step(target)]
++    Planner converts an intent into a reviewable Plan.
++    It MUST NOT execute commands, mutate files, manage permissions,
++    create snapshots, or perform recovery.
++    """
+ 
+-        elif action == "write_file":
+-            steps = [write_step(target, content)]
++    def plan(
++        self,
++        intent: dict[str, Any],
++        steps: list[PlanStep] | tuple[PlanStep, ...],
++        *,
++        plan_id: str = "",
++        metadata: dict[str, Any] | None = None,
++    ) -> Plan:
++        if not isinstance(intent, dict):
++            raise TypeError("intent must be a dict")
+ 
+-        elif action == "read_file":
+-            steps = [read_step(target)]
++        normalized_steps = tuple(steps)
+ 
+-        elif action == "create_and_run":
+-            steps = [
+-                write_step(target, content),
+-                shell_step(f"python3 {target}"),
+-            ]
++        return Plan(
++            plan_id=plan_id,
++            intent=dict(intent),
++            steps=normalized_steps,
++            metadata=dict(metadata or {}),
++        )
+ 
+-        else:
+-            return {
+-                "ok"    : False,
+-                "reason": f"unknown action: {action}",
+-            }
++    def from_actions(
++        self,
++        intent: dict[str, Any],
++        actions: list[dict[str, Any]] | tuple[dict[str, Any], ...],
++        *,
++        plan_id: str = "",
++        metadata: dict[str, Any] | None = None,
++    ) -> Plan:
++        """
++        Convert declarative action descriptions into the Plan contract.
+ 
+-        plan = {"intent": intent, "steps": steps}
+-        validation = validate_plan(plan)
++        This method performs no execution.
++        """
++        steps = tuple(
++            PlanStep(
++                step_id=action["step_id"],
++                action=action["action"],
++                parameters=dict(action.get("parameters", {})),
++                depends_on=tuple(action.get("depends_on", ())),
++                description=action.get("description", ""),
++            )
++            for action in actions
++        )
+ 
+-        if not validation["ok"]:
+-            return {
+-                "ok"    : False,
+-                "reason": validation["errors"],
+-            }
++        return self.plan(
++            intent,
++            steps,
++            plan_id=plan_id,
++            metadata=metadata,
++        )
+ 
+-        return {
+-            "ok"   : True,
+-            "plan" : plan,
+-            "steps": steps,
+-            "count": len(steps),
+-        }
+ 
+-    def check_known_error(self, error: str) -> dict | None:
+-        lesson = self.lessons.find(error)
+-        if lesson and lesson["total_count"] > 0:
+-            return {
+-                "known"    : True,
+-                "solution" : lesson["solution"],
+-                "rate"     : lesson["success_count"] / lesson["total_count"],
+-            }
+-        return None
++__all__ = ["Planner"]
+diff --git a/lab_v4_dev/planner/validator.py b/lab_v4_dev/planner/validator.py
+index 01fc15c..627287d 100644
+--- a/lab_v4_dev/planner/validator.py
++++ b/lab_v4_dev/planner/validator.py
+@@ -1,40 +1,66 @@
+-# CyberLab Agent v4.0
+-# planner/validator.py
++from __future__ import annotations
+ 
+-from lab_v4_dev.recovery.permissions import is_frozen
+-from lab_v4_dev.core.config import HARD_LIMITS
++from lab_v4_dev.planner.contracts import Plan
+ 
+-def validate_plan(plan: dict) -> dict:
+-    errors = []
+ 
+-    # تحقق من وجود steps
+-    steps = plan.get("steps", [])
+-    if not steps:
++def validate_plan(plan: Plan) -> dict:
++    """
++    Validate the structural planning contract only.
++
++    This validator does NOT:
++    - execute anything
++    - check filesystem permissions
++    - inspect frozen zones
++    - approve/reject shell commands
++    - perform risk decisions
++    - create snapshots or recovery state
++
++    Those concerns belong to downstream safety/execution layers.
++    """
++
++    errors: list[str] = []
++
++    if not isinstance(plan, Plan):
++        return {
++            "ok": False,
++            "errors": ["plan must be a Plan instance"],
++        }
++
++    if not plan.steps:
+         errors.append("plan has no steps")
+ 
+-    # تحقق من عدد الخطوات
+-    if len(steps) > HARD_LIMITS["max_shell_commands_per_task"]:
+-        errors.append(f"too many steps: {len(steps)}")
++    seen: set[str] = set()
++
++    for index, step in enumerate(plan.steps):
++        if step.step_id in seen:
++            errors.append(
++                f"step {index} duplicate step_id: {step.step_id}"
++            )
+ 
+-    # تحقق من كل خطوة
+-    for i, step in enumerate(steps):
+-        action = step.get("action")
++        seen.add(step.step_id)
+ 
+-        # خطوات الكتابة — تحقق من الصلاحيات
+-        if action == "write_file":
+-            file_path = step.get("file", "")
+-            if is_frozen(file_path):
+-                errors.append(f"step {i} targets frozen zone: {file_path}")
++        unknown_dependencies = set(step.depends_on) - seen - {
++            future.step_id for future in plan.steps[index + 1:]
++        }
+ 
+-        # خطوات Shell — تحقق من الأوامر الخطيرة
+-        if action == "shell":
+-            command = step.get("command", "")
+-            dangerous = ["rm -rf", "mkfs", "dd if", "> /dev"]
+-            for d in dangerous:
+-                if d in command:
+-                    errors.append(f"step {i} dangerous command: {d}")
++        if unknown_dependencies:
++            errors.append(
++                f"step {index} unknown dependencies: "
++                f"{sorted(unknown_dependencies)}"
++            )
+ 
+     if errors:
+-        return {"ok": False, "errors": errors}
++        return {
++            "ok": False,
++            "errors": errors,
++            "steps_count": len(plan.steps),
++        }
++
++    return {
++        "ok": True,
++        "errors": [],
++        "steps_count": len(plan.steps),
++    }
++
+ 
+-    return {"ok": True, "steps_count": len(steps)}
++__all__ = ["validate_plan"]
+
+===== 11. STAGED DIFF =====
+
+===== 12. LOCAL COMMITS NOT ON UPSTREAM =====
+UPSTREAM=origin/work/BASELINE-01-intent-infrastructure
+
+===== 13. P010 REFERENCES IN DOCUMENTATION =====
+
+--- ./_work/P010_LOCAL_CHANGE_AUDIT.txt ---
+2: P010 LOCAL CHANGE AUDIT
+54:?? tests/test_p10_decision_contracts.py
+55:?? tests/test_p10_execution_decision.py
+56:?? tests/test_p10_impact_analyzer.py
+57:?? tests/test_p10_impact_reasoning.py
+58:?? tests/test_p10_plan_contract.py
+59:?? tests/test_p10_planner.py
+60:?? tests/test_p10_priority_planner.py
+61:?? tests/test_p10_risk_assessor.py
+62:?? tests/test_p10_validator.py
+93:===== 3. COMMITS MENTIONING P010 / BATCH 10 =====
+95:===== 4. ALL FILES MENTIONING P010 / BATCH 10 =====
+96:./tests/test_p10_planner.py:103:def test_knowledge_router_exposes_p10_planner():
+97:./tests/test_p10_planner.py:106:    assert hasattr(knowledge_router, "create_p10_plan")
+98:./tests/test_p10_planner.py:155:def test_knowledge_router_can_bridge_legacy_change_plan_to_p10():
+99:./tests/test_p10_planner.py:156:    from lab_v4_dev.dni.knowledge_router import create_p10_plan_from_change
+100:./tests/test_p10_planner.py:158:    plan = create_p10_plan_from_change(
+101:./tests/test_p10_planner.py:160:        plan_id="p10-bridge-test",
+102:./tests/test_p10_planner.py:163:    assert plan.plan_id == "p10-bridge-test"
+103:./lab_v4_dev/core/orchestrator.py:716:                from lab_v4_dev.dni.knowledge_router import create_p10_plan_from_change
+104:./lab_v4_dev/core/orchestrator.py:722:                plan = create_p10_plan_from_change(
+105:./lab_v4_dev/loop/event_loop.py:27:        # P10 — Planner is declarative and has no runtime dependencies.
+106:./lab_v4_dev/loop/event_loop.py:70:        # 6. build P10 declarative plan
+107:./lab_v4_dev/planner/impact_analyzer.py:61:    New P10 code should consume ImpactAssessment through ImpactAnalyzer.
+108:./lab_v4_dev/planner/contracts.py:7:PLAN_SCHEMA_VERSION = "p10.v1"
+109:./lab_v4_dev/planner/legacy_adapter.py:9:    """Convert the legacy execution_plan representation into P10 Plan."""
+110:./lab_v4_dev/dni/knowledge_router.py:40:# ─── P10 Declarative Planner ───
+111:./lab_v4_dev/dni/knowledge_router.py:42:def create_p10_plan(
+112:./lab_v4_dev/dni/knowledge_router.py:49:    """Create a declarative P10 Plan without executing anything."""
+113:./lab_v4_dev/dni/knowledge_router.py:61:def create_p10_plan_from_change(
+114:./lab_v4_dev/dni/knowledge_router.py:67:    """Adapt the legacy ChangePlanner execution plan into a P10 Plan."""
+115:./_work/P010_LOCAL_CHANGE_AUDIT.txt:2: P010 LOCAL CHANGE AUDIT
+116:./_work/P010_LOCAL_CHANGE_AUDIT.txt:54:?? tests/test_p10_decision_contracts.py
+117:./_work/P010_LOCAL_CHANGE_AUDIT.txt:55:?? tests/test_p10_execution_decision.py
+118:./_work/P010_LOCAL_CHANGE_AUDIT.txt:56:?? tests/test_p10_impact_analyzer.py
+119:./_work/P010_LOCAL_CHANGE_AUDIT.txt:57:?? tests/test_p10_impact_reasoning.py
+120:./_work/P010_LOCAL_CHANGE_AUDIT.txt:58:?? tests/test_p10_plan_contract.py
+121:./_work/P010_LOCAL_CHANGE_AUDIT.txt:59:?? tests/test_p10_planner.py
+122:./_work/P010_LOCAL_CHANGE_AUDIT.txt:60:?? tests/test_p10_priority_planner.py
+123:./_work/P010_LOCAL_CHANGE_AUDIT.txt:61:?? tests/test_p10_risk_assessor.py
+124:./_work/P010_LOCAL_CHANGE_AUDIT.txt:62:?? tests/test_p10_validator.py
+125:./_work/P010_LOCAL_CHANGE_AUDIT.txt:93:===== 3. COMMITS MENTIONING P010 / BATCH 10 =====
+126:./_work/P010_LOCAL_CHANGE_AUDIT.txt:95:===== 4. ALL FILES MENTIONING P010 / BATCH 10 =====
+127:./.pytest_cache/v/cache/nodeids:113:  "tests/test_p10_decision_contracts.py::test_impact_assessment_is_structured",
+128:./.pytest_cache/v/cache/nodeids:114:  "tests/test_p10_decision_contracts.py::test_invalid_decision_levels_are_rejected[<lambda>0]",
+129:./.pytest_cache/v/cache/nodeids:115:  "tests/test_p10_decision_contracts.py::test_invalid_decision_levels_are_rejected[<lambda>1]",
+130:./.pytest_cache/v/cache/nodeids:116:  "tests/test_p10_decision_contracts.py::test_invalid_decision_levels_are_rejected[<lambda>2]",
+131:./.pytest_cache/v/cache/nodeids:117:  "tests/test_p10_decision_contracts.py::test_priority_assessment_is_structured",
+132:./.pytest_cache/v/cache/nodeids:118:  "tests/test_p10_decision_contracts.py::test_risk_assessment_is_structured",
+133:./.pytest_cache/v/cache/nodeids:119:  "tests/test_p10_decision_contracts.py::test_risk_requires_valid_priority",
+134:./.pytest_cache/v/cache/nodeids:120:  "tests/test_p10_execution_decision.py::test_engine_maps_priority_to_decision",
+135:./.pytest_cache/v/cache/nodeids:121:  "tests/test_p10_execution_decision.py::test_engine_preserves_assessment_data",
+136:./.pytest_cache/v/cache/nodeids:122:  "tests/test_p10_execution_decision.py::test_engine_rejects_invalid_input",
+137:./.pytest_cache/v/cache/nodeids:123:  "tests/test_p10_execution_decision.py::test_execution_decision_is_structured",
+138:./.pytest_cache/v/cache/nodeids:124:  "tests/test_p10_execution_decision.py::test_execution_decision_rejects_invalid_action",
+139:./.pytest_cache/v/cache/nodeids:125:  "tests/test_p10_impact_analyzer.py::test_impact_analyzer_returns_contract",
+140:./.pytest_cache/v/cache/nodeids:126:  "tests/test_p10_impact_analyzer.py::test_impact_analyzer_without_dependents",
+141:./.pytest_cache/v/cache/nodeids:127:  "tests/test_p10_impact_analyzer.py::test_legacy_wrapper_returns_dict",
+142:./.pytest_cache/v/cache/nodeids:128:  "tests/test_p10_impact_reasoning.py::test_classifier_produces_structured_items",
+143:./.pytest_cache/v/cache/nodeids:129:  "tests/test_p10_impact_reasoning.py::test_reasoner_produces_explanations",
+144:./.pytest_cache/v/cache/nodeids:130:  "tests/test_p10_plan_contract.py::test_duplicate_step_ids_are_rejected",
+145:./.pytest_cache/v/cache/nodeids:131:  "tests/test_p10_plan_contract.py::test_plan_is_serializable",
+146:./.pytest_cache/v/cache/nodeids:132:  "tests/test_p10_plan_contract.py::test_plan_round_trip",
+147:./.pytest_cache/v/cache/nodeids:133:  "tests/test_p10_plan_contract.py::test_plan_step_is_declarative",
+148:./.pytest_cache/v/cache/nodeids:134:  "tests/test_p10_plan_contract.py::test_unknown_dependencies_are_deferred_to_validator",
+149:./.pytest_cache/v/cache/nodeids:135:  "tests/test_p10_plan_contract.py::test_unknown_dependencies_are_rejected",
+150:./.pytest_cache/v/cache/nodeids:136:  "tests/test_p10_planner.py::test_knowledge_router_can_bridge_legacy_change_plan_to_p10",
+151:./.pytest_cache/v/cache/nodeids:137:  "tests/test_p10_planner.py::test_knowledge_router_exposes_p10_planner",
+152:./.pytest_cache/v/cache/nodeids:138:  "tests/test_p10_planner.py::test_legacy_execution_plan_adapter",
+153:./.pytest_cache/v/cache/nodeids:139:  "tests/test_p10_planner.py::test_legacy_execution_plan_adapter_rejects_invalid_input",
+154:./.pytest_cache/v/cache/nodeids:140:  "tests/test_p10_planner.py::test_planner_does_not_execute",
+155:./.pytest_cache/v/cache/nodeids:141:  "tests/test_p10_planner.py::test_planner_from_actions_builds_declarative_plan",
+156:./.pytest_cache/v/cache/nodeids:142:  "tests/test_p10_planner.py::test_planner_preserves_dependencies",
+157:./.pytest_cache/v/cache/nodeids:143:  "tests/test_p10_planner.py::test_planner_rejects_invalid_intent",
+158:./.pytest_cache/v/cache/nodeids:144:  "tests/test_p10_planner.py::test_planner_returns_plan_contract",
+159:./.pytest_cache/v/cache/nodeids:145:  "tests/test_p10_priority_planner.py::test_direct_impact_becomes_critical",
+160:./.pytest_cache/v/cache/nodeids:146:  "tests/test_p10_priority_planner.py::test_empty_input_returns_empty_tuple",
+161:./.pytest_cache/v/cache/nodeids:147:  "tests/test_p10_priority_planner.py::test_invalid_input_type_is_rejected",
+162:./.pytest_cache/v/cache/nodeids:148:  "tests/test_p10_priority_planner.py::test_invalid_item_type_is_rejected",
+163:./.pytest_cache/v/cache/nodeids:149:  "tests/test_p10_priority_planner.py::test_priority_mapping_is_complete",
+164:./.pytest_cache/v/cache/nodeids:150:  "tests/test_p10_priority_planner.py::test_results_are_sorted_by_priority",
+165:./.pytest_cache/v/cache/nodeids:151:  "tests/test_p10_risk_assessor.py::test_critical_priority_becomes_high_risk",
+166:./.pytest_cache/v/cache/nodeids:152:  "tests/test_p10_risk_assessor.py::test_empty_input_returns_empty_tuple",
+167:./.pytest_cache/v/cache/nodeids:153:  "tests/test_p10_risk_assessor.py::test_invalid_input_type_is_rejected",
+168:./.pytest_cache/v/cache/nodeids:154:  "tests/test_p10_risk_assessor.py::test_invalid_item_type_is_rejected",
+169:./.pytest_cache/v/cache/nodeids:155:  "tests/test_p10_risk_assessor.py::test_priority_is_preserved",
+170:./.pytest_cache/v/cache/nodeids:156:  "tests/test_p10_risk_assessor.py::test_risk_mapping_is_complete",
+171:./.pytest_cache/v/cache/nodeids:157:  "tests/test_p10_validator.py::test_validator_accepts_forward_dependency",
+172:./.pytest_cache/v/cache/nodeids:158:  "tests/test_p10_validator.py::test_validator_accepts_valid_plan",
+173:./.pytest_cache/v/cache/nodeids:159:  "tests/test_p10_validator.py::test_validator_does_not_perform_execution_security_checks",
+174:./.pytest_cache/v/cache/nodeids:160:  "tests/test_p10_validator.py::test_validator_rejects_invalid_dependency",
+175:./.pytest_cache/v/cache/nodeids:161:  "tests/test_p10_validator.py::test_validator_rejects_non_plan",
+176:./.pytest_cache/v/cache/lastfailed:452:  "tests/test_p10_plan_contract.py::test_unknown_dependencies_are_rejected": true,
+178:===== 5. P010-NAMED FILES =====
+179:./tests/__pycache__/test_p10_plan_contract.cpython-313-pytest-9.1.1.pyc
+180:./tests/__pycache__/test_p10_planner.cpython-313-pytest-9.1.1.pyc
+181:./tests/__pycache__/test_p10_validator.cpython-313-pytest-9.1.1.pyc
+182:./tests/__pycache__/test_p10_decision_contracts.cpython-313-pytest-9.1.1.pyc
+183:./tests/__pycache__/test_p10_impact_analyzer.cpython-313-pytest-9.1.1.pyc
+184:./tests/__pycache__/test_p10_impact_reasoning.cpython-313-pytest-9.1.1.pyc
+185:./tests/__pycache__/test_p10_priority_planner.cpython-313-pytest-9.1.1.pyc
+186:./tests/__pycache__/test_p10_risk_assessor.cpython-313-pytest-9.1.1.pyc
+187:./tests/__pycache__/test_p10_execution_decision.cpython-313-pytest-9.1.1.pyc
+188:./tests/test_p10_plan_contract.py
+189:./tests/test_p10_planner.py
+190:./tests/test_p10_validator.py
+191:./tests/test_p10_decision_contracts.py
+192:./tests/test_p10_impact_analyzer.py
+193:./tests/test_p10_impact_reasoning.py
+194:./tests/test_p10_priority_planner.py
+195:./tests/test_p10_risk_assessor.py
+196:./tests/test_p10_execution_decision.py
+197:./_work/P010_LOCAL_CHANGE_AUDIT.txt
+200:_work/P010_LOCAL_CHANGE_AUDIT.txt
+276:tests/test_p10_decision_contracts.py
+277:tests/test_p10_execution_decision.py
+278:tests/test_p10_impact_analyzer.py
+279:tests/test_p10_impact_reasoning.py
+280:tests/test_p10_plan_contract.py
+281:tests/test_p10_planner.py
+282:tests/test_p10_priority_planner.py
+283:tests/test_p10_risk_assessor.py
+284:tests/test_p10_validator.py
+332:?? tests/test_p10_decision_contracts.py
+333:?? tests/test_p10_execution_decision.py
+334:?? tests/test_p10_impact_analyzer.py
+335:?? tests/test_p10_impact_reasoning.py
+336:?? tests/test_p10_plan_contract.py
+337:?? tests/test_p10_planner.py
+338:?? tests/test_p10_priority_planner.py
+339:?? tests/test_p10_risk_assessor.py
+340:?? tests/test_p10_validator.py
+575:+                from lab_v4_dev.dni.knowledge_router import create_p10_plan_from_change
+584:+                plan = create_p10_plan_from_change(
+627:+# ─── P10 Declarative Planner ───
+629:+def create_p10_plan(
+636:+    """Create a declarative P10 Plan without executing anything."""
+648:+def create_p10_plan_from_change(
+654:+    """Adapt the legacy ChangePlanner execution plan into a P10 Plan."""
+822:+        # P10 — Planner is declarative and has no runtime dependencies.
+835:+        # 6. build P10 declarative plan
+1013:+    New P10 code should consume ImpactAssessment through ImpactAnalyzer.
+1252:===== 13. P010 REFERENCES IN DOCUMENTATION =====
+1254:--- ./_work/P010_LOCAL_CHANGE_AUDIT.txt ---
+1255:2: P010 LOCAL CHANGE AUDIT
+1256:54:?? tests/test_p10_decision_contracts.py
+1257:55:?? tests/test_p10_execution_decision.py
+1258:56:?? tests/test_p10_impact_analyzer.py
+1259:57:?? tests/test_p10_impact_reasoning.py
+1260:58:?? tests/test_p10_plan_contract.py
+1261:59:?? tests/test_p10_planner.py
+1262:60:?? tests/test_p10_priority_planner.py
+1263:61:?? tests/test_p10_risk_assessor.py
+1264:62:?? tests/test_p10_validator.py
+1265:93:===== 3. COMMITS MENTIONING P010 / BATCH 10 =====
+1266:95:===== 4. ALL FILES MENTIONING P010 / BATCH 10 =====
+1267:96:./tests/test_p10_planner.py:103:def test_knowledge_router_exposes_p10_planner():
+1268:97:./tests/test_p10_planner.py:106:    assert hasattr(knowledge_router, "create_p10_plan")
+1269:98:./tests/test_p10_planner.py:155:def test_knowledge_router_can_bridge_legacy_change_plan_to_p10():
+1270:99:./tests/test_p10_planner.py:156:    from lab_v4_dev.dni.knowledge_router import create_p10_plan_from_change
+1271:100:./tests/test_p10_planner.py:158:    plan = create_p10_plan_from_change(
+1272:101:./tests/test_p10_planner.py:160:        plan_id="p10-bridge-test",
+1273:102:./tests/test_p10_planner.py:163:    assert plan.plan_id == "p10-bridge-test"
+1274:103:./lab_v4_dev/core/orchestrator.py:716:                from lab_v4_dev.dni.knowledge_router import create_p10_plan_from_change
+1275:104:./lab_v4_dev/core/orchestrator.py:722:                plan = create_p10_plan_from_change(
+1276:105:./lab_v4_dev/loop/event_loop.py:27:        # P10 — Planner is declarative and has no runtime dependencies.
+1277:106:./lab_v4_dev/loop/event_loop.py:70:        # 6. build P10 declarative plan
+1278:107:./lab_v4_dev/planner/impact_analyzer.py:61:    New P10 code should consume ImpactAssessment through ImpactAnalyzer.
+1279:108:./lab_v4_dev/planner/contracts.py:7:PLAN_SCHEMA_VERSION = "p10.v1"
+1280:109:./lab_v4_dev/planner/legacy_adapter.py:9:    """Convert the legacy execution_plan representation into P10 Plan."""
+1281:110:./lab_v4_dev/dni/knowledge_router.py:40:# ─── P10 Declarative Planner ───
+1282:111:./lab_v4_dev/dni/knowledge_router.py:42:def create_p10_plan(
+
+============================================================
+ END P010 LOCAL CHANGE AUDIT
+============================================================

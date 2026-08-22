@@ -24,7 +24,8 @@ class EventLoop:
         if self.memory is None:
             self.memory = getattr(session, "memory", None)
 
-        self.planner   = Planner(db, memory=self.memory)
+        # P10 — Planner is declarative and has no runtime dependencies.
+        self.planner   = Planner()
         self.executor  = Executor(state, db, session)
         self.budget    = Budget()
         self.history   = self.memory.tasks if self.memory is not None else None
@@ -66,25 +67,50 @@ class EventLoop:
         if not decomposed["ok"]:
             return {"status": "failed", "reason": decomposed["reason"]}
 
-        # 6. build plan
-        plan = self.planner.build(parsed)
-        if not plan["ok"]:
-            return {"status": "failed", "reason": plan["reason"]}
+        # 6. build P10 declarative plan
+        actions = []
+
+        for index, step in enumerate(decomposed["steps"], start=1):
+            action = step.get("action")
+            parameters = {
+                key: value
+                for key, value in step.items()
+                if key != "action"
+            }
+
+            actions.append({
+                "step_id": f"step-{index}",
+                "action": action,
+                "parameters": parameters,
+            })
+
+        try:
+            plan = self.planner.from_actions(
+                parsed,
+                actions,
+                metadata={"source": "event_loop"},
+            )
+        except Exception as e:
+            return {"status": "failed", "reason": str(e)}
 
         # 7. execute steps
-        task_id = self.history.add(user_input)
+        task_id = self.history.add(user_input) if self.history is not None else None
         results = []
 
-        for step in plan["steps"]:
-            action = step.get("action")
+        for step in plan.steps:
+            action = step.action
+            parameters = step.parameters
 
             if action == "shell":
-                r = self.executor.run_command(step["command"])
+                r = self.executor.run_command(parameters["command"])
             elif action == "write_file":
-                r = self.executor.write_file(step["file"], step.get("content", ""))
+                r = self.executor.write_file(
+                    parameters["file"],
+                    parameters.get("content", ""),
+                )
             elif action == "read_file":
                 try:
-                    content = open(step["file"]).read()
+                    content = open(parameters["file"]).read()
                     r = {"status": "ok", "output": content[:200]}
                 except Exception as e:
                     r = {"status": "failed", "reason": str(e)}
@@ -104,7 +130,8 @@ class EventLoop:
         # 8. update history
         all_ok = all(r["status"] == "ok" for r in results)
         final_status = "done" if all_ok else "failed"
-        self.history.update_status(task_id, final_status)
+        if self.history is not None and task_id is not None:
+            self.history.update_status(task_id, final_status)
         self.budget.record_task()
 
         if all_ok:
