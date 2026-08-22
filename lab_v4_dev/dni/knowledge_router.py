@@ -64,18 +64,45 @@ def create_p10_plan_from_change(
     plan_id: str = "",
     metadata: dict | None = None,
 ):
-    """Adapt the legacy ChangePlanner execution plan into a P10 Plan."""
+    """Create the canonical declarative P10 Plan for a file change.
+
+    Legacy ChangePlanner data is used when impact-aware execution steps exist.
+    Otherwise, the factory creates the minimal declarative P10 plan directly.
+    No execution is performed here.
+    """
     from lab_v4_dev.project_knowledge.change_planner import ChangePlanner
     from lab_v4_dev.planner.legacy_adapter import LegacyExecutionPlanAdapter
+    from lab_v4_dev.planner.planner import Planner
 
     legacy = ChangePlanner().create_plan(target_file)
+    execution_plan = legacy.get("execution_plan", [])
 
-    return LegacyExecutionPlanAdapter().convert(
+    if execution_plan:
+        return LegacyExecutionPlanAdapter().convert(
+            {
+                "action": "change_file",
+                "target": target_file,
+            },
+            execution_plan,
+            plan_id=plan_id,
+            metadata=metadata,
+        )
+
+    return Planner().from_actions(
         {
             "action": "change_file",
             "target": target_file,
         },
-        legacy["execution_plan"],
+        [
+            {
+                "step_id": "step-1",
+                "action": "change_file",
+                "parameters": {
+                    "file": target_file,
+                },
+                "description": f"Plan change for {target_file}",
+            }
+        ],
         plan_id=plan_id,
         metadata=metadata,
     )

@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from lab_v4_dev.planner.decision_pipeline import P10DecisionPipeline
+
 from lab_v4_dev.planner.contracts import Plan, PlanStep
 
 
 class Planner:
+    def __init__(self, *args, **kwargs):
+        self.decision_pipeline = P10DecisionPipeline()
+
+
     """
     Declarative planning subsystem.
 
@@ -13,6 +19,13 @@ class Planner:
     It MUST NOT execute commands, mutate files, manage permissions,
     create snapshots, or perform recovery.
     """
+
+    def assess_decision(self, target: str):
+        """Return the canonical P010 decision assessment for a target.
+
+        This is declarative only. Execution remains outside Planner.
+        """
+        return self.decision_pipeline.assess(target)
 
     def plan(
         self,

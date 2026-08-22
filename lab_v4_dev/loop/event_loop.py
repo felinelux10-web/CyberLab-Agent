@@ -93,55 +93,20 @@ class EventLoop:
         except Exception as e:
             return {"status": "failed", "reason": str(e)}
 
-        # 7. execute steps
-        task_id = self.history.add(user_input) if self.history is not None else None
-        results = []
-
-        for step in plan.steps:
-            action = step.action
-            parameters = step.parameters
-
-            if action == "shell":
-                r = self.executor.run_command(parameters["command"])
-            elif action == "write_file":
-                r = self.executor.write_file(
-                    parameters["file"],
-                    parameters.get("content", ""),
-                )
-            elif action == "read_file":
-                try:
-                    content = open(parameters["file"]).read()
-                    r = {"status": "ok", "output": content[:200]}
-                except Exception as e:
-                    r = {"status": "failed", "reason": str(e)}
-            else:
-                r = {"status": "skipped"}
-
-            results.append(r)
-
-            if r["status"] == "failed":
-                self.budget.record_failure()
-                self.state.record_failure()
-                failures = self.state.consecutive_failures
-                if failures >= HARD_LIMITS["max_consecutive_failures"]:
-                    self.state.enter_safe_mode("max failures reached")
-                break
-
-        # 8. update history
-        all_ok = all(r["status"] == "ok" for r in results)
-        final_status = "done" if all_ok else "failed"
-        if self.history is not None and task_id is not None:
-            self.history.update_status(task_id, final_status)
-        self.budget.record_task()
-
-        if all_ok:
-            self.budget.record_success()
-            self.state.record_success()
+        # 7. P10 planning boundary
+        #
+        # P10 produces a declarative Plan only.
+        # Execution belongs to the later execution phase.
+        task_id = (
+            self.history.add(user_input)
+            if self.history is not None
+            else None
+        )
 
         return {
-            "status" : final_status,
+            "status": "planned",
             "task_id": task_id,
-            "results": results,
+            "plan": plan.to_dict(),
         }
 
     def tick(self) -> dict | None:

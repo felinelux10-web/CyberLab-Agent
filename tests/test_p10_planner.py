@@ -166,3 +166,16 @@ def test_knowledge_router_can_bridge_legacy_change_plan_to_p10():
     assert plan.steps[0].action == "modify"
     assert plan.steps[1].parameters["file"] == "run.py"
     assert plan.steps[1].action == "review"
+
+
+def test_planner_exposes_canonical_p10_decision_pipeline():
+    from lab_v4_dev.planner.planner import Planner
+    from lab_v4_dev.planner.decision_pipeline import P10DecisionAssessment
+
+    planner = Planner()
+    result = planner.assess_decision("target.py")
+
+    assert isinstance(result, P10DecisionAssessment)
+    assert isinstance(result.priority, tuple)
+    assert isinstance(result.risk, tuple)
+    assert isinstance(result.decisions, tuple)
