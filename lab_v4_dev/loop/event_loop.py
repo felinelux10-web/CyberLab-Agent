@@ -8,6 +8,7 @@ from lab_v4_dev.planner.planner import Planner
 from lab_v4_dev.monitor.health_check import check_health
 from lab_v4_dev.monitor.budget import Budget
 from lab_v4_dev.executor.executor import Executor
+from lab_v4_dev.executor.plan_adapter import PlanExecutionAdapter
 from lab_v4_dev.loop.idle_manager import IdleManager
 from lab_v4_dev.loop.scheduler import Scheduler
 from lab_v4_dev.core.config import HARD_LIMITS
@@ -27,6 +28,7 @@ class EventLoop:
         # P10 — Planner is declarative and has no runtime dependencies.
         self.planner   = Planner()
         self.executor  = Executor(state, db, session)
+        self.plan_adapter = PlanExecutionAdapter()
         self.budget    = Budget()
         self.history   = self.memory.tasks if self.memory is not None else None
         self.lessons   = self.memory.lessons if self.memory is not None else None
@@ -93,20 +95,43 @@ class EventLoop:
         except Exception as e:
             return {"status": "failed", "reason": str(e)}
 
-        # 7. P10 planning boundary
+        # 7. P10 -> P11 contract boundary
         #
-        # P10 produces a declarative Plan only.
-        # Execution belongs to the later execution phase.
+        # P10 remains declarative. The adapter translates each approved
+        # PlanStep into the canonical P11 ExecutionRequest.
+        # Execution itself remains exclusively inside Executor.
         task_id = (
             self.history.add(user_input)
             if self.history is not None
             else None
         )
 
+        requests = []
+
+        try:
+            for step in plan.steps:
+                requests.append(
+                    self.plan_adapter.to_request(plan, step)
+                )
+        except Exception as e:
+            return {
+                "status": "failed",
+                "task_id": task_id,
+                "plan": plan.to_dict(),
+                "reason": str(e),
+            }
+
+        results = []
+
+        for request in requests:
+            result = self.executor.execute(request)
+            results.append(result.to_dict())
+
         return {
-            "status": "planned",
+            "status": "executed",
             "task_id": task_id,
             "plan": plan.to_dict(),
+            "results": results,
         }
 
     def tick(self) -> dict | None:
