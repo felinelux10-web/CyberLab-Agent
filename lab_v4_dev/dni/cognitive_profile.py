@@ -17,6 +17,13 @@ Future responsibilities:
 """
 
 class CognitiveProfile:
+    """
+    Ephemeral DNI cognitive profile.
+
+    This is not the persistent user profile and must not load or persist
+    personal profile data by itself.
+    """
+
 
     def __init__(self):
         self.profile = {

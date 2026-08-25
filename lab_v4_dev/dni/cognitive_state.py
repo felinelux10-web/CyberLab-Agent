@@ -15,6 +15,16 @@ Future responsibilities:
 """
 
 class CognitiveState:
+    """
+    DNI-owned cognitive state only.
+
+    Ownership contract:
+    - ContextStore owns operational/dialogue execution context.
+    - MemoryStore/DialogueMemory own memory/history concerns.
+    - CognitiveState owns DNI cognitive signals only.
+    - This object must not become a ContextStore or MemoryStore.
+    """
+
 
     def __init__(self):
         self.state = {

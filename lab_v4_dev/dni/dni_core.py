@@ -18,11 +18,23 @@ from lab_v4_dev.dni.cognitive_state import CognitiveState
 from lab_v4_dev.dni.policy_engine import PolicyEngine
 from lab_v4_dev.dni.knowledge_map import KnowledgeMap
 from lab_v4_dev.dni.cognitive_classifier import CognitiveClassifier
-from lab_v4_dev.user_data.profile_loader import load_profile
-from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 
 
 class DNICore:
+    """
+    DNI cognitive coordination boundary.
+
+    DNI does not own:
+    - Core orchestration/runtime execution
+    - ContextStore
+    - MemoryStore/DialogueMemory
+    - Intent parsing/routing
+    - persistent user-profile storage
+
+    External state/profile/context may be supplied explicitly by the
+    canonical owning subsystem.
+    """
+
 
     def __init__(self):
         self.brain = DNIBrain()
@@ -30,10 +42,7 @@ class DNICore:
         self.policy = PolicyEngine()
         self.knowledge = KnowledgeMap()
         self.classifier = CognitiveClassifier()
-        self.profile = load_profile()
-        self.dialogue_memory = None
         self.last_analysis = {}
-        self.profile_source = "user_profile.json"
 
     def status(self):
         return {
@@ -42,76 +51,88 @@ class DNICore:
             "state": self.state.snapshot(),
             "policy": self.policy.status(),
             "knowledge": self.knowledge.status(),
-            "profile_loaded": isinstance(self.profile, dict),
-            "profile_keys": sorted(self.profile.keys()),
-            "profile_source": self.profile_source,
+            "profile_loaded": False,
+            "profile_keys": [],
+            "profile_source": None,
             "conversation": self.cognitive_snapshot(),
             "version": "DNI-3.036"
         }
 
 
     def get_profile(self):
-        return self.profile
+        """Deprecated compatibility hook; DNI does not own persistent profile data."""
+        return {}
 
 
     def get_profile_value(self, key, default=None):
-        return self.profile.get(key, default)
+        """Deprecated compatibility hook; persistent profile is externally owned."""
+        return default
 
 
     def has_profile_key(self, key):
-        return key in self.profile
+        """Deprecated compatibility hook; DNI owns no persistent profile."""
+        return False
 
 
     def profile_summary(self):
+        """Deprecated compatibility hook; no persistent profile is owned by DNI."""
         return {
-            "loaded": isinstance(self.profile, dict),
-            "keys": sorted(self.profile.keys()),
-            "count": len(self.profile),
-            "source": self.profile_source,
+            "loaded": False,
+            "keys": [],
+            "count": 0,
+            "source": None,
         }
 
 
     def attach_dialogue_memory(self, memory):
-        self.dialogue_memory = memory
+        """
+        Deprecated compatibility hook.
+
+        DialogueMemory is owned by the conversation/memory layer.
+        DNI does not retain or own the supplied instance.
+        """
+        return False
 
     def has_dialogue_memory(self):
-        return self.dialogue_memory is not None
+        """DNI no longer owns DialogueMemory."""
+        return False
 
     def get_dialogue_memory(self):
-        return self.dialogue_memory
+        """Deprecated compatibility hook; DNI does not own DialogueMemory."""
+        return None
 
     def get_last_message(self):
-        s = self.conversation_summary()
-
+        """DNI does not own or inspect dialogue history."""
         return {
-            "role": s.get("last_role"),
-            "content": s.get("last_content")
+            "role": None,
+            "content": None,
         }
 
+
     def set_conversation_analysis(self, analysis):
-        self.last_analysis = dict(analysis)
+        """Store cognitive analysis signals without retaining conversation state."""
+        self.last_analysis = dict(analysis or {})
+
 
     def analyze_conversation(self):
         return {
-            "conversation_available": self.has_dialogue_memory(),
+            "conversation_available": False,
             "last_message": self.get_last_message(),
-            "analysis": dict(self.last_analysis)
+            "analysis": dict(self.last_analysis),
         }
 
 
     def conversation_snapshot(self):
-        summary = self.conversation_summary()
         analysis = dict(getattr(self, "last_analysis", {}))
-        memory = self.dialogue_memory
 
         return {
-            "attached": self.has_dialogue_memory(),
+            "attached": False,
             "analysis": analysis,
             "intent": analysis.get("intent"),
             "mode": analysis.get("mode"),
-            "last_topic": getattr(memory, "last_topic", None) if memory else None,
-            "pending_topic": getattr(memory, "pending_topic", None) if memory else None,
-            "messages": summary.get("messages", 0),
+            "last_topic": None,
+            "pending_topic": None,
+            "messages": 0,
         }
 
 
@@ -119,27 +140,19 @@ class DNICore:
         return {
             "conversation": self.conversation_snapshot(),
             "analysis_available": bool(self.last_analysis),
-            "memory_attached": self.has_dialogue_memory(),
+            "memory_attached": False,
         }
 
+
     def conversation_summary(self):
-        if not self.dialogue_memory:
-            return {
-                "attached": False,
-                "messages": 0,
-                "pending_topic": None,
-                "last_user": None,
-                "last_assistant": None
-            }
-
-        history = getattr(self.dialogue_memory, "last_list", [])
-
-        last = history[-1] if history else {}
-
+        """Compatibility snapshot; dialogue history remains externally owned."""
         return {
-            "attached": True,
-            "messages": len(history),
-            "pending_topic": getattr(self.dialogue_memory, "pending_topic", None),
-            "last_role": last.get("role"),
-            "last_content": last.get("content")
+            "attached": False,
+            "messages": 0,
+            "pending_topic": None,
+            "last_topic": None,
+            "last_user": None,
+            "last_assistant": None,
+            "last_role": None,
+            "last_content": None,
         }

@@ -29,6 +29,15 @@ from lab_v4_dev.dni.decision_engine import DecisionEngine
 
 
 class CognitivePipeline:
+    """
+    DNI cognitive composition foundation.
+
+    This class does not own Core orchestration, ContextStore, MemoryStore,
+    Intent parsing, persistent profile storage, or provider execution.
+    It is intentionally non-executing until a canonical runtime integration
+    contract is established.
+    """
+
 
     def __init__(self):
         self.classifier = CognitiveClassifier()
