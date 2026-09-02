@@ -5,9 +5,12 @@ import os
 import hashlib
 import shutil
 from datetime import datetime
+from typing import List
 from lab_v4_dev.recovery.permissions import check_write
+from lab_v4_dev.core.audit import emit_event
 
 SNAPSHOTS_DIR = "lab_v4_dev/archives/snapshots"
+
 
 def _hash_file(path: str) -> str:
     h = hashlib.sha256()
@@ -15,8 +18,13 @@ def _hash_file(path: str) -> str:
         h.update(f.read())
     return h.hexdigest()
 
+
 def take(file_path: str) -> dict:
-    check_write(file_path)
+    try:
+        check_write(file_path)
+    except Exception as e:
+        emit_event("snapshot.rejected", source="snapshot", context={"file": file_path}, details={"reason": str(e)})
+        raise
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     safe_name = file_path.replace("/", "_").replace(".", "_")
@@ -28,26 +36,32 @@ def take(file_path: str) -> dict:
     # إذا الملف غير موجود — احفظ نسخة فارغة كمرجع
     if not os.path.exists(file_path):
         open(snapshot_path, "w").write("")
-        return {
-            "status"   : "ok",
-            "original" : file_path,
-            "snapshot" : snapshot_path,
-            "hash"     : "",
+        rec = {
+            "status": "ok",
+            "original": file_path,
+            "snapshot": snapshot_path,
+            "hash": "",
             "timestamp": timestamp,
-            "note"     : "new_file"
+            "note": "new_file",
         }
+        emit_event("snapshot.taken", source="snapshot", context={"file": file_path}, details={"snapshot": snapshot_path, "note": "new_file"})
+        return rec
 
     shutil.copy2(file_path, snapshot_path)
 
-    return {
-        "status"   : "ok",
-        "original" : file_path,
-        "snapshot" : snapshot_path,
-        "hash"     : _hash_file(file_path),
+    rec = {
+        "status": "ok",
+        "original": file_path,
+        "snapshot": snapshot_path,
+        "hash": _hash_file(file_path),
         "timestamp": timestamp,
     }
 
-def list_snapshots(file_path: str) -> list:
+    emit_event("snapshot.taken", source="snapshot", context={"file": file_path}, details={"snapshot": snapshot_path})
+    return rec
+
+
+def list_snapshots(file_path: str) -> List[str]:
     if not os.path.exists(SNAPSHOTS_DIR):
         return []
     safe_name = file_path.replace("/", "_").replace(".", "_")
@@ -55,4 +69,6 @@ def list_snapshots(file_path: str) -> list:
         f for f in os.listdir(SNAPSHOTS_DIR)
         if f.startswith(safe_name)
     ]
-    return sorted(snaps)
+    snaps = sorted(snaps)
+    emit_event("snapshot.list", source="snapshot", context={"file": file_path}, details={"count": len(snaps)})
+    return snaps
