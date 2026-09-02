@@ -87,8 +87,9 @@ def safe_apply(file_path: str, new_content: str) -> dict:
         # Attempt rollback to previous snapshot
         try:
             rollback(file_path, snap.get("snapshot"))
-        except Exception:
-            pass
+        except Exception as e2:
+            # Surface rollback failure for observability but do not break caller
+            emit_event("safe_apply.rollback_failed", source="safe_apply", context={"file": file_path}, details={"error": str(e2)})
         emit_event("safe_apply.replace_failed", source="safe_apply", context={"file": file_path}, details={"reason": str(e)})
         return {"status": "failed", "reason": f"replace_failed: {e}"}
 
