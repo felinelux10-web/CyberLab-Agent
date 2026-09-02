@@ -5,6 +5,7 @@ from lab_v4_dev.llm.provider_names import GROQ
 import os
 import json
 from datetime import datetime
+from lab_v4_dev.core.audit import emit_event
 
 DIAG_HISTORY_FILE = "project_data/diag_history.json"
 
@@ -106,6 +107,18 @@ def run_diagnostics(quick=False) -> dict:
         "failures" : failures,
         "quick"    : quick,
     }
+
+    # Emit a canonical diagnostics event for observability (P014-03, P014-01)
+    try:
+        emit_event(
+            "diagnostics.completed",
+            source="self_diagnostics",
+            context={"quick": quick},
+            details={"health": health, "warnings": warnings, "failures": failures},
+            persist=False,
+        )
+    except Exception:
+        pass
 
     # حفظ آخر نتيجة
     _save_history(health, warnings)
