@@ -10,6 +10,7 @@ from lab_v4_dev.planner.impact_analyzer import analyze_impact
 from lab_v4_dev.recovery.snapshot import take, list_snapshots, SNAPSHOTS_DIR
 from lab_v4_dev.recovery.rollback import rollback
 from lab_v4_dev.recovery.permissions import check_write
+from lab_v4_dev.core.audit import emit_event
 
 CACHE_DIR = "lab_v4_dev/cache"
 
@@ -81,10 +82,13 @@ class SafePipeline:
                 result = take(file_path)
                 if result["status"] == "ok":
                     snapshots[file_path] = result["snapshot"]
+                    emit_event("safe_pipeline.snapshot_ok", source="safe_pipeline", context={"file": file_path}, details={"snapshot": result.get("snapshot")})
                 else:
                     snapshots[file_path] = None
+                    emit_event("safe_pipeline.snapshot_skipped", source="safe_pipeline", context={"file": file_path}, details={"status": result.get("status")})
             except Exception as e:
                 failed.append({"file": file_path, "error": str(e)})
+                emit_event("safe_pipeline.snapshot_failed", source="safe_pipeline", context={"file": file_path}, details={"error": str(e)})
 
         return {
             "snapshot_id": datetime.now().strftime("%Y%m%d_%H%M%S"),
@@ -97,10 +101,12 @@ class SafePipeline:
     # ─────────────────────────────────────
     def execute(self, plan: dict, modifications: dict) -> dict:
         files     = list(modifications.keys())
+        emit_event("safe_pipeline.execute.start", source="safe_pipeline", context={"task": plan.get("task"), "files": files})
         bundle    = self.analyze(files)
         snapshots = self.snapshot_all(files)
 
         if snapshots["failed"]:
+            emit_event("safe_pipeline.execute.aborted", source="safe_pipeline", context={"task": plan.get("task")}, details={"failed": snapshots["failed"]})
             return {
                 "status" : "aborted",
                 "reason" : "snapshot_failed",
@@ -112,6 +118,7 @@ class SafePipeline:
 
         for file_path, new_content in modifications.items():
             try:
+                emit_event("safe_pipeline.file_write.start", source="safe_pipeline", context={"file": file_path})
                 check_write(file_path)
 
                 tmp = file_path + ".tmp"
@@ -121,8 +128,12 @@ class SafePipeline:
                 # Syntax check
                 validation = self._validate_syntax(tmp)
                 if not validation["ok"]:
-                    os.remove(tmp)
+                    try:
+                        os.remove(tmp)
+                    except Exception:
+                        pass
                     self._rollback_all(snapshots["snapshots"], completed)
+                    emit_event("safe_pipeline.file_write.syntax_error", source="safe_pipeline", context={"file": file_path}, details={"error": validation.get("error")})
                     return {
                         "status": "failed",
                         "reason": f"syntax_error in {file_path}",
@@ -132,9 +143,11 @@ class SafePipeline:
                 os.replace(tmp, file_path)
                 completed.append(file_path)
                 results[file_path] = "ok"
+                emit_event("safe_pipeline.file_write.ok", source="safe_pipeline", context={"file": file_path})
 
             except Exception as e:
                 self._rollback_all(snapshots["snapshots"], completed)
+                emit_event("safe_pipeline.execute.failed", source="safe_pipeline", context={"task": plan.get("task")}, details={"error": str(e), "rolled_back": completed})
                 return {
                     "status": "failed",
                     "reason": str(e),
@@ -143,6 +156,7 @@ class SafePipeline:
 
         # تحديث project memory
         save_memory(self.db)
+        emit_event("safe_pipeline.execute.success", source="safe_pipeline", context={"task": plan.get("task")}, details={"files_modified": len(completed), "snapshot_id": snapshots.get("snapshot_id"), "risk": bundle.get("overall_risk")})
 
         return {
             "status"     : "success",
@@ -185,6 +199,7 @@ class SafePipeline:
     # Rollback All
     # ─────────────────────────────────────
     def _rollback_all(self, snapshots: dict, files: list):
+        emit_event("safe_pipeline.rollback_all", source="safe_pipeline", context={"files": files})
         for f in files:
             snap = snapshots.get(f)
             if snap:
