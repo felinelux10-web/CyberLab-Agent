@@ -147,7 +147,10 @@ class ConversationManager:
         intent = parsed.get("intent") if parsed else None
 
         # Explicit operational modes.
-        if mode in ("TASK", "SYSTEM"):
+        # SYSTEM commands are always routed to the orchestrator (agent actions).
+        # Do NOT let TASK mode unconditionally override the intent decision —
+        # intent remains authoritative to avoid hijacking conversational inputs.
+        if mode == "SYSTEM":
             return self.orchestrator.handle(
                 text,
                 parsed=parsed,
