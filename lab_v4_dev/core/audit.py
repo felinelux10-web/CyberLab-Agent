@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import os
 from typing import Any, Dict, Optional
@@ -26,6 +26,16 @@ class EventRecord:
         return asdict(self)
 
 
+def _move_corrupt(path: str):
+    try:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        corrupt_path = f"{path}.corrupt.{ts}"
+        os.replace(path, corrupt_path)
+        log.info("Moved corrupted audit file to %s", corrupt_path)
+    except Exception:
+        log.exception("Failed to move corrupted audit file %s", path)
+
+
 def _load_audit_file(path: str) -> list:
     if not os.path.exists(path):
         return []
@@ -34,10 +44,21 @@ def _load_audit_file(path: str) -> list:
             data = json.load(f)
             if isinstance(data, list):
                 return data
+            log.warning("Audit file %s contains unexpected JSON (not a list); preserving and starting fresh", path)
+            # Move corrupt/unexpected file aside to avoid data loss
+            try:
+                _move_corrupt(path)
+            except Exception:
+                pass
+            return []
     except Exception:
-        # If file is corrupted or unreadable, don't crash the caller.
+        # If file is corrupted or unreadable, preserve it and don't crash the caller.
         log.exception("Failed to read audit file %s", path)
-    return []
+        try:
+            _move_corrupt(path)
+        except Exception:
+            pass
+        return []
 
 
 def _write_audit_file(path: str, entries: list) -> None:
@@ -68,8 +89,11 @@ def emit_event(event: str, source: str = "system", context: Optional[Dict[str, A
     context = context or {}
     details = details or {}
 
+    # Use timezone-aware UTC timestamp
+    ts = datetime.now(timezone.utc).isoformat()
+
     rec = EventRecord(
-        timestamp=datetime.utcnow().isoformat() + "Z",
+        timestamp=ts,
         event=event,
         source=source,
         context=dict(context),
