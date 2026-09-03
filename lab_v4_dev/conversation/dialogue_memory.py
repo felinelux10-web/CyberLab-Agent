@@ -55,7 +55,9 @@ class DialogueMemory:
 
     @property
     def last_list(self):
-        return self.state.history
+        """Compatibility view of the bounded dialogue history."""
+        history = getattr(self.state, "history", [])
+        return list(history or [])
 
     @property
     def last_items(self):

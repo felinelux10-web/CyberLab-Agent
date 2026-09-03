@@ -100,8 +100,9 @@ class ConversationManager:
         # Presentation layer only.
         # ----------------------------------------------------
         if result.get("text"):
-            result["text"] = single_question(
-                format_response(result["text"], mode)
+            result["text"] = format_response(
+                result["text"],
+                mode,
             )
 
         if self.dni:
@@ -211,15 +212,15 @@ class ConversationManager:
         result = {}
 
         try:
-            history = (
-                getattr(
-                    self.dialogue_memory,
-                    "last_list",
-                    [],
-                )
-                if self.dialogue_memory
-                else []
-            )
+            history = []
+            if self.dialogue_memory:
+                state = getattr(self.dialogue_memory, "state", None)
+                if state is not None:
+                    history = list(getattr(state, "history", []) or [])
+                else:
+                    history = list(
+                        getattr(self.dialogue_memory, "last_list", []) or []
+                    )
 
             system, prompt = build_chat_prompt(
                 text,

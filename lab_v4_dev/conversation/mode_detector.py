@@ -81,37 +81,97 @@ CHAT_PATTERNS = [
 
 def detect_mode(text: str) -> str:
     """
-    يعيد: TASK / SYSTEM / DISCUSSION / QUESTION / FOLLOW_UP / CHAT
+    يعيد: TASK / SYSTEM / DISCUSSION / QUESTION / FOLLOW_UP / CHAT.
+
+    FOLLOW_UP له أولوية على QUESTION عندما تكون الرسالة متابعة قصيرة
+    واضحة، بينما DISCUSSION يحتفظ بأولوية أعلى عندما تكون صيغة الرأي/النقاش صريحة.
     """
     t = text.strip()
 
-    # SYSTEM أولاً — أوامر تخص الوكيل نفسه
+    if not t:
+        return "CHAT"
+
+    # SYSTEM — أوامر الوكيل نفسه.
     if any(p in t for p in SYSTEM_PATTERNS):
         return "SYSTEM"
 
-    # FOLLOW_UP — المتابعات الحوارية قبل الأسئلة
-    words = t.split()
-    if words and words[0] in FOLLOW_UP_PATTERNS:
-        return "FOLLOW_UP"
-    if any(p in t for p in FOLLOW_UP_PATTERNS):
-        return "FOLLOW_UP"
-
-    # QUESTION
-    if any(p in t for p in QUESTION_PATTERNS):
-        return "QUESTION"
-
-    # DISCUSSION
-    if any(p in t for p in DISCUSSION_PATTERNS):
-        return "DISCUSSION"
-
-    # TASK — explicit task language must win over incidental chat words.
-    # Example: "اكتب سكريبت يطبع مرحبا" is a TASK, not CHAT.
+    # TASK — الأوامر التنفيذية الصريحة لها الأولوية.
     if any(p in t for p in TASK_PATTERNS):
         return "TASK"
 
-    # CHAT — only when no stronger semantic/task signal exists.
+    # FOLLOW_UP — المتابعات القصيرة الواضحة يجب أن تسبق QUESTION.
+    stripped = t
+
+    exact_followups = {
+        "كيف يعمل؟", "كيف يعمل",
+        "لماذا؟", "لماذا",
+        "ما دوره؟", "ما دوره",
+        "ما وظيفته؟", "ما وظيفته",
+        "ما علاقته؟", "ما علاقته",
+        "ماذا عنه؟", "ماذا عنه",
+        "ماذا عن ذلك؟", "ماذا عن ذلك",
+        "ماذا عن هذا؟", "ماذا عن هذا",
+        "ماذا عن السابق؟", "ماذا عن السابق",
+        "ما التالي؟", "ما التالي",
+        "ثم ماذا؟", "ثم ماذا",
+        "وماذا بعد؟", "وماذا بعد",
+        "لخصه", "لخصها", "لخصهما",
+        "أكمل", "اكمل", "تابع",
+    }
+
+    if stripped in exact_followups:
+        return "FOLLOW_UP"
+
+    reference_prefixes = (
+        "ولماذا",
+        "وما علاقته",
+        "وماذا عن",
+        "وأيهما",
+    )
+
+    if any(stripped.startswith(p) for p in reference_prefixes):
+        return "FOLLOW_UP"
+
+    # صيغ مرجعية صريحة من نوع:
+    # "ماذا عن هذا التصميم؟"
+    # "ما علاقته بهذا؟"
+    #
+    # لا نعتمد على وجود "هذا" وحدها؛ يجب أن تكون الصيغة
+    # واحدة من البنى المرجعية المعروفة.
+    if stripped.startswith("ماذا عن "):
+        return "FOLLOW_UP"
+
+    if stripped.startswith("ما علاقته "):
+        return "FOLLOW_UP"
+
+    if stripped.startswith("وما علاقته "):
+        return "FOLLOW_UP"
+
+    # DISCUSSION — الرأي والمقارنة والنقاش الصريح.
+    if any(p in t for p in DISCUSSION_PATTERNS):
+        return "DISCUSSION"
+
+    # QUESTION — الأسئلة الكاملة العامة.
+    if any(p in t for p in QUESTION_PATTERNS):
+        return "QUESTION"
+
+    # CHAT — التحية والمحادثة الاجتماعية البسيطة.
     if any(p in t for p in CHAT_PATTERNS):
         return "CHAT"
 
-    # TASK — conservative legacy default.
+    # أسئلة عامة شائعة.
+    if any(
+        p in t
+        for p in (
+            "ماذا لدينا",
+            "ماذا يوجد",
+            "ما لدينا",
+            "ما الموجود",
+            "كيف حالك",
+            "كيف الحال",
+        )
+    ):
+        return "QUESTION"
+
+    # المحافظة على السلوك القديم كـ TASK افتراضي.
     return "TASK"

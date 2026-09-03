@@ -41,10 +41,10 @@ def format_response(text: str, mode: str = "TASK") -> str:
 
 def single_question(text: str) -> str:
     """
-    يتأكد أن الرد لا يحتوي أكثر من سؤال واحد.
-    إذا وجد أكثر من علامة استفهام يبقي الأول فقط.
+    Compatibility wrapper.
+
+    لا نحذف الأسئلة من رد المساعد.
+    الرد الطبيعي قد يحتوي عدة أسئلة أو أمثلة أو نقاطاً
+    ويجب ألا تقوم طبقة العرض بإتلاف محتواه.
     """
-    parts = text.split("؟")
-    if len(parts) > 2:
-        return parts[0] + "؟"
     return text
