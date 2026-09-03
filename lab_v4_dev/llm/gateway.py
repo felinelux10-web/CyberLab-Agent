@@ -17,6 +17,7 @@ from lab_v4_dev.config.provider_config import (
 from lab_v4_dev.llm.contracts import (
     LLMRequest,
     LLMResponse,
+    LLMError,
 )
 
 CHAIN = ["openrouter", "gemini", "groq", "local", "dummy"]
@@ -29,7 +30,6 @@ def _normalize_error(exc, provider, model=None):
     """
     Convert provider exceptions into the canonical LLMError contract.
     """
-    from lab_v4_dev.llm.contracts import LLMError
 
     if isinstance(exc, TimeoutError):
         return LLMError(
@@ -47,6 +47,7 @@ def _normalize_error(exc, provider, model=None):
         retryable=False,
         timeout=False,
     )
+
 
 def _provider_chain(active, fallback):
     providers = []
@@ -87,6 +88,41 @@ def _prepare_request(
     )
 
 
+def _response_to_dict(resp: LLMResponse) -> dict:
+    """Normalize LLMResponse dataclass into a plain dict that callers expect.
+
+    This adapter keeps the gateway's internal contract (LLMResponse) but
+    exposes a stable dict interface to the rest of the codebase where many
+    callers use dict-like access (result.get(...)).
+    """
+    metadata = dict(resp.metadata or {})
+    out = {
+        "status": resp.status,
+        "text": resp.text or "",
+        "provider_used": resp.provider,
+        "provider": resp.provider,
+        "model": resp.model,
+        "tokens": int(resp.tokens or 0),
+        "fallback_used": bool(getattr(resp, "fallback_used", False)),
+        "metadata": metadata,
+        "provider_chain": metadata.get("provider_chain", []),
+        "error": None,
+    }
+
+    if getattr(resp, "error", None):
+        err = resp.error
+        out["error"] = {
+            "code": getattr(err, "code", None),
+            "message": getattr(err, "message", str(err)),
+            "provider": getattr(err, "provider", None),
+            "retryable": getattr(err, "retryable", False),
+            "timeout": getattr(err, "timeout", False),
+            "details": getattr(err, "details", None),
+        }
+
+    return out
+
+
 def ask(
     prompt,
     system=None,
@@ -104,7 +140,7 @@ def ask(
         2. Provider selection
         3. Centralized fallback ordering
         4. Provider execution through LLMRequest
-        5. Canonical LLMResponse return
+        5. Canonical LLMResponse return (adapted to dict for callers)
 
     Provider-specific implementation details must not escape here.
     """
@@ -160,6 +196,7 @@ def ask(
                     provider=name,
                     model=request.model,
                 )
+                # continue to next provider
                 continue
 
             result.metadata = dict(result.metadata or {})
@@ -178,7 +215,8 @@ def ask(
                 last_error = result
                 continue
 
-            return result
+            # Successful LLMResponse — convert to dict for callers
+            return _response_to_dict(result)
 
         except (TimeoutError, Exception) as exc:
             last_error = LLMResponse.failure(
@@ -194,20 +232,20 @@ def ask(
     if last_error is not None:
         last_error.metadata = dict(last_error.metadata or {})
         last_error.metadata["provider_chain"] = providers
-        return last_error
+        return _response_to_dict(last_error)
 
-    from lab_v4_dev.llm.contracts import LLMError
-
-    return LLMResponse.failure(
-        LLMError(
-            code="NO_PROVIDER_AVAILABLE",
-            message="No configured provider is available",
+    return _response_to_dict(
+        LLMResponse.failure(
+            LLMError(
+                code="NO_PROVIDER_AVAILABLE",
+                message="No configured provider is available",
+                provider="gateway",
+                retryable=False,
+            ),
             provider="gateway",
-            retryable=False,
-        ),
-        provider="gateway",
-        model=request.model,
-        metadata={
-            "provider_chain": providers,
-        },
+            model=request.model,
+            metadata={
+                "provider_chain": providers,
+            },
+        )
     )
