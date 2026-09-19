@@ -4,7 +4,7 @@
 from lab_v4_dev.intent.dictionary import DICTIONARY
 from lab_v4_dev.intent.normalizer import normalize
 from lab_v4_dev.intent.intents import Intent
-from lab_v4_dev.intent.fuzzy_normalizer import deep_normalize
+from lab_v4_dev.intent.fuzzy_normalizer import deep_normalize, similarity
 import re
 
 def _build_dict():
@@ -44,7 +44,24 @@ def match(user_input: str) -> dict:
             return {"intent":intent,"confidence":0.85,
                     "method":"word","raw":user_input}
 
-    # 3. لا نستخدم تطابق عكسي عام بعد الآن — يمنع حالات الخطأ من التفاف الكلمات القصيرة
+    # 3. Fuzzy fallback — لا يعمل إلا بعد فشل exact/word
+    # نستخدم عتبة محافظة لتقليل false positives.
+    best_intent = None
+    best_score = 0.0
+
+    for key, intent in items:
+        score = similarity(user_input, key)
+        if score > best_score:
+            best_score = score
+            best_intent = intent
+
+    if best_intent is not None and best_score >= 0.82:
+        return {
+            "intent": best_intent,
+            "confidence": best_score,
+            "method": "fuzzy",
+            "raw": user_input,
+        }
 
     return {"intent":Intent.UNCLEAR,"confidence":0.0,
             "method":"none","raw":user_input}

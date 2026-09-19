@@ -18,9 +18,14 @@ def save_roadmap(data: dict):
     pk_save_roadmap(data)
 
 def get_status() -> dict:
+    try:
+        from lab_v4_dev.core.project_metadata import ProjectMetadata
+        version = ProjectMetadata().get_version()
+    except Exception:
+        version = "?"
     r = load_roadmap()
     return {
-        "version"      : r.get("version", "?"),
+        "version"      : version,
         "current_focus": r.get("current_focus", "?"),
         "completed"    : r.get("completed", []),
         "active"       : r.get("active", []),

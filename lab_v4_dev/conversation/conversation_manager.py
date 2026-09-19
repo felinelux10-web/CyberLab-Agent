@@ -39,6 +39,7 @@ from lab_v4_dev.intent.intents import Intent
 
 _NON_EXECUTABLE_INTENTS = {
     Intent.UNCLEAR,
+    Intent.PERSONAL_CHAT,
     Intent.UNSUPPORTED,
     Intent.HELP,
     "unclear",
@@ -55,6 +56,27 @@ class ConversationManager:
         self.dni = dni
 
     def process(self, user_input: str) -> dict:
+        # Consume an existing project-list ordering clarification
+        # before treating "1/2/3" as a new independent request.
+        if self.dialogue_memory:
+            pending = getattr(
+                getattr(self.dialogue_memory, "state", None),
+                "pending_clarification",
+                None,
+            )
+            if isinstance(pending, dict) and pending.get("kind") == "project_order":
+                choice = str(user_input).strip()
+                orders = {
+                    "1": "حسب ترتيب العمل عليها",
+                    "2": "أبجديًا",
+                    "3": "حسب الحجم",
+                }
+                order = orders.get(choice)
+                if order:
+                    base_request = str(pending.get("request", "")).strip()
+                    self.dialogue_memory.state.pending_clarification = None
+                    user_input = f"{base_request} {order}".strip()
+
         mode = detect_mode(user_input)
 
         # ----------------------------------------------------
@@ -75,6 +97,30 @@ class ConversationManager:
             mode,
             parsed,
         )
+
+        # Project-list clarification is conversation-owned state.
+        if self.dialogue_memory:
+            state = getattr(self.dialogue_memory, "state", None)
+            if state is not None:
+                if (
+                    result.get("status") == "needs_clarification"
+                    and parsed.get("intent") == Intent.PROJECT_INDEX
+                    and any(
+                        term in str(user_input)
+                        for term in (
+                            "المشاريع",
+                            "مشاريع",
+                            "اسماء",
+                            "أسماء",
+                            "اسماؤ",
+                            "أسماؤ",
+                        )
+                    )
+                ):
+                    state.pending_clarification = {
+                        "kind": "project_order",
+                        "request": user_input,
+                    }
 
         # ----------------------------------------------------
         # Semantic metadata only.
@@ -152,10 +198,26 @@ class ConversationManager:
         # Do NOT let TASK mode unconditionally override the intent decision —
         # intent remains authoritative to avoid hijacking conversational inputs.
         if mode == "SYSTEM":
-            return self.orchestrator.handle(
+            result = self.orchestrator.handle(
                 text,
                 parsed=parsed,
             )
+            result = dict(result)
+            result["executed"] = result.get("status") != "needs_clarification"
+            return result
+
+        # ----------------------------------------------------
+        # Unsupported is a canonical non-executable result.
+        # Preserve the parser decision instead of letting the
+        # conversational fallback relabel it as the current mode.
+        if mode == "TASK" and intent in (Intent.UNSUPPORTED, "unsupported"):
+            return {
+                "status": "unsupported",
+                "intent": intent,
+                "text": f"لم أفهم الأمر: {text[:50]}",
+                "mode": mode,
+                "executed": False,
+            }
 
         # ----------------------------------------------------
         # FOLLOW_UP MUST NOT automatically become CHAT.
@@ -168,10 +230,13 @@ class ConversationManager:
         # Therefore -> Orchestrator.
         # ----------------------------------------------------
         if intent not in _NON_EXECUTABLE_INTENTS:
-            return self.orchestrator.handle(
+            result = self.orchestrator.handle(
                 text,
                 parsed=parsed,
             )
+            result = dict(result)
+            result["executed"] = result.get("status") != "needs_clarification"
+            return result
 
         # Only genuinely unresolved conversational input reaches LLM.
         return self._handle_chat(text, mode)
@@ -213,6 +278,24 @@ class ConversationManager:
 
     def _handle_chat(self, text: str, mode: str) -> dict:
         result = {}
+        if mode == "CHAT":
+            try:
+                parsed = self._safe_parse(text)
+            except Exception:
+                parsed = {}
+            if parsed.get("intent") == Intent.PERSONAL_CHAT:
+                return {
+                    "status": "success",
+                    "intent": Intent.PERSONAL_CHAT,
+                    "text": (
+                        f"فهمت سؤالك: «{text}». أنا وكيل برمجي ولا أملك مشاعر، "
+                        "لكنني جاهز لمساعدتك."
+                    ),
+                    "mode": mode,
+                    "source": "local",
+                    "executed": False,
+                }
+
 
         try:
             history = []
@@ -233,7 +316,7 @@ class ConversationManager:
             result = gateway_ask(
                 prompt,
                 system=system,
-                max_tokens=300,
+                max_tokens=1600,
                 temperature=0.7,
                 routing_text=text,
             )
@@ -260,6 +343,7 @@ class ConversationManager:
                     [],
                 ),
                 "model": result.get("model"),
+                "executed": False,
             }
 
         except Exception as e:
@@ -295,6 +379,7 @@ class ConversationManager:
                     else None
                 ),
                 "error": str(e),
+                "executed": False,
             }
 
     def switch_topic(

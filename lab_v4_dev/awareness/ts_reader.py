@@ -118,9 +118,9 @@ def scan_project(project_root: str) -> dict:
         "reverse_imports": {k: list(v) for k, v in reverse_imports.items()},
     }
 
-    # حفظ في workspace
-    out_dir = os.path.expanduser(
-        "~/cyberlab_agent/workspace/external_index")
+    # حفظ داخل فهرس المشروع نفسه، لا في مسار عام مشترك بين المشاريع.
+    from lab_v4_dev.core.project_context import project_index_dir
+    out_dir = project_index_dir(project_root)
     os.makedirs(out_dir, exist_ok=True)
 
     def w(name, data):

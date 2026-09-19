@@ -16,6 +16,8 @@ SOUND_MAP = {
     "مساخة":"مساحة","مساحه":"مساحة",
     "الرام":"الذاكرة","رام":"ذاكرة",
     "ماهة":"ماهي","ماهو":"ما هو",
+    "اسناؤها":"اسماؤها","اسناءها":"اسماؤها",
+    "اسناوها":"اسماؤها","اسماوها":"اسماؤها",
     "حللملف":"حلل ملف","اقراملف":"اقرأ ملف",
     "كيبورد":"لوحة","سيستم":"نظام",
 }
@@ -30,8 +32,10 @@ def deep_normalize(text: str) -> str:
     result = re.sub(r"\bال", "", result)
 
     # 3. تطبيع الأخطاء الصوتية
-    for wrong, correct in SOUND_MAP.items():
-        result = result.replace(wrong, correct)
+    # Apply longer phrases first so compound corrections
+    # cannot be corrupted by shorter substring replacements.
+    for wrong in sorted(SOUND_MAP, key=len, reverse=True):
+        result = result.replace(wrong, SOUND_MAP[wrong])
 
     # 4. تنظيف المسافات
     result = re.sub(r"\s+", " ", result).strip()
@@ -39,12 +43,33 @@ def deep_normalize(text: str) -> str:
     return result
 
 def similarity(a: str, b: str) -> float:
-    # مسافة Levenshtein بسيطة
+    # Normalized Levenshtein similarity.
+    # Used only as a conservative fallback after exact/word matching fails.
     a, b = deep_normalize(a), deep_normalize(b)
+
     if a == b:
         return 1.0
-    if len(a) == 0 or len(b) == 0:
+    if not a or not b:
         return 0.0
-    # نسبة الأحرف المشتركة
-    common = sum(1 for c in a if c in b)
-    return common / max(len(a), len(b))
+
+    if len(a) < len(b):
+        a, b = b, a
+
+    previous = list(range(len(b) + 1))
+
+    for i, ca in enumerate(a, 1):
+        current = [i]
+
+        for j, cb in enumerate(b, 1):
+            insert_cost = current[j - 1] + 1
+            delete_cost = previous[j] + 1
+            replace_cost = previous[j - 1] + (ca != cb)
+
+            current.append(
+                min(insert_cost, delete_cost, replace_cost)
+            )
+
+        previous = current
+
+    distance = previous[-1]
+    return 1.0 - (distance / max(len(a), len(b)))

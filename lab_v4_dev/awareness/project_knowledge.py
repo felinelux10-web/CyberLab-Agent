@@ -137,17 +137,10 @@ def is_cache_valid(max_age: float = None) -> bool:
 
 def get_current_version() -> str:
     try:
-        from lab_v4_dev.awareness.release_analyzer import get_available_versions
-        versions = get_available_versions()
-        if versions:
-            return versions[-1]
+        from lab_v4_dev.core.project_metadata import ProjectMetadata
+        return ProjectMetadata().get_version()
     except:
-        pass
-    try:
-        ref = yaml.safe_load(open(os.path.join(BASE, "lab_v4_dev/configs/MASTER_REF.yaml"), encoding="utf-8"))
-        return ref.get("project", {}).get("version", "?")
-    except:
-        return _load("roadmap.json").get("version", "?")
+        return "?"
 
 def get_roadmap() -> dict:
     return _load("roadmap.json")

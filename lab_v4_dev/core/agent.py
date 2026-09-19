@@ -131,7 +131,7 @@ class Agent:
         if result.get("status") == "unsupported":
             return result
 
-        if result.get("status") == "success":
+        if result.get("status") == "success" and result.get("executed") is True:
             self.session.record_task()
 
         return result

@@ -5,6 +5,7 @@ v5.4.1 — Project Context Layer
 """
 import os
 import hashlib
+import shutil
 from datetime import datetime
 from lab_v4_dev.project_registry.registry import (
     load_registry,
@@ -16,6 +17,7 @@ from lab_v4_dev.project_registry.project_loader import (
 )
 
 CYBERLAB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+BASE_PROJECT_ROOT = CYBERLAB_ROOT
 
 FORBIDDEN_PREFIXES = ["/etc", "/system", "/proc", "/dev", "/sys", "/root"]
 
@@ -30,6 +32,13 @@ def project_index_dir(project_root: str) -> str:
     """مجلد فهرسة هذا المشروع - داخل مساحة عمل الوكيل، لا داخل المشروع نفسه"""
     h = hashlib.md5(os.path.abspath(project_root).encode()).hexdigest()[:10]
     return os.path.join(CYBERLAB_ROOT, "project_indices", h)
+
+
+def clear_project_index(project_root: str) -> None:
+    """يمسح كاش الفهرس الخاص بالمشروع قبل تبديل السياق."""
+    index_dir = project_index_dir(project_root)
+    if os.path.isdir(index_dir):
+        shutil.rmtree(index_dir)
 
 
 class ProjectContext:
@@ -63,7 +72,7 @@ if _loaded:
 else:
     # المشروع الافتراضي = cyberlab_agent
     _active_project = ProjectContext(
-        root=os.path.abspath(os.path.join(os.path.dirname(__file__), "..")),
+        root=BASE_PROJECT_ROOT,
         name="cyberlab_agent",
         ptype="agent",
     )
@@ -88,6 +97,11 @@ def set_active_project(root: str) -> dict:
         return {"status": "error", "message": f"ليس مجلداً: {abs_root}"}
     if not is_safe_project_path(abs_root):
         return {"status": "error", "message": f"مسار غير مسموح (نظام): {abs_root}"}
+
+    previous_root = _active_project.root
+    if os.path.abspath(previous_root) != abs_root:
+        for project_root in {previous_root, abs_root}:
+            clear_project_index(project_root)
 
     _active_project = ProjectContext(root=abs_root)
 

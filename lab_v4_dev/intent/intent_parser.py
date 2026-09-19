@@ -120,7 +120,20 @@ def _interpret(user_input: str) -> dict:
             from lab_v4_dev.nlu.semantic_normalizer import analyze as nlu_analyze
             from lab_v4_dev.nlu.context_resolver import resolve as ctx_resolve, save_state
             nlu_result = nlu_analyze(user_input)
-            if nlu_result["intent"] and nlu_result.get("confidence", 0) >= 0.85:
+            # PERSONAL_CHAT is a deliberate conversational classification.
+            # Do not discard it merely because its confidence is below the
+            # technical-intent threshold; otherwise later resolver/family
+            # layers can hijack ordinary conversation.
+            _nlu_intent = nlu_result.get("intent")
+            _nlu_confidence = nlu_result.get("confidence", 0)
+
+            if (
+                _nlu_intent == Intent.PERSONAL_CHAT
+                or (
+                    _nlu_intent
+                    and _nlu_confidence >= 0.85
+                )
+            ):
                 # Context Resolver — استكمال العناصر الناقصة
                 nlu_result = ctx_resolve(nlu_result)
 
@@ -236,8 +249,29 @@ def _interpret(user_input: str) -> dict:
         intent     = resolve(user_input)
         confidence = 0.8
 
-    # 7.5 — إذا لا يزال unclear بعد كل المحاولات → unsupported
-    if intent == Intent.UNCLEAR or intent == Intent.HELP:
+    # 7.5 — Natural dialogue fallback.
+    # Reuse PERSONAL_CHAT for inputs that remain UNCLEAR only when
+    # they contain no explicit operational/system/project signal.
+    if intent == Intent.UNCLEAR:
+        _chat_norm = normalize(user_input).strip()
+        _operational_signals = (
+            "ملف", "مجلد", "مشروع", "نظام", "كود", "الكود",
+            "تنفيذ", "نفذ", "شغل", "تشغيل", "اعرض", "اظهر",
+            "ابحث", "حلل", "قارن", "عدّل", "تعديل", "احذف",
+            "امسح", "نظف", "تنظيف", "اختبر", "اختبار",
+            "تقرير", "حالة", "مهمة", "مهام", "جلسة",
+            "استكمل", "استكمال", "استرجع", "استعادة",
+            "project", "file", "code", "run", "test"
+        )
+        if _chat_norm and not any(
+            _token_has_word(_chat_norm, signal)
+            for signal in _operational_signals
+        ):
+            intent = Intent.PERSONAL_CHAT
+            confidence = 0.60
+
+    # HELP remains unsupported here when no dedicated help route won.
+    if intent == Intent.HELP:
         intent = Intent.UNSUPPORTED
 
     # 8. استخراج الهدف

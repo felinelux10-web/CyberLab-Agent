@@ -3,6 +3,7 @@
 
 class Intent:
     STATUS           = "status"
+    PERSONAL_CHAT    = "personal_chat"
     STOP             = "stop"
     RESUME           = "resume"
     RESTART          = "restart"
@@ -140,6 +141,7 @@ class Intent:
     CYBER_EXPLAIN  = "cyber_explain"
     SYSTEM_STATUS    = "system_status"
     WORK_CONTEXT     = "work_context"
+    RETURN_BASE_PROJECT = "return_base_project"
     AUDIT_LOG        = "audit_log"
     SECURITY_LOG     = "security_log"
     SAVE_KB          = "save_kb"

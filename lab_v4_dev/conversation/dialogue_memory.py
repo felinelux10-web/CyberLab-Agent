@@ -251,6 +251,20 @@ class DialogueMemory:
                 "الحل الثاني",
                 str(self.state.last_items[1]),
             )
+        # أسئلة قصيرة غامضة — ألصقها بآخر موضوع معروف بدلاً من
+        # إعادة تحليلها كطلب شرح مستقل بلا هدف.
+        if topic and len(text.split()) <= 7 and any(
+            phrase in text for phrase in (
+                "مثال عليه",
+                "مثال عملي عليه",
+                "وضح أكثر",
+                "اشرح أكثر",
+                "زدني",
+                "أكمل الشرح",
+            )
+        ):
+            return topic + " " + text
+
 
         return resolved
 

@@ -60,8 +60,7 @@ def is_quality(answer: str, topic: str = "") -> bool:
     return True
 
 def store(topic: str, answer: str, source: str = GROQ):
-    if not is_quality(answer, topic):
-        return False
+    # Manual approval: explicit user confirmation means save unconditionally.
     key = _normalize(topic)
     data = _load()
     if key not in data:

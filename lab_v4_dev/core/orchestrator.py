@@ -13,8 +13,9 @@ from lab_v4_dev.core.logger import log
 from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.context.context_resolver import bind_context
 from lab_v4_dev.core.contracts import Request, Context, Response
-from lab_v4_dev.llm.router import route as llm_route, needs_llm
+from lab_v4_dev.llm.router import needs_llm
 from lab_v4_dev.llm.gateway import ask
+from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
 from lab_v4_dev.config.provider_config import get_active_provider
 import os
 import shutil
@@ -33,15 +34,6 @@ class Orchestrator:
         self.context  = context if context is not None else ContextStore()
         self._analyzed_files  = set()
         self._impact_analyzed = set()
-        # ─── تعيين المشروع النشط الصحيح عند البدء ───
-        try:
-            from lab_v4_dev.core.project_context import set_active_project
-            import os
-            _default = os.path.expanduser("~/cyberlab_agent")
-            set_active_project(_default)
-        except:
-            pass
-
     def _get_pipeline(self):
         if not self.pipeline:
             self.pipeline = SafePipeline(self.agent.db)
@@ -171,12 +163,6 @@ class Orchestrator:
             if intent in ("self_diagnose","full_diagnose","repair_analyze"):
                 pass  # هذه لها مصادر حقيقية — مسموح
 
-        # auto_save = false
-        if not mem.get("auto_save", True):
-            if intent == "save_kb":
-                return {"status":"blocked","intent":intent,
-                        "text":"💾 الحفظ التلقائي معطل. يجب الموافقة اليدوية أولاً."}
-
         return None
 
     def _apply_profile(self, result: dict, intent: str) -> dict:
@@ -243,6 +229,27 @@ class Orchestrator:
 
         # ─── فحص المشروع — بيانات محلية أولاً ───
         elif intent == Intent.PROJECT_SCAN:
+            if any(
+                phrase in raw for phrase in [
+                    "كم مشروع", "عدد المشاريع", "كم عدد المشاريع"
+                ]
+            ):
+                from lab_v4_dev.project_registry.project_loader import list_registered_projects
+
+                projects = list_registered_projects()
+                unique = {}
+                for project in projects:
+                    root = project.get("root")
+                    if root:
+                        unique[root] = project
+
+                return {
+                    "status": "success",
+                    "intent": intent,
+                    "source": "local",
+                    "text": f"عدد المشاريع المسجلة: {len(unique)}"
+                }
+
             from lab_v4_dev.awareness.dependency_engine import get_entry_points, get_critical_files, get_snapshot
             from lab_v4_dev.awareness.project_index import get_layer_map
             from lab_v4_dev.core.project_context import get_active_project
@@ -458,8 +465,8 @@ class Orchestrator:
 
         # ─── الإصدار الحالي ───
         elif intent == Intent.CURRENT_VERSION:
-            from lab_v4_dev.awareness.project_knowledge import get_current_version
-            version = get_current_version()
+            from lab_v4_dev.core.project_metadata import ProjectMetadata
+            version = ProjectMetadata().get_version()
             return {"status":"success","intent":intent,
                     "text":f"الإصدار الحالي: {version}"}
 
@@ -792,8 +799,213 @@ class Orchestrator:
                 "health": result["health"],
             }
 
-        # ─── Project Index ───
+        # ─── Project Index / Project Registry ───
         elif intent == Intent.PROJECT_INDEX:
+            # طلبات قائمة المشاريع المسجلة تُفصل عن "خريطة المشروع".
+            _project_list_terms = (
+                "اسماء المشاريع", "أسماء المشاريع", "اسماءها", "أسماءها",
+                "اسماؤها", "أسماؤها", "اسناؤها", "اسناءها",
+                "قائمة المشاريع", "المشاريع المسجلة", "عدد المشاريع", "كم مشروع",
+                "ترتب المشاريع", "رتب المشاريع", "ترتيب المشاريع",
+            )
+            _is_project_list = any(term in raw for term in _project_list_terms)
+
+            if _is_project_list:
+                from lab_v4_dev.project_registry.project_loader import (
+                    list_registered_projects,
+                )
+
+                projects = list_registered_projects()
+                unique = {}
+                for project in projects:
+                    root = project.get("root")
+                    if root:
+                        unique[root] = project
+                projects = list(unique.values())
+
+                _wants_count = any(
+                    term in raw for term in (
+                        "عدد المشاريع", "كم مشروع", "كم عدد المشاريع"
+                    )
+                )
+                _wants_names = any(
+                    term in raw for term in (
+                        "اسماء المشاريع", "أسماء المشاريع",
+                        "اسماءها", "أسماءها",
+                        "اسماؤها", "أسماؤها",
+                        "اسناؤها", "اسناءها",
+                        "قائمة المشاريع"
+                    )
+                )
+
+                _order = None
+                if any(term in raw for term in (
+                    "حسب الحروف", "حسب الأبجدية", "أبجديا",
+                    "أبجديًا", "أبجدي"
+                )):
+                    _order = "alphabetical"
+                elif any(term in raw for term in (
+                    "حسب الحجم", "الحجم", "أكبر مشروع", "اصغر مشروع",
+                    "أكبر المشاريع", "أصغر المشاريع"
+                )):
+                    _order = "size"
+                elif any(term in raw for term in (
+                    "حسب العمل", "حسب ترتيب العمل",
+                    "حسب العمل عليها", "ترتيب العمل"
+                )):
+                    _order = "work"
+
+                # العدد وحده لا يحتاج إلى اختيار ترتيب.
+                if _wants_count and not _wants_names and _order is None:
+                    return {
+                        "status": "success",
+                        "intent": intent,
+                        "source": "local",
+                        "text": f"عدد المشاريع المسجلة: {len(projects)}"
+                    }
+
+                # طلب أسماء بلا ترتيب واضح يحتاج توضيحاً قبل العرض.
+                if (_wants_names or _order is not None) and _order is None:
+                    return {
+                        "status": "needs_clarification",
+                        "intent": intent,
+                        "source": "local",
+                        "text": (
+                            "بأي ترتيب تريد عرض المشاريع؟\n"
+                            "1. حسب ترتيب العمل عليها\n"
+                            "2. أبجديًا\n"
+                            "3. حسب الحجم"
+                        )
+                    }
+
+                if _order == "alphabetical":
+                    projects.sort(
+                        key=lambda x: (
+                            str(x.get("name", "")).lower(),
+                            str(x.get("root", "")).lower(),
+                        )
+                    )
+                    lines = []
+                    if _wants_count:
+                        lines.append(f"عدد المشاريع: {len(projects)}")
+                    lines.append("المشاريع أبجديًا:")
+                    for project in projects:
+                        lines.append(
+                            f"- {project.get('name', '?')} — {project.get('root', '?')}"
+                        )
+                    return {
+                        "status": "success",
+                        "intent": intent,
+                        "source": "local",
+                        "text": "\n".join(lines),
+                    }
+
+                if _order == "size":
+                    import os as _os
+
+                    def _project_size(root):
+                        total = 0
+                        try:
+                            for dirpath, dirnames, filenames in _os.walk(root):
+                                dirnames[:] = [
+                                    d for d in dirnames
+                                    if d not in {".git", "__pycache__", ".cache"}
+                                ]
+                                for fname in filenames:
+                                    try:
+                                        total += _os.path.getsize(
+                                            _os.path.join(dirpath, fname)
+                                        )
+                                    except OSError:
+                                        pass
+                        except OSError:
+                            pass
+                        return total
+
+                    for project in projects:
+                        project["_size"] = _project_size(project["root"])
+
+                    projects.sort(
+                        key=lambda x: (-x["_size"], x.get("root", ""))
+                    )
+
+                    def _fmt_size(value):
+                        units = ("B", "KB", "MB", "GB", "TB")
+                        size = float(value)
+                        for unit in units:
+                            if size < 1024 or unit == units[-1]:
+                                return f"{size:.1f} {unit}"
+                            size /= 1024
+                        return "0 B"
+
+                    lines = []
+                    if _wants_count:
+                        lines.append(f"عدد المشاريع: {len(projects)}")
+                    lines.append("المشاريع حسب الحجم:")
+                    for project in projects:
+                        lines.append(
+                            f"- {project.get('name', '?')} — "
+                            f"{_fmt_size(project['_size'])} — "
+                            f"{project.get('root', '?')}"
+                        )
+                    return {
+                        "status": "success",
+                        "intent": intent,
+                        "source": "local",
+                        "text": "\n".join(lines),
+                    }
+
+                if _order == "work":
+                    from lab_v4_dev.awareness.project_knowledge import (
+                        get_project_history_list,
+                    )
+
+                    history = get_project_history_list()
+                    history_by_root = {
+                        item.get("root"): item
+                        for item in history
+                        if item.get("root") and item.get("last_used")
+                    }
+
+                    missing = [
+                        project for project in projects
+                        if project.get("root") not in history_by_root
+                    ]
+
+                    if missing:
+                        return {
+                            "status": "needs_clarification",
+                            "intent": intent,
+                            "source": "local",
+                            "text": (
+                                "لا أستطيع ترتيب جميع المشاريع حسب ترتيب العمل "
+                                "بأمان لأن بعض المشاريع لا تملك سجلًا موثقًا "
+                                "لآخر استخدام. اختر ترتيبًا أبجديًا أو حسب الحجم."
+                            )
+                        }
+
+                    projects.sort(
+                        key=lambda x: history_by_root[x["root"]]["last_used"],
+                        reverse=True,
+                    )
+                    lines = []
+                    if _wants_count:
+                        lines.append(f"عدد المشاريع: {len(projects)}")
+                    lines.append("المشاريع حسب آخر ترتيب عمل موثق:")
+                    for project in projects:
+                        lines.append(
+                            f"- {project.get('name', '?')} — "
+                            f"{project.get('root', '?')} — "
+                            f"{history_by_root[project['root']].get('last_used', '?')}"
+                        )
+                    return {
+                        "status": "success",
+                        "intent": intent,
+                        "source": "local",
+                        "text": "\n".join(lines),
+                    }
+
+            # السلوك الأصلي: خريطة طبقات المشروع.
             from lab_v4_dev.awareness.project_index import get_layer_map
             layers = get_layer_map()
             lines  = ["خريطة المشروع:"]
@@ -912,11 +1124,12 @@ class Orchestrator:
             if not os.path.exists(path):
                 return {"status":"success","intent":intent,
                         "text":f"المسار غير موجود: {path}"}
-            sys.path.insert(0, os.path.expanduser("~/cyberlab_agent/lab_v4_dev/awareness"))
-            from ts_reader import scan_project
-            snapshot = scan_project(path)
             from lab_v4_dev.core.project_context import set_active_project
-            set_active_project(path)
+            switched = set_active_project(path)
+            if switched["status"] != "success":
+                return {"status":"failed","intent":intent,"text":switched["message"]}
+            from lab_v4_dev.awareness.ts_reader import scan_project
+            snapshot = scan_project(path)
             lines = [f"تم قراءة المشروع: {path}"]
             lines.append(f"النوع: {snapshot['project_type']}")
             lines.append(f"الملفات: {snapshot['total_files']}")
@@ -942,10 +1155,19 @@ class Orchestrator:
                 }
             # ─── Hallucination Guard ───
             import re as _re
+            _file_extensions = (
+                ".py", ".js", ".ts", ".tsx", ".jsx", ".json", ".yaml",
+                ".yml", ".md", ".txt", ".sh", ".html", ".css", ".sql",
+            )
+            _explicit_file = bool(
+                isinstance(target, str)
+                and ("/" in target or "\\" in target
+                     or target.lower().endswith(_file_extensions))
+            )
             _fake_pattern = _re.compile(r'[A-Z0-9_]{6,}', _re.UNICODE)
             _words = raw.replace("اشرح","").replace("شرح","").replace("ميزة","").replace("ما هو","").replace("ما هي","").strip()
             _has_fake = bool(_fake_pattern.search(_words))
-            if _has_fake:
+            if _has_fake and _explicit_file:
                 _found_in_project = False
                 try:
                     import json as _json
@@ -966,7 +1188,7 @@ class Orchestrator:
             # ─── كشف ملفات المشروع عبر project_index ───
             _project_file_code = None
 
-            if target and str(target).endswith(".py"):
+            if target and _explicit_file:
                 _candidates = [
                     target,
                     os.path.join("lab_v4_dev", target),
@@ -1051,6 +1273,7 @@ SOURCE CODE:
                 _instructions.append("وضح سبب كل خطوة")
             _extra = "\n".join(f"- {i}" for i in _instructions)
 
+            _prompt = raw
             if _project_file_code:
                 system = f"""أنت مهندس برمجيات خبير يحلل ملفات مشروع Python.
 
@@ -1077,7 +1300,7 @@ SOURCE CODE:
 - إذا لم تكن العلاقة موجودة في الكود قل: غير موجود في البيانات المتاحة.
 الكود الحقيقي:
 {_project_file_code}"""
-            else:
+            elif _explicit_file:
                 system = f"""أنت محلل كود Python في مشروع CyberLab Agent.
 
 قواعد صارمة:
@@ -1095,8 +1318,12 @@ SOURCE CODE:
 
 الكود الحقيقي:
 {_project_file_code}"""
+            else:
+                from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
+                system, _prompt = build_cybersec_prompt(raw)
+
             result = ask(
-                raw,
+                _prompt,
                 system=system,
                 max_tokens=2000
             )
@@ -1590,17 +1817,45 @@ SOURCE CODE:
             return {"status":"success","intent":intent,"text":"\n".join(lines)}
 
         # ─── Switch Project ───
-        elif intent == Intent.SWITCH_PROJECT:
+        elif intent in (Intent.SWITCH_PROJECT, Intent.RETURN_BASE_PROJECT):
             from lab_v4_dev.core.project_context import (
-                get_active_project, set_active_project
+                BASE_PROJECT_ROOT, get_active_project, set_active_project
             )
-            # استخرج المسار من النص
+            # استخرج المسار أو اسم المشروع من النص
             words = raw.split()
-            path = None
-            for w in words:
-                if "/" in w or w in ["~", "."]:
-                    path = w
+            path = BASE_PROJECT_ROOT if intent == Intent.RETURN_BASE_PROJECT else None
+
+            if intent == Intent.SWITCH_PROJECT:
+                # 1) مسار صريح
+                for w in words:
+                    if "/" in w or w in ["~", "."]:
+                        path = w
+                        break
+
+                # 2) اسم مشروع مسجل
+                if path is None:
+                    from lab_v4_dev.project_registry.registry import get_project_by_name
+
+                    # target يأتي من Intent Parser عندما يذكر اسم المشروع.
+                    project_name = target.strip() if isinstance(target, str) else ""
+                    if project_name:
+                        project = get_project_by_name(project_name)
+                        if project:
+                            path = project["root"]
+
+                # 3) اسم cyberlab_agent هو المشروع الأساسي نفسه
+                if path is None and "cyberlab_agent" in raw.lower():
+                    path = BASE_PROJECT_ROOT
             if not path:
+                if intent == Intent.SWITCH_PROJECT and any(
+                    phrase in raw for phrase in ["مشروع اخر", "مشروع آخر", "مشروع ثاني"]
+                ):
+                    return {
+                        "status": "needs_target",
+                        "intent": intent,
+                        "text": "حدد اسم المشروع الذي تريد التبديل إليه."
+                    }
+
                 proj = get_active_project()
                 return {"status":"success","intent":intent,
                         "text": f"المشروع النشط حالياً: {proj.name} ({proj.root})"}

@@ -1,4 +1,8 @@
 {
+  "PERSONAL_CHAT": "personal_chat",
+  "SYSTEM_STATUS": "status",
+  "PROJECT_SCAN": "project_scan",
+  "CYBER_CONCEPT": "cyber_explain",
   "EXPLAIN_COMPONENT": "cyber_explain",
   "SHOW_IMPACT": "file_impact",
   "SHOW_STATUS": "work_context",
@@ -21,5 +25,6 @@
   "ASK_PROTECTION": "cyber_explain",
   "VERIFY_SAFETY": "self_diagnose",
   "ASK_IMPACT": "file_impact",
-  "LAST_PROJECT": "last_project"
+  "LAST_PROJECT": "last_project",
+  "SWITCH_PROJECT": "switch_project"
 }

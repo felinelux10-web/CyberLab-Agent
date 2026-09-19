@@ -50,6 +50,33 @@ def get_project(root: str):
     return None
 
 
+def get_project_by_name(name: str):
+    """يعيد المشروع المسجل المطابق للاسم، مع تفضيل المشروع من نوع agent عند التكرار."""
+    data = load_registry()
+    name = str(name).strip()
+
+    matches = [
+        project for project in data.get("projects", [])
+        if project.get("name") == name
+    ]
+
+    if not matches:
+        return None
+
+    # cyberlab_agent هو جذر المشروع، وليس lab_v4_dev.
+    if name == "cyberlab_agent":
+        from lab_v4_dev.core.project_context import CYBERLAB_ROOT
+        for project in matches:
+            if project.get("root") == CYBERLAB_ROOT:
+                return project
+
+    for project in matches:
+        if project.get("type") == "agent":
+            return project
+
+    return matches[0]
+
+
 
 
 def update_project(root: str, updates: dict) -> bool:

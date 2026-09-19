@@ -39,6 +39,7 @@ SECURITY_CONCEPTS = [
     "Zero Day", "DoS", "DDoS", "Spoofing", "Sniffing",
     "Privilege Escalation", "Path Traversal", "RCE",
     "Cross Site Scripting", "Command Injection",
+    "Least Privilege", "Authentication", "Authorization",
 ]
 
 def extract_file(text: str) -> str | None:
@@ -135,6 +136,8 @@ def extract(text: str, intent: str = "") -> dict:
         concept = extract_concept(text)
         if concept:
             return {"type": ENTITY_CONCEPT, "value": concept, "confidence": 0.85}
+        if intent == "cyber_explain":
+            return {"type": ENTITY_UNKNOWN, "value": "", "confidence": 0.0}
 
     if intent in ["current_version", "release_index"]:
         version = extract_version(text)

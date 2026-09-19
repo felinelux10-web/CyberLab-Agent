@@ -162,6 +162,7 @@ def ask(
     providers = _provider_chain(active, fallback)
 
     last_error = None
+    provider_errors = []
 
     for name in providers:
 
@@ -213,18 +214,39 @@ def ask(
             # fallback chain. Continue to the next provider.
             if not result.ok:
                 last_error = result
+                if result.error is not None:
+                    provider_errors.append({
+                        "provider": name,
+                        "code": result.error.code,
+                        "message": result.error.message,
+                        "retryable": result.error.retryable,
+                        "timeout": result.error.timeout,
+                    })
                 continue
+
+            # A successful provider after an earlier failure is a fallback.
+            result.fallback_used = bool(provider_errors) or bool(
+                getattr(result, "fallback_used", False)
+            )
 
             # Successful LLMResponse — convert to dict for callers
             return _response_to_dict(result)
 
         except (TimeoutError, Exception) as exc:
+            error = _normalize_error(
+                exc,
+                provider=name,
+                model=request.model,
+            )
+            provider_errors.append({
+                "provider": name,
+                "code": error.code,
+                "message": error.message,
+                "retryable": error.retryable,
+                "timeout": error.timeout,
+            })
             last_error = LLMResponse.failure(
-                _normalize_error(
-                    exc,
-                    provider=name,
-                    model=request.model,
-                ),
+                error,
                 provider=name,
                 model=request.model,
             )
@@ -232,6 +254,7 @@ def ask(
     if last_error is not None:
         last_error.metadata = dict(last_error.metadata or {})
         last_error.metadata["provider_chain"] = providers
+        last_error.metadata["provider_errors"] = provider_errors
         return _response_to_dict(last_error)
 
     return _response_to_dict(

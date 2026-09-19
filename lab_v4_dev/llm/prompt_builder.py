@@ -9,12 +9,8 @@ from lab_v4_dev.llm.context_builder import build_system_prompt
 ROADMAP_FILE = "project_data/roadmap.json"
 
 def _index_file() -> str:
-    proj = get_active_project()
     from lab_v4_dev.awareness.project_index import _index_file as _idx
-    cyberlab_roots = [CYBERLAB_ROOT, CYBERLAB_ROOT + "/lab_v4_dev"]
-    if any(proj.root.startswith(r) for r in cyberlab_roots):
-        return _idx()
-    return "workspace/external_index/project_index.json"
+    return _idx()
 
 def _load_index() -> dict:
     try:
@@ -142,17 +138,17 @@ def build_cybersec_prompt(topic: str, level: str = "مبتدئ") -> tuple:
 أسلوبك: شرح واضح خطوة بخطوة بالعربية.
 قواعد:
 1. ابدأ بتعريف المفهوم بجملة واحدة
-2. اشرح كيف يعمل الهجوم (مثال عملي)
+2. اشرح آلية الهجوم على مستوى مفاهيمي داخل مختبر آمن، دون خطوات ضد أهداف حقيقية
 3. اشرح كيف تتم الحماية منه
-4. أعطِ مثالاً على كود آمن وكود غير آمن
+4. أعطِ أمثلة تعليمية آمنة، ولا تقدم payloads أو تعليمات اسغلال قابلة للاستخدام
 5. لا تتجاوز 600 كلمة"""
 
     prompt = f"""اشرح لي "{topic}" بأسلوب مناسب لمستوى {level}.
 اتبع هذا الترتيب:
 1. ما هو؟
-2. كيف يعمل الهجوم؟ (مثال حقيقي)
+2. كيف تعمل الثغرة؟ (شرح مفاهيمي داخل مختبر آمن)
 3. كيف تحمي نفسك؟
-4. مثال كود (ثغرة vs حماية)"""
+4. مثال توضيحي آمن (ثغرة مفاهيمية vs حماية)، دون payload هجومي"""
 
     return system, prompt
 
