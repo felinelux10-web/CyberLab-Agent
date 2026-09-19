@@ -133,6 +133,21 @@ class RoutingDecision:
     confidence: float | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
+@dataclass(frozen=True)
+class PreparedExecutionRequest:
+    """Resolved execution handoff from orchestration to the execution path.
+
+    Carries already-resolved execution inputs. Raw conversation text and
+    planning actions are intentionally excluded so downstream execution
+    cannot re-parse input or take ownership of planning.
+    """
+
+    intent: Any
+    target: Any = None
+    context: Context = field(default_factory=Context)
+    request_id: str | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
 
 @dataclass(frozen=True)
 class AuditEvent:
@@ -150,5 +165,6 @@ __all__ = [
     "Result",
     "Response",
     "RoutingDecision",
+    "PreparedExecutionRequest",
     "AuditEvent",
 ]
