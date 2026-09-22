@@ -53,9 +53,13 @@ class EventLoop:
 
     def _process_prepared(self, request: PreparedExecutionRequest) -> dict:
         """Process a prepared orchestration handoff without re-parsing input."""
-        health = check_health(self.state)
-        if not health["healthy"]:
-            return {"status": "blocked", "reason": "system unhealthy"}
+        execution_metadata = request.metadata.get("execution", {})
+        health_check_enabled = execution_metadata.get("health_check", True)
+
+        if health_check_enabled:
+            health = check_health(self.state)
+            if not health["healthy"]:
+                return {"status": "blocked", "reason": "system unhealthy"}
 
         budget_check = self.budget.can_run_task()
         if not budget_check["ok"]:

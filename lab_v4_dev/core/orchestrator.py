@@ -12,13 +12,14 @@ from lab_v4_dev.planner.impact_analyzer import analyze_impact
 from lab_v4_dev.core.logger import log
 from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.context.context_resolver import bind_context
-from lab_v4_dev.core.contracts import Request, Context, Response
+from lab_v4_dev.core.contracts import Request, Context, Response, PreparedExecutionRequest
 from lab_v4_dev.llm.router import needs_llm
 from lab_v4_dev.llm.gateway import ask
 from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
 from lab_v4_dev.config.provider_config import get_active_provider
 import os
 import shutil
+import uuid
 
 class Orchestrator:
 
@@ -38,6 +39,26 @@ class Orchestrator:
         if not self.pipeline:
             self.pipeline = SafePipeline(self.agent.db)
         return self.pipeline
+
+    def _submit_prepared_execution(self, intent, target=None, context=None,
+                                    request_id=None, execution=None):
+        loop = getattr(self.agent, "loop", None)
+        if loop is None:
+            return {
+                "status": "failed",
+                "error": "EventLoop غير متاح"
+            }
+
+        request = PreparedExecutionRequest(
+            intent=intent,
+            target=target,
+            context=context if context is not None else Context(),
+            request_id=request_id,
+            metadata={"execution": execution or {}},
+        )
+
+        loop.submit_prepared(request)
+        return loop.tick()
 
     def handle(self, request: str, parsed: dict | None = None) -> dict:
         request = Request.from_input(request)
@@ -2030,14 +2051,49 @@ SOURCE CODE:
 
         # ─── System Status Report ───
         elif intent == Intent.SYSTEM_STATUS:
-            import subprocess
             script = os.path.join(os.path.expanduser("~/cyberlab_agent"), "project_status.py")
             try:
-                r = subprocess.run(["python3", script], capture_output=True, text=True, timeout=15)
-                output = r.stdout or r.stderr or "لا يوجد ناتج"
+                result = self._submit_prepared_execution(
+                    intent={"intent": str(intent)},
+                    target=target,
+                    request_id=f"system-status-{uuid.uuid4().hex}",
+                    execution={
+                        "action": "run_command",
+                        "parameters": {
+                            "command": f"python3 {script}"
+                        },
+                        "health_check": False,
+                    },
+                )
+
+                results = result.get("results", []) if isinstance(result, dict) else []
+                execution_result = results[0] if results else {}
+
+                output = (
+                    execution_result.get("stdout")
+                    or execution_result.get("stderr")
+                    or result.get("error")
+                    or "لا يوجد ناتج"
+                )
+
+                status = (
+                    "success"
+                    if execution_result.get("status") == "success"
+                    else "failed"
+                )
+
+                return {
+                    "status": status,
+                    "intent": intent,
+                    "text": output,
+                }
+
             except Exception as e:
-                output = f"فشل تشغيل التقرير: {e}"
-            return {"status":"success","intent":intent,"text":output}
+                return {
+                    "status": "failed",
+                    "intent": intent,
+                    "text": f"فشل تشغيل التقرير: {e}",
+                }
 
 
         # ─── Delete File ───
