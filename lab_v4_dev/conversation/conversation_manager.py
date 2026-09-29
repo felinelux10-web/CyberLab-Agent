@@ -112,6 +112,23 @@ class ConversationManager:
 
         chat_history = self._history_for_transition(transition, parsed)
 
+        # Canonical semantic request follows the context-authorized parse and
+        # is established before selecting the execution owner.
+        semantic = build_semantic_request(
+            user_input,
+            mode,
+            confidence=(
+                float(parsed.get("confidence", 0.0))
+                if parsed else 0.0
+            ),
+            target=(
+                parsed.get("target")
+                if parsed else None
+            ),
+            requires_context=(transition.value in CONTEXTUAL_TRANSITIONS),
+            context_transition=transition,
+        )
+
         # ----------------------------------------------------
         # ONE execution owner.
         # ----------------------------------------------------
@@ -145,24 +162,6 @@ class ConversationManager:
                         "kind": "project_order",
                         "request": user_input,
                     }
-
-        # ----------------------------------------------------
-        # Semantic metadata only.
-        # ----------------------------------------------------
-        semantic = build_semantic_request(
-            user_input,
-            mode,
-            confidence=(
-                float(parsed.get("confidence", 0.0))
-                if parsed else 0.0
-            ),
-            target=(
-                parsed.get("target")
-                if parsed else None
-            ),
-            requires_context=(transition.value in CONTEXTUAL_TRANSITIONS),
-            context_transition=transition,
-        )
 
         result = dict(result)
         result["semantic_request"] = semantic.as_dict()
@@ -272,7 +271,12 @@ class ConversationManager:
             return result
 
         # Only genuinely unresolved conversational input reaches LLM.
-        return self._handle_chat(text, mode, history=chat_history)
+        return self._handle_chat(
+            text,
+            mode,
+            parsed=parsed,
+            history=chat_history,
+        )
 
     def _safe_parse(self, text: str, *, context_entity: dict | None = None) -> dict:
         try:
@@ -295,9 +299,19 @@ class ConversationManager:
         target = str(parsed.get("target") or "").strip()
         intent = getattr(parsed.get("intent"), "value", parsed.get("intent"))
         pattern = parsed.get("semantic_pattern")
+        active_context = None
+        if self.dialogue_memory:
+            get_active_context = getattr(
+                self.dialogue_memory,
+                "active_context_entity",
+                None,
+            )
+            if callable(get_active_context):
+                active_context = get_active_context()
         active_topic = (
-            getattr(self.dialogue_memory, "last_topic", None)
-            if self.dialogue_memory else None
+            active_context.get("entity")
+            if isinstance(active_context, dict)
+            else None
         )
 
         if entity_type == "REFERENCE":
@@ -394,56 +408,25 @@ class ConversationManager:
     # --------------------------------------------------------
 
     def _handle_task(self, text: str) -> dict:
-        parsed = self._safe_parse(text)
-        return self.orchestrator.handle(text, parsed=parsed)
+        return self.process(text)
 
     def _handle_system(self, text: str) -> dict:
-        parsed = self._safe_parse(text)
-        return self.orchestrator.handle(text, parsed=parsed)
+        return self.process(text)
 
     def _handle_follow_up(self, text: str) -> dict:
-        resolved = text
-
-        if self.dialogue_memory:
-            resolved = self.dialogue_memory.resolve_references(text)
-
-        parsed = self._safe_parse(
-            resolved,
-            context_entity=(
-                self.dialogue_memory.active_context_entity()
-                if self.dialogue_memory else None
-            ),
-        )
-
-        if parsed.get("intent") not in _NON_EXECUTABLE_INTENTS:
-            return self.orchestrator.handle(
-                resolved,
-                parsed=parsed,
-            )
-
-        return self._handle_chat(
-            resolved,
-            "DISCUSSION",
-            history=self._history_for_transition(
-                ContextTransition.REFERENCE,
-                parsed,
-            ),
-        )
+        return self.process(text)
 
     def _handle_chat(
         self,
         text: str,
         mode: str,
         *,
+        parsed: dict | None = None,
         history: list | None = None,
     ) -> dict:
         result = {}
         if mode == "CHAT":
-            try:
-                parsed = self._safe_parse(text)
-            except Exception:
-                parsed = {}
-            if parsed.get("intent") == Intent.PERSONAL_CHAT:
+            if (parsed or {}).get("intent") == Intent.PERSONAL_CHAT:
                 return {
                     "status": "success",
                     "intent": Intent.PERSONAL_CHAT,
