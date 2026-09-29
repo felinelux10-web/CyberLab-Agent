@@ -131,9 +131,11 @@ def detect_mode(text: str) -> str:
         "وماذا بعد؟", "وماذا بعد",
         "لخصه", "لخصها", "لخصهما",
         "أكمل", "اكمل", "تابع",
+        "بسط الشرح اكثر", "بسط الشرح أكثر",
+        "اشرح اكثر", "اشرح أكثر",
     }
 
-    if stripped in exact_followups:
+    if stripped.rstrip("؟?!.،,؛:") in exact_followups:
         return "FOLLOW_UP"
 
     reference_prefixes = (
