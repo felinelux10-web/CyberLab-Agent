@@ -8,6 +8,7 @@ This module describes what was understood. It does not execute tools,
 select providers, mutate files, or bypass existing safety controls.
 """
 from dataclasses import asdict, dataclass
+from enum import Enum
 from typing import Any, Dict, Optional
 
 
@@ -30,6 +31,25 @@ ACTION_TYPES = frozenset({
 })
 
 
+class ContextTransition(str, Enum):
+    """Conversation-owned relationship between the current turn and topic."""
+
+    CONTINUE = "continue"
+    REFERENCE = "reference"
+    CLARIFICATION = "clarification"
+    EXPLICIT_SWITCH = "explicit_switch"
+    NEW_INDEPENDENT = "new_independent"
+    AMBIGUOUS = "ambiguous"
+
+
+CONTEXTUAL_TRANSITIONS = frozenset({
+    ContextTransition.CONTINUE.value,
+    ContextTransition.REFERENCE.value,
+    ContextTransition.CLARIFICATION.value,
+})
+CONTEXT_TRANSITIONS = frozenset(item.value for item in ContextTransition)
+
+
 @dataclass(frozen=True)
 class SemanticRequest:
     raw: str
@@ -39,6 +59,7 @@ class SemanticRequest:
     ambiguity: bool = False
     compound: bool = False
     requires_context: bool = False
+    context_transition: str = ContextTransition.AMBIGUOUS.value
     requires_planning: bool = False
     target: Optional[str] = None
 
@@ -47,6 +68,10 @@ class SemanticRequest:
             raise ValueError(f"invalid semantic mode: {self.mode}")
         if self.action_type not in ACTION_TYPES:
             raise ValueError(f"invalid action type: {self.action_type}")
+        if self.context_transition not in CONTEXT_TRANSITIONS:
+            raise ValueError(
+                f"invalid context transition: {self.context_transition}"
+            )
         if not 0.0 <= float(self.confidence) <= 1.0:
             raise ValueError("confidence must be between 0 and 1")
 
@@ -73,6 +98,7 @@ def build_semantic_request(
     ambiguity: bool = False,
     compound: bool = False,
     requires_context: bool = False,
+    context_transition: str = ContextTransition.AMBIGUOUS.value,
     requires_planning: Optional[bool] = None,
 ) -> SemanticRequest:
     if requires_planning is None:
@@ -86,6 +112,11 @@ def build_semantic_request(
         ambiguity=ambiguity,
         compound=compound,
         requires_context=requires_context,
+        context_transition=(
+            context_transition.value
+            if isinstance(context_transition, ContextTransition)
+            else context_transition
+        ),
         requires_planning=requires_planning,
         target=target,
     )

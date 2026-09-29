@@ -33,7 +33,7 @@ def test_implicit_explanation_continuation_preserves_topic_and_explicit_switch(m
     monkeypatch.setattr(
         manager,
         "_handle_chat",
-        lambda text, mode: {
+        lambda text, mode, **_kwargs: {
             "status": "unexpected_chat",
             "text": f"unexpected chat route: {mode} {text}",
         },

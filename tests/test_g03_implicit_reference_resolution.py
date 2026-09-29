@@ -39,7 +39,7 @@ def build_manager(monkeypatch):
     monkeypatch.setattr(
         manager,
         "_handle_chat",
-        lambda _text, _mode: {
+        lambda _text, _mode, **_kwargs: {
             "status": "unexpected_chat",
             "text": "unexpected chat route",
         },

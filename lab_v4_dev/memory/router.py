@@ -90,6 +90,10 @@ def get_last_nlu_entity() -> dict:
     from lab_v4_dev.nlu.context_resolver import get_last_entity
     return get_last_entity()
 
-def resolve_nlu_context(nlu_result: dict) -> dict:
+def resolve_nlu_context(
+    nlu_result: dict,
+    *,
+    previous_entity: dict | None = None,
+) -> dict:
     from lab_v4_dev.nlu.context_resolver import resolve
-    return resolve(nlu_result)
+    return resolve(nlu_result, previous_entity=previous_entity)

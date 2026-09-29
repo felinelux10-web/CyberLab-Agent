@@ -47,6 +47,7 @@ class DialogueState:
     last_mode: str | None = None
     last_intent: str | None = None
     last_target: str | None = None
+    last_entity_type: str | None = None
     last_confidence: float = 0.0
     pending_clarification: dict[str, Any] | None = None
     turns: list[DialogueTurn] = field(default_factory=list)
@@ -85,6 +86,7 @@ class DialogueState:
             "last_mode": self.last_mode,
             "last_intent": self.last_intent,
             "last_target": self.last_target,
+            "last_entity_type": self.last_entity_type,
             "last_confidence": self.last_confidence,
             "pending_clarification": self.pending_clarification,
             "messages": len(self.turns),

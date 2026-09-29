@@ -82,7 +82,7 @@ def test_non_executable_chat_does_not_reach_orchestrator(monkeypatch):
     monkeypatch.setattr(
         manager,
         "_handle_chat",
-        lambda text, mode: {
+        lambda text, mode, **_kwargs: {
             "status": "success",
             "intent": mode.lower(),
             "text": "CHAT",

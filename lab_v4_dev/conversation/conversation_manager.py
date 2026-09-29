@@ -7,13 +7,15 @@ ModeDetector
     -> conversational shape only.
 
 IntentParser
-    -> canonical executable Intent resolver.
+    -> canonical semantic resolver for the current text, without implicit
+       persistent context.
 
 Context
     -> enriches references/targets only.
 
 ConversationManager
-    -> performs ONE Intent resolution and chooses ONE execution owner.
+    -> authorizes context transitions before final resolution and chooses
+       ONE execution owner.
 
 Orchestrator
     -> sole execution owner for executable Intent.
@@ -30,11 +32,16 @@ If IntentParser resolves a FOLLOW_UP to an executable Intent
 
 from lab_v4_dev.conversation.mode_detector import detect_mode
 from lab_v4_dev.conversation.assistant_style import format_response, single_question
-from lab_v4_dev.conversation.semantic_contract import build_semantic_request
+from lab_v4_dev.conversation.semantic_contract import (
+    CONTEXTUAL_TRANSITIONS,
+    ContextTransition,
+    build_semantic_request,
+)
 from lab_v4_dev.llm.prompt_builder import build_chat_prompt
 from lab_v4_dev.llm.gateway import ask as gateway_ask
 from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
+from lab_v4_dev.nlu.context_resolver import is_incomplete
 
 
 _NON_EXECUTABLE_INTENTS = {
@@ -79,15 +86,31 @@ class ConversationManager:
 
         mode = detect_mode(user_input)
 
-        # ----------------------------------------------------
-        # ONE canonical Intent resolution.
-        # ----------------------------------------------------
+        # Parse the current turn without any persistent NLU context first.
+        # The transition decision below is the sole authority that may grant
+        # the active DialogueMemory topic to a second canonical parse.
+        candidate = self._safe_parse(user_input)
+        transition = self._classify_context_transition(mode, candidate)
         resolved_input = user_input
+        parsed = candidate
 
-        if mode == "FOLLOW_UP" and self.dialogue_memory:
+        if (
+            self.dialogue_memory
+            and transition.value in CONTEXTUAL_TRANSITIONS
+            and (
+                not candidate.get("target")
+                or str(candidate.get("entity_type", "")).upper()
+                in {"REFERENCE", "ELABORATION"}
+            )
+        ):
             resolved_input = self.dialogue_memory.resolve_references(user_input)
+            if resolved_input != user_input:
+                parsed = self._safe_parse(
+                    resolved_input,
+                    context_entity=self.dialogue_memory.active_context_entity(),
+                )
 
-        parsed = self._safe_parse(resolved_input)
+        chat_history = self._history_for_transition(transition, parsed)
 
         # ----------------------------------------------------
         # ONE execution owner.
@@ -96,6 +119,7 @@ class ConversationManager:
             resolved_input,
             mode,
             parsed,
+            chat_history=chat_history,
         )
 
         # Project-list clarification is conversation-owned state.
@@ -136,7 +160,8 @@ class ConversationManager:
                 parsed.get("target")
                 if parsed else None
             ),
-            requires_context=(mode == "FOLLOW_UP"),
+            requires_context=(transition.value in CONTEXTUAL_TRANSITIONS),
+            context_transition=transition,
         )
 
         result = dict(result)
@@ -169,11 +194,19 @@ class ConversationManager:
                 result,
                 mode=mode,
                 parsed=parsed,
+                context_transition=transition,
             )
 
         return result
 
-    def _dispatch(self, text: str, mode: str, parsed: dict) -> dict:
+    def _dispatch(
+        self,
+        text: str,
+        mode: str,
+        parsed: dict,
+        *,
+        chat_history: list | None = None,
+    ) -> dict:
         """
         Select exactly ONE execution owner.
 
@@ -239,14 +272,122 @@ class ConversationManager:
             return result
 
         # Only genuinely unresolved conversational input reaches LLM.
-        return self._handle_chat(text, mode)
+        return self._handle_chat(text, mode, history=chat_history)
 
-    def _safe_parse(self, text: str) -> dict:
+    def _safe_parse(self, text: str, *, context_entity: dict | None = None) -> dict:
         try:
-            result = parse(text)
+            if context_entity:
+                result = parse(text, context_entity=context_entity)
+            else:
+                result = parse(text)
             return result if isinstance(result, dict) else {}
         except Exception:
             return {}
+
+    def _classify_context_transition(
+        self,
+        mode: str,
+        parsed: dict,
+    ) -> ContextTransition:
+        """Classify the current semantic subject against dialogue-owned state."""
+        parsed = parsed or {}
+        entity_type = str(parsed.get("entity_type", "")).upper()
+        target = str(parsed.get("target") or "").strip()
+        intent = getattr(parsed.get("intent"), "value", parsed.get("intent"))
+        pattern = parsed.get("semantic_pattern")
+        active_topic = (
+            getattr(self.dialogue_memory, "last_topic", None)
+            if self.dialogue_memory else None
+        )
+
+        if entity_type == "REFERENCE":
+            return (
+                ContextTransition.REFERENCE
+                if active_topic else ContextTransition.AMBIGUOUS
+            )
+
+        if target:
+            if active_topic and self._same_topic(target, active_topic):
+                return ContextTransition.CONTINUE
+            return (
+                ContextTransition.EXPLICIT_SWITCH
+                if active_topic else ContextTransition.NEW_INDEPENDENT
+            )
+
+        if pattern == "CONTINUE_WORK":
+            return (
+                ContextTransition.CONTINUE
+                if active_topic else ContextTransition.AMBIGUOUS
+            )
+
+        if entity_type == "ELABORATION":
+            return (
+                ContextTransition.CLARIFICATION
+                if active_topic else ContextTransition.AMBIGUOUS
+            )
+
+        if mode == "FOLLOW_UP":
+            if not active_topic:
+                return ContextTransition.AMBIGUOUS
+            previous_intent = getattr(
+                getattr(self.dialogue_memory, "state", None),
+                "last_intent",
+                None,
+            )
+            previous_intent = getattr(previous_intent, "value", previous_intent)
+            return (
+                ContextTransition.CLARIFICATION
+                if intent and intent == previous_intent
+                else ContextTransition.REFERENCE
+            )
+
+        if mode == "CHAT" and intent in _NON_EXECUTABLE_INTENTS:
+            return ContextTransition.AMBIGUOUS
+
+        incomplete = is_incomplete({
+            "intent": intent or "",
+            "target": "",
+            "entity": {"value": ""},
+        })
+        if incomplete or not intent:
+            return ContextTransition.AMBIGUOUS
+
+        return ContextTransition.NEW_INDEPENDENT
+
+    @staticmethod
+    def _same_topic(left, right) -> bool:
+        def normalize_topic(value):
+            return " ".join(
+                str(value).casefold().strip(" \t\r\n.,،؛:!?؟()[]{}\"'").split()
+            )
+        return normalize_topic(left) == normalize_topic(right)
+
+    def _history_for_transition(
+        self,
+        transition: ContextTransition,
+        parsed: dict,
+    ) -> list:
+        """Expose only bounded turns grounded in the selected active subject."""
+        if not self.dialogue_memory:
+            return []
+
+        if transition.value in CONTEXTUAL_TRANSITIONS:
+            topic = getattr(self.dialogue_memory, "last_topic", None)
+        elif transition == ContextTransition.EXPLICIT_SWITCH:
+            topic = (parsed or {}).get("target")
+        else:
+            return []
+
+        if not topic:
+            return []
+        state = getattr(self.dialogue_memory, "state", None)
+        history = getattr(state, "history", []) if state is not None else []
+        return [
+            turn for turn in (history or [])
+            if isinstance(turn, dict)
+            and turn.get("target")
+            and self._same_topic(turn.get("target"), topic)
+        ]
 
     # --------------------------------------------------------
     # Compatibility entry points
@@ -266,7 +407,13 @@ class ConversationManager:
         if self.dialogue_memory:
             resolved = self.dialogue_memory.resolve_references(text)
 
-        parsed = self._safe_parse(resolved)
+        parsed = self._safe_parse(
+            resolved,
+            context_entity=(
+                self.dialogue_memory.active_context_entity()
+                if self.dialogue_memory else None
+            ),
+        )
 
         if parsed.get("intent") not in _NON_EXECUTABLE_INTENTS:
             return self.orchestrator.handle(
@@ -274,9 +421,22 @@ class ConversationManager:
                 parsed=parsed,
             )
 
-        return self._handle_chat(resolved, "DISCUSSION")
+        return self._handle_chat(
+            resolved,
+            "DISCUSSION",
+            history=self._history_for_transition(
+                ContextTransition.REFERENCE,
+                parsed,
+            ),
+        )
 
-    def _handle_chat(self, text: str, mode: str) -> dict:
+    def _handle_chat(
+        self,
+        text: str,
+        mode: str,
+        *,
+        history: list | None = None,
+    ) -> dict:
         result = {}
         if mode == "CHAT":
             try:
@@ -298,19 +458,9 @@ class ConversationManager:
 
 
         try:
-            history = []
-            if self.dialogue_memory:
-                state = getattr(self.dialogue_memory, "state", None)
-                if state is not None:
-                    history = list(getattr(state, "history", []) or [])
-                else:
-                    history = list(
-                        getattr(self.dialogue_memory, "last_list", []) or []
-                    )
-
             system, prompt = build_chat_prompt(
                 text,
-                history,
+                list(history or []),
             )
 
             result = gateway_ask(

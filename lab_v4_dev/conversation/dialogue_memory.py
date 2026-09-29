@@ -8,6 +8,7 @@ Does not route, execute, call providers, or decide intent.
 from __future__ import annotations
 
 from lab_v4_dev.conversation.dialogue_contract import DialogueState
+from lab_v4_dev.conversation.semantic_contract import CONTEXTUAL_TRANSITIONS
 
 
 class DialogueMemory:
@@ -88,6 +89,7 @@ class DialogueMemory:
         *,
         mode: str | None = None,
         parsed: dict | None = None,
+        context_transition: str | None = None,
     ) -> None:
 
         if not isinstance(result, dict):
@@ -113,9 +115,39 @@ class DialogueMemory:
 
         topic = self._derive_topic(text, target)
 
-        # Follow-up turns do not replace the active topic.
-        if self.state.last_mode != "FOLLOW_UP" and topic:
+        relation = getattr(context_transition, "value", context_transition)
+        if context_transition is None:
+            # Compatibility for direct legacy callers; the main conversation
+            # path always supplies its explicit transition decision.
+            update_topic = self.state.last_mode != "FOLLOW_UP" and bool(topic)
+        else:
+            update_topic = relation in {
+                "explicit_switch",
+                "new_independent",
+            } and bool(topic)
+
+        if update_topic:
             self.state.last_topic = topic
+            entity_type = parsed.get("entity_type") or result.get("entity_type")
+            if not entity_type and target:
+                try:
+                    from lab_v4_dev.nlu.entity_extractor import extract
+                    intent_value = getattr(intent, "value", intent)
+                    entity_type = extract(
+                        str(target),
+                        str(intent_value or ""),
+                    ).get("type")
+                except Exception:
+                    entity_type = None
+            self.state.last_entity_type = entity_type or None
+        elif (
+            context_transition is not None
+            and relation in CONTEXTUAL_TRANSITIONS
+            and not self.state.last_topic
+            and topic
+        ):
+            self.state.last_topic = topic
+            self.state.last_entity_type = parsed.get("entity_type") or None
 
         self.state.add_turn(
             role="user",
@@ -161,6 +193,20 @@ class DialogueMemory:
         topic = self.state.pending_topic
         self.state.pending_topic = None
         return topic
+
+    def active_context_entity(self) -> dict | None:
+        """Return the active dialogue subject for an already-approved transition."""
+        topic = self.state.last_topic
+        entity_type = self.state.last_entity_type
+        if not topic or not entity_type or entity_type in {
+            "UNKNOWN", "REFERENCE", "ELABORATION",
+        }:
+            return None
+        return {
+            "action": self.state.last_intent or "",
+            "entity": topic,
+            "entity_type": entity_type,
+        }
 
     # --------------------------------------------------------
     # Reference resolution
@@ -251,23 +297,11 @@ class DialogueMemory:
                 "الحل الثاني",
                 str(self.state.last_items[1]),
             )
-        # أسئلة قصيرة غامضة — ألصقها بآخر موضوع معروف بدلاً من
-        # إعادة تحليلها كطلب شرح مستقل بلا هدف.
-        if topic and len(text.split()) <= 7 and any(
-            phrase in text for phrase in (
-                "مثال عليه",
-                "مثال عملي عليه",
-                "وضح أكثر",
-                "اشرح أكثر",
-                "اشرح اكثر",
-                "بسط الشرح اكثر",
-                "بسط الشرح أكثر",
-                "زدني",
-                "أكمل الشرح",
-            )
-        ):
-            return topic + " " + text
-
+        # The caller has already established that this turn is contextual.
+        # If no specific pronoun substitution applied, make the active subject
+        # explicit rather than maintaining a phrase whitelist here.
+        if resolved.strip() == text.strip():
+            return f"{topic} {text.strip()}"
 
         return resolved
 
