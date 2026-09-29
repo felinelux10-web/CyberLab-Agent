@@ -3,6 +3,8 @@ Mode Detector — Series 10-A
 يصنف نوع الرسالة قبل أي معالجة.
 """
 
+import re
+
 TASK_PATTERNS = [
     "افحص","اقرأ","اكتب","حلل","شغّل","شغل","نفذ","احذف",
     "انشئ","أنشئ","عدل","اعرض","ابحث","افهم","استرجع",
@@ -92,6 +94,17 @@ CHAT_PATTERNS = [
     "هل تشعر بخير","هل تحس بخير",
 ]
 
+_BOUNDED_REFERENCE_FOLLOWUPS = (
+    re.compile(
+        r"(?:اشرح|وضح)(?:\s+لي)?\s+(?:هذا|هذه|ذلك|تلك)"
+        r"(?:\s+(?:بشكل\s+)?(?:أبسط|ابسط|أوضح|اوضح|مبسط))?"
+    ),
+    re.compile(
+        r"(?:ما المقصود|ما معنى|ماذا يعني|ماذا تقصد)"
+        r"\s+(?:ب)?(?:هذا|هذه|ذلك|تلك)"
+    ),
+)
+
 
 def detect_mode(text: str) -> str:
     """
@@ -135,7 +148,18 @@ def detect_mode(text: str) -> str:
         "اشرح اكثر", "اشرح أكثر",
     }
 
-    if stripped.rstrip("؟?!.،,؛:") in exact_followups:
+    follow_up_text = " ".join(stripped.split()).rstrip("؟?!.،,؛:").strip()
+
+    if follow_up_text in exact_followups:
+        return "FOLLOW_UP"
+
+    # Only complete, bounded reference constructions are continuations.
+    # Do not classify phrases such as "اشرح هذا الملف" as a reference to
+    # the previous topic; the explicit noun keeps them as normal questions.
+    if any(
+        pattern.fullmatch(follow_up_text)
+        for pattern in _BOUNDED_REFERENCE_FOLLOWUPS
+    ):
         return "FOLLOW_UP"
 
     reference_prefixes = (
