@@ -11,6 +11,8 @@ ENTITY_CONCEPT   = "CONCEPT"
 ENTITY_VERSION   = "VERSION"
 ENTITY_COMPONENT = "COMPONENT"
 ENTITY_UNKNOWN   = "UNKNOWN"
+ENTITY_REFERENCE = "REFERENCE"
+ENTITY_ELABORATION = "ELABORATION"
 
 # ─── كلمات تسبق الكيان ───
 FILE_PREFIXES = [
@@ -41,6 +43,55 @@ SECURITY_CONCEPTS = [
     "Cross Site Scripting", "Command Injection",
     "Least Privilege", "Authentication", "Authorization",
 ]
+
+_REFERENCE_ANCHORS = {
+    "هذا", "هذه", "ذلك", "تلك", "بهذا", "بهذه", "بذلك", "بتلك",
+    "لهذا", "لهذه", "لذلك", "لتلك", "نفسه", "نفسها",
+    "فيه", "عليه", "منه", "عنه", "معه", "الموضوع", "الفكرة",
+    "الامر", "السابق", "السابقة",
+}
+_REFERENCE_FILLERS = {
+    "ما", "ماذا", "المقصود", "معنى", "اشرح", "وضح", "عرفني", "لي",
+    "له", "لها", "هو", "هي", "هل", "في", "عن", "بشكل", "الشرح",
+    "شرح", "توضيح", "اكثر", "ابسط", "اوضح", "مبسط", "مبسطه",
+    "هذا", "هذه", "ذلك", "تلك", "بهذا", "بهذه", "بذلك", "بتلك",
+    "لهذا", "لهذه", "لذلك", "لتلك", "نفسه", "نفسها",
+    "فيه", "عليه", "منه", "عنه", "معه", "الموضوع", "الفكرة",
+    "الامر", "السابق", "السابقة",
+}
+_ELABORATION_MARKERS = {
+    "اكثر", "ابسط", "اوضح", "تفصيلا", "تفصيل", "مبسط", "مبسطه",
+    "توضيح", "بسط", "زدني", "اكمل", "تابع", "واصل",
+}
+_ELABORATION_FILLERS = _REFERENCE_FILLERS | {
+    "بسط", "اكمل", "تابع", "واصل", "زدني", "تفصيلا", "تفصيل",
+}
+
+
+def _tokens(text: str) -> list[str]:
+    normalized = re.sub(r"[\u0610-\u061A\u064B-\u065F]", "", str(text))
+    normalized = re.sub(r"[أإآ]", "ا", normalized)
+    normalized = re.sub(r"[؟،؛ـ]", " ", normalized)
+    normalized = re.sub(r"[^\u0600-\u06FFA-Za-z0-9_]+", " ", normalized)
+    return re.findall(r"[\u0600-\u06FF]+|[A-Za-z0-9_]+", normalized.lower())
+
+
+def _is_reference_only(text: str) -> bool:
+    words = _tokens(text)
+    return bool(
+        words
+        and any(word in _REFERENCE_ANCHORS for word in words)
+        and all(word in _REFERENCE_FILLERS for word in words)
+    )
+
+
+def _is_elaboration_only(text: str) -> bool:
+    words = _tokens(text)
+    return bool(
+        words
+        and any(word in _ELABORATION_MARKERS for word in words)
+        and all(word in _ELABORATION_FILLERS for word in words)
+    )
 
 def extract_file(text: str) -> str | None:
     """استخراج اسم الملف أو المسار"""
@@ -126,6 +177,12 @@ def extract(text: str, intent: str = "") -> dict:
     استخراج الكيان المناسب حسب الـ intent
     يعيد dict: {type, value, confidence}
     """
+    # Report semantic references/refinements without guessing their topic.
+    if _is_reference_only(text):
+        return {"type": ENTITY_REFERENCE, "value": "", "confidence": 0.0}
+    if _is_elaboration_only(text):
+        return {"type": ENTITY_ELABORATION, "value": "", "confidence": 0.0}
+
     # أولاً: ابحث عن ملف دائماً
     file_entity = extract_file(text)
     if file_entity:

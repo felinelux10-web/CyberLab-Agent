@@ -69,16 +69,17 @@ def is_incomplete(nlu_result: dict) -> bool:
         return True
     return False
 
-def resolve(nlu_result: dict) -> dict:
+def resolve(nlu_result: dict, *, previous_entity: dict | None = None) -> dict:
     """
-    يستكمل العناصر الناقصة من السياق السابق.
-    لا يغير intent، فقط يضيف entity/target إذا كانا فارغين
-    وكان نوع الكيان السابق متوافقاً مع الـ intent الحالي.
+    يستكمل العناصر الناقصة من كيان سابق صرّح به مالك السياق.
+
+    لا يقرأ NLU cache تلقائياً: على طبقة الحوار أولاً أن تقرر أهلية
+    الرسالة لوراثة السياق، ثم تمرر previous_entity صراحةً.
     """
     if not is_incomplete(nlu_result):
         return nlu_result
 
-    last = get_last_entity()
+    last = previous_entity if isinstance(previous_entity, dict) else {}
     if not last:
         return nlu_result
 

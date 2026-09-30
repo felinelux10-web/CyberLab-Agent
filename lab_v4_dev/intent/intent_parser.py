@@ -66,7 +66,7 @@ def _token_has_word(text_norm: str, w: str) -> bool:
 # P04 / Canonical Intent Contract Boundary
 # ============================================================
 
-def _interpret(user_input: str) -> dict:
+def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     # --- Early deterministic detectors (high precedence) ---
     try:
         raw = user_input.strip()
@@ -98,28 +98,19 @@ def _interpret(user_input: str) -> dict:
         pass
 
     if re.search(r"^(احذف|حذف|امسح) الملف$", raw): return {"intent": Intent.DELETE_FILE, "target": "", "context": detect_context(raw), "confidence": 0.99, "raw": user_input}
+    semantic_pattern = None
+    entity_type = ""
+
     # 0. NLU Layer — فهم الأنماط اللغوية الطبيعية
     if NLU_ENABLED:
         try:
-            # منع أسئلة المتابعة الحوارية من اختطافها بواسطة NLU
-            followup_guard = (
-                "ولماذا",
-                "لماذا",
-                "وما علاقته",
-                "ما علاقته",
-                "وماذا عن",
-                "ماذا عن",
-                "هل تنصحني",
-                "وأيهما",
-                "ثم لخص",
-                "لخصهما",
-            )
-            if any(user_input.startswith(x) for x in followup_guard):
-                raise Exception("dialogue followup bypass")
-
             from lab_v4_dev.nlu.semantic_normalizer import analyze as nlu_analyze
             from lab_v4_dev.nlu.context_resolver import resolve as ctx_resolve, save_state
             nlu_result = nlu_analyze(user_input)
+            semantic_pattern = nlu_result.get("pattern")
+            entity = nlu_result.get("entity", {})
+            if isinstance(entity, dict):
+                entity_type = entity.get("type", "")
             # PERSONAL_CHAT is a deliberate conversational classification.
             # Do not discard it merely because its confidence is below the
             # technical-intent threshold; otherwise later resolver/family
@@ -135,7 +126,12 @@ def _interpret(user_input: str) -> dict:
                 )
             ):
                 # Context Resolver — استكمال العناصر الناقصة
-                nlu_result = ctx_resolve(nlu_result)
+                nlu_result = ctx_resolve(
+                    nlu_result,
+                    previous_entity=context_entity,
+                )
+                if nlu_result.get("context_inherited") and context_entity:
+                    entity_type = context_entity.get("entity_type", entity_type)
 
                 # Save resolved entity state as before
                 entity = nlu_result.get("entity", {})
@@ -192,6 +188,8 @@ def _interpret(user_input: str) -> dict:
                     "raw"              : user_input,
                     "source"           : "nlu",
                     "context_inherited": nlu_result.get("context_inherited", False),
+                    "entity_type"      : entity_type,
+                    "semantic_pattern" : semantic_pattern,
                 }
         except Exception:
             pass
@@ -326,11 +324,11 @@ def _interpret(user_input: str) -> dict:
     except Exception:
         pass
 
-    # DNI-10: حل ضمائر الأوامر بعد سياق سابق
+    # DNI-10: resolve command pronouns only from context explicitly granted
+    # by the conversation layer; never pull an unrelated global NLU entity.
     if not target and user_input.strip() in ("احذفه", "احذفها", "احذفها"):
         try:
-            from lab_v4_dev.nlu.context_resolver import get_last_entity
-            last = get_last_entity()
+            last = context_entity if isinstance(context_entity, dict) else {}
             if last.get("entity"):
                 target = last["entity"]
                 intent = Intent.DELETE_FILE
@@ -375,10 +373,12 @@ def _interpret(user_input: str) -> dict:
         "context"   : context,
         "confidence": confidence,
         "raw"       : user_input,
+        "entity_type": entity_type,
+        "semantic_pattern": semantic_pattern,
     }
 
 
-def parse(user_input):
+def parse(user_input, *, context_entity: dict | None = None):
     """
     Canonical public intent entrypoint.
 
@@ -394,7 +394,7 @@ def parse(user_input):
     if not isinstance(user_input, str):
         raise TypeError("intent parser input must be a string")
 
-    legacy = _interpret(user_input)
+    legacy = _interpret(user_input, context_entity=context_entity)
 
     if isinstance(legacy, IntentResult):
         legacy.validate()
@@ -412,6 +412,9 @@ def parse(user_input):
         action=legacy.get("action"),
         context=legacy.get("context"),
         raw=legacy.get("raw", user_input),
+        entity_type=legacy.get("entity_type", ""),
+        semantic_pattern=legacy.get("semantic_pattern", ""),
+        context_inherited=legacy.get("context_inherited", False),
     )
 
     result.validate()

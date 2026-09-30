@@ -192,6 +192,17 @@ def analyze(text: str) -> dict:
     except:
         entity = {"type": "UNKNOWN", "value": "", "confidence": 0.0}
 
+    # EXPLAIN_COMPONENT is a question shape, not proof of a cyber subject.
+    # Keep the specialized route only when the current request itself carries
+    # technical/project evidence; prior conversation history is not evidence.
+    if (
+        pattern == "EXPLAIN_COMPONENT"
+        and (target or entity.get("value"))
+        and not _has_technical_context(text, target or entity.get("value", ""))
+    ):
+        action = _load_actions().get("PERSONAL_CHAT", "personal_chat")
+        pattern = "PERSONAL_CHAT"
+
     return {
         "intent"    : action,
         "pattern"   : pattern,

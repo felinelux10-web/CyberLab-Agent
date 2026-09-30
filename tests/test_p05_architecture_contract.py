@@ -15,7 +15,7 @@ class FakeOrchestrator:
     def __init__(self):
         self.calls = []
 
-    def handle(self, text, parsed=None):
+    def handle(self, text, parsed=None, **_kwargs):
         self.calls.append((text, parsed))
         return {
             "status": "success",

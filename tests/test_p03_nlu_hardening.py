@@ -92,10 +92,37 @@ def test_context_can_inherit_compatible_file(monkeypatch):
             "value": "",
             "confidence": 0.0,
         },
+    }, previous_entity={
+        "action": "read_file",
+        "entity": "orchestrator.py",
+        "entity_type": "FILE",
     })
 
     assert result["target"] == "orchestrator.py"
     assert result["context_inherited"] is True
+
+
+def test_context_does_not_read_persistent_entity_without_transition(monkeypatch):
+    import lab_v4_dev.nlu.context_resolver as cr
+
+    monkeypatch.setattr(
+        cr,
+        "get_last_entity",
+        lambda: {
+            "action": "read_file",
+            "entity": "orchestrator.py",
+            "entity_type": "FILE",
+        },
+    )
+
+    result = cr.resolve({
+        "intent": "analyze_code",
+        "target": "",
+        "entity": {"type": "UNKNOWN", "value": "", "confidence": 0.0},
+    })
+
+    assert result["target"] == ""
+    assert result.get("context_inherited", False) is False
 
 
 def test_nlu_data_files_are_valid_json():
