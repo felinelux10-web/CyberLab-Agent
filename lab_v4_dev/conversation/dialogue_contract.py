@@ -52,6 +52,7 @@ class DialogueState:
     pending_clarification: dict[str, Any] | None = None
     turns: list[DialogueTurn] = field(default_factory=list)
     last_items: list[Any] = field(default_factory=list)
+    context_history: list[dict[str, str]] = field(default_factory=list)
 
     def add_turn(
         self,
@@ -91,4 +92,5 @@ class DialogueState:
             "pending_clarification": self.pending_clarification,
             "messages": len(self.turns),
             "last_items": list(self.last_items),
+            "context_history": [dict(item) for item in self.context_history],
         }

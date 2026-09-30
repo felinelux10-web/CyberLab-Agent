@@ -39,7 +39,13 @@ class Orchestrator:
             self.pipeline = SafePipeline(self.agent.db)
         return self.pipeline
 
-    def handle(self, request: str, parsed: dict | None = None) -> dict:
+    def handle(
+        self,
+        request: str,
+        parsed: dict | None = None,
+        *,
+        context_resolved: bool = False,
+    ) -> dict:
         request = Request.from_input(request)
         raw_request = request.raw_text
 
@@ -75,17 +81,19 @@ class Orchestrator:
         #
         # parse() is the canonical Intent resolution boundary.
         #
-        # Context binding may enrich target/context metadata, but the
-        # Orchestrator MUST NOT replace the Intent already resolved by
-        # the parser.
+        # Context binding may supply execution data for explicit result/repeat
+        # operations, but it must not replace a subject authorized by the
+        # ConversationManager or inject one into an ambiguous dialogue turn.
         #
         # Semantic Router remains available for compatibility elsewhere,
         # but it is not permitted to re-classify this request here.
 
         operational_context = Context.from_store(self.context)
         bound = bind_context(intent, raw_request, self.context)
+        if context_resolved and bound.get("injected"):
+            bound = {}
 
-        if bound.get("target"):
+        if bound.get("target") and not target:
             target = bound["target"]
         # ─── Pre-handler Policy ───
         blocked = self._pre_handler_policy(intent, target, raw_request)
@@ -193,8 +201,12 @@ class Orchestrator:
         from lab_v4_dev.intent.response_cache import get as rcache_get
         _cache_intents = ["analyze_code","project_scan","cyber_explain","health","self_diagnose"]
         if intent in _cache_intents:
-            # لا نستخدم cache لـ analyze_code بدون target محدد (يمنع النتائج القديمة)
-            _skip_cache = (intent == "analyze_code" and not target)
+            # لا نستخدم cache عندما يتطلب الشرح/التحليل موضوعًا ولا يوجد target.
+            # يمنع إعادة إجابة قديمة عن موضوع لم يحدده المستخدم.
+            _skip_cache = (
+                intent in {"analyze_code", "cyber_explain"}
+                and not target
+            )
             if not _skip_cache:
                 cached = rcache_get(str(intent), target or "")
                 if cached:

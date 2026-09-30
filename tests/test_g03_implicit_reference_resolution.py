@@ -8,7 +8,7 @@ class RecordingOrchestrator:
     def __init__(self):
         self.calls = []
 
-    def handle(self, text, parsed=None):
+    def handle(self, text, parsed=None, **_kwargs):
         parsed = dict(parsed or {})
         self.calls.append((text, parsed))
         return {
@@ -65,9 +65,9 @@ def test_g03_references_stay_on_csrf_despite_stale_nlu_entity(monkeypatch):
         "اشرح CSRF",
         "CSRF ما دوره؟",
         "CSRF كيف يعمل؟",
-        "CSRF لماذا؟",
-        "اشرح لي CSRF بشكل أبسط",
-        "ما المقصود بCSRF؟",
+        "CSRF ولماذا؟",
+        "CSRF اشرح لي هذا بشكل أبسط",
+        "CSRF ما المقصود بهذا؟",
     ]
     assert [call[1]["target"] for call in orchestrator.calls] == ["CSRF"] * 6
     assert memory.last_topic == "CSRF"
@@ -81,7 +81,7 @@ def test_g03_explicit_topic_switch_becomes_reference_authority(monkeypatch):
     manager.process("اشرح لي هذا بشكل أبسط")
 
     assert orchestrator.calls[1][0] == "اشرح SQL Injection"
-    assert orchestrator.calls[2][0] == "اشرح لي SQL Injection بشكل أبسط"
+    assert orchestrator.calls[2][0] == "SQL Injection اشرح لي هذا بشكل أبسط"
     assert orchestrator.calls[2][1]["target"] == "SQL Injection"
     assert memory.last_topic == "SQL Injection"
 

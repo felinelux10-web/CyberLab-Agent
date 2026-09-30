@@ -18,7 +18,7 @@ class RecordingOrchestrator:
     def __init__(self):
         self.calls = []
 
-    def handle(self, text, parsed=None):
+    def handle(self, text, parsed=None, **_kwargs):
         parsed = dict(parsed or {})
         self.calls.append((text, parsed))
         if parsed.get("intent") == Intent.CYBER_EXPLAIN and not parsed.get("target"):

@@ -99,6 +99,7 @@ class DialogueMemory:
             return
 
         parsed = parsed or {}
+        previous_context = self.active_context_entity()
 
         intent = parsed.get("intent") or result.get("intent")
         target = parsed.get("target") or result.get("target")
@@ -124,9 +125,15 @@ class DialogueMemory:
             update_topic = relation in {
                 "explicit_switch",
                 "new_independent",
+                "restore",
             } and bool(topic)
 
         if update_topic:
+            if (
+                previous_context
+                and not self._same_topic(previous_context.get("entity"), topic)
+            ):
+                self._remember_context(previous_context)
             self.state.last_topic = topic
             entity_type = parsed.get("entity_type") or result.get("entity_type")
             if not entity_type and target:
@@ -140,6 +147,13 @@ class DialogueMemory:
                 except Exception:
                     entity_type = None
             self.state.last_entity_type = entity_type or None
+            if relation == "restore":
+                self._forget_context(topic)
+            if (
+                self.state.pending_topic
+                and self._same_topic(self.state.pending_topic, topic)
+            ):
+                self.state.pending_topic = None
         elif (
             context_transition is not None
             and relation in CONTEXTUAL_TRANSITIONS
@@ -186,8 +200,55 @@ class DialogueMemory:
     # Topic lifecycle
     # --------------------------------------------------------
 
+    @staticmethod
+    def _same_topic(left, right) -> bool:
+        def normalize(value):
+            return " ".join(str(value or "").casefold().split())
+        return bool(normalize(left)) and normalize(left) == normalize(right)
+
+    def _remember_context(self, context: dict | None) -> None:
+        if not isinstance(context, dict):
+            return
+        entity = context.get("entity")
+        entity_type = str(context.get("entity_type") or "").upper()
+        if not entity or entity_type in {"", "UNKNOWN", "REFERENCE", "ELABORATION"}:
+            return
+        entry = {
+            "action": str(context.get("action") or ""),
+            "entity": str(entity),
+            "entity_type": entity_type,
+        }
+        previous = [
+            item for item in self.state.context_history
+            if not self._same_topic(item.get("entity"), entity)
+        ]
+        previous.append(entry)
+        self.state.context_history = previous[-8:]
+
+    def _forget_context(self, topic: str) -> None:
+        self.state.context_history = [
+            item for item in self.state.context_history
+            if not self._same_topic(item.get("entity"), topic)
+        ]
+
+    def context_for_topic(self, topic: str | None) -> dict | None:
+        """Return a previously validated subject only for an explicit target."""
+        if not topic:
+            return None
+        for item in reversed(self.state.context_history):
+            entity_type = str(item.get("entity_type") or "").upper()
+            if (
+                self._same_topic(item.get("entity"), topic)
+                and entity_type not in {"", "UNKNOWN", "REFERENCE", "ELABORATION"}
+            ):
+                return dict(item)
+        return None
+
     def save_pending(self, topic: str):
         self.state.pending_topic = topic
+        active = self.active_context_entity()
+        if active and self._same_topic(active.get("entity"), topic):
+            self._remember_context(active)
 
     def restore_pending(self) -> str | None:
         topic = self.state.pending_topic
@@ -198,7 +259,9 @@ class DialogueMemory:
         """Return the active dialogue subject for an already-approved transition."""
         topic = self.state.last_topic
         entity_type = self.state.last_entity_type
-        if not topic or not entity_type or entity_type in {
+        entity_type = str(entity_type or "").upper()
+        if not topic or entity_type in {
+            "",
             "UNKNOWN", "REFERENCE", "ELABORATION",
         }:
             return None
@@ -212,97 +275,28 @@ class DialogueMemory:
     # Reference resolution
     # --------------------------------------------------------
 
-    def resolve_references(self, text: str) -> str:
+    def resolve_references(
+        self,
+        text: str,
+        *,
+        context_entity: dict | None = None,
+    ) -> str:
+        """Make an already-authorized subject explicit without phrase rewrites."""
         text = str(text)
-        topic = self.state.last_topic
-
+        topic = (
+            context_entity.get("entity")
+            if isinstance(context_entity, dict)
+            else self.state.last_topic
+        )
         if not topic:
             return text
 
-        replacements = {
-            "هذا": topic,
-            "هذه": topic,
-            "ذلك": topic,
-            "تلك": topic,
-            "نفسه": topic,
-            "نفسها": topic,
-            "بهذا": topic,
-            "بهذه": topic,
-            "لهذا": topic,
-            "السابق": topic,
-            "السابقة": topic,
-        }
-
-        resolved = text
-
-        # Specific constructions first.
-        specific = (
-            ("علاقته بهذا", f"ما علاقة {topic} بالمشروع؟"),
-            ("علاقته بهذه", f"ما علاقة {topic} بالمشروع؟"),
-            ("دوره في هذا", f"{topic} ما دوره في المشروع؟"),
-            ("دوره في هذه", f"{topic} ما دوره في المشروع؟"),
-        )
-
-        for source, replacement in specific:
-            if source in resolved:
-                return replacement
-
-        # Follow-up questions that omit the subject.
-        prefixes = (
-            "ما دوره",
-            "ما وظيفته",
-            "ما علاقتة",
-            "ما علاقته",
-            "كيف يعمل",
-            "هل هو مهم",
-            "هل تنصحني",
-        )
-
-        if resolved.strip() == text.strip():
-            stripped = text.strip()
-
-            if stripped.startswith("ولماذا"):
-                return f"{topic} لماذا؟"
-
-            if stripped.startswith("لماذا"):
-                return f"{topic} لماذا؟"
-
-            if stripped.startswith("ماذا عن"):
-                return f"{topic} {stripped}"
-
-            if stripped.startswith("وماذا عن"):
-                return f"{topic} {stripped[1:]}"
-
-            if stripped.startswith("وما علاقته"):
-                return f"{topic} {stripped[1:]}"
-
-            if stripped.startswith("ما علاقته"):
-                return f"{topic} {stripped}"
-
-            if stripped.startswith("وأيهما"):
-                return f"{topic} {stripped[1:]}"
-
-            if stripped.startswith(prefixes):
-                return f"{topic} {stripped}"
-
-        for source, replacement in replacements.items():
-            if source in resolved:
-                resolved = resolved.replace(source, replacement)
-
-        if (
-            "الحل الثاني" in resolved
-            and len(self.state.last_items) >= 2
-        ):
+        resolved = f"{topic} {text.strip()}"
+        if "الحل الثاني" in text and len(self.state.last_items) >= 2:
             resolved = resolved.replace(
                 "الحل الثاني",
                 str(self.state.last_items[1]),
             )
-        # The caller has already established that this turn is contextual.
-        # If no specific pronoun substitution applied, make the active subject
-        # explicit rather than maintaining a phrase whitelist here.
-        if resolved.strip() == text.strip():
-            return f"{topic} {text.strip()}"
-
         return resolved
 
     # --------------------------------------------------------

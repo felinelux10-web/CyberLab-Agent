@@ -93,9 +93,28 @@ class ConversationManager:
         transition = self._classify_context_transition(mode, candidate)
         resolved_input = user_input
         parsed = candidate
+        context_entity = None
+        if self.dialogue_memory:
+            if transition == ContextTransition.RESTORE:
+                get_context = getattr(
+                    self.dialogue_memory,
+                    "context_for_topic",
+                    None,
+                )
+                if callable(get_context):
+                    context_entity = get_context(candidate.get("target"))
+            elif transition.value in CONTEXTUAL_TRANSITIONS:
+                get_active_context = getattr(
+                    self.dialogue_memory,
+                    "active_context_entity",
+                    None,
+                )
+                if callable(get_active_context):
+                    context_entity = get_active_context()
 
         if (
             self.dialogue_memory
+            and context_entity
             and transition.value in CONTEXTUAL_TRANSITIONS
             and (
                 not candidate.get("target")
@@ -103,11 +122,14 @@ class ConversationManager:
                 in {"REFERENCE", "ELABORATION"}
             )
         ):
-            resolved_input = self.dialogue_memory.resolve_references(user_input)
+            resolved_input = self.dialogue_memory.resolve_references(
+                user_input,
+                context_entity=context_entity,
+            )
             if resolved_input != user_input:
                 parsed = self._safe_parse(
                     resolved_input,
-                    context_entity=self.dialogue_memory.active_context_entity(),
+                    context_entity=context_entity,
                 )
 
         chat_history = self._history_for_transition(transition, parsed)
@@ -233,6 +255,7 @@ class ConversationManager:
             result = self.orchestrator.handle(
                 text,
                 parsed=parsed,
+                context_resolved=True,
             )
             result = dict(result)
             result["executed"] = result.get("status") != "needs_clarification"
@@ -265,6 +288,7 @@ class ConversationManager:
             result = self.orchestrator.handle(
                 text,
                 parsed=parsed,
+                context_resolved=True,
             )
             result = dict(result)
             result["executed"] = result.get("status") != "needs_clarification"
@@ -323,20 +347,44 @@ class ConversationManager:
         if target:
             if active_topic and self._same_topic(target, active_topic):
                 return ContextTransition.CONTINUE
+            previous_context = None
+            if self.dialogue_memory:
+                get_context = getattr(
+                    self.dialogue_memory,
+                    "context_for_topic",
+                    None,
+                )
+                if callable(get_context):
+                    previous_context = get_context(target)
+                pending_topic = getattr(
+                    self.dialogue_memory,
+                    "pending_topic",
+                    None,
+                )
+            else:
+                pending_topic = None
+            valid_target = entity_type not in {
+                "", "UNKNOWN", "REFERENCE", "ELABORATION",
+            }
+            if valid_target and (
+                previous_context
+                or self._same_topic(target, pending_topic)
+            ):
+                return ContextTransition.RESTORE
             return (
                 ContextTransition.EXPLICIT_SWITCH
                 if active_topic else ContextTransition.NEW_INDEPENDENT
             )
 
-        if pattern == "CONTINUE_WORK":
+        if entity_type == "ELABORATION":
             return (
                 ContextTransition.CONTINUE
                 if active_topic else ContextTransition.AMBIGUOUS
             )
 
-        if entity_type == "ELABORATION":
+        if pattern in {"CONTINUE_WORK", "GIVE_EXAMPLE"}:
             return (
-                ContextTransition.CLARIFICATION
+                ContextTransition.CONTINUE
                 if active_topic else ContextTransition.AMBIGUOUS
             )
 
@@ -350,7 +398,7 @@ class ConversationManager:
             )
             previous_intent = getattr(previous_intent, "value", previous_intent)
             return (
-                ContextTransition.CLARIFICATION
+                ContextTransition.CONTINUE
                 if intent and intent == previous_intent
                 else ContextTransition.REFERENCE
             )
@@ -385,8 +433,15 @@ class ConversationManager:
         if not self.dialogue_memory:
             return []
 
-        if transition.value in CONTEXTUAL_TRANSITIONS:
-            topic = getattr(self.dialogue_memory, "last_topic", None)
+        if transition == ContextTransition.RESTORE:
+            topic = (parsed or {}).get("target")
+        elif transition.value in CONTEXTUAL_TRANSITIONS:
+            active_context = self.dialogue_memory.active_context_entity()
+            topic = (
+                active_context.get("entity")
+                if isinstance(active_context, dict)
+                else None
+            )
         elif transition == ContextTransition.EXPLICIT_SWITCH:
             topic = (parsed or {}).get("target")
         else:
@@ -529,19 +584,11 @@ class ConversationManager:
 
     def restore_topic(self) -> dict:
         if self.dialogue_memory:
-            topic = (
-                self.dialogue_memory.restore_pending()
-            )
-
+            topic = getattr(self.dialogue_memory, "pending_topic", None)
             if topic:
-                return {
-                    "status": "success",
-                    "intent": "topic_restore",
-                    "text": (
-                        f"نرجع للموضوع السابق: {topic}"
-                    ),
-                    "topic": topic,
-                }
+                result = dict(self.process(f"ارجع لشرح {topic}"))
+                result.setdefault("topic", topic)
+                return result
 
         return {
             "status": "success",

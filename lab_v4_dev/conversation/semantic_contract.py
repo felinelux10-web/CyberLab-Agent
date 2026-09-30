@@ -37,6 +37,7 @@ class ContextTransition(str, Enum):
     CONTINUE = "continue"
     REFERENCE = "reference"
     CLARIFICATION = "clarification"
+    RESTORE = "restore"
     EXPLICIT_SWITCH = "explicit_switch"
     NEW_INDEPENDENT = "new_independent"
     AMBIGUOUS = "ambiguous"
@@ -46,6 +47,7 @@ CONTEXTUAL_TRANSITIONS = frozenset({
     ContextTransition.CONTINUE.value,
     ContextTransition.REFERENCE.value,
     ContextTransition.CLARIFICATION.value,
+    ContextTransition.RESTORE.value,
 })
 CONTEXT_TRANSITIONS = frozenset(item.value for item in ContextTransition)
 
