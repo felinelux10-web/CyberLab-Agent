@@ -8,6 +8,11 @@ from lab_v4_dev.intent.fuzzy_normalizer import deep_normalize
 from lab_v4_dev.intent.keyword_families import match_family
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.intent.intent_contract import IntentResult
+from lab_v4_dev.conversation.mode_detector import detect_mode
+from lab_v4_dev.nlu.conversation_semantics import (
+    classify_conversation_semantics,
+    should_override_with_personal_chat,
+)
 
 TEMPORAL_KEYWORDS = ["اخر","آخر","اخير","السابق","اليوم","امس"]
 FILE_INDICATORS   = ["ملف","file","مجلد"]
@@ -61,6 +66,66 @@ def _token_has_word(text_norm: str, w: str) -> bool:
         return w in text_norm
 
 
+_SOFT_CONVERSATION_INTENTS = {
+    Intent.UNCLEAR,
+    Intent.PERSONAL_CHAT,
+    Intent.UNSUPPORTED,
+    Intent.HELP,
+    Intent.STATUS,
+    Intent.SYSTEM_STATUS,
+    Intent.CYBER_EXPLAIN,
+    Intent.CONTEXT_REPORT,
+    Intent.WORK_CONTEXT,
+}
+
+
+def _early_conversation_result(user_input: str) -> dict | None:
+    """Accept a strong social/style signal before broad NLU families run."""
+    signal = classify_conversation_semantics(user_input)
+    mode = detect_mode(user_input)
+    target = _extract_target(user_input)
+    if not should_override_with_personal_chat(
+        user_input,
+        signal,
+        mode=mode,
+        target=target,
+    ):
+        return None
+
+    # Exact/word dictionary operations and explicit targets retain authority.
+    # Weak semantic/fuzzy matches such as "STATUS" for a personal question do
+    # not override a clear conversational act.
+    deterministic = dict_match(user_input)
+    if (
+        deterministic.get("method") in {"exact", "word"}
+        and deterministic.get("intent") not in _SOFT_CONVERSATION_INTENTS
+    ):
+        return None
+
+    act = signal.get("conversation_act", "")
+    entity_type = "ELABORATION" if act in {
+        "SIMPLIFICATION_REQUEST",
+        "VERBOSITY_REQUEST",
+        "FORMALITY_REQUEST",
+        "TONE_REQUEST",
+        "STYLE_REQUEST",
+    } else "UNKNOWN"
+    return {
+        "intent": Intent.PERSONAL_CHAT,
+        "target": "",
+        "context": detect_context(user_input),
+        "confidence": float(signal.get("confidence", 0.6)),
+        "raw": user_input,
+        "source": "conversation_semantics",
+        "entity_type": entity_type,
+        "semantic_pattern": "",
+        "conversation_domain": signal.get("conversation_domain", "social"),
+        "conversation_act": act,
+        "conversation_confidence": float(signal.get("confidence", 0.6)),
+        "response_attributes": dict(signal.get("response_attributes") or {}),
+    }
+
+
 
 # ============================================================
 # P04 / Canonical Intent Contract Boundary
@@ -98,6 +163,11 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
         pass
 
     if re.search(r"^(احذف|حذف|امسح) الملف$", raw): return {"intent": Intent.DELETE_FILE, "target": "", "context": detect_context(raw), "confidence": 0.99, "raw": user_input}
+
+    conversational_result = _early_conversation_result(user_input)
+    if conversational_result is not None:
+        return conversational_result
+
     semantic_pattern = None
     entity_type = ""
 
@@ -405,6 +475,27 @@ def parse(user_input, *, context_entity: dict | None = None):
             f"intent parser returned unsupported type: {type(legacy).__name__}"
         )
 
+    legacy = dict(legacy)
+    signal = classify_conversation_semantics(
+        user_input,
+        intent=legacy.get("intent"),
+        target=legacy.get("target", ""),
+        entity_type=legacy.get("entity_type", ""),
+    )
+    legacy.setdefault(
+        "conversation_domain",
+        signal.get("conversation_domain", "general"),
+    )
+    legacy.setdefault("conversation_act", signal.get("conversation_act", "NONE"))
+    legacy.setdefault(
+        "conversation_confidence",
+        float(signal.get("confidence", 0.0)),
+    )
+    legacy.setdefault(
+        "response_attributes",
+        dict(signal.get("response_attributes") or {}),
+    )
+
     result = IntentResult(
         intent=legacy.get("intent"),
         confidence=float(legacy.get("confidence", 0.0)),
@@ -415,6 +506,10 @@ def parse(user_input, *, context_entity: dict | None = None):
         entity_type=legacy.get("entity_type", ""),
         semantic_pattern=legacy.get("semantic_pattern", ""),
         context_inherited=legacy.get("context_inherited", False),
+        conversation_domain=legacy.get("conversation_domain", "general"),
+        conversation_act=legacy.get("conversation_act", "NONE"),
+        conversation_confidence=legacy.get("conversation_confidence", 0.0),
+        response_attributes=legacy.get("response_attributes", {}),
     )
 
     result.validate()

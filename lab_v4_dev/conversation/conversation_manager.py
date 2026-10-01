@@ -42,6 +42,7 @@ from lab_v4_dev.llm.gateway import ask as gateway_ask
 from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.nlu.context_resolver import is_incomplete
+from lab_v4_dev.nlu.conversation_semantics import is_social_act, is_style_act
 
 
 _NON_EXECUTABLE_INTENTS = {
@@ -112,10 +113,12 @@ class ConversationManager:
                 if callable(get_active_context):
                     context_entity = get_active_context()
 
+        style_request = is_style_act(candidate.get("conversation_act"))
         if (
             self.dialogue_memory
             and context_entity
             and transition.value in CONTEXTUAL_TRANSITIONS
+            and not style_request
             and (
                 not candidate.get("target")
                 or str(candidate.get("entity_type", "")).upper()
@@ -134,18 +137,45 @@ class ConversationManager:
 
         chat_history = self._history_for_transition(transition, parsed)
 
+        parsed = dict(parsed or {})
+        conversation_act = str(parsed.get("conversation_act") or "NONE")
+        if transition == ContextTransition.RESTORE:
+            conversation_act = "TOPIC_RETURN"
+        elif transition == ContextTransition.EXPLICIT_SWITCH:
+            conversation_act = "TOPIC_SHIFT"
+        elif (
+            transition.value in CONTEXTUAL_TRANSITIONS
+            and conversation_act == "NONE"
+        ):
+            conversation_act = "CONVERSATION_CONTINUATION"
+        parsed["conversation_act"] = conversation_act
+        parsed.setdefault("conversation_domain", "general")
+        parsed.setdefault("conversation_confidence", 0.0)
+        parsed.setdefault("response_attributes", {})
+
         # Canonical semantic request follows the context-authorized parse and
         # is established before selecting the execution owner.
         semantic = build_semantic_request(
             user_input,
             mode,
+            intent=getattr(parsed.get("intent"), "value", parsed.get("intent")),
+            conversation_domain=parsed.get("conversation_domain", "general"),
+            conversation_act=conversation_act,
+            conversation_confidence=float(
+                parsed.get("conversation_confidence", 0.0) or 0.0
+            ),
+            response_attributes=parsed.get("response_attributes") or {},
             confidence=(
                 float(parsed.get("confidence", 0.0))
                 if parsed else 0.0
             ),
             target=(
                 parsed.get("target")
-                if parsed else None
+                or (
+                    context_entity.get("entity")
+                    if context_entity and transition.value in CONTEXTUAL_TRANSITIONS
+                    else None
+                )
             ),
             requires_context=(transition.value in CONTEXTUAL_TRANSITIONS),
             context_transition=transition,
@@ -201,6 +231,9 @@ class ConversationManager:
             self.dni.set_conversation_analysis({
                 "intent": result.get("intent"),
                 "mode": result.get("mode", mode),
+                "conversation_domain": semantic.conversation_domain,
+                "conversation_act": semantic.conversation_act,
+                "response_attributes": dict(semantic.response_attributes or {}),
                 "confidence": (
                     parsed.get("confidence", 0.0)
                     if parsed else 0.0
@@ -338,6 +371,21 @@ class ConversationManager:
             else None
         )
 
+        conversation_act = parsed.get("conversation_act")
+        if is_style_act(conversation_act) and not target:
+            return (
+                ContextTransition.CONTINUE
+                if active_topic else ContextTransition.AMBIGUOUS
+            )
+        # A generic CASUAL_CONVERSATION fallback is weaker than a structural
+        # reference/elaboration marker or an explicit FOLLOW_UP mode.
+        if (
+            is_social_act(conversation_act)
+            and str(conversation_act).upper() != "CASUAL_CONVERSATION"
+            and not target
+        ):
+            return ContextTransition.AMBIGUOUS
+
         if entity_type == "REFERENCE":
             return (
                 ContextTransition.REFERENCE
@@ -444,6 +492,17 @@ class ConversationManager:
             )
         elif transition == ContextTransition.EXPLICIT_SWITCH:
             topic = (parsed or {}).get("target")
+        elif transition == ContextTransition.AMBIGUOUS and is_social_act(
+            (parsed or {}).get("conversation_act")
+        ):
+            # Keep social-to-social continuity without exposing a prior
+            # technical subject that the current turn did not authorize.
+            state = getattr(self.dialogue_memory, "state", None)
+            history = getattr(state, "history", []) if state is not None else []
+            return [
+                turn for turn in (history or [])
+                if isinstance(turn, dict) and not turn.get("target")
+            ][-8:]
         else:
             return []
 
@@ -480,25 +539,21 @@ class ConversationManager:
         history: list | None = None,
     ) -> dict:
         result = {}
-        if mode == "CHAT":
-            if (parsed or {}).get("intent") == Intent.PERSONAL_CHAT:
-                return {
-                    "status": "success",
-                    "intent": Intent.PERSONAL_CHAT,
-                    "text": (
-                        f"فهمت سؤالك: «{text}». أنا وكيل برمجي ولا أملك مشاعر، "
-                        "لكنني جاهز لمساعدتك."
-                    ),
-                    "mode": mode,
-                    "source": "local",
-                    "executed": False,
-                }
-
-
         try:
             system, prompt = build_chat_prompt(
                 text,
                 list(history or []),
+                conversation_semantics={
+                    "conversation_domain": (parsed or {}).get(
+                        "conversation_domain", "general"
+                    ),
+                    "conversation_act": (parsed or {}).get(
+                        "conversation_act", "NONE"
+                    ),
+                    "response_attributes": (parsed or {}).get(
+                        "response_attributes", {}
+                    ),
+                },
             )
 
             result = gateway_ask(
@@ -521,7 +576,7 @@ class ConversationManager:
 
             return {
                 "status": "success",
-                "intent": mode.lower(),
+                "intent": (parsed or {}).get("intent", mode.lower()),
                 "text": reply,
                 "mode": mode,
                 "source": "llm",
@@ -542,7 +597,7 @@ class ConversationManager:
 
             return {
                 "status": "error",
-                "intent": mode.lower(),
+                "intent": (parsed or {}).get("intent", mode.lower()),
                 "text": fallback,
                 "mode": mode,
                 "source": "fallback",

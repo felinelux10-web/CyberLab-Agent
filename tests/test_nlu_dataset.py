@@ -112,7 +112,7 @@ DATASET = [
     # ─── النقاش والرأي ───
     ("ما رأيك",                            "cyber_explain",   None),
     ("هل توافق",                           "repair_approve",  None),
-    ("ما وجهة نظرك",                       "cyber_explain",   None),
+    ("ما وجهة نظرك",                       "personal_chat",   None),
     ("لو كنت مكاني ماذا ستفعل",            "cyber_explain",   None),
     ("ما إيجابياته",                       "cyber_explain",   None),
     ("ما سلبياته",                         "cyber_explain",   None),

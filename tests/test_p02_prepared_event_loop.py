@@ -1,5 +1,6 @@
 from lab_v4_dev.core.agent import Agent
 from lab_v4_dev.core.contracts import PreparedExecutionRequest
+from lab_v4_dev.conversation import conversation_manager as conversation_module
 from lab_v4_dev.executor.contracts import ExecutionResult
 from lab_v4_dev.loop.event_loop import EventLoop
 from lab_v4_dev.intent.intent_parser import parse
@@ -95,6 +96,15 @@ def test_prepared_path_uses_planner_adapter_executor_without_raw_parser(monkeypa
 
 def test_snapshot_personal_chat_and_fuzzy_matching_regression(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        conversation_module,
+        "gateway_ask",
+        lambda *_args, **_kwargs: {
+            "status": "success",
+            "text": "أهلًا بك.",
+            "provider_used": "offline-test",
+        },
+    )
 
     # Snapshot-style natural conversation must remain PERSONAL_CHAT.
     parsed_chat = parse("مرحبا")

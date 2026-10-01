@@ -133,7 +133,17 @@ class Orchestrator:
                 _rt.update_active_file(target)
             except:
                 pass
-        result = self._route(intent, target, ctx_hint, raw_request)
+        response_attributes = parsed.get("response_attributes") or {}
+        if response_attributes:
+            result = self._route(
+                intent,
+                target,
+                ctx_hint,
+                raw_request,
+                response_attributes=response_attributes,
+            )
+        else:
+            result = self._route(intent, target, ctx_hint, raw_request)
         if _rt:
             try:
                 _rt.end({
@@ -216,12 +226,20 @@ class Orchestrator:
 
         return result
 
-    def _route(self, intent, target, context, raw) -> dict:
+    def _route(
+        self,
+        intent,
+        target,
+        context,
+        raw,
+        *,
+        response_attributes: dict | None = None,
+    ) -> dict:
 
         # ─── Response Cache ───
         from lab_v4_dev.intent.response_cache import get as rcache_get
         _cache_intents = ["analyze_code","project_scan","cyber_explain","health","self_diagnose"]
-        if intent in _cache_intents:
+        if intent in _cache_intents and not response_attributes:
             # لا نستخدم cache عندما يتطلب الشرح/التحليل موضوعًا ولا يوجد target.
             # يمنع إعادة إجابة قديمة عن موضوع لم يحدده المستخدم.
             _skip_cache = (
@@ -1176,7 +1194,7 @@ class Orchestrator:
         # ─── Cyber Explain (v5.9.1-B) ───
         elif intent == Intent.CYBER_EXPLAIN:
             from lab_v4_dev.awareness.knowledge_base import search, store, hit
-            cached = search(raw)
+            cached = None if response_attributes else search(raw)
             if cached:
                 hit(raw)
                 self.context.current_subject = raw
@@ -1354,6 +1372,16 @@ SOURCE CODE:
             else:
                 from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
                 system, _prompt = build_cybersec_prompt(raw)
+
+            if response_attributes:
+                from lab_v4_dev.llm.prompt_builder import (
+                    format_response_attribute_instructions,
+                )
+                style_instructions = format_response_attribute_instructions(
+                    response_attributes
+                )
+                if style_instructions:
+                    system += "\n\n" + style_instructions
 
             result = ask(
                 _prompt,

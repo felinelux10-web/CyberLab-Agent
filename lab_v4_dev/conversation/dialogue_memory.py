@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from lab_v4_dev.conversation.dialogue_contract import DialogueState
 from lab_v4_dev.conversation.semantic_contract import CONTEXTUAL_TRANSITIONS
+from lab_v4_dev.nlu.conversation_semantics import is_social_act, is_style_act
 
 
 class DialogueMemory:
@@ -101,22 +102,33 @@ class DialogueMemory:
         parsed = parsed or {}
         previous_context = self.active_context_entity()
 
-        intent = parsed.get("intent") or result.get("intent")
-        target = parsed.get("target") or result.get("target")
-        confidence = parsed.get("confidence", result.get("confidence", 0.0))
+        turn_intent = parsed.get("intent") or result.get("intent")
+        turn_target = parsed.get("target") or result.get("target")
+        turn_confidence = parsed.get("confidence", result.get("confidence", 0.0))
+        relation = getattr(context_transition, "value", context_transition)
+        conversation_act = parsed.get("conversation_act")
+        preserve_active_subject = bool(
+            self.state.last_topic
+            and not turn_target
+            and relation in {
+                "ambiguous", "continue", "reference", "clarification",
+            }
+            and (
+                is_social_act(conversation_act)
+                or is_style_act(conversation_act)
+            )
+        )
 
         self.state.last_mode = mode or result.get("mode")
-        self.state.last_intent = intent
-        self.state.last_target = target
+        if not preserve_active_subject:
+            self.state.last_intent = turn_intent
+            self.state.last_target = turn_target
+            try:
+                self.state.last_confidence = float(turn_confidence or 0.0)
+            except (TypeError, ValueError):
+                self.state.last_confidence = 0.0
 
-        try:
-            self.state.last_confidence = float(confidence or 0.0)
-        except (TypeError, ValueError):
-            self.state.last_confidence = 0.0
-
-        topic = self._derive_topic(text, target)
-
-        relation = getattr(context_transition, "value", context_transition)
+        topic = self._derive_topic(text, turn_target)
         if context_transition is None:
             # Compatibility for direct legacy callers; the main conversation
             # path always supplies its explicit transition decision.
@@ -136,12 +148,12 @@ class DialogueMemory:
                 self._remember_context(previous_context)
             self.state.last_topic = topic
             entity_type = parsed.get("entity_type") or result.get("entity_type")
-            if not entity_type and target:
+            if not entity_type and turn_target:
                 try:
                     from lab_v4_dev.nlu.entity_extractor import extract
-                    intent_value = getattr(intent, "value", intent)
+                    intent_value = getattr(turn_intent, "value", turn_intent)
                     entity_type = extract(
-                        str(target),
+                        str(turn_target),
                         str(intent_value or ""),
                     ).get("type")
                 except Exception:
@@ -167,18 +179,18 @@ class DialogueMemory:
             role="user",
             content=text,
             mode=self.state.last_mode,
-            intent=intent,
-            target=target,
-            confidence=self.state.last_confidence,
+            intent=turn_intent,
+            target=turn_target,
+            confidence=turn_confidence,
         )
 
         self.state.add_turn(
             role="assistant",
             content=result.get("text", ""),
             mode=self.state.last_mode,
-            intent=intent,
-            target=target,
-            confidence=self.state.last_confidence,
+            intent=turn_intent,
+            target=turn_target,
+            confidence=turn_confidence,
         )
 
         items = result.get("items") or result.get("files") or []

@@ -1,3 +1,4 @@
+from lab_v4_dev.conversation import conversation_manager as conversation_module
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.intent import llm_intent_resolver
@@ -36,19 +37,20 @@ def build_manager(monkeypatch):
     memory = DialogueMemory(object())
     orchestrator = RecordingOrchestrator()
     manager = ConversationManager(orchestrator, memory)
-    monkeypatch.setattr(
-        manager,
-        "_handle_chat",
-        lambda _text, _mode, **_kwargs: {
-            "status": "unexpected_chat",
-            "text": "unexpected chat route",
-        },
-    )
     return manager, memory, orchestrator
 
 
 def test_g03_references_stay_on_csrf_despite_stale_nlu_entity(monkeypatch):
     manager, memory, orchestrator = build_manager(monkeypatch)
+    gateway_calls = []
+    monkeypatch.setattr(
+        conversation_module,
+        "gateway_ask",
+        lambda prompt, **kwargs: (
+            gateway_calls.append((prompt, kwargs))
+            or {"status": "success", "text": "شرح مبسط.", "provider_used": "test"}
+        ),
+    )
     sequence = [
         "اشرح CSRF",
         "ما دوره؟",
@@ -66,23 +68,35 @@ def test_g03_references_stay_on_csrf_despite_stale_nlu_entity(monkeypatch):
         "CSRF ما دوره؟",
         "CSRF كيف يعمل؟",
         "CSRF ولماذا؟",
-        "CSRF اشرح لي هذا بشكل أبسط",
         "CSRF ما المقصود بهذا؟",
     ]
-    assert [call[1]["target"] for call in orchestrator.calls] == ["CSRF"] * 6
+    assert [call[1]["target"] for call in orchestrator.calls] == ["CSRF"] * 5
+    assert len(gateway_calls) == 1
+    assert "CSRF" in gateway_calls[0][0]
+    assert "لغة مبسطة" in gateway_calls[0][1]["system"]
     assert memory.last_topic == "CSRF"
 
 
 def test_g03_explicit_topic_switch_becomes_reference_authority(monkeypatch):
     manager, memory, orchestrator = build_manager(monkeypatch)
+    gateway_calls = []
+    monkeypatch.setattr(
+        conversation_module,
+        "gateway_ask",
+        lambda prompt, **kwargs: (
+            gateway_calls.append((prompt, kwargs))
+            or {"status": "success", "text": "شرح مبسط.", "provider_used": "test"}
+        ),
+    )
 
     manager.process("اشرح CSRF")
     manager.process("اشرح SQL Injection")
     manager.process("اشرح لي هذا بشكل أبسط")
 
     assert orchestrator.calls[1][0] == "اشرح SQL Injection"
-    assert orchestrator.calls[2][0] == "SQL Injection اشرح لي هذا بشكل أبسط"
-    assert orchestrator.calls[2][1]["target"] == "SQL Injection"
+    assert len(orchestrator.calls) == 2
+    assert "SQL Injection" in gateway_calls[0][0]
+    assert "لغة مبسطة" in gateway_calls[0][1]["system"]
     assert memory.last_topic == "SQL Injection"
 
 

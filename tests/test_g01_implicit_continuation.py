@@ -1,3 +1,4 @@
+from lab_v4_dev.conversation import conversation_manager as conversation_module
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.intent import llm_intent_resolver
@@ -30,13 +31,14 @@ def test_implicit_explanation_continuation_preserves_topic_and_explicit_switch(m
     memory = DialogueMemory(object())
     orchestrator = RecordingOrchestrator()
     manager = ConversationManager(orchestrator, memory)
+    gateway_calls = []
     monkeypatch.setattr(
-        manager,
-        "_handle_chat",
-        lambda text, mode, **_kwargs: {
-            "status": "unexpected_chat",
-            "text": f"unexpected chat route: {mode} {text}",
-        },
+        conversation_module,
+        "gateway_ask",
+        lambda prompt, **kwargs: (
+            gateway_calls.append((prompt, kwargs))
+            or {"status": "success", "text": "شرح مبسط.", "provider_used": "test"}
+        ),
     )
 
     manager.process("اشرح SQL Injection")
@@ -45,10 +47,11 @@ def test_implicit_explanation_continuation_preserves_topic_and_explicit_switch(m
     manager.process("بسط الشرح اكثر")
     manager.process("اشرح اكثر")
 
-    assert orchestrator.calls[1][0] == "SQL Injection بسط الشرح اكثر"
-    assert orchestrator.calls[2][0] == "SQL Injection اشرح اكثر"
-    assert [call[1]["target"] for call in orchestrator.calls[:3]] == [
-        "SQL Injection",
+    assert len(gateway_calls) == 1
+    assert "SQL Injection" in gateway_calls[0][0]
+    assert "لغة مبسطة" in gateway_calls[0][1]["system"]
+    assert orchestrator.calls[1][0] == "SQL Injection اشرح اكثر"
+    assert [call[1]["target"] for call in orchestrator.calls[:2]] == [
         "SQL Injection",
         "SQL Injection",
     ]
@@ -56,6 +59,6 @@ def test_implicit_explanation_continuation_preserves_topic_and_explicit_switch(m
 
     manager.process("اشرح CSRF")
 
-    assert orchestrator.calls[3][0] == "اشرح CSRF"
-    assert orchestrator.calls[3][1]["target"] == "CSRF"
+    assert orchestrator.calls[2][0] == "اشرح CSRF"
+    assert orchestrator.calls[2][1]["target"] == "CSRF"
     assert memory.last_topic == "CSRF"

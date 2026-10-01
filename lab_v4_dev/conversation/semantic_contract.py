@@ -30,6 +30,35 @@ ACTION_TYPES = frozenset({
     "manage",
 })
 
+CONVERSATION_DOMAINS = frozenset({
+    "general", "social", "style", "execution", "technical", "project", "system",
+})
+
+CONVERSATION_ACTS = frozenset({
+    "NONE",
+    "EXECUTABLE_REQUEST",
+    "GENERAL_CHAT",
+    "CASUAL_CONVERSATION",
+    "SOCIAL_GREETING",
+    "SOCIAL_ACKNOWLEDGEMENT",
+    "SOCIAL_CLOSING",
+    "SOCIAL_OPENING",
+    "ASSISTANT_STATE_QUERY",
+    "ASSISTANT_CAPABILITY_QUERY",
+    "ASSISTANT_IDENTITY_QUERY",
+    "PERSONAL_INTERACTION",
+    "CASUAL_DISCUSSION",
+    "SOCIAL_FOLLOW_UP",
+    "SIMPLIFICATION_REQUEST",
+    "VERBOSITY_REQUEST",
+    "FORMALITY_REQUEST",
+    "TONE_REQUEST",
+    "STYLE_REQUEST",
+    "TOPIC_SHIFT",
+    "TOPIC_RETURN",
+    "CONVERSATION_CONTINUATION",
+})
+
 
 class ContextTransition(str, Enum):
     """Conversation-owned relationship between the current turn and topic."""
@@ -56,6 +85,11 @@ CONTEXT_TRANSITIONS = frozenset(item.value for item in ContextTransition)
 class SemanticRequest:
     raw: str
     mode: str
+    intent: Optional[str] = None
+    conversation_domain: str = "general"
+    conversation_act: str = "NONE"
+    conversation_confidence: float = 0.0
+    response_attributes: Dict[str, Any] | None = None
     action_type: str = "none"
     confidence: float = 0.0
     ambiguity: bool = False
@@ -70,12 +104,18 @@ class SemanticRequest:
             raise ValueError(f"invalid semantic mode: {self.mode}")
         if self.action_type not in ACTION_TYPES:
             raise ValueError(f"invalid action type: {self.action_type}")
+        if self.conversation_domain not in CONVERSATION_DOMAINS:
+            raise ValueError(f"invalid conversation domain: {self.conversation_domain}")
+        if self.conversation_act not in CONVERSATION_ACTS:
+            raise ValueError(f"invalid conversation act: {self.conversation_act}")
+        if not 0.0 <= float(self.confidence) <= 1.0:
+            raise ValueError("confidence must be between 0 and 1")
+        if not 0.0 <= float(self.conversation_confidence) <= 1.0:
+            raise ValueError("conversation_confidence must be between 0 and 1")
         if self.context_transition not in CONTEXT_TRANSITIONS:
             raise ValueError(
                 f"invalid context transition: {self.context_transition}"
             )
-        if not 0.0 <= float(self.confidence) <= 1.0:
-            raise ValueError("confidence must be between 0 and 1")
 
     def as_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -95,6 +135,11 @@ def build_semantic_request(
     raw: str,
     mode: str,
     *,
+    intent: Optional[str] = None,
+    conversation_domain: str = "general",
+    conversation_act: str = "NONE",
+    conversation_confidence: float = 0.0,
+    response_attributes: Dict[str, Any] | None = None,
     confidence: float = 0.5,
     target: Optional[str] = None,
     ambiguity: bool = False,
@@ -109,6 +154,11 @@ def build_semantic_request(
     return SemanticRequest(
         raw=raw,
         mode=mode,
+        intent=intent,
+        conversation_domain=conversation_domain,
+        conversation_act=conversation_act,
+        conversation_confidence=conversation_confidence,
+        response_attributes=dict(response_attributes or {}),
         action_type=action_type_for_mode(mode),
         confidence=confidence,
         ambiguity=ambiguity,

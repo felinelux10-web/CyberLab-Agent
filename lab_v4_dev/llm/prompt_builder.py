@@ -209,7 +209,37 @@ def _chat_domain(user_input: str):
     return "general"
 
 
-def build_chat_prompt(user_input: str, history: list = None) -> tuple:
+_RESPONSE_ATTRIBUTE_INSTRUCTIONS = {
+    ("interaction_style", "simplified"): "استخدم لغة مبسطة واشرح المصطلحات غير المألوفة.",
+    ("verbosity", "concise"): "اجعل الرد موجزًا مع الحفاظ على النقاط الأساسية.",
+    ("verbosity", "detailed"): "قدّم شرحًا مفصلًا ومنظمًا دون حشو.",
+    ("formality", "academic"): "استخدم صياغة أكاديمية ومصطلحات دقيقة.",
+    ("formality", "formal"): "استخدم العربية الفصحى ونبرة رسمية.",
+    ("formality", "colloquial"): "استخدم لهجة محكية واضحة ومهذبة.",
+    ("tone", "warm"): "حافظ على نبرة ودودة ومحترمة.",
+}
+
+
+def format_response_attribute_instructions(attributes: dict | None) -> str:
+    attributes = attributes or {}
+    instructions = [
+        instruction
+        for (key, value), instruction in _RESPONSE_ATTRIBUTE_INSTRUCTIONS.items()
+        if attributes.get(key) == value
+    ]
+    if not instructions:
+        return ""
+    return "=== تفضيلات صياغة الرد ===\n" + "\n".join(
+        f"- {instruction}" for instruction in instructions
+    )
+
+
+def build_chat_prompt(
+    user_input: str,
+    history: list = None,
+    *,
+    conversation_semantics: dict | None = None,
+) -> tuple:
     """
     Natural conversation prompt.
 
@@ -270,23 +300,20 @@ def build_chat_prompt(user_input: str, history: list = None) -> tuple:
 - لا تتعامل مع كل رسالة كأنها طلب مستقل.
 """
 
-    if "ما علاقة" in user_input:
-        system += """
-- السؤال عن العلاقة بين عناصر أو ملفات في المشروع.
-- ركز على الاعتماد والتواصل والموقع المعماري.
-"""
+    semantic = conversation_semantics or {}
+    act = str(semantic.get("conversation_act") or "NONE")
+    if act != "NONE":
+        system += (
+            "\n\n=== وظيفة الرسالة الحالية ===\n"
+            f"- الفعل الحواري المصنّف: {act}.\n"
+            "- استجب للوظيفة والمعنى، لا لمطابقة كلمات منفردة.\n"
+        )
 
-    elif "ما دوره" in user_input or "ما وظيفته" in user_input:
-        system += """
-- السؤال عن الدور داخل المشروع.
-- اشرح المسؤوليات والموقع في النظام.
-"""
-
-    elif "كيف يعمل" in user_input:
-        system += """
-- السؤال عن طريقة العمل.
-- اشرح التدفق وتسلسل التنفيذ خطوة بخطوة.
-"""
+    style_instructions = format_response_attribute_instructions(
+        semantic.get("response_attributes")
+    )
+    if style_instructions:
+        system += "\n\n" + style_instructions
 
     prompt = str(user_input)
 

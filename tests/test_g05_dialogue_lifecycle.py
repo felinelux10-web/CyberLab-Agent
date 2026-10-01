@@ -40,6 +40,7 @@ def semantic_result(intent, target="", entity_type="UNKNOWN"):
 
 def test_chat_turn_reuses_the_single_canonical_parse(monkeypatch):
     parse_calls = []
+    gateway_calls = []
 
     def canonical_parse(text, **_kwargs):
         parse_calls.append(text)
@@ -47,12 +48,21 @@ def test_chat_turn_reuses_the_single_canonical_parse(monkeypatch):
 
     monkeypatch.setattr(conversation_module, "parse", canonical_parse)
     monkeypatch.setattr(conversation_module, "detect_mode", lambda _text: "CHAT")
+    monkeypatch.setattr(
+        conversation_module,
+        "gateway_ask",
+        lambda prompt, **kwargs: (
+            gateway_calls.append((prompt, kwargs))
+            or {"status": "success", "text": "أهلًا بك.", "provider_used": "test"}
+        ),
+    )
     manager = ConversationManager(RecordingOrchestrator(), DialogueMemory(object()))
 
     result = manager.process("مرحبا")
 
     assert parse_calls == ["مرحبا"]
-    assert result["source"] == "local"
+    assert result["source"] == "llm"
+    assert len(gateway_calls) == 1
     assert result["intent"] == Intent.PERSONAL_CHAT
 
 

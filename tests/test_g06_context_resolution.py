@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from lab_v4_dev.context.context_store import ContextStore
+from lab_v4_dev.conversation import conversation_manager as conversation_module
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.conversation.semantic_contract import ContextTransition
@@ -55,6 +56,15 @@ def build_manager(monkeypatch):
     isolate_external_semantics(monkeypatch)
     memory = DialogueMemory(object())
     orchestrator = RecordingOrchestrator()
+    monkeypatch.setattr(
+        conversation_module,
+        "gateway_ask",
+        lambda _prompt, **_kwargs: {
+            "status": "success",
+            "text": "chat style response",
+            "provider_used": "offline-test",
+        },
+    )
     manager = ConversationManager(orchestrator, memory)
     return manager, memory, orchestrator
 
@@ -80,7 +90,7 @@ def test_semantic_followup_and_reference_matrix_keeps_active_subject(monkeypatch
         ("كيف يعمل؟", "continue"),
         ("ما دوره؟", "continue"),
         ("أعطني مثالًا", "continue"),
-        ("اشرح لي هذا بشكل أبسط", "reference"),
+        ("اشرح لي هذا بشكل أبسط", "continue"),
         ("ما المقصود بهذا؟", "reference"),
         ("هذا الأمر", "reference"),
         ("هذه الفكرة", "reference"),
@@ -90,12 +100,19 @@ def test_semantic_followup_and_reference_matrix_keeps_active_subject(monkeypatch
     ]
 
     for text, expected_transition in matrix:
+        calls_before = len(orchestrator.calls)
         result = manager.process(text)
-        call = orchestrator.calls[-1]
         assert result["semantic_request"]["context_transition"] == expected_transition
-        assert call["parsed"]["target"] == "SQL Injection"
-        assert result["target"] == "SQL Injection"
-        assert result["source"] == "orchestrator-test"
+        assert result["semantic_request"]["target"] == "SQL Injection"
+        if result["semantic_request"]["response_attributes"]:
+            assert len(orchestrator.calls) == calls_before
+            assert result["intent"] == Intent.PERSONAL_CHAT
+            assert result["source"] == "llm"
+        else:
+            call = orchestrator.calls[-1]
+            assert call["parsed"]["target"] == "SQL Injection"
+            assert result["target"] == "SQL Injection"
+            assert result["source"] == "orchestrator-test"
         assert_active(memory, "SQL Injection")
 
 
@@ -112,15 +129,22 @@ def test_critical_a_followups_b_followup_restore_a_followup_sequence(monkeypatch
     ]
 
     for text, expected_transition, expected_topic in sequence:
+        calls_before = len(orchestrator.calls)
         result = manager.process(text)
-        call = orchestrator.calls[-1]
         assert result["semantic_request"]["context_transition"] == expected_transition
         assert result["semantic_request"]["mode"]
-        assert result["intent"] == Intent.CYBER_EXPLAIN
-        assert result["target"] == expected_topic
-        assert result["source"] == "orchestrator-test"
-        assert call["parsed"]["target"] == expected_topic
-        assert call["context_resolved"] is True
+        assert result["semantic_request"]["target"] == expected_topic
+        if result["semantic_request"]["response_attributes"]:
+            assert len(orchestrator.calls) == calls_before
+            assert result["intent"] == Intent.PERSONAL_CHAT
+            assert result["source"] == "llm"
+        else:
+            call = orchestrator.calls[-1]
+            assert result["intent"] == Intent.CYBER_EXPLAIN
+            assert result["target"] == expected_topic
+            assert result["source"] == "orchestrator-test"
+            assert call["parsed"]["target"] == expected_topic
+            assert call["context_resolved"] is True
         assert_active(memory, expected_topic)
 
     csrf_turn = orchestrator.calls[3]
