@@ -362,8 +362,16 @@ class Orchestrator:
                             "status": t["status"]} for t in tasks],
             }
 
-        # ─── تنظيف ───
-        elif intent == Intent.CLEAN or intent == Intent.CLEAN_DEVICE:
+        # ─── تنظيف عام: لا تفترض الجهاز عند غياب الهدف ───
+        elif intent == Intent.CLEAN:
+            return {
+                "status": "needs_clarification",
+                "intent": intent,
+                "text": "ما الذي تريد تنظيفه؟ حدّد الهدف قبل المتابعة.",
+            }
+
+        # ─── تنظيف الجهاز: لا يصل إليه إلا action + device target ───
+        elif intent == Intent.CLEAN_DEVICE:
             from lab_v4_dev.core.cleaner import run_full_clean
             result = run_full_clean()
             lines = ["=== تنظيف الهاتف ==="]
@@ -2034,19 +2042,6 @@ SOURCE CODE:
                 ts = e.get("timestamp","")[:16]
                 lines.append(f"⚠️ {ts} | {e.get('type','')} | {e.get('value','')[:50]}")
                 lines.append(f"    تطابق: {e.get('matched','')}")
-            return {"status":"success","intent":intent,"text":"\n".join(lines)}
-
-        # ─── Clean Device (v5.8) ───
-        elif intent == Intent.CLEAN_DEVICE:
-            from lab_v4_dev.core.cleaner import run_full_clean
-            result = run_full_clean()
-            lines = ["=== تنظيف الهاتف ==="]
-            lines.append(f"📦 المساحة قبل : {result['before_mb']} MB")
-            lines.append(f"📦 المساحة بعد : {result['after_mb']} MB")
-            lines.append(f"🗑️ تم تحرير   : {result['freed_mb']} MB ({result['freed_kb']} KB)")
-            lines.append("─── التفاصيل ───")
-            for d in result["details"]:
-                lines.append(f"  {d['type']}: حذف {d['removed']} عنصر — {d['size_kb']} KB")
             return {"status":"success","intent":intent,"text":"\n".join(lines)}
 
         # ─── Work Context Report ───

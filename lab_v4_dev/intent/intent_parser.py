@@ -66,6 +66,81 @@ def _token_has_word(text_norm: str, w: str) -> bool:
         return w in text_norm
 
 
+# Cleanup is executable only when an action verb is present. Target nouns
+# classify that action; they never create a cleanup intent on their own.
+_CLEAN_ACTION_STEMS = (
+    "نظف", "تنظيف", "مسح", "امسح", "تفريغ", "ازاله", "clean", "clear",
+)
+_DEVICE_TARGET_STEMS = (
+    "هاتف", "جهاز", "جوال", "موبايل", "phone", "device", "mobile",
+)
+_CODE_TARGET_STEMS = (
+    "كود", "مشروع", "ملف", "مجلد", "code", "project", "file", "folder",
+)
+_CLEAN_NEGATORS = ("لا", "لن", "لم", "ليس", "مش", "مو")
+
+
+def _has_stem_token(text: str, stems: tuple[str, ...]) -> bool:
+    normalized = normalize(text).casefold()
+    tokens = re.findall(r"[\w]+", normalized, flags=re.UNICODE)
+    prefixes = ("وال", "فال", "بال", "كال", "لل", "ال", "و", "ف", "ب", "ل", "ك")
+    for token in tokens:
+        candidates = {token}
+        candidate = token
+        for _ in range(3):
+            prefix = next(
+                (
+                    item
+                    for item in prefixes
+                    if candidate.startswith(item)
+                    and len(candidate) > len(item) + 1
+                ),
+                None,
+            )
+            if not prefix:
+                break
+            candidate = candidate[len(prefix):]
+            candidates.add(candidate)
+        if any(value.startswith(stem) for value in candidates for stem in stems):
+            return True
+    return False
+
+
+def _has_cleanup_action(text: str) -> bool:
+    tokens = re.findall(r"[\w]+", normalize(text).casefold(), flags=re.UNICODE)
+    for index, token in enumerate(tokens):
+        if not _has_stem_token(token, _CLEAN_ACTION_STEMS):
+            continue
+        preceding = tokens[max(0, index - 2):index]
+        if any(_has_stem_token(word, _CLEAN_NEGATORS) for word in preceding):
+            continue
+        return True
+    return False
+
+
+def _resolve_cleanup_intent(text: str, candidate: str) -> str:
+    """Resolve cleanup as action + target, never by target mention alone."""
+    has_action = _has_cleanup_action(text)
+    has_device_target = _has_stem_token(text, _DEVICE_TARGET_STEMS)
+    has_code_target = _has_stem_token(text, _CODE_TARGET_STEMS) or bool(
+        _extract_target(text)
+    )
+
+    if not has_action:
+        # A weak NLU/fuzzy cleanup guess must not execute on a topic mention.
+        if candidate in {Intent.CLEAN, Intent.CLEAN_DEVICE, Intent.CLEANUP_CODE}:
+            return Intent.PERSONAL_CHAT
+        return candidate
+
+    # Explicit project/code/file targets outrank a device mention when both
+    # appear in one request (e.g. "clean the project on my phone").
+    if has_code_target:
+        return Intent.CLEANUP_CODE
+    if has_device_target:
+        return Intent.CLEAN_DEVICE
+    return Intent.CLEAN
+
+
 _SOFT_CONVERSATION_INTENTS = {
     Intent.UNCLEAR,
     Intent.PERSONAL_CHAT,
@@ -217,14 +292,9 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
                     chosen_intent = dict_result["intent"]
                     chosen_conf   = dict_result["confidence"]
                 else:
-                    # 2) Token-aware explicit target checks (device / code / file)
+                    # Keep explicit delete resolution separate from cleanup
+                    # action/target classification below.
                     _txt_norm = normalize(user_input)
-                    device_indicators = [
-                        "هاتف", "الهاتف", "جهاز", "الجهاز", "جهازي",
-                        "مساحة", "المساحة", "المساحه", "مساحة التخزين",
-                        "تنظيف الهاتف", "نظف الهاتف", "نظف المساحة"
-                    ]
-                    code_indicators   = ["كود", "الكود", "مشروع", "المشروع", "project", "ملف"]
 
                     def _has_word(w):
                         try:
@@ -236,19 +306,11 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
                     chosen_intent = nlu_result["intent"]
                     chosen_conf   = nlu_result.get("confidence", 0.0)
 
-                    # promote to clean_device if explicit device token present
-                    if any(_has_word(w) for w in device_indicators):
-                        chosen_intent = Intent.CLEAN_DEVICE
-                    else:
-                        # Only promote to cleanup_code when NLU implies a cleaning action
-                        clean_indicators = ["نظف", "تنظيف", "نظفه", "نظّف", "مسح", "إزالة", "تفريغ", "clean", "clear"]
-                        if any(_token_has_word(_txt_norm, c) for c in clean_indicators) or chosen_intent == Intent.CLEAN:
-                            if any(_has_word(w) for w in code_indicators):
-                                chosen_intent = Intent.CLEANUP_CODE
-
                     # if NLU says a delete action but there's an explicit file target -> DELETE_FILE
                     if re.search(r"\bاحذ?ف\b", _txt_norm) and (any(_has_word(w) for w in FILE_INDICATORS) or _extract_target(user_input)):
                         chosen_intent = Intent.DELETE_FILE
+
+                chosen_intent = _resolve_cleanup_intent(user_input, chosen_intent)
 
                 return {
                     "intent"           : chosen_intent,
@@ -357,42 +419,8 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
         intent = Intent.STATUS
 
     target = _extract_target(user_input)
-
-    # 8.1 — صريح: إذا ذُكر جهاز/هاتف/المساحة فالأولوية لـ CLEAN_DEVICE
-    # الكلمة هنا تُفحص بكلمات حدودية لتجنب التطابق الجزئي
-    try:
-        _txt_norm = normalize(user_input)
-        # device indicators (whole word checks)
-        device_indicators = [
-            "هاتف", "الهاتف", "جهاز", "الجهاز", "جهازي",
-            "مساحة", "المساحة", "المساحه", "مساحة التخزين",
-            "تنظيف الهاتف", "نظف الهاتف", "نظف المساحة"
-        ]
-        code_indicators   = ["كود", "الكود", "مشروع", "المشروع", "project", "ملف"]
-
-        def _has_word(w):
-            # token-aware check using unicode word boundaries
-            return _token_has_word(_txt_norm, w)
-
-        # If explicit device token present, promote to CLEAN_DEVICE
-        if any(_has_word(w) for w in device_indicators):
-            intent = Intent.CLEAN_DEVICE
-
-        # If explicit code/project token present, promote to CLEANUP_CODE only when cleaning signal present
-        clean_indicators = ["نظف", "تنظيف", "نظفه", "نظّف", "مسح", "إزالة", "تفريغ", "clean", "clear"]
-        if intent != Intent.CLEAN_DEVICE and any(_has_word(w) for w in code_indicators):
-            if intent == Intent.CLEAN or any(_token_has_word(_txt_norm, c) for c in clean_indicators):
-                intent = Intent.CLEANUP_CODE
-
-        # If resolved intent is generic CLEAN but no explicit device/code target — treat as unsupported (ambiguous)
-        if intent == Intent.CLEAN:
-            # If target or explicit device indicator present, keep; otherwise demote to unsupported
-            explicit_device = any(_has_word(w) for w in device_indicators)
-            explicit_code   = any(_has_word(w) for w in code_indicators)
-            if not explicit_device and not explicit_code and not target:
-                intent = Intent.UNSUPPORTED
-    except Exception:
-        pass
+    _txt_norm = normalize(user_input)
+    intent = _resolve_cleanup_intent(user_input, intent)
 
     # DNI-10: resolve command pronouns only from context explicitly granted
     # by the conversation layer; never pull an unrelated global NLU entity.

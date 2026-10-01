@@ -3,11 +3,12 @@ from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
 
 @pytest.mark.parametrize("text,expected", [
-    ("تنظيف", "unsupported"),
-    ("نظف", "unsupported"),
+    ("تنظيف", Intent.CLEAN),
+    ("نظف", Intent.CLEAN),
     ("نظف الهاتف", Intent.CLEAN_DEVICE),
     ("تنظيف الجهاز", Intent.CLEAN_DEVICE),
-    ("نظف المساحة", Intent.CLEAN_DEVICE),
+    ("تنظيف مساحة الهاتف", Intent.CLEAN_DEVICE),
+    ("نظف المساحة", Intent.CLEAN),
     ("نظف الكود", Intent.CLEANUP_CODE),
     ("نظف المشروع", Intent.CLEANUP_CODE),
     ("احذف الملف test.py", Intent.DELETE_FILE),

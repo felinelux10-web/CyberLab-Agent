@@ -10,15 +10,18 @@ def intent_for(text):
 
 
 def test_generic_clean_is_ambiguous():
-    inputs = ["تنظيف", "نظف", "نظّف", "أريد تنظيف"]
+    inputs = ["تنظيف", "نظف", "نظّف", "أريد تنظيف", "نظف المساحة"]
     for t in inputs:
         intent = intent_for(t)
         assert intent != Intent.CLEAN_DEVICE, f"Generic '{t}' should not be CLEAN_DEVICE"
-        assert intent == "unsupported", f"Generic '{t}' should be ambiguous/unsupported, got {intent}"
+        assert intent == Intent.CLEAN, f"Generic '{t}' should request a target, got {intent}"
 
 
 def test_explicit_device_maps_to_clean_device():
-    inputs = ["نظف الهاتف", "نظّف الهاتف", "تنظيف الهاتف", "نظف جهازي", "تنظيف الجهاز", "نظف المساحة"]
+    inputs = [
+        "نظف الهاتف", "نظّف الهاتف", "تنظيف الهاتف", "نظف جهازي",
+        "تنظيف الجهاز", "تنظيف مساحة الهاتف",
+    ]
     for t in inputs:
         intent = intent_for(t)
         assert intent == Intent.CLEAN_DEVICE, f"Device-target '{t}' must map to CLEAN_DEVICE, got {intent}"
