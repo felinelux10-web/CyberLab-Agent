@@ -68,9 +68,31 @@ def _token_has_word(text_norm: str, w: str) -> bool:
 
 # Cleanup is executable only when an action verb is present. Target nouns
 # classify that action; they never create a cleanup intent on their own.
-_CLEAN_ACTION_STEMS = (
-    "نظف", "تنظيف", "مسح", "امسح", "تفريغ", "ازاله", "clean", "clear",
-)
+_CLEAN_ACTION_SUFFIXES = {
+    "نظف": ("", "ه", "ها", "ي", "وا"),
+    "تنظيف": ("",),
+    "مسح": ("", "ه", "ها", "ي", "وا"),
+    "امسح": ("", "ه", "ها", "ي", "وا"),
+    "تفريغ": ("",),
+    "ازاله": ("",),
+    "clean": ("",),
+    "clear": ("",),
+}
+_DELETE_ACTION_SUFFIXES = {
+    "احذف": ("", "ه", "ها", "هم", "ي", "وا"),
+    "حذف": ("", "ه", "ها"),
+    "امسح": ("", "ه", "ها", "ي", "وا"),
+    "ازاله": ("",),
+}
+_READ_ACTION_SUFFIXES = {
+    "اقرا": ("", "ه", "ها", "ني"),
+    "قرا": ("", "ه", "ها"),
+    "افتح": ("", "ه", "ها", "ي", "وا"),
+    "اعرض": ("", "ه", "ها", "ي", "وا"),
+    "read": ("",),
+    "open": ("",),
+    "show": ("",),
+}
 _DEVICE_TARGET_STEMS = (
     "هاتف", "جهاز", "جوال", "موبايل", "phone", "device", "mobile",
 )
@@ -78,44 +100,85 @@ _CODE_TARGET_STEMS = (
     "كود", "مشروع", "ملف", "مجلد", "code", "project", "file", "folder",
 )
 _CLEAN_NEGATORS = ("لا", "لن", "لم", "ليس", "مش", "مو")
+_ARABIC_TOKEN_PREFIXES = (
+    "وال", "فال", "بال", "كال", "لل", "ال", "و", "ف", "ب", "ل", "ك",
+)
+_ARABIC_TOKEN_SUFFIXES = (
+    "هما", "كما", "كم", "كن", "هن", "هم", "ها", "ه", "نا", "ني", "ي", "وا",
+)
+
+
+def _token_prefix_forms(token: str) -> set[str]:
+    """Strip only recognized Arabic clitics; never infer a stem by prefix."""
+    forms = {token}
+    candidate = token
+    for _ in range(3):
+        prefix = next(
+            (
+                item
+                for item in _ARABIC_TOKEN_PREFIXES
+                if candidate.startswith(item)
+                and len(candidate) > len(item) + 1
+            ),
+            None,
+        )
+        if not prefix:
+            break
+        candidate = candidate[len(prefix):]
+        forms.add(candidate)
+    return forms
 
 
 def _has_stem_token(text: str, stems: tuple[str, ...]) -> bool:
+    """Match a whole lexical token with limited Arabic suffix/clitic forms."""
     normalized = normalize(text).casefold()
     tokens = re.findall(r"[\w]+", normalized, flags=re.UNICODE)
-    prefixes = ("وال", "فال", "بال", "كال", "لل", "ال", "و", "ف", "ب", "ل", "ك")
+    stem_set = {stem.casefold() for stem in stems}
     for token in tokens:
-        candidates = {token}
-        candidate = token
-        for _ in range(3):
-            prefix = next(
-                (
-                    item
-                    for item in prefixes
-                    if candidate.startswith(item)
-                    and len(candidate) > len(item) + 1
-                ),
-                None,
-            )
-            if not prefix:
-                break
-            candidate = candidate[len(prefix):]
-            candidates.add(candidate)
-        if any(value.startswith(stem) for value in candidates for stem in stems):
-            return True
+        for candidate in _token_prefix_forms(token):
+            if candidate in stem_set:
+                return True
+            if candidate.endswith("s") and candidate[:-1] in stem_set:
+                return True
+            if any(
+                candidate.endswith(suffix)
+                and candidate[:-len(suffix)] in stem_set
+                for suffix in _ARABIC_TOKEN_SUFFIXES
+            ):
+                return True
     return False
 
 
-def _has_cleanup_action(text: str) -> bool:
+def _has_lexical_action(
+    text: str,
+    action_suffixes: dict[str, tuple[str, ...]],
+) -> bool:
     tokens = re.findall(r"[\w]+", normalize(text).casefold(), flags=re.UNICODE)
+    action_forms = {
+        stem + suffix
+        for stem, suffixes in action_suffixes.items()
+        for suffix in suffixes
+    }
     for index, token in enumerate(tokens):
-        if not _has_stem_token(token, _CLEAN_ACTION_STEMS):
+        if not any(form in action_forms for form in _token_prefix_forms(token)):
             continue
         preceding = tokens[max(0, index - 2):index]
         if any(_has_stem_token(word, _CLEAN_NEGATORS) for word in preceding):
             continue
         return True
     return False
+
+
+def _has_cleanup_action(text: str) -> bool:
+    return _has_lexical_action(text, _CLEAN_ACTION_SUFFIXES)
+
+
+def _has_delete_action(text: str) -> bool:
+    return _has_lexical_action(text, _DELETE_ACTION_SUFFIXES)
+
+
+def _has_read_action(text: str) -> bool:
+    return _has_lexical_action(text, _READ_ACTION_SUFFIXES)
 
 
 def _resolve_cleanup_intent(text: str, candidate: str) -> str:
@@ -127,9 +190,13 @@ def _resolve_cleanup_intent(text: str, candidate: str) -> str:
     )
 
     if not has_action:
-        # A weak NLU/fuzzy cleanup guess must not execute on a topic mention.
+        # A fuzzy/prefix-only action guess is ambiguous, not executable.
         if candidate in {Intent.CLEAN, Intent.CLEAN_DEVICE, Intent.CLEANUP_CODE}:
-            return Intent.PERSONAL_CHAT
+            return Intent.UNCLEAR
+        if candidate == Intent.DELETE_FILE and not _has_delete_action(text):
+            return Intent.UNCLEAR
+        if candidate == Intent.READ_FILE and not _has_read_action(text):
+            return Intent.UNCLEAR
         return candidate
 
     # Explicit project/code/file targets outrank a device mention when both
@@ -507,17 +574,7 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     # An explicit delete-file request with a concrete file target
     # must never be downgraded/reinterpreted by later context
     # routing.
-    _explicit_delete = any(
-        _token_has_word(_txt_norm, w)
-        for w in (
-            "احذف",
-            "احذف الملف",
-            "حذف",
-            "امسح الملف",
-            "ازالة الملف",
-            "إزالة الملف",
-        )
-    )
+    _explicit_delete = _has_delete_action(user_input)
 
     if _explicit_delete and target:
         intent = Intent.DELETE_FILE

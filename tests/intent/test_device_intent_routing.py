@@ -168,6 +168,7 @@ def test_how_are_you_is_social_not_agent_status():
     [
         "نظف الهاتف",
         "تنظيف الهاتف",
+        "نظف الجوال",
         "نظف جهازي",
         "تنظيف الجهاز",
         "تنظيف مساحة الهاتف",
@@ -232,3 +233,237 @@ def test_explicit_device_route_calls_only_mocked_cleaner(monkeypatch):
     assert result["status"] == "success"
     assert result["intent"] == Intent.CLEAN_DEVICE
     assert calls == ["called"]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("نظفوا", Intent.CLEAN),
+        ("نظفي", Intent.CLEAN),
+        ("نظفه", Intent.CLEAN),
+        ("امسحه", Intent.CLEAN),
+        ("مسحه", Intent.CLEAN),
+        ("تنظيف", Intent.CLEAN),
+        ("تفريغ", Intent.CLEAN),
+        ("نظفوا الهاتف", Intent.CLEAN_DEVICE),
+        ("نظفي الجهاز", Intent.CLEAN_DEVICE),
+        ("نظفه جوالي", Intent.CLEAN_DEVICE),
+        ("امسح الهاتف", Intent.CLEAN_DEVICE),
+        ("مسح الجهاز", Intent.CLEAN_DEVICE),
+        ("تنظيف الملف", Intent.CLEANUP_CODE),
+    ],
+)
+def test_cleanup_action_requires_a_whole_lexical_form(text, expected):
+    assert intent_for(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "مسحاخة الجهاز",
+        "مسحاخة الملف test.py",
+        "مساحة الجهاز",
+        "تنظيفي الهاتف",
+    ],
+)
+def test_prefix_or_similar_tokens_do_not_authorize_destructive_intents(text):
+    intent = intent_for(text)
+
+    assert intent not in CLEANUP_INTENTS
+    assert intent != Intent.DELETE_FILE
+    if "الملف" in text:
+        assert intent != Intent.READ_FILE
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["لا احذف الملف test.py", "لا امسح الملف test.py"],
+)
+def test_negated_delete_action_does_not_authorize_file_deletion(text):
+    assert intent_for(text) != Intent.DELETE_FILE
+
+
+def _build_e2e_manager(monkeypatch):
+    from lab_v4_dev.context.context_store import ContextStore
+    from lab_v4_dev.core import orchestrator as orchestrator_module
+
+    orchestrator = Orchestrator(
+        SimpleNamespace(runtime=None),
+        context=ContextStore(),
+    )
+    monkeypatch.setattr(orchestrator, "_pre_handler_policy", lambda *_a, **_k: None)
+    monkeypatch.setattr(orchestrator, "_apply_profile", lambda result, _intent: result)
+    monkeypatch.setattr(orchestrator_module, "bind_context", lambda *_a, **_k: {})
+    monkeypatch.setattr(orchestrator_module.log, "debug", lambda *_a, **_k: None)
+    return ConversationManager(orchestrator), orchestrator
+
+
+def _forbid_destructive_or_external_fallbacks(monkeypatch):
+    from lab_v4_dev.conversation import conversation_manager as manager_module
+    from lab_v4_dev.core import cleaner, orchestrator as orchestrator_module, safe_io
+    from lab_v4_dev.executor.safe_pipeline import SafePipeline
+    from lab_v4_dev.intent import llm_intent_resolver
+
+    monkeypatch.setattr(
+        cleaner,
+        "run_full_clean",
+        lambda: pytest.fail("only explicit CLEAN_DEVICE may call the cleaner"),
+    )
+    monkeypatch.setattr(
+        safe_io,
+        "safe_delete",
+        lambda *_a, **_k: pytest.fail("cleanup wording must not delete files"),
+    )
+    monkeypatch.setattr(
+        orchestrator_module,
+        "ask",
+        lambda *_a, **_k: pytest.fail("cleanup-code planning must not fall through to generic LLM"),
+    )
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda *_a, **_k: pytest.fail("cleanup routing must not fall through to chat LLM"),
+    )
+    monkeypatch.setattr(
+        llm_intent_resolver,
+        "resolve",
+        lambda *_a, **_k: pytest.fail("cleanup routing must not use LLM intent fallback"),
+    )
+    monkeypatch.setattr(
+        SafePipeline,
+        "execute",
+        lambda *_a, **_k: pytest.fail("cleanup-code route must remain plan-only"),
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "نظف المشروع",
+        "نظف الكود",
+        "تنظيف المشروع",
+        "تنظيف الملف",
+        "نظف المشروع على الهاتف",
+    ],
+)
+def test_cleanup_code_end_to_end_has_explicit_plan_owner(text, monkeypatch):
+    _forbid_destructive_or_external_fallbacks(monkeypatch)
+    manager, _orchestrator = _build_e2e_manager(monkeypatch)
+
+    result = manager.process(text)
+
+    assert result["intent"] == Intent.CLEANUP_CODE
+    assert result["status"] == "needs_clarification"
+    assert result["executed"] is False
+    assert result["plan_only"] is True
+    assert result["plan"]["schema_version"] == "p10.v1"
+    assert result["plan"]["metadata"]["mutates_files"] is False
+    assert result["plan"]["metadata"]["execution_status"] == "not_started"
+    assert result["plan"]["steps"][0]["action"] == "confirm_scope"
+    assert "مسار ملف/مجلد" in result["text"]
+
+
+@pytest.mark.parametrize("text", ["نظف", "تنظيف", "أريد تنظيف"])
+def test_generic_cleanup_end_to_end_requests_target_without_running_cleaner(
+    text, monkeypatch
+):
+    _forbid_destructive_or_external_fallbacks(monkeypatch)
+    manager, _orchestrator = _build_e2e_manager(monkeypatch)
+
+    result = manager.process(text)
+
+    assert result["intent"] == Intent.CLEAN
+    assert result["status"] == "needs_clarification"
+    assert result["executed"] is False
+    assert "ما الذي تريد تنظيفه" in result["text"]
+
+
+def test_scoped_cleanup_code_still_returns_plan_without_mutation(monkeypatch):
+    _forbid_destructive_or_external_fallbacks(monkeypatch)
+    manager, _orchestrator = _build_e2e_manager(monkeypatch)
+
+    result = manager.process("نظف الملف src/module.py")
+
+    assert result["intent"] == Intent.CLEANUP_CODE
+    assert result["target"] == "src/module.py"
+    assert result["status"] == "needs_clarification"
+    assert result["executed"] is False
+    assert result["plan"]["intent"]["target"] == "src/module.py"
+    assert result["plan"]["metadata"]["mutates_files"] is False
+    assert "لم يُعدّل أو يُحذف أي ملف" in result["text"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "تنظيف الهاتف",
+        "نظف الهاتف",
+        "نظف الجوال",
+        "نظف جهازي",
+        "تنظيف الجهاز",
+        "تنظيف مساحة الهاتف",
+    ],
+)
+def test_conversation_manager_routes_explicit_device_cleanup_to_mocked_cleaner(
+    text, monkeypatch
+):
+    from lab_v4_dev.core import cleaner
+
+    calls = []
+    monkeypatch.setattr(
+        cleaner,
+        "run_full_clean",
+        lambda: calls.append("device-clean")
+        or {
+            "before_mb": 100,
+            "after_mb": 101,
+            "freed_mb": 1,
+            "freed_kb": 1024,
+            "details": [],
+        },
+    )
+    manager, _orchestrator = _build_e2e_manager(monkeypatch)
+
+    result = manager.process(text)
+
+    assert result["intent"] == Intent.CLEAN_DEVICE
+    assert result["status"] == "success"
+    assert result["executed"] is True
+    assert calls == ["device-clean"]
+
+
+@pytest.mark.parametrize("text", ["مسحاخة الجهاز", "مسحاخة الملف test.py"])
+def test_cleanup_typos_do_not_reach_device_clean_or_file_delete(text, monkeypatch):
+    calls = {"clean": [], "delete": []}
+    from lab_v4_dev.core import cleaner, safe_io
+
+    monkeypatch.setattr(
+        cleaner,
+        "run_full_clean",
+        lambda: calls["clean"].append(text),
+    )
+    monkeypatch.setattr(
+        safe_io,
+        "safe_delete",
+        lambda *_a, **_k: calls["delete"].append(text),
+    )
+    manager, _orchestrator = _build_e2e_manager(monkeypatch)
+    monkeypatch.setattr(
+        manager,
+        "_handle_chat",
+        lambda *_a, **_k: {
+            "status": "needs_clarification",
+            "intent": Intent.UNCLEAR,
+            "text": "هل تقصد طلب تنظيف؟",
+            "executed": False,
+        },
+    )
+
+    result = manager.process(text)
+
+    assert result["intent"] not in CLEANUP_INTENTS | {
+        Intent.DELETE_FILE,
+        Intent.READ_FILE,
+    }
+    assert result["executed"] is False
+    assert calls == {"clean": [], "delete": []}

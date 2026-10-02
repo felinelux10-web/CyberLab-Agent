@@ -383,6 +383,63 @@ class Orchestrator:
                 lines.append(f"  {d['type']}: حذف {d['removed']} عنصر — {d['size_kb']} KB")
             return {"status":"success","intent":intent,"text":chr(10).join(lines)}
 
+        # ─── تنظيف الكود: خطة مراجعة فقط، دون تعديل تلقائي ───
+        elif intent == Intent.CLEANUP_CODE:
+            from lab_v4_dev.planner.planner import Planner
+
+            scope = str(target or "").strip()
+            plan = Planner().from_actions(
+                {
+                    "action": getattr(intent, "value", intent),
+                    "target": scope or None,
+                },
+                [
+                    {
+                        "step_id": "step-1",
+                        "action": "confirm_scope",
+                        "parameters": {"target": scope or None},
+                        "description": "تأكيد ملف/مجلد ونطاق التنظيف المطلوب",
+                    },
+                    {
+                        "step_id": "step-2",
+                        "action": "prepare_reviewable_proposal",
+                        "parameters": {
+                            "target": scope or None,
+                            "requires_user_review": True,
+                        },
+                        "depends_on": ["step-1"],
+                        "description": "إعداد مقترح قابل للمراجعة دون تطبيقه",
+                    },
+                ],
+                plan_id=f"cleanup-code-{uuid.uuid4().hex}",
+                metadata={
+                    "execution_status": "not_started",
+                    "mutates_files": False,
+                    "user_review_required": True,
+                },
+            )
+            if scope:
+                message = (
+                    f"أعددت خطة مراجعة مبدئية للنطاق {scope}. هذه خطة فقط؛ "
+                    "لم يُعدّل أو يُحذف أي ملف. حدّد قواعد التنظيف المطلوبة "
+                    "أو اطلب مراجعة النطاق للمتابعة."
+                )
+            else:
+                message = (
+                    "تنظيف الكود يتطلب تحديد مسار ملف/مجلد أو نطاق واضح قبل إعداد "
+                    "مقترح قابل للمراجعة. الخطة المرفقة مبدئية فقط؛ لم يُعدّل "
+                    "أو يُحذف أي ملف."
+                )
+            return {
+                "status": "needs_clarification",
+                "intent": intent,
+                "target": scope or "",
+                "text": message,
+                "plan": plan.to_dict(),
+                "plan_only": True,
+                "executed": False,
+            }
+
         # ─── مساحة ───
         elif intent == Intent.SPACE:
             total, used, free = shutil.disk_usage(os.path.expanduser("~"))
