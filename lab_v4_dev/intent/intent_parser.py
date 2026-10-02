@@ -141,6 +141,48 @@ def _resolve_cleanup_intent(text: str, candidate: str) -> str:
     return Intent.CLEAN
 
 
+def _device_memory_request_kind(text: str) -> str | None:
+    """Separate live device-memory checks from requests to explain memory."""
+    normalized = normalize(text).casefold()
+    deep = deep_normalize(text).casefold()
+    tokens = re.findall(r"[\w]+", f"{normalized} {deep}", flags=re.UNICODE)
+    token_set = set(tokens)
+    memory_terms = {
+        "ram", "رام", "الرام", "ذاكرة", "الذاكرة", "ذاكره", "الذاكره",
+        "memory",
+    }
+    if not token_set.intersection(memory_terms):
+        return None
+
+    # Explicit educational framing stays on the general explanation path.
+    explanation_terms = {
+        "اشرح", "شرح", "وضح", "توضيح", "فسر", "تفسير", "معنى", "معني",
+        "فرق", "الفرق", "explain", "explanation", "difference", "definition",
+    }
+    if token_set.intersection(explanation_terms):
+        return "knowledge"
+    if len(tokens) >= 2 and tokens[0] in {"ما", "ماذا", "what"} and tokens[1] in {
+        "هي", "هو", "الفرق", "فرق", "معنى", "معني", "meaning",
+    }:
+        return "knowledge"
+
+    device_terms = {
+        "هاتف", "الهاتف", "هاتفي", "جهاز", "الجهاز", "جهازي", "جوال",
+        "الجوال", "phone", "mobile", "device", "android", "ios",
+    }
+    measurement_terms = {
+        "كم", "حجم", "مقدار", "عندي", "لدي", "استهلاك", "استخدام",
+        "مستخدم", "متاح", "usage", "used", "total", "available", "free",
+    }
+    explicit_ram = {"ram", "رام", "الرام"}
+    if (
+        token_set.intersection(device_terms | measurement_terms)
+        or (len(tokens) <= 2 and token_set.intersection(explicit_ram))
+    ):
+        return "unsupported"
+    return None
+
+
 _SOFT_CONVERSATION_INTENTS = {
     Intent.UNCLEAR,
     Intent.PERSONAL_CHAT,
@@ -325,6 +367,28 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
                 }
         except Exception:
             pass
+
+    memory_request = _device_memory_request_kind(user_input)
+    if memory_request == "unsupported":
+        return {
+            "intent": Intent.UNSUPPORTED,
+            "target": "",
+            "context": detect_context(user_input),
+            "confidence": 0.95,
+            "raw": user_input,
+            "entity_type": "UNKNOWN",
+            "semantic_pattern": "DEVICE_MEMORY_UNSUPPORTED",
+        }
+    if memory_request == "knowledge":
+        return {
+            "intent": Intent.PERSONAL_CHAT,
+            "target": "",
+            "context": detect_context(user_input),
+            "confidence": 0.90,
+            "raw": user_input,
+            "entity_type": "CONCEPT",
+            "semantic_pattern": "DEVICE_MEMORY_KNOWLEDGE",
+        }
 
     # 1. تطبيع عميق (يحل الأخطاء الإملائية)
     normalized_input = deep_normalize(user_input)

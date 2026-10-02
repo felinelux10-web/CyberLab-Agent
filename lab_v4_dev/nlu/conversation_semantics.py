@@ -231,7 +231,16 @@ def classify_conversation_semantics(
             act = "SOCIAL_CLOSING"
         elif _has_any(bases, _OPENING_MARKERS):
             act = "SOCIAL_OPENING"
-        elif _has_any(bases, _STATE_MARKERS) and (second_person or "كيفك" in bases):
+        elif _has_any(bases, _STATE_MARKERS) and (
+            second_person
+            or "كيفك" in bases
+            # This short Arabic greeting omits the second-person suffix.
+            or (
+                len(tokens) == 2
+                and tokens[0] == "كيف"
+                and _has_any(bases, {"حال"})
+            )
+        ):
             act = "ASSISTANT_STATE_QUERY"
         elif _has_any(bases, _CAPABILITY_MARKERS) and (
             second_person or _has_any(bases, {"تقدر", "تستطيع", "يمكن", "قادر"})

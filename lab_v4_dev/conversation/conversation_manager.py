@@ -280,6 +280,23 @@ class ConversationManager:
 
         intent = parsed.get("intent") if parsed else None
 
+        if (
+            intent in (Intent.UNSUPPORTED, "unsupported")
+            and parsed
+            and parsed.get("semantic_pattern") == "DEVICE_MEMORY_UNSUPPORTED"
+        ):
+            return {
+                "status": "unsupported",
+                "intent": Intent.UNSUPPORTED,
+                "text": (
+                    "قراءة ذاكرة RAM للهاتف/الجهاز غير مدعومة من هذه البيئة. "
+                    "فحص الصحة المتاح يقيس ذاكرة عملية الوكيل فقط، لا إجمالي "
+                    "ذاكرة الجهاز أو المتاح منها."
+                ),
+                "mode": mode,
+                "executed": False,
+            }
+
         # Explicit operational modes.
         # SYSTEM commands are always routed to the orchestrator (agent actions).
         # Do NOT let TASK mode unconditionally override the intent decision —

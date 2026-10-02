@@ -3,9 +3,10 @@
 
 from lab_v4_dev.intent.intents import Intent
 
+# Device RAM is classified separately; SPACE describes storage capacity.
 FAMILIES = {
     Intent.SPACE: [
-        "مساحة","مساحه","مساخة","تخزين","ذاكرة","الرام","ram",
+        "مساحة","مساحه","مساخة","تخزين",
         "متاح","فارغ","مستهلك","مستخدم","storage",
     ],
     Intent.CLEAN: [
