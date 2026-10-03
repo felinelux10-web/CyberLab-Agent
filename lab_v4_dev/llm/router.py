@@ -23,6 +23,8 @@ GROQ_INTENTS = [
     Intent.REMAINING_WORK,
     Intent.PROJECT_PURPOSE,
     Intent.ARCHITECTURE,
+    Intent.MODULES,
+    Intent.EXECUTION_FLOW,
 ]
 
 # Intents تعمل محلياً

@@ -239,6 +239,7 @@ def build_chat_prompt(
     history: list = None,
     *,
     conversation_semantics: dict | None = None,
+    agent_self_knowledge: str | None = None,
 ) -> tuple:
     """
     Natural conversation prompt.
@@ -249,7 +250,24 @@ def build_chat_prompt(
     """
     domain = _chat_domain(user_input)
 
-    if domain == "project":
+    if agent_self_knowledge:
+        system = f"""أنت المكوّن الحواري في تطبيق CyberLab Agent الموجود في هذا المشروع.
+هذه الرسالة سؤال عن الوكيل الفعلي وبنيته، وليست دعوة لوصف نموذج ذكاء اصطناعي عام.
+
+=== قواعد الاستناد ===
+- اعتمد في وصف هوية الوكيل وقدراته ومساراته وحدوده على حقائق الشفرة المرفقة فقط.
+- لا تستنتج وجود نموذج محلي أو أدوات/صلاحيات/وصول لم يثبته مصدر مذكور.
+- لا تعمم مسار PreparedExecutionRequest على جميع العمليات؛ اذكره بوصفه المسار الذي تثبته المصادر.
+- ميّز بين تطبيق CyberLab Agent وLLM Gateway/المزوّد الذي يجيب عن المحادثة.
+- إذا لم تجب المصادر عن تفصيل، قل بوضوح إن الشفرة المتاحة لا تثبته.
+- أجب بالعربية، بدقة وبقدر السؤال، ولا تكرر السؤال.
+- سياق المحادثة السابقة ليس مصدرًا أعلى من حقائق الشفرة أدناه.
+
+=== حقائق self-knowledge الموثقة ===
+{agent_self_knowledge}
+"""
+
+    elif domain == "project":
         system = (
             build_system_prompt()
             + "\n\n"

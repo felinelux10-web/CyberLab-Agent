@@ -39,17 +39,27 @@ from lab_v4_dev.conversation.semantic_contract import (
 )
 from lab_v4_dev.llm.prompt_builder import build_chat_prompt
 from lab_v4_dev.llm.gateway import ask as gateway_ask
+from lab_v4_dev.awareness.agent_self_knowledge import build_agent_self_knowledge
 from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.nlu.context_resolver import is_incomplete
 from lab_v4_dev.nlu.conversation_semantics import is_social_act, is_style_act
 
 
+_AGENT_SELF_INTENTS = {
+    Intent.AGENT_IDENTITY,
+    Intent.AGENT_CAPABILITIES,
+    Intent.AGENT_ARCHITECTURE,
+    Intent.AGENT_EXECUTION_FLOW,
+    Intent.AGENT_LIMITS,
+}
+
 _NON_EXECUTABLE_INTENTS = {
     Intent.UNCLEAR,
     Intent.PERSONAL_CHAT,
     Intent.UNSUPPORTED,
     Intent.HELP,
+    *_AGENT_SELF_INTENTS,
     "unclear",
     "unsupported",
     "help",
@@ -280,6 +290,16 @@ class ConversationManager:
 
         intent = parsed.get("intent") if parsed else None
 
+        # Agent self-description is grounded conversation, not a system action.
+        # This check deliberately precedes SYSTEM mode dispatch.
+        if intent in _AGENT_SELF_INTENTS:
+            return self._handle_chat(
+                text,
+                mode,
+                parsed=parsed,
+                history=chat_history,
+            )
+
         if (
             intent in (Intent.UNSUPPORTED, "unsupported")
             and parsed
@@ -389,6 +409,8 @@ class ConversationManager:
         )
 
         conversation_act = parsed.get("conversation_act")
+        if intent in _AGENT_SELF_INTENTS:
+            return ContextTransition.NEW_INDEPENDENT
         if is_style_act(conversation_act) and not target:
             return (
                 ContextTransition.CONTINUE
@@ -557,9 +579,16 @@ class ConversationManager:
     ) -> dict:
         result = {}
         try:
+            intent = (parsed or {}).get("intent")
+            self_knowledge = (
+                build_agent_self_knowledge(intent)
+                if intent in _AGENT_SELF_INTENTS
+                else None
+            )
             system, prompt = build_chat_prompt(
                 text,
                 list(history or []),
+                agent_self_knowledge=self_knowledge,
                 conversation_semantics={
                     "conversation_domain": (parsed or {}).get(
                         "conversation_domain", "general"

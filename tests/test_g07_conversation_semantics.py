@@ -81,14 +81,21 @@ def test_unknown_and_varied_social_messages_do_not_default_to_task():
         ("ما رأيك بالقهوة؟", "CASUAL_DISCUSSION"),
     ],
 )
-def test_parser_emits_semantic_social_acts_and_clears_false_targets(
+def test_parser_emits_social_and_agent_self_acts_and_clears_false_targets(
     isolated_nlu, text, expected_act
 ):
     result = intent_parser.parse(text)
 
-    assert result["intent"] == Intent.PERSONAL_CHAT
+    agent_self_acts = {
+        "ASSISTANT_CAPABILITY_QUERY": Intent.AGENT_CAPABILITIES,
+        "ASSISTANT_IDENTITY_QUERY": Intent.AGENT_IDENTITY,
+    }
+    expected_intent = agent_self_acts.get(expected_act, Intent.PERSONAL_CHAT)
+    expected_domain = "agent_self" if expected_act in agent_self_acts else "social"
+
+    assert result["intent"] == expected_intent
     assert result["conversation_act"] == expected_act
-    assert result["conversation_domain"] == "social"
+    assert result["conversation_domain"] == expected_domain
     assert result["target"] == ""
 
 

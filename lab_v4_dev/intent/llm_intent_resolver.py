@@ -5,20 +5,13 @@ LLM Intent Resolver — P08 provider-neutral boundary
 """
 from lab_v4_dev.llm.gateway import ask
 from lab_v4_dev.intent.intent_cache import save
+from lab_v4_dev.intent.intents import Intent
 
-VALID_INTENTS = [
-    "work_context","work_status","context_report","system_status",
-    "project_scan","project_report","project_index","project_map",
-    "read_file","modify_code","generate_code","analyze_code",
-    "search_code","file_impact","impact_chain_query","criticality_query",
-    "dependents_query","entry_point_query","dependency_map",
-    "repair_analyze","repair_approve","repair_reject","pending_fixes",
-    "session_save","session_restore","run_history","run_script",
-    "self_diagnose","full_diagnose","health","status","space",
-    "help","todo_list","todo_add","note","release_index","analyze_release",
-    "compare_versions","switch_project","read_external_project",
-    "unclear"
-]
+VALID_INTENTS = tuple(dict.fromkeys(
+    value
+    for name, value in vars(Intent).items()
+    if name.isupper() and isinstance(value, str)
+))
 
 PROMPT_TEMPLATE = """أنت محدد نوايا (Intent Classifier) لوكيل برمجي عربي.
 

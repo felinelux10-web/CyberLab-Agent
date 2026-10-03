@@ -110,7 +110,6 @@ DICTIONARY = {
     "عد للمشروع الاساسي"          : Intent.RETURN_BASE_PROJECT,
     "ما نقطة الدخول"              : Intent.ENTRY_POINT_QUERY,
     "اعتماديات"                   : Intent.DEPENDENTS_QUERY,
-    "كيف يعمل"                    : Intent.CYBER_EXPLAIN,
     "شرح"                         : Intent.CYBER_EXPLAIN,
     "اشرح لي كيف"                 : Intent.CYBER_EXPLAIN,
     "اشرح مفهوم"                  : Intent.CYBER_EXPLAIN,

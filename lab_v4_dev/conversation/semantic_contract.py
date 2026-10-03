@@ -32,6 +32,7 @@ ACTION_TYPES = frozenset({
 
 CONVERSATION_DOMAINS = frozenset({
     "general", "social", "style", "execution", "technical", "project", "system",
+    "agent_self",
 })
 
 CONVERSATION_ACTS = frozenset({
@@ -46,6 +47,10 @@ CONVERSATION_ACTS = frozenset({
     "ASSISTANT_STATE_QUERY",
     "ASSISTANT_CAPABILITY_QUERY",
     "ASSISTANT_IDENTITY_QUERY",
+    "AGENT_ARCHITECTURE_QUERY",
+    "AGENT_EXECUTION_FLOW_QUERY",
+    "AGENT_LIMITS_QUERY",
+    "TOPIC_CONTINUATION_QUERY",
     "PERSONAL_INTERACTION",
     "CASUAL_DISCUSSION",
     "SOCIAL_FOLLOW_UP",
@@ -79,6 +84,14 @@ CONTEXTUAL_TRANSITIONS = frozenset({
     ContextTransition.RESTORE.value,
 })
 CONTEXT_TRANSITIONS = frozenset(item.value for item in ContextTransition)
+
+_NON_EXECUTABLE_AGENT_INTENTS = frozenset({
+    "agent_identity",
+    "agent_capabilities",
+    "agent_architecture",
+    "agent_execution_flow",
+    "agent_limits",
+})
 
 
 @dataclass(frozen=True)
@@ -159,7 +172,11 @@ def build_semantic_request(
         conversation_act=conversation_act,
         conversation_confidence=conversation_confidence,
         response_attributes=dict(response_attributes or {}),
-        action_type=action_type_for_mode(mode),
+        action_type=(
+            "none"
+            if intent in _NON_EXECUTABLE_AGENT_INTENTS
+            else action_type_for_mode(mode)
+        ),
         confidence=confidence,
         ambiguity=ambiguity,
         compound=compound,

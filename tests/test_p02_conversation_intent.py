@@ -4,6 +4,7 @@ from lab_v4_dev.conversation.semantic_contract import (
     build_semantic_request,
 )
 from lab_v4_dev.intent.intent_parser import parse
+from lab_v4_dev.intent.intents import Intent
 
 
 class FakeOrchestrator:
@@ -64,11 +65,38 @@ def test_executable_follow_up_is_owned_by_orchestrator():
         dialogue_memory=FakeMemory(),
     )
 
-    result = manager.process("كيف يعمل؟")
+    result = manager.process("CSRF كيف يعمل؟")
 
     assert len(orchestrator.calls) == 1
     assert result["source"] == "orchestrator"
-    assert result["intent"] == parse("كيف يعمل؟")["intent"]
+    assert result["intent"] == parse("CSRF كيف يعمل؟")["intent"]
+
+
+def test_generic_how_it_works_without_subject_is_conversational(monkeypatch):
+    orchestrator = FakeOrchestrator()
+    manager = ConversationManager(
+        orchestrator=orchestrator,
+        dialogue_memory=FakeMemory(),
+    )
+    monkeypatch.setattr(
+        manager,
+        "_handle_chat",
+        lambda text, mode, **_kwargs: {
+            "status": "success",
+            "intent": parse(text)["intent"],
+            "text": "أي موضوع تقصد؟",
+            "mode": mode,
+            "source": "llm",
+            "executed": False,
+        },
+    )
+
+    result = manager.process("كيف يعمل؟")
+
+    assert not orchestrator.calls
+    assert result["source"] == "llm"
+    assert result["intent"] == Intent.PERSONAL_CHAT
+    assert result["executed"] is False
 
 
 def test_non_executable_chat_does_not_reach_orchestrator(monkeypatch):

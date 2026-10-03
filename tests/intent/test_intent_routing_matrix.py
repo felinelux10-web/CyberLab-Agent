@@ -15,10 +15,10 @@ from lab_v4_dev.intent.intents import Intent
     ("اقرأ الملف test.py", Intent.READ_FILE),
     ("حلل الملف test.py", Intent.ANALYZE_CODE),
     ("قارن بين الإصدارين", Intent.COMPARE_VERSIONS),
-    ("ما حالة النظام", Intent.STATUS),
+    ("ما حالة النظام", Intent.SYSTEM_STATUS),
     ("هل النظام سليم", Intent.HEALTH),
     ("حلل المشروع", Intent.PROJECT_SCAN),
-    ("اشرح كيف يعمل النظام", Intent.CYBER_EXPLAIN),
+    ("اشرح كيف يعمل النظام", Intent.ARCHITECTURE),
 ])
 def test_intent_routing_matrix(text, expected):
     result = parse(text)

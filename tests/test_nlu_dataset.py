@@ -58,7 +58,7 @@ DATASET = [
     ("اشرح هذه الدالة",                    "cyber_explain",   None),
     ("اشرح هذا السطر",                     "cyber_explain",   None),
     ("ما وظيفة هذا الملف",                 "cyber_explain",   None),
-    ("كيف يعمل هذا الجزء",                 "cyber_explain",   None),
+    ("كيف يعمل هذا الجزء",                 "personal_chat",   None),
     ("ما علاقة هذا الملف بالباقي",         "file_impact",     None),
 
     # ─── قبل التعديل ───

@@ -10,6 +10,7 @@ from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.intent.intent_contract import IntentResult
 from lab_v4_dev.conversation.mode_detector import detect_mode
 from lab_v4_dev.nlu.conversation_semantics import (
+    classify_agent_self_query,
     classify_conversation_semantics,
     should_override_with_personal_chat,
 )
@@ -293,6 +294,7 @@ def _early_conversation_result(user_input: str) -> dict | None:
         "FORMALITY_REQUEST",
         "TONE_REQUEST",
         "STYLE_REQUEST",
+        "TOPIC_CONTINUATION_QUERY",
     } else "UNKNOWN"
     return {
         "intent": Intent.PERSONAL_CHAT,
@@ -308,6 +310,82 @@ def _early_conversation_result(user_input: str) -> dict | None:
         "conversation_confidence": float(signal.get("confidence", 0.6)),
         "response_attributes": dict(signal.get("response_attributes") or {}),
     }
+
+
+_AGENT_ACT_INTENTS = {
+    "ASSISTANT_IDENTITY_QUERY": Intent.AGENT_IDENTITY,
+    "ASSISTANT_CAPABILITY_QUERY": Intent.AGENT_CAPABILITIES,
+    "AGENT_ARCHITECTURE_QUERY": Intent.AGENT_ARCHITECTURE,
+    "AGENT_EXECUTION_FLOW_QUERY": Intent.AGENT_EXECUTION_FLOW,
+    "AGENT_LIMITS_QUERY": Intent.AGENT_LIMITS,
+}
+
+
+def _agent_self_result(user_input: str) -> dict | None:
+    signal = classify_agent_self_query(user_input)
+    if not signal:
+        return None
+    intent = _AGENT_ACT_INTENTS.get(signal.get("conversation_act"))
+    if not intent:
+        return None
+    return {
+        "intent": intent,
+        "target": "",
+        "context": "general",
+        "confidence": float(signal.get("confidence", 0.94)),
+        "raw": user_input,
+        "source": "agent_self_semantics",
+        "entity_type": "AGENT_SELF",
+        "semantic_pattern": str(signal.get("conversation_act", "")),
+        "conversation_domain": "agent_self",
+        "conversation_act": signal.get("conversation_act", "NONE"),
+        "conversation_confidence": float(signal.get("confidence", 0.94)),
+        "response_attributes": {},
+    }
+
+
+def _project_architecture_intent(user_input: str):
+    """Resolve project/component structure questions by subject and concept."""
+    text = normalize(user_input).casefold()
+    tokens = set(re.findall(r"[\w]+", text, flags=re.UNICODE))
+    bases = set(tokens)
+    for token in tokens:
+        for prefix in ("وال", "فال", "بال", "كال", "لل", "ال", "و", "ف", "ب", "ل"):
+            if token.startswith(prefix) and len(token) > len(prefix) + 1:
+                bases.add(token[len(prefix):])
+                break
+
+    question = (
+        "؟" in user_input
+        or "?" in user_input
+        or bool(bases & {"ما", "ماذا", "كيف", "هل", "اشرح", "وضح", "حدثني"})
+    )
+    if not question:
+        return None
+
+    architecture_markers = {
+        "بنيه", "هيكل", "معماريه", "طبقه", "طبقات", "مكون", "مكونات",
+        "وحده", "وحدات", "architecture", "layers", "modules", "components",
+    }
+    work_markers = {
+        "يعمل", "تعمل", "يشتغل", "تشتغل", "معالجه", "تعالج", "process", "flow",
+    }
+    project_markers = {"مشروع", "project", "المشروع", "repository"}
+    component_markers = {
+        "gateway", "orchestrator", "module", "component", "طبقه", "مكون",
+        "وحده", "نظام", "system",
+    }
+
+    has_architecture = bool(bases & architecture_markers)
+    has_work = bool(bases & work_markers)
+    asks_how = "كيف" in bases
+    if has_architecture and bool(bases & project_markers):
+        return Intent.PROJECT_SCAN
+    if has_architecture and bool(bases & component_markers):
+        return Intent.ARCHITECTURE
+    if has_work and asks_how and bool(bases & component_markers):
+        return Intent.ARCHITECTURE
+    return None
 
 
 
@@ -347,6 +425,23 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
         pass
 
     if re.search(r"^(احذف|حذف|امسح) الملف$", raw): return {"intent": Intent.DELETE_FILE, "target": "", "context": detect_context(raw), "confidence": 0.99, "raw": user_input}
+
+    agent_self_result = _agent_self_result(user_input)
+    if agent_self_result is not None:
+        return agent_self_result
+
+    project_architecture_intent = _project_architecture_intent(user_input)
+    if project_architecture_intent is not None:
+        return {
+            "intent": project_architecture_intent,
+            "target": "",
+            "context": "project_level",
+            "confidence": 0.91,
+            "raw": user_input,
+            "source": "project_architecture_semantics",
+            "entity_type": "COMPONENT",
+            "semantic_pattern": "PROJECT_ARCHITECTURE_QUERY",
+        }
 
     conversational_result = _early_conversation_result(user_input)
     if conversational_result is not None:
