@@ -27,7 +27,7 @@ def display(result: dict):
 
     if result.get("text"):
         print(f"\n--- الشرح ---")
-        print(result["text"][:300])
+        print(result["text"])
         if result.get("save_prompt"):
             print("\n" + result.get("save_prompt"))
             return
