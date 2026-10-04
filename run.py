@@ -26,8 +26,11 @@ def display(result: dict):
             print("\n" + result.get("save_prompt"))
 
     if result.get("text"):
-        print(f"\n--- الشرح ---")
-        print(result["text"])
+        print()
+        print("╭────── CYBERLAB AGENT ─────────────────────────")
+        for line in str(result["text"]).splitlines():
+            print(f"│ {line}")
+        print("╰───────────────────────────────────────────────")
         if result.get("save_prompt"):
             print("\n" + result.get("save_prompt"))
             return
@@ -141,7 +144,10 @@ def main():
     try:
         while True:
             try:
-                user_input = input(">>> ").strip()
+                user_input = input(
+                    "\033[32m\n╭──────── USER ─────────────────────────────────\n"
+                    "│ \033[0m"
+                ).strip()
             except EOFError:
                 break
 
