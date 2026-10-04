@@ -64,6 +64,12 @@ _AGENT_PROJECT_SUBJECT_MARKERS = {
     "مشروع", "project", "ملف", "ملفات", "file", "files", "مجلد", "مجلدات",
     "folder", "folders", "كود", "code", "repository", "repo",
 }
+_AGENT_FILE_OPERATION_MARKERS = {
+    "حلل", "تحليل", "افحص", "فحص", "راجع", "مراجعة", "اشرح", "وضح",
+    "analyze", "inspect", "review", "explain", "read", "open", "modify",
+    "edit", "run", "execute", "test", "اقرا", "افتح", "عدل", "شغل",
+    "تشغل", "نفذ", "اختبر",
+}
 _AGENT_QUERY_ACTS = {
     "agent_identity": "ASSISTANT_IDENTITY_QUERY",
     "agent_capabilities": "ASSISTANT_CAPABILITY_QUERY",
@@ -226,6 +232,13 @@ def _has_agent_any(
     return False
 
 
+def _has_file_operation_target(text: str, bases: set[str]) -> bool:
+    has_file_target = bool(
+        re.search(r"(?<!\w)[\w./-]+\.[\w]{1,12}(?!\w)", text, flags=re.UNICODE)
+    )
+    return has_file_target and _has_agent_any(bases, _AGENT_FILE_OPERATION_MARKERS)
+
+
 def _has_direct_agent_reference(tokens: list[str], bases: set[str]) -> bool:
     explicit = {
         "انت", "انتي", "انتو", "انتم", "حضرتك", "منك", "لك", "معك", "عليك",
@@ -345,6 +358,8 @@ def classify_agent_self_query(text: str) -> dict | None:
     if not tokens:
         return None
     bases = _bases(tokens) | _agent_bases(tokens)
+    if _has_file_operation_target(raw, bases):
+        return None
     project_subject = _has_agent_any(bases, _AGENT_PROJECT_SUBJECT_MARKERS)
     direct_address = _has_direct_agent_reference(tokens, bases)
     agent_reference = _has_agent_any(bases, _AGENT_REFERENCE_MARKERS)

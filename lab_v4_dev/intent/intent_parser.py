@@ -94,6 +94,30 @@ _READ_ACTION_SUFFIXES = {
     "open": ("",),
     "show": ("",),
 }
+_CODE_ANALYSIS_ACTION_SUFFIXES = {
+    "حلل": ("", "ه", "ها", "ي", "وا"),
+    "افحص": ("", "ه", "ها", "ي", "وا"),
+    "راجع": ("", "ه", "ها", "ي", "وا"),
+    "analyze": ("",),
+    "inspect": ("",),
+    "review": ("",),
+}
+_RUN_TEST_ACTION_SUFFIXES = {
+    "شغل": ("", "ها", "هم", "ي", "وا"),
+    "تشغل": ("", "ها", "هم", "ي", "وا"),
+    "نفذ": ("", "ها", "هم", "وا"),
+    "run": ("",),
+    "execute": ("",),
+}
+_ACTION_QUERY_OPENERS = {
+    "هل", "ما", "ماذا", "كيف", "لماذا", "ليش", "من", "مين", "ايش", "شو",
+    "what", "why", "how", "who", "where", "when", "can", "could", "would",
+}
+_INFORMATION_QUERY_OPENERS = _ACTION_QUERY_OPENERS - {"هل", "can", "could", "would"}
+_CAPABILITY_REQUEST_MARKERS = {"يمكنك", "تستطيع", "تقدر", "ممكن"}
+_ANALYSIS_NOMINAL_ACTIONS = {"تحليل", "فحص", "مراجعة"}
+_TEST_NOMINAL_ACTIONS = {"تشغيل", "تنفيذ"}
+_TEST_TARGET_STEMS = ("اختبار", "اختبارات", "test", "tests")
 _DEVICE_TARGET_STEMS = (
     "هاتف", "جهاز", "جوال", "موبايل", "phone", "device", "mobile",
 )
@@ -180,6 +204,36 @@ def _has_delete_action(text: str) -> bool:
 
 def _has_read_action(text: str) -> bool:
     return _has_lexical_action(text, _READ_ACTION_SUFFIXES)
+
+
+def _is_action_target_request(
+    text: str,
+    action_suffixes: dict[str, tuple[str, ...]],
+    target_stems: tuple[str, ...],
+    nominal_actions: set[str],
+) -> bool:
+    """Resolve an action with its target without executing interrogative mentions."""
+    if target_stems and not _has_stem_token(text, target_stems):
+        return False
+
+    has_verb_action = _has_lexical_action(text, action_suffixes)
+    has_nominal_action = _has_stem_token(text, nominal_actions)
+    tokens = re.findall(r"[\w]+", normalize(text).casefold(), flags=re.UNICODE)
+    if not tokens:
+        return False
+
+    opener = tokens[0]
+    if opener in _INFORMATION_QUERY_OPENERS:
+        return False
+    if opener == "هل":
+        return (
+            _has_stem_token(text, _CAPABILITY_REQUEST_MARKERS)
+            and (has_verb_action or has_nominal_action)
+        )
+    if opener in {"can", "could", "would"}:
+        directed_to_user = len(tokens) > 1 and tokens[1] in {"you", "we"}
+        return directed_to_user and (has_verb_action or has_nominal_action)
+    return has_verb_action
 
 
 def _resolve_cleanup_intent(text: str, candidate: str) -> str:
@@ -429,6 +483,41 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     agent_self_result = _agent_self_result(user_input)
     if agent_self_result is not None:
         return agent_self_result
+
+    if _is_action_target_request(
+        user_input,
+        _RUN_TEST_ACTION_SUFFIXES,
+        _TEST_TARGET_STEMS,
+        _TEST_NOMINAL_ACTIONS,
+    ):
+        return {
+            "intent": Intent.RUN_TESTS,
+            "target": "",
+            "context": detect_context(user_input),
+            "confidence": 0.94,
+            "raw": user_input,
+            "source": "executable_action_target",
+            "entity_type": "PROJECT",
+            "semantic_pattern": "TEST_RUN_ACTION",
+        }
+
+    analysis_target = _extract_target(user_input)
+    if analysis_target and _is_action_target_request(
+        user_input,
+        _CODE_ANALYSIS_ACTION_SUFFIXES,
+        (),
+        _ANALYSIS_NOMINAL_ACTIONS,
+    ):
+        return {
+            "intent": Intent.ANALYZE_CODE,
+            "target": analysis_target,
+            "context": detect_context(user_input),
+            "confidence": 0.94,
+            "raw": user_input,
+            "source": "executable_action_target",
+            "entity_type": "FILE",
+            "semantic_pattern": "CODE_ANALYSIS_ACTION",
+        }
 
     project_architecture_intent = _project_architecture_intent(user_input)
     if project_architecture_intent is not None:
