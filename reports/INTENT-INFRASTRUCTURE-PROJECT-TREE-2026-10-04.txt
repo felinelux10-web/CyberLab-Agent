@@ -1,0 +1,493 @@
+CyberLab Agent — شجرة المشروع الكاملة
+الفرع: work/BASELINE-01-intent-infrastructure
+لقطة الكود: 5722285 (قبل إضافة مستندات التسليم)
+المسارات: 423 ملفًا و63 مجلدًا فريدًا؛ ملفات Git المتعقبة مع إضافة مساري التقرير والشجرة.
+النطاق: ملفات المشروع المصدّرة من Git؛ يستثني .git والملفات المؤقتة والمتجاهلة.
+
+CyberLab-Agent/
+├── _archived_orphans_20260621/
+│   ├── bootstrap/
+│   │   └── system_manifest.py
+│   └── core/
+│       ├── context_graph.py
+│       ├── runtime_bootstrap.py
+│       ├── system_orchestrator.py
+│       ├── system_snapshot.py
+│       └── system_state.py
+├── _work/
+│   └── P010_LOCAL_CHANGE_AUDIT.txt
+├── ADR/
+│   └── ADR-006-shell-exit-code.md
+├── docs/
+│   └── roadmap.md
+├── lab_v4/
+│   ├── adapters/
+│   │   └── __init__.py
+│   ├── archives/
+│   │   └── snapshots/
+│   │       ├── lab_v4_cache_final_test_txt__20260530_184309.snap
+│   │       ├── lab_v4_cache_llm_ready_test_py__20260602_143113_948217.snap
+│   │       ├── lab_v4_cache_llm_ready_test_py__20260602_143115_030587.snap
+│   │       ├── lab_v4_cache_pipeline_test_txt__20260601_210101_594973.snap
+│   │       ├── lab_v4_cache_ready_test_py__20260602_203839_548401.snap
+│   │       ├── lab_v4_cache_ready_test_py__20260602_203841_500507.snap
+│   │       ├── lab_v4_cache_real_test_txt__20260530_233155_606177.snap
+│   │       ├── lab_v4_cache_rollback_test_py__20260601_210152_625107.snap
+│   │       ├── lab_v4_cache_rollback_test_txt__20260530_184137.snap
+│   │       ├── lab_v4_cache_safe_test_txt__20260530_184231.snap
+│   │       ├── lab_v4_cache_test1_py__20260602_011255_856729.snap
+│   │       ├── lab_v4_cache_test2_py__20260602_011256_946592.snap
+│   │       ├── lab_v4_cache_test3a_py__20260602_011256_951562.snap
+│   │       ├── lab_v4_cache_test3b_py__20260602_011256_952552.snap
+│   │       ├── lab_v4_cache_test_file_txt__20260530_184026.snap
+│   │       ├── lab_v4_cache_test_file_txt__20260530_184032.snap
+│   │       ├── lab_v4_cache_val_test2_py__20260602_142905_536831.snap
+│   │       └── lab_v4_cache_val_test_py__20260602_142904_529447.snap
+│   ├── awareness/
+│   │   ├── __init__.py
+│   │   ├── context_store.py
+│   │   ├── dep_analyzer.py
+│   │   ├── model_builder.py
+│   │   ├── project_memory.py
+│   │   ├── scanner.py
+│   │   └── state_reader.py
+│   ├── cli/
+│   │   ├── __init__.py
+│   │   └── commands.py
+│   ├── configs/
+│   │   └── MASTER_REF.yaml
+│   ├── context/
+│   │   ├── __init__.py
+│   │   ├── context_resolver.py
+│   │   └── context_store.py
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── agent.py
+│   │   ├── config.py
+│   │   ├── guard.py
+│   │   ├── logger.py
+│   │   ├── orchestrator.py
+│   │   └── state.py
+│   ├── executor/
+│   │   ├── __init__.py
+│   │   ├── executor.py
+│   │   ├── safe_pipeline.py
+│   │   ├── shell_runner.py
+│   │   └── throttle.py
+│   ├── intent/
+│   │   ├── __init__.py
+│   │   ├── clarifier.py
+│   │   ├── decomposer.py
+│   │   ├── dictionary.py
+│   │   ├── fuzzy_normalizer.py
+│   │   ├── intent_parser.py
+│   │   ├── intents.py
+│   │   ├── keyword_families.py
+│   │   ├── matcher.py
+│   │   ├── normalizer.py
+│   │   └── parser.py
+│   ├── llm/
+│   │   ├── __init__.py
+│   │   ├── context_builder.py
+│   │   ├── groq_client.py
+│   │   ├── router.py
+│   │   └── smart_router.py
+│   ├── loop/
+│   │   ├── __init__.py
+│   │   ├── event_loop.py
+│   │   ├── idle_manager.py
+│   │   └── scheduler.py
+│   ├── memory/
+│   │   ├── __init__.py
+│   │   ├── db.py
+│   │   ├── lessons.py
+│   │   ├── schema.sql
+│   │   ├── session.py
+│   │   └── task_history.py
+│   ├── monitor/
+│   │   ├── __init__.py
+│   │   ├── budget.py
+│   │   └── health_check.py
+│   ├── planner/
+│   │   ├── __init__.py
+│   │   ├── impact_analyzer.py
+│   │   ├── planner.py
+│   │   ├── step_builder.py
+│   │   └── validator.py
+│   ├── recovery/
+│   │   ├── __init__.py
+│   │   ├── permissions.py
+│   │   ├── rollback.py
+│   │   ├── safe_apply.py
+│   │   └── snapshot.py
+│   └── __init__.py
+├── lab_v4_dev/
+│   ├── adapters/
+│   │   └── __init__.py
+│   ├── awareness/
+│   │   ├── __init__.py
+│   │   ├── agent_self_knowledge.py
+│   │   ├── context_store.py
+│   │   ├── dep_analyzer.py
+│   │   ├── dependency_engine.py
+│   │   ├── dependency_map.py
+│   │   ├── knowledge_base.py
+│   │   ├── model_builder.py
+│   │   ├── project_index.py
+│   │   ├── project_knowledge.py
+│   │   ├── project_memory.py
+│   │   ├── project_reader.py
+│   │   ├── query_engine.py
+│   │   ├── release_analyzer.py
+│   │   ├── scanner.py
+│   │   ├── state_reader.py
+│   │   └── ts_reader.py
+│   ├── cli/
+│   │   ├── __init__.py
+│   │   └── commands.py
+│   ├── config/
+│   │   ├── llm_provider.json
+│   │   └── provider_config.py
+│   ├── configs/
+│   │   └── MASTER_REF.yaml
+│   ├── context/
+│   │   ├── __init__.py
+│   │   ├── context_resolver.py
+│   │   └── context_store.py
+│   ├── conversation/
+│   │   ├── __init__.py
+│   │   ├── assistant_style.py
+│   │   ├── conversation_manager.py
+│   │   ├── dialogue_contract.py
+│   │   ├── dialogue_memory.py
+│   │   ├── mode_detector.py
+│   │   └── semantic_contract.py
+│   ├── core/
+│   │   ├── repair/
+│   │   │   ├── __init__.py
+│   │   │   ├── diff_approval.py
+│   │   │   ├── diff_approval.py.bak2_20260617_230810
+│   │   │   ├── diff_approval.py.bak3_20260618_071753
+│   │   │   ├── error_analyzer.py
+│   │   │   ├── error_reader.py
+│   │   │   └── fix_generator.py
+│   │   ├── __init__.py
+│   │   ├── agent.py
+│   │   ├── architecture.py
+│   │   ├── audit.py
+│   │   ├── cleaner.py
+│   │   ├── code_engine.py
+│   │   ├── config.py
+│   │   ├── contracts.py
+│   │   ├── execution_history.py
+│   │   ├── guard.py
+│   │   ├── logger.py
+│   │   ├── orchestrator.py
+│   │   ├── project_context.py
+│   │   ├── project_metadata.py
+│   │   ├── safe_io.py
+│   │   ├── sandbox_executor.py
+│   │   ├── security_guard.py
+│   │   ├── state.py
+│   │   ├── surgical_editor.py
+│   │   ├── symbol_resolver.py
+│   │   └── task_chain.py
+│   ├── data/
+│   │   ├── __init__.py
+│   │   ├── project_timeline.py
+│   │   └── work_tracker.py
+│   ├── dni/
+│   │   ├── __init__.py
+│   │   ├── cognitive_classifier.py
+│   │   ├── cognitive_pipeline.py
+│   │   ├── cognitive_profile.py
+│   │   ├── cognitive_state.py
+│   │   ├── decision_engine.py
+│   │   ├── dni_bootstrap.py
+│   │   ├── dni_brain.py
+│   │   ├── dni_core.py
+│   │   ├── dni_facade.py
+│   │   ├── dni_kernel.py
+│   │   ├── dni_registry.py
+│   │   ├── dni_router.py
+│   │   ├── knowledge_map.py
+│   │   ├── knowledge_router.py
+│   │   ├── policy_engine.py
+│   │   └── privacy_engine.py
+│   ├── executor/
+│   │   ├── __init__.py
+│   │   ├── contracts.py
+│   │   ├── executor.py
+│   │   ├── plan_adapter.py
+│   │   ├── safe_pipeline.py
+│   │   ├── safe_pipeline.py.v4.6-Series5-Closed
+│   │   ├── shell_runner.py
+│   │   └── throttle.py
+│   ├── intent/
+│   │   ├── __init__.py
+│   │   ├── clarifier.py
+│   │   ├── decomposer.py
+│   │   ├── dictionary.py
+│   │   ├── fuzzy_normalizer.py
+│   │   ├── groq_intent_resolver.py
+│   │   ├── intent_cache.py
+│   │   ├── intent_contract.py
+│   │   ├── intent_parser.py
+│   │   ├── intents.py
+│   │   ├── keyword_families.py
+│   │   ├── llm_intent_resolver.py
+│   │   ├── matcher.py
+│   │   ├── normalizer.py
+│   │   ├── parser.py
+│   │   ├── response_cache.py
+│   │   ├── risk_levels.py
+│   │   └── semantic_router.py
+│   ├── llm/
+│   │   ├── __init__.py
+│   │   ├── base_provider.py
+│   │   ├── context_builder.py
+│   │   ├── contracts.py
+│   │   ├── dummy_provider.py
+│   │   ├── gateway.py
+│   │   ├── gemini_provider.py
+│   │   ├── groq_client.py
+│   │   ├── groq_provider.py
+│   │   ├── model_router.py
+│   │   ├── openrouter_provider.py
+│   │   ├── prompt_builder.py
+│   │   ├── prompt_builder.py.bak2
+│   │   ├── prompt_builder.py.bak3
+│   │   ├── provider_adapter.py
+│   │   ├── provider_names.py
+│   │   ├── provider_registry.py
+│   │   ├── router.py
+│   │   └── smart_router.py
+│   ├── loop/
+│   │   ├── __init__.py
+│   │   ├── event_loop.py
+│   │   ├── idle_manager.py
+│   │   └── scheduler.py
+│   ├── memory/
+│   │   ├── __init__.py
+│   │   ├── contracts.py
+│   │   ├── db.py
+│   │   ├── lessons.py
+│   │   ├── router.py
+│   │   ├── schema.sql
+│   │   ├── session.py
+│   │   ├── session_state.py
+│   │   ├── store.py
+│   │   └── task_history.py
+│   ├── monitor/
+│   │   ├── __init__.py
+│   │   ├── budget.py
+│   │   ├── health_check.py
+│   │   └── self_diagnostics.py
+│   ├── nlu/
+│   │   ├── __init__.py
+│   │   ├── context_resolver.py
+│   │   ├── conversation_semantics.py
+│   │   ├── entity_extractor.py
+│   │   ├── language_adapter.py
+│   │   ├── language_patterns.json
+│   │   ├── semantic_actions.json
+│   │   ├── semantic_normalizer.py
+│   │   └── user_language.json
+│   ├── planner/
+│   │   ├── __init__.py
+│   │   ├── contracts.py
+│   │   ├── decision_contracts.py
+│   │   ├── decision_pipeline.py
+│   │   ├── execution_decision.py
+│   │   ├── impact_analyzer.py
+│   │   ├── impact_reasoning.py
+│   │   ├── legacy_adapter.py
+│   │   ├── planner.py
+│   │   ├── priority_planner.py
+│   │   ├── risk_assessor.py
+│   │   ├── step_builder.py
+│   │   └── validator.py
+│   ├── project_knowledge/
+│   │   ├── __init__.py
+│   │   ├── analysis_engine.py
+│   │   ├── analyzer_registry.py
+│   │   ├── base_analyzer.py
+│   │   ├── change_planner.py
+│   │   ├── contracts.py
+│   │   ├── core.py
+│   │   ├── execution_audit_logger.py
+│   │   ├── execution_audit_logger.py.v4.6-Series6-Closed
+│   │   ├── execution_audit_store.py
+│   │   ├── execution_context.py
+│   │   ├── execution_decision_engine.py
+│   │   ├── execution_loop_manager.py
+│   │   ├── execution_permission_manager.py
+│   │   ├── execution_planner.py
+│   │   ├── execution_recovery_manager.py
+│   │   ├── execution_report.py
+│   │   ├── execution_result_collector.py
+│   │   ├── execution_scheduler.py
+│   │   ├── execution_sequence_planner.py
+│   │   ├── execution_simulation_engine.py
+│   │   ├── execution_state_manager.py
+│   │   ├── execution_transaction_manager.py
+│   │   ├── execution_validator.py
+│   │   ├── final_execution_report.py
+│   │   ├── graph_query.py
+│   │   ├── impact_analyzer.py
+│   │   ├── impact_classifier.py
+│   │   ├── impact_reasoner.py
+│   │   ├── inventory.json
+│   │   ├── knowledge_query.py
+│   │   ├── knowledge_store.py
+│   │   ├── language_registry.py
+│   │   ├── priority_planner.py
+│   │   ├── project_scanner.py
+│   │   ├── python_analyzer.py
+│   │   ├── relationship_engine.py
+│   │   ├── risk_assessor.py
+│   │   ├── safe_execution_gate.py
+│   │   ├── simulation_decision_engine.py
+│   │   └── transaction_recovery_controller.py
+│   ├── project_registry/
+│   │   ├── project_loader.py
+│   │   └── registry.py
+│   ├── recovery/
+│   │   ├── __init__.py
+│   │   ├── permissions.py
+│   │   ├── rollback.py
+│   │   ├── safe_apply.py
+│   │   └── snapshot.py
+│   ├── runtime/
+│   │   ├── runtime_context.py
+│   │   ├── runtime_environment.py
+│   │   ├── runtime_integration.py
+│   │   ├── runtime_lifecycle.py
+│   │   ├── runtime_manager.py
+│   │   ├── runtime_monitor.py
+│   │   ├── runtime_snapshot.py
+│   │   └── runtime_state.py
+│   ├── user_data/
+│   │   ├── profile_loader.py
+│   │   └── user_profile.json
+│   ├── workflow/
+│   │   ├── __init__.py
+│   │   ├── workflow_cancel.py
+│   │   ├── workflow_context.py
+│   │   ├── workflow_executor.py
+│   │   ├── workflow_logger.py
+│   │   ├── workflow_manager.py
+│   │   ├── workflow_pause.py
+│   │   ├── workflow_queue.py
+│   │   ├── workflow_recovery.py
+│   │   ├── workflow_report.py
+│   │   ├── workflow_resume.py
+│   │   ├── workflow_scheduler.py
+│   │   ├── workflow_state.py
+│   │   └── workflow_task.py
+│   └── __init__.py
+├── project_reports/
+│   ├── DNI-5/
+│   │   └── DNI-5-CLOSE-REPORT.md
+│   ├── DNI-6/
+│   │   └── DNI-6-CLOSE-REPORT.md
+│   ├── DNI-7/
+│   │   └── DNI-7-CLOSE-REPORT.md
+│   ├── DNI-8/
+│   │   └── DNI-8-CLOSE-REPORT.md
+│   ├── DNI-9/
+│   │   └── DNI-9-CLOSE-REPORT.md
+│   ├── HOTFIX-PRE-DNI-10/
+│   │   └── HOTFIX-PRE-DNI-10-CLOSE-REPORT.md
+│   └── HGX_CHAT_LAYER_CLOSE_REPORT.md
+├── releases/
+│   └── INTENT_PHASE2_CLOSURE.md
+├── reports/
+│   ├── H.8.6.x/
+│   │   ├── H.8.6.x-GEMINI-PROVIDER-CLOSED.md
+│   │   └── H.8.6.x-OPENROUTER-PROVIDER-CLOSED.md
+│   ├── H.G.X/
+│   │   └── HGX_PHASE1_EXECUTION_REPORT.md
+│   ├── H.R.1/
+│   │   └── HR1_MASTER_REFERENCE.md
+│   ├── H.8.5.7_Dialogue_Continuity_Recovery_Closure.md
+│   ├── H.8.5.7_LLM_Gateway_Provider_Abstraction_Closure.md
+│   ├── H.8.6.x-CLOSED.md
+│   ├── INTENT-INFRASTRUCTURE-FINAL-STATUS-2026-10-04.md
+│   ├── INTENT-INFRASTRUCTURE-PROJECT-TREE-2026-10-04.txt
+│   ├── v4.6-Series5-Closed.md
+│   ├── v4.6-Series6-Closed.md
+│   ├── v4.6-Series7-Closed.md
+│   └── v4.6-Series8-Closed.md
+├── tests/
+│   ├── intent/
+│   │   ├── test_clean_family_fix01.py
+│   │   ├── test_device_intent_routing.py
+│   │   └── test_intent_routing_matrix.py
+│   ├── smoke_test.py
+│   ├── test_agent_self_description.py
+│   ├── test_conversation.py
+│   ├── test_g01_implicit_continuation.py
+│   ├── test_g03_implicit_reference_resolution.py
+│   ├── test_g04_context_transitions.py
+│   ├── test_g05_dialogue_lifecycle.py
+│   ├── test_g06_context_resolution.py
+│   ├── test_g07_conversation_semantics.py
+│   ├── test_gateway_empty_response.py
+│   ├── test_integration_knowledge.py
+│   ├── test_mode_detector_semantics.py
+│   ├── test_nlu_dataset.py
+│   ├── test_openrouter_token_semantics.py
+│   ├── test_p00_contracts.py
+│   ├── test_p014_audit.py
+│   ├── test_p014_recovery.py
+│   ├── test_p015_integration.py
+│   ├── test_p01_intent_infrastructure.py
+│   ├── test_p02_conversation_intent.py
+│   ├── test_p02_prepared_event_loop.py
+│   ├── test_p03_nlu_hardening.py
+│   ├── test_p05_architecture_contract.py
+│   ├── test_p05_dialogue_lifecycle.py
+│   ├── test_p05_dialogue_state.py
+│   ├── test_p06_context_ownership.py
+│   ├── test_p07_memory_ownership.py
+│   ├── test_p09_knowledge_contract.py
+│   ├── test_p10_decision_contracts.py
+│   ├── test_p10_decision_pipeline.py
+│   ├── test_p10_event_loop_planning_boundary.py
+│   ├── test_p10_execution_decision.py
+│   ├── test_p10_impact_analyzer.py
+│   ├── test_p10_impact_reasoning.py
+│   ├── test_p10_knowledge_router_boundary.py
+│   ├── test_p10_knowledge_router_contract.py
+│   ├── test_p10_orchestrator_planning_boundary.py
+│   ├── test_p10_plan_contract.py
+│   ├── test_p10_planner.py
+│   ├── test_p10_priority_planner.py
+│   ├── test_p10_risk_assessor.py
+│   ├── test_p10_validator.py
+│   ├── test_p11_event_loop_execution.py
+│   ├── test_p11_executor.py
+│   ├── test_p11_plan_execution_adapter.py
+│   ├── test_p11_write_file_e2e.py
+│   ├── test_prepared_execution_contract.py
+│   ├── test_project_knowledge.py
+│   └── test_semantic_contract.py
+├── .gitignore
+├── =
+├── _patch10.py
+├── boot_trace.txt
+├── cd
+├── example.txt
+├── execution_audit.json
+├── if
+├── project_status.py
+├── return
+├── risk_score:
+├── run.py
+├── runtime_snapshot.json
+├── score
+├── smoke_after_gateway.lo
+├── VOCAB_MAP.md
+├── تصنيف نصي لدرجة الخطورة
+└── حساب درجة الخطورة: تأثير مباشر + غير مباشر + entry point + critical file
