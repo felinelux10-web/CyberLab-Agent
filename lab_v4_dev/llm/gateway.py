@@ -209,6 +209,21 @@ def ask(
             if not result.model:
                 result.model = request.model
 
+            # An HTTP-success response without user-visible text is not a
+            # usable completion; let the configured fallback chain try next.
+            if result.ok and not (result.text or "").strip():
+                result = LLMResponse.failure(
+                    LLMError(
+                        code="EMPTY_PROVIDER_RESPONSE",
+                        message="Provider returned an empty completion",
+                        provider=name,
+                        retryable=True,
+                    ),
+                    provider=name,
+                    model=request.model,
+                    metadata=result.metadata,
+                )
+
             # P08-B7:
             # A provider failure must not terminate the centralized
             # fallback chain. Continue to the next provider.

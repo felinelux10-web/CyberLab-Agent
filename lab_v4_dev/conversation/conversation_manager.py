@@ -605,7 +605,9 @@ class ConversationManager:
             result = gateway_ask(
                 prompt,
                 system=system,
-                max_tokens=1600,
+                # Reasoning can consume the full budget before GPT-5 emits
+                # visible text; grounded self-descriptions need extra headroom.
+                max_tokens=4000 if self_knowledge else 1600,
                 temperature=0.7,
                 routing_text=text,
             )

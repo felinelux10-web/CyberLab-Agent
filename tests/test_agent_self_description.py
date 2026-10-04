@@ -43,6 +43,7 @@ class RecordingOrchestrator:
     ("text", "expected"),
     [
         ("ما اسمك؟", Intent.AGENT_IDENTITY),
+        ("من أنت؟", Intent.AGENT_IDENTITY),
         ("من أنت كـ CyberLab Agent؟", Intent.AGENT_IDENTITY),
         ("ما الذي تستطيع فعله فعليًا في هذا المشروع؟", Intent.AGENT_CAPABILITIES),
         ("ما وظائف الوكيل؟", Intent.AGENT_CAPABILITIES),
@@ -185,6 +186,7 @@ def test_self_description_is_grounded_and_uses_chat_not_orchestrator(
     assert result["semantic_request"]["context_transition"] == "new_independent"
     assert orchestrator.calls == []
     assert len(gateway_calls) == 1
+    assert gateway_calls[0][1]["max_tokens"] == 4000
     system = gateway_calls[0][1]["system"]
     assert "حقائق self-knowledge الموثقة" in system
     assert "lab_v4_dev/core/agent.py" in system
@@ -193,6 +195,29 @@ def test_self_description_is_grounded_and_uses_chat_not_orchestrator(
     assert "لا تستنتج وجود نموذج محلي" in system
     assert "Transformer" not in system
     assert "tokenizer" not in system
+
+
+def test_social_chat_keeps_standard_budget_without_self_knowledge(
+    isolated_parser, monkeypatch
+):
+    monkeypatch.setattr(conversation_module, "detect_mode", lambda _text: "CHAT")
+    manager = ConversationManager(
+        RecordingOrchestrator(),
+        DialogueMemory(ContextStore()),
+    )
+    gateway_calls = []
+
+    def fake_gateway(prompt, **kwargs):
+        gateway_calls.append((prompt, kwargs))
+        return {"status": "success", "text": "أهلًا بك.", "provider_used": "test"}
+
+    monkeypatch.setattr(conversation_module, "gateway_ask", fake_gateway)
+    result = manager.process("مرحبًا")
+
+    assert result["status"] == "success"
+    assert len(gateway_calls) == 1
+    assert gateway_calls[0][1]["max_tokens"] == 1600
+    assert "حقائق self-knowledge الموثقة" not in gateway_calls[0][1]["system"]
 
 
 def test_self_knowledge_builder_rejects_non_self_intents():

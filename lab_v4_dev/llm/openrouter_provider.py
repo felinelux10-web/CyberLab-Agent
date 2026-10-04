@@ -43,9 +43,16 @@ class OpenRouterProvider(BaseProvider):
         payload = {
             "model": model_name,
             "messages": messages,
-            "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
         }
+
+        # GPT-5 reasoning requests use max_completion_tokens; Gemini and other
+        # OpenAI-compatible models continue to use max_tokens.
+        model_family = str(model_name or "").casefold().rsplit("/", 1)[-1]
+        if model_family.startswith("gpt-5"):
+            payload["max_completion_tokens"] = request.max_tokens
+        else:
+            payload["temperature"] = request.temperature
+            payload["max_tokens"] = request.max_tokens
 
         try:
             r = requests.post(
