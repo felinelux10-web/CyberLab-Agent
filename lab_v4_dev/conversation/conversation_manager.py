@@ -40,6 +40,7 @@ from lab_v4_dev.conversation.semantic_contract import (
 from lab_v4_dev.llm.prompt_builder import build_chat_prompt
 from lab_v4_dev.llm.gateway import ask as gateway_ask
 from lab_v4_dev.awareness.agent_self_knowledge import build_agent_self_knowledge
+from lab_v4_dev.awareness.knowledge_retriever import retrieve_for_question
 from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.nlu.context_resolver import is_incomplete
@@ -198,6 +199,7 @@ class ConversationManager:
             resolved_input,
             mode,
             parsed,
+            user_question=user_input,
             chat_history=chat_history,
         )
 
@@ -269,6 +271,7 @@ class ConversationManager:
         mode: str,
         parsed: dict,
         *,
+        user_question: str | None = None,
         chat_history: list | None = None,
     ) -> dict:
         """
@@ -297,6 +300,7 @@ class ConversationManager:
                 text,
                 mode,
                 parsed=parsed,
+                user_question=user_question or text,
                 history=chat_history,
             )
 
@@ -369,6 +373,7 @@ class ConversationManager:
             text,
             mode,
             parsed=parsed,
+            user_question=user_question or text,
             history=chat_history,
         )
 
@@ -575,6 +580,7 @@ class ConversationManager:
         mode: str,
         *,
         parsed: dict | None = None,
+        user_question: str | None = None,
         history: list | None = None,
     ) -> dict:
         result = {}
@@ -585,10 +591,21 @@ class ConversationManager:
                 if intent in _AGENT_SELF_INTENTS
                 else None
             )
+            
+            # Retrieve project knowledge for the question if applicable
+            project_knowledge = None
+            if user_question and intent in _AGENT_SELF_INTENTS:
+                try:
+                    project_knowledge = retrieve_for_question(user_question)
+                except Exception:
+                    # If retrieval fails, continue without project knowledge
+                    project_knowledge = None
+            
             system, prompt = build_chat_prompt(
                 text,
                 list(history or []),
                 agent_self_knowledge=self_knowledge,
+                project_knowledge=project_knowledge,
                 conversation_semantics={
                     "conversation_domain": (parsed or {}).get(
                         "conversation_domain", "general"
