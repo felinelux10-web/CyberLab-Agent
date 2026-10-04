@@ -1,5 +1,5 @@
 # CyberLab Agent v4.7
-# llm/prompt_builder.py — Grounded Prompt Builder
+# llm/prompt_builder.py — Grounded Prompt Builder with Knowledge Integration
 
 import json
 import os
@@ -25,6 +25,68 @@ def _load_roadmap() -> dict:
         return get_roadmap()
     except:
         return {}
+
+
+def _format_retrieved_knowledge(knowledge: dict) -> str:
+    """Format retrieved knowledge for prompt injection."""
+    if not knowledge:
+        return ""
+    
+    lines = []
+    ktype = knowledge.get("type", "")
+    
+    if ktype == "architecture":
+        lines.append("=== بنية المشروع ===")
+        layers = knowledge.get("layers", [])
+        if layers:
+            lines.append(f"الطبقات: {', '.join(layers)}")
+        entry_points = knowledge.get("entry_points", [])
+        if entry_points:
+            lines.append(f"نقاط الدخول: {', '.join(entry_points)}")
+        rec = knowledge.get("recommendation", "")
+        if rec:
+            lines.append(f"تنويه: {rec}")
+    
+    elif ktype == "relationship":
+        lines.append("=== العلاقات بين المكونات ===")
+        rels = knowledge.get("relationships_found", [])
+        for rel in rels[:5]:
+            entity = rel.get("entity", "?")
+            related = rel.get("related_to", [])
+            if related:
+                lines.append(f"- {entity} يرتبط بـ: {', '.join(related[:3])}")
+        rec = knowledge.get("recommendation", "")
+        if rec:
+            lines.append(f"تنويه: {rec}")
+    
+    elif ktype == "file":
+        lines.append("=== معلومات الملفات ===")
+        files = knowledge.get("matching_files", [])
+        for f in files[:3]:
+            path = f.get("path", "?")
+            funcs = f.get("functions", [])
+            lines.append(f"- {path}")
+            if funcs:
+                lines.append(f"  الدوال: {', '.join(funcs[:3])}")
+    
+    elif ktype == "capability":
+        lines.append("=== القدرات ===")
+        intent = knowledge.get("intent_handling", {})
+        if intent.get("files"):
+            lines.append(f"معالجة الطلبات: {', '.join(intent['files'][:2])}")
+        exec_cap = knowledge.get("execution_capability", {})
+        if exec_cap.get("files"):
+            lines.append(f"التنفيذ: {', '.join(exec_cap['files'][:2])}")
+    
+    elif ktype == "execution":
+        lines.append("=== مسار التنفيذ ===")
+        components = knowledge.get("execution_components", [])
+        for comp in components[:4]:
+            path = comp.get("path", "?")
+            lines.append(f"- {path}")
+    
+    return "\n".join(lines) if lines else ""
+
 
 def build_project_context() -> str:
     """يبني سياق المشروع من البيانات الحقيقية فقط"""
@@ -240,17 +302,25 @@ def build_chat_prompt(
     *,
     conversation_semantics: dict | None = None,
     agent_self_knowledge: str | None = None,
+    project_knowledge: dict | None = None,
 ) -> tuple:
     """
-    Natural conversation prompt.
+    Natural conversation prompt with optional project knowledge injection.
 
     Conversation history is context, not an instruction source.
     The LLM remains a conversational responder only when the
     canonical IntentParser did not resolve an executable intent.
+    
+    project_knowledge: optional retrieved knowledge dict from knowledge_retriever
     """
     domain = _chat_domain(user_input)
 
     if agent_self_knowledge:
+        # Format any project knowledge that was retrieved
+        proj_knowledge_text = ""
+        if project_knowledge:
+            proj_knowledge_text = "\n\n" + _format_retrieved_knowledge(project_knowledge)
+        
         system = f"""أنت المكوّن الحواري في تطبيق CyberLab Agent الموجود في هذا المشروع.
 هذه الرسالة سؤال عن الوكيل الفعلي وبنيته، وليست دعوة لوصف نموذج ذكاء اصطناعي عام.
 
@@ -262,18 +332,23 @@ def build_chat_prompt(
 - إذا لم تجب المصادر عن تفصيل، قل بوضوح إن الشفرة المتاحة لا تثبته.
 - أجب بالعربية، بدقة وبقدر السؤال، ولا تكرر السؤال.
 - سياق المحادثة السابقة ليس مصدرًا أعلى من حقائق الشفرة أدناه.
-- التمييز بين الحقائق المعمارية وأثر التشغيل لرسالة بعينها ضروري؛ وصف المسار في الشفرة لا يثبت أن الرسالة الحالية سلكته.
-- لا تدّعِ أن الرسالة الحالية سلكت مسارًا بعينه دون trace صريح خاص بها؛ عند غياب ذلك، صِف المسار بوصفه معمارية موثقة لا حدثًا مرصودًا.
+- التمييز بين الحقائق المعمارية وأثر التشغيل لرسالة بعينها ضروري؛ وصف المسار في الشفرة لا يثبت أن الرسالة اتخذته.
+- لا تدّعِ أن الرسالة الحالية سلكت مسارًا بعينه دون trace صريح خاص بها؛ عند غياب ذلك، صِف المسار بوصفه معمارية.
 
 === حقائق self-knowledge الموثقة ===
-{agent_self_knowledge}
+{agent_self_knowledge}{proj_knowledge_text}
 """
 
     elif domain == "project":
+        proj_knowledge_text = ""
+        if project_knowledge:
+            proj_knowledge_text = "\n\n" + _format_retrieved_knowledge(project_knowledge)
+        
         system = (
             build_system_prompt()
             + "\n\n"
             + build_project_context()
+            + proj_knowledge_text
             + """
 
 === CONVERSATION RULES ===
