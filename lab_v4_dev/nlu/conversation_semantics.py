@@ -8,6 +8,7 @@ with IntentParser and ConversationManager.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 
 # Short concept vocabularies are deliberately kept at the semantic-marker level.
@@ -24,21 +25,44 @@ _STATE_MARKERS = {
 }
 _CAPABILITY_MARKERS = {"تقدر", "تستطيع", "قادر", "قدره", "مساعد", "تساعد"}
 _IDENTITY_MARKERS = {
-    "اسم", "شخص", "هويه", "طبيعه", "وظيفه", "تعريف", "نفس", "حضرتك",
+    "اسم", "شخص", "هويه", "طبيعه", "ماهيه", "وظيفه", "تعريف", "نفس",
+    "حضرتك", "yourself", "identity",
 }
-_AGENT_REFERENCE_MARKERS = {"وكيل", "agent", "cyberlab"}
+_AGENT_REFERENCE_MARKERS = {"وكيل", "مساعد", "agent", "assistant", "cyberlab"}
 _AGENT_ARCHITECTURE_MARKERS = {
     "بنيه", "معماريه", "طبقه", "طبقات", "مكون", "مكونات", "وحده", "وحدات",
-    "architecture", "layers", "modules", "gateway", "orchestrator", "نظام", "system",
+    "architecture", "layers", "modules", "components", "structure", "gateway",
+    "orchestrator", "نظام", "system",
 }
 _AGENT_FLOW_MARKERS = {
     "رساله", "رسالت", "request", "input", "تعالج", "معالجه", "تستقبل", "تمر",
-    "مسار", "flow", "يحدث", "ادخال", "ظهور", "رد",
+    "مسار", "flow", "يحدث", "يصير", "ادخال", "ظهور", "رد", "تتعامل", "تعامل",
+    "تجاوب", "تجيب", "ترد", "تنتقل", "تبدأ", "تنتهي", "تسير", "تشتغل",
+    "يدخل", "تدخل", "تنفيذ", "عمليه", "يعمل", "تعمل", "process", "handle",
+    "respond", "answer", "works",
 }
-_AGENT_LIMIT_MARKERS = {"حد", "حدود", "قيود", "limitations", "limitation", "cannot"}
+_AGENT_LIMIT_MARKERS = {
+    "حد", "حدود", "قيود", "limitations", "limitation", "cannot", "impossible",
+    "مستحيل", "يتعذر",
+}
+_AGENT_GROUNDING_MARKERS = {
+    "مصدر", "مأخوذ", "مبني", "مستند", "موثق", "مثبت", "تستند", "تعتمد",
+    "grounded", "source", "based",
+}
 _AGENT_CAPABILITY_MARKERS = {
     "تقدر", "تستطيع", "قادر", "قدره", "مساعد", "تساعد", "وظيفه",
-    "وظائف", "امكانيات", "قدرات", "تفعل", "capability", "capabilities",
+    "وظائف", "امكانيات", "قدرات", "تفعل", "تسوي", "يسوي",
+    "capability", "capabilities", "capable",
+}
+_AGENT_SECOND_PERSON_VERBS = {
+    "تستطيع", "تقدر", "تستخدم", "تستعمل", "تعالج", "تتعامل",
+    "تقول", "تصف", "تعرف", "تشرح", "تجاوب", "تجيب", "ترد", "تسوي",
+    "تملك", "تمتلك", "تستند", "تعتمد", "تحلل", "تفهم", "تنفذ",
+    "بتقدر", "بتستخدم", "بتتعامل", "you", "your", "yourself",
+}
+_AGENT_PROJECT_SUBJECT_MARKERS = {
+    "مشروع", "project", "ملف", "ملفات", "file", "files", "مجلد", "مجلدات",
+    "folder", "folders", "كود", "code", "repository", "repo",
 }
 _AGENT_QUERY_ACTS = {
     "agent_identity": "ASSISTANT_IDENTITY_QUERY",
@@ -99,17 +123,158 @@ _STYLE_ACTS = {
 }
 
 
+_ARABIC_CHARACTER_MAP = str.maketrans({
+    "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ء": "",
+    "ؤ": "و", "ئ": "ي", "ى": "ي", "ة": "ه",
+    "ک": "ك", "ڪ": "ك", "ی": "ي", "ے": "ي",
+})
+_ARABIC_CLITIC_PREFIXES = ("وال", "فال", "بال", "كال", "لل", "ال", "و", "ف", "ب", "ل", "ك")
+_ARABIC_PRONOUN_SUFFIXES = ("هما", "كما", "كم", "كن", "هن", "هم", "ها", "نا", "ني", "ه", "ك", "ي")
+
+
 def normalize_text(text: str) -> str:
-    value = str(text or "").casefold()
-    value = re.sub(r"[\u0610-\u061A\u064B-\u065F\u0670\u0640]", "", value)
-    value = re.sub(r"[أإآٱ]", "ا", value).replace("ى", "ي").replace("ة", "ه")
-    return value
+    """Normalize Unicode Arabic, optional marks, and punctuation as boundaries."""
+    value = unicodedata.normalize("NFKC", str(text or "")).casefold()
+    value = value.translate(_ARABIC_CHARACTER_MAP)
+    chars = []
+    for char in value:
+        category = unicodedata.category(char)
+        if char == "ـ" or category.startswith("M") or category == "Cf":
+            continue
+        chars.append(" " if category.startswith("P") else char)
+    return re.sub(r"\s+", " ", "".join(chars)).strip()
 
 
 def _tokens(text: str) -> list[str]:
     normalized = normalize_text(text)
-    normalized = re.sub(r"[؟?!.،,؛:…()\[\]{}\"'«»]", " ", normalized)
-    return re.findall(r"[\u0600-\u06FF]+|[a-z0-9_]+", normalized)
+    return re.findall(
+        r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+|[a-z0-9_]+",
+        normalized,
+    )
+
+
+def _agent_bases(tokens: list[str]) -> set[str]:
+    """Expose common Arabic clitic/possessive forms without sentence matching."""
+    bases = set(tokens)
+    for token in tokens:
+        prefix_forms = {token}
+        candidate = token
+        for _ in range(3):
+            prefix = next(
+                (
+                    item for item in _ARABIC_CLITIC_PREFIXES
+                    if candidate.startswith(item) and len(candidate) > len(item) + 1
+                ),
+                None,
+            )
+            if not prefix:
+                break
+            candidate = candidate[len(prefix):]
+            prefix_forms.add(candidate)
+        bases.update(prefix_forms)
+        for form in prefix_forms:
+            for suffix in _ARABIC_PRONOUN_SUFFIXES:
+                if form.endswith(suffix) and len(form) > len(suffix) + 1:
+                    bases.add(form[:-len(suffix)])
+    return bases
+
+
+def _one_edit_apart(left: str, right: str) -> bool:
+    """Allow one insertion, deletion, substitution, or adjacent transposition."""
+    if abs(len(left) - len(right)) > 1:
+        return False
+    if len(left) == len(right):
+        mismatches = [i for i, (a, b) in enumerate(zip(left, right)) if a != b]
+        if len(mismatches) <= 1:
+            return True
+        if len(mismatches) == 2:
+            i, j = mismatches
+            return j == i + 1 and left[i] == right[j] and left[j] == right[i]
+        return False
+
+    longer, shorter = (left, right) if len(left) > len(right) else (right, left)
+    i = j = edits = 0
+    while i < len(longer) and j < len(shorter):
+        if longer[i] == shorter[j]:
+            i += 1
+            j += 1
+        else:
+            edits += 1
+            i += 1
+            if edits > 1:
+                return False
+    return True
+
+
+def _has_agent_any(
+    bases: set[str], markers: set[str], *, same_initial_for_fuzzy: bool = True
+) -> bool:
+    """Match semantic tokens exactly, morphologically, or with one safe typo."""
+    normalized_markers = {normalize_text(marker) for marker in markers}
+    for raw_token in bases:
+        token = normalize_text(raw_token).replace(" ", "")
+        if token in normalized_markers:
+            return True
+        if any(len(marker) >= 4 and token.startswith(marker) for marker in normalized_markers):
+            return True
+        for marker in normalized_markers:
+            if len(marker) < 4 or not _one_edit_apart(token, marker):
+                continue
+            if same_initial_for_fuzzy and token[:1] != marker[:1]:
+                continue
+            return True
+    return False
+
+
+def _has_direct_agent_reference(tokens: list[str], bases: set[str]) -> bool:
+    explicit = {
+        "انت", "انتي", "انتو", "انتم", "حضرتك", "منك", "لك", "معك", "عليك",
+        "اليك", "فيك", "عندك", "you", "your", "yourself",
+    }
+    if bases & explicit:
+        return True
+    if any(
+        token.endswith(("كم", "كن", "ك")) and len(token) >= 3
+        for token in tokens
+        if token not in {"يمكن", "لكن", "ملك"}
+    ):
+        return True
+
+    nominal_subjects = (
+        _AGENT_ARCHITECTURE_MARKERS
+        | _AGENT_REFERENCE_MARKERS
+        | _AGENT_PROJECT_SUBJECT_MARKERS
+        | _TECHNICAL_MARKERS
+    )
+    for index, token in enumerate(tokens):
+        if not _has_agent_any(
+            _agent_bases([token]),
+            _AGENT_SECOND_PERSON_VERBS,
+            same_initial_for_fuzzy=True,
+        ):
+            continue
+        adjacent = tokens[max(0, index - 1):index] + tokens[index + 1:index + 2]
+        if any(_has_agent_any(_agent_bases([word]), nominal_subjects) for word in adjacent):
+            continue
+        return True
+    return False
+
+
+def _has_negated_capability(tokens: list[str]) -> bool:
+    """Detect negation attached to an ability predicate, not elsewhere in text."""
+    modals = {"تستطيع", "تقدر", "قادر", "يمكنك", "capable", "can"}
+    negators = {"لا", "ليس", "لن", "لم", "مش", "مو", "غير", "cannot", "not", "never"}
+    for index, token in enumerate(tokens):
+        token_forms = _agent_bases([token])
+        if not _has_agent_any(token_forms, modals, same_initial_for_fuzzy=True):
+            continue
+        previous = tokens[max(0, index - 2):index]
+        if any(
+            _has_agent_any(_agent_bases([word]), negators)
+            for word in previous
+        ):
+            return True
+    return False
 
 
 def _bases(tokens: list[str]) -> set[str]:
@@ -168,60 +333,69 @@ def _has_explicit_second_person(tokens: list[str], bases: set[str]) -> bool:
 
 
 def classify_agent_self_query(text: str) -> dict | None:
-    """Classify a question about this agent from compact semantic cues.
+    """Classify agent-self requests from meaning, not punctuation or syntax.
 
-    The classifier requires a question shape plus an agent-directed subject,
-    an agent reference, or a message-processing frame. An explicit project
-    subject wins over an incidental mention of the agent name.
+    A self reference, a first-person message-processing frame, or an
+    unambiguous property of the named agent is required. Merely mentioning the
+    project/agent beside an architecture word does not make a project question
+    an agent-self query.
     """
     raw = str(text or "").strip()
     tokens = _tokens(raw)
     if not tokens:
         return None
-    bases = _bases(tokens)
-    question = (
-        "؟" in raw
-        or "?" in raw
-        or tokens[0] in _QUESTION_MARKERS
-    )
-    if not question:
-        return None
-
-    project_subject = _has_any(bases, {"مشروع", "project", "ملف", "مجلد", "كود", "repository"})
-    direct_address = _has_second_person(tokens, bases) or _has_any(
-        bases, {"تستطيع", "تقدر", "يمكنك"}
-    )
-    agent_reference = _has_any(bases, _AGENT_REFERENCE_MARKERS)
+    bases = _bases(tokens) | _agent_bases(tokens)
+    project_subject = _has_agent_any(bases, _AGENT_PROJECT_SUBJECT_MARKERS)
+    direct_address = _has_direct_agent_reference(tokens, bases)
+    agent_reference = _has_agent_any(bases, _AGENT_REFERENCE_MARKERS)
     message_frame = (
-        _has_any(bases, {"رساله", "رسالت", "request", "input"})
-        and _has_any(bases, _AGENT_FLOW_MARKERS)
+        _has_agent_any(bases, {
+            "رساله", "رسالت", "message", "request", "input", "سؤال", "question",
+        })
+        and _has_agent_any(bases, _AGENT_FLOW_MARKERS)
     )
 
-    if project_subject and not direct_address:
-        return None
-    if not (direct_address or agent_reference or message_frame):
+    # Explicit project framing wins unless the wording actually relates the
+    # user to the agent (e.g. "معالجة رسالتي" or "الطبقات التي تستخدمها أنت").
+    if project_subject and not (direct_address or message_frame):
         return None
 
-    capability = _has_any(bases, _AGENT_CAPABILITY_MARKERS)
-    negated_capability = capability and _has_any(
-        bases, {"لا", "ليس", "cannot", "غير قادر"}
-    ) and _has_any(bases, {"تستطيع", "تقدر", "قادر", "يمكنك", "تنفيذ", "تفعل"})
+    identity = _has_agent_any(bases, _IDENTITY_MARKERS)
+    capability = _has_agent_any(bases, _AGENT_CAPABILITY_MARKERS)
+    architecture = _has_agent_any(bases, _AGENT_ARCHITECTURE_MARKERS)
+    flow = _has_agent_any(bases, _AGENT_FLOW_MARKERS)
+    limits = _has_agent_any(bases, _AGENT_LIMIT_MARKERS)
+    grounding = _has_agent_any(bases, _AGENT_GROUNDING_MARKERS)
+    negated_capability = _has_negated_capability(tokens)
 
-    if _has_any(bases, _AGENT_LIMIT_MARKERS) or negated_capability:
+    # A named agent may be asked about its role/capabilities without a pronoun;
+    # architecture alone is not enough, because that commonly means project
+    # structure (e.g. "مكونات CyberLab Agent").
+    named_agent_property = agent_reference and (
+        identity
+        or capability
+        or limits
+        or (flow and _has_agent_any(bases, _WORKING_MARKERS))
+    )
+    if not (direct_address or message_frame or named_agent_property):
+        return None
+
+    if limits or (grounding and (direct_address or message_frame)) or negated_capability:
         intent = "agent_limits"
-    elif _has_any(bases, _IDENTITY_MARKERS) or (
-        tokens[0] in {"من", "مين"} and _has_second_person(tokens, bases)
+    elif identity or (
+        bool(tokens) and tokens[0] in {"من", "مين", "who"}
+        and (direct_address or agent_reference)
     ):
         intent = "agent_identity"
+    elif architecture and (direct_address or message_frame):
+        intent = "agent_architecture"
+    elif flow and message_frame:
+        intent = "agent_execution_flow"
+    elif agent_reference and _has_agent_any(bases, _WORKING_MARKERS):
+        intent = "agent_execution_flow"
     elif capability:
         intent = "agent_capabilities"
-    elif _has_any(bases, _AGENT_ARCHITECTURE_MARKERS):
-        intent = "agent_architecture"
-    elif _has_any(bases, _AGENT_FLOW_MARKERS) and (
-        direct_address or message_frame or agent_reference
-    ):
-        intent = "agent_execution_flow"
-    elif agent_reference and _has_any(bases, {"يعمل", "تعمل", "يشتغل", "تشتغل"}):
+    elif flow and (direct_address or named_agent_property):
         intent = "agent_execution_flow"
     else:
         return None
@@ -229,7 +403,7 @@ def classify_agent_self_query(text: str) -> dict | None:
     return {
         "conversation_domain": "agent_self",
         "conversation_act": _AGENT_QUERY_ACTS[intent],
-        "confidence": 0.94,
+        "confidence": 0.92,
         "response_attributes": {},
         "conversational": True,
         "intent": intent,
