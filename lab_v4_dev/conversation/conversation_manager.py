@@ -40,7 +40,11 @@ from lab_v4_dev.conversation.semantic_contract import (
 from lab_v4_dev.llm.prompt_builder import build_chat_prompt
 from lab_v4_dev.llm.gateway import ask as gateway_ask
 from lab_v4_dev.awareness.agent_self_knowledge import build_agent_self_knowledge
-from lab_v4_dev.awareness.knowledge_retriever import retrieve_for_question
+from lab_v4_dev.awareness.knowledge_retriever import (
+    ProjectScope,
+    resolve_project_scope,
+    retrieve_for_question,
+)
 from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.nlu.context_resolver import is_incomplete
@@ -591,10 +595,18 @@ class ConversationManager:
                 if intent in _AGENT_SELF_INTENTS
                 else None
             )
+            project_scope = resolve_project_scope(
+                user_question or text,
+                intent=intent,
+            )
             
             # Retrieve project knowledge for the question if applicable
             project_knowledge = None
-            if user_question and intent in _AGENT_SELF_INTENTS:
+            if (
+                user_question
+                and intent in _AGENT_SELF_INTENTS
+                and project_scope == ProjectScope.CURRENT_PROJECT
+            ):
                 try:
                     project_knowledge = retrieve_for_question(user_question)
                 except Exception:
@@ -606,6 +618,7 @@ class ConversationManager:
                 list(history or []),
                 agent_self_knowledge=self_knowledge,
                 project_knowledge=project_knowledge,
+                project_scope=project_scope,
                 conversation_semantics={
                     "conversation_domain": (parsed or {}).get(
                         "conversation_domain", "general"

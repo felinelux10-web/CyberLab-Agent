@@ -16,6 +16,7 @@ from lab_v4_dev.core.contracts import Request, Context, Response, PreparedExecut
 from lab_v4_dev.llm.router import needs_llm
 from lab_v4_dev.llm.gateway import ask
 from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
+from lab_v4_dev.awareness.knowledge_retriever import resolve_project_scope
 from lab_v4_dev.config.provider_config import get_active_provider
 import os
 import shutil
@@ -500,7 +501,11 @@ class Orchestrator:
             memory  = load_memory()
             total   = memory.get("total_files", 0)
             from lab_v4_dev.llm.prompt_builder import build_project_context
-            system  = build_project_context()
+            system  = build_project_context(
+                question=raw,
+                intent=intent,
+                project_scope=resolve_project_scope(raw, intent=intent),
+            )
             result  = ask(raw, system=system, max_tokens=400)
             return {
                 "status": result["status"],
@@ -512,7 +517,11 @@ class Orchestrator:
         # ─── Groq للمهام المعقدة ───
         elif needs_llm(intent):
             from lab_v4_dev.llm.prompt_builder import build_project_context
-            system = build_project_context()
+            system = build_project_context(
+                question=raw,
+                intent=intent,
+                project_scope=resolve_project_scope(raw, intent=intent),
+            )
             result = ask(raw, system=system, max_tokens=300)
             return {
                 "status" : result["status"],

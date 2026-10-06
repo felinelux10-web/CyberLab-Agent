@@ -24,7 +24,7 @@ class ProjectScope:
     UNKNOWN = "UNKNOWN"
 
 
-def resolve_project_scope(question: str) -> str:
+def resolve_project_scope(question: str, intent: str | None = None) -> str:
     """Resolve whether a question authorizes current-project knowledge.
 
     This is deliberately local and conservative.  The word ``project`` by
@@ -61,6 +61,12 @@ def resolve_project_scope(question: str) -> str:
         "كيف تنتقل الطلبات داخل",
     )
 
+    project_intents = {
+        "project_scan", "project_map", "project_purpose", "project_report",
+        "progress_report", "remaining_work", "architecture", "modules",
+        "execution_flow", "dependency_map", "file_impact", "compare_files",
+    }
+
     if any(marker in q for marker in historical_markers):
         return ProjectScope.HISTORICAL_PROJECT
     if any(marker in q for marker in external_markers):
@@ -68,6 +74,8 @@ def resolve_project_scope(question: str) -> str:
     if any(marker in q for marker in generic_markers):
         return ProjectScope.GENERIC_PROJECT
     if any(marker in q for marker in current_markers):
+        return ProjectScope.CURRENT_PROJECT
+    if str(getattr(intent, "value", intent) or "") in project_intents:
         return ProjectScope.CURRENT_PROJECT
     return ProjectScope.UNKNOWN
 

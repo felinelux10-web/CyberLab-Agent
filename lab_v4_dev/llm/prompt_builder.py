@@ -5,6 +5,10 @@ import json
 import os
 from lab_v4_dev.core.project_context import CYBERLAB_ROOT, get_active_project
 from lab_v4_dev.llm.context_builder import build_system_prompt
+from lab_v4_dev.awareness.knowledge_retriever import (
+    ProjectScope,
+    resolve_project_scope,
+)
 
 ROADMAP_FILE = "project_data/roadmap.json"
 
@@ -88,8 +92,16 @@ def _format_retrieved_knowledge(knowledge: dict) -> str:
     return "\n".join(lines) if lines else ""
 
 
-def build_project_context() -> str:
+def build_project_context(
+    *,
+    project_scope: str | None = None,
+    question: str | None = None,
+    intent: str | None = None,
+) -> str:
     """يبني سياق المشروع من البيانات الحقيقية فقط"""
+    scope = project_scope or resolve_project_scope(question or "", intent=intent)
+    if scope != ProjectScope.CURRENT_PROJECT:
+        return ""
     index   = _load_index()
     roadmap = _load_roadmap()
     proj    = get_active_project()
@@ -303,6 +315,7 @@ def build_chat_prompt(
     conversation_semantics: dict | None = None,
     agent_self_knowledge: str | None = None,
     project_knowledge: dict | None = None,
+    project_scope: str | None = None,
 ) -> tuple:
     """
     Natural conversation prompt with optional project knowledge injection.
@@ -313,12 +326,18 @@ def build_chat_prompt(
     
     project_knowledge: optional retrieved knowledge dict from knowledge_retriever
     """
+    scope = project_scope or resolve_project_scope(user_input)
     domain = _chat_domain(user_input)
+    authorized_project_knowledge = (
+        scope == ProjectScope.CURRENT_PROJECT
+        and isinstance(project_knowledge, dict)
+        and project_knowledge.get("current_project_knowledge") is True
+    )
 
     if agent_self_knowledge:
         # Format any project knowledge that was retrieved
         proj_knowledge_text = ""
-        if project_knowledge:
+        if authorized_project_knowledge:
             proj_knowledge_text = "\n\n" + _format_retrieved_knowledge(project_knowledge)
         
         system = f"""أنت المكوّن الحواري في تطبيق CyberLab Agent الموجود في هذا المشروع.
@@ -341,13 +360,13 @@ def build_chat_prompt(
 
     elif domain == "project":
         proj_knowledge_text = ""
-        if project_knowledge:
+        if authorized_project_knowledge:
             proj_knowledge_text = "\n\n" + _format_retrieved_knowledge(project_knowledge)
         
         system = (
             build_system_prompt()
             + "\n\n"
-            + build_project_context()
+            + build_project_context(project_scope=scope)
             + proj_knowledge_text
             + """
 
