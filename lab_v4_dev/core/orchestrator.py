@@ -667,7 +667,8 @@ class Orchestrator:
                     return candidate.resolve()
 
                 # 2. Direct path relative to CyberLab-Agent.
-                _project_root = (_Path.home() / "cyberlab_agent").resolve()
+                from lab_v4_dev.core.project_context import get_active_project_root
+                _project_root = _Path(get_active_project_root()).resolve()
                 direct = (_project_root / name).resolve()
 
                 try:
@@ -1172,7 +1173,10 @@ class Orchestrator:
         elif intent == Intent.SEARCH_CODE:
             from lab_v4_dev.awareness.project_index import search_index, save_index
             import re
-            if not os.path.exists("project_data/project_index.json"):
+            from lab_v4_dev.core.project_context import get_active_project_root, project_index_dir
+            if not os.path.exists(os.path.join(
+                project_index_dir(get_active_project_root()), "project_index.json"
+            )):
                 save_index()
             # استخرج الكلمة المفتاحية من الأمر
             stop_words = ["أين","اين","وين","يوجد","في","اي","ملف","ابحث","عن","عن","ما","الملف","المسؤول"]
@@ -1199,7 +1203,10 @@ class Orchestrator:
         elif intent == Intent.FILE_IMPACT and any(w in raw for w in ["تعتمد على","يعتمد على","تستخدم","يستخدم","من يستورد","تستورد"]):
             from lab_v4_dev.awareness.dependency_map import get_impact
             import re
-            if not os.path.exists("project_data/dependency_map.json"):
+            from lab_v4_dev.core.project_context import get_active_project_root, project_index_dir
+            if not os.path.exists(os.path.join(
+                project_index_dir(get_active_project_root()), "dependency_map.json"
+            )):
                 from lab_v4_dev.awareness.dependency_map import save_map
                 save_map()
             # استخرج اسم الملف
@@ -1595,7 +1602,10 @@ SOURCE CODE:
                     impact = {"file": q, "imports": [], "imported_by": [], "risk": "unknown"}
             else:
                 from lab_v4_dev.awareness.dependency_map import get_impact
-                if not os.path.exists("project_data/dependency_map.json"):
+                from lab_v4_dev.core.project_context import get_active_project_root, project_index_dir
+                if not os.path.exists(os.path.join(
+                    project_index_dir(get_active_project_root()), "dependency_map.json"
+                )):
                     from lab_v4_dev.awareness.dependency_map import save_map
                     save_map()
                 impact = get_impact(q)
@@ -1710,7 +1720,8 @@ SOURCE CODE:
                 parts = []
                 for cf in critical:
                     try:
-                        fp = os.path.expanduser(f"~/cyberlab_agent/{cf}")
+                        from lab_v4_dev.core.project_context import get_active_project_root
+                        fp = os.path.join(get_active_project_root(), cf)
                         content = open(fp, encoding="utf-8", errors="ignore").read()[:800]
                         parts.append("=== " + cf + " ===\n" + content)
                     except:
@@ -2152,7 +2163,8 @@ SOURCE CODE:
 
         # ─── System Status Report ───
         elif intent == Intent.SYSTEM_STATUS:
-            script = os.path.join(os.path.expanduser("~/cyberlab_agent"), "project_status.py")
+            from lab_v4_dev.core.project_context import get_active_project_root
+            script = os.path.join(get_active_project_root(), "project_status.py")
             try:
                 result = self._submit_prepared_execution(
                     intent={"intent": str(intent)},

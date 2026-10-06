@@ -34,6 +34,19 @@ def project_index_dir(project_root: str) -> str:
     return os.path.join(CYBERLAB_ROOT, "project_indices", h)
 
 
+def project_data_dir(project_root: str = None) -> str:
+    """المسار canonical لحالة المشروع النشط وبياناته المشتقة."""
+    root = os.path.abspath(project_root or get_active_project_root())
+    if root == os.path.abspath(BASE_PROJECT_ROOT):
+        return os.path.join(root, "project_data")
+    return os.path.join(project_index_dir(root), "project_data")
+
+
+def project_data_file(filename: str, project_root: str = None) -> str:
+    """يعيد ملفًا داخل مساحة بيانات المشروع دون fallback لمشروع آخر."""
+    return os.path.join(project_data_dir(project_root), filename)
+
+
 def clear_project_index(project_root: str) -> None:
     """يمسح كاش الفهرس الخاص بالمشروع قبل تبديل السياق."""
     index_dir = project_index_dir(project_root)
@@ -99,11 +112,15 @@ def set_active_project(root: str) -> dict:
         return {"status": "error", "message": f"مسار غير مسموح (نظام): {abs_root}"}
 
     previous_root = _active_project.root
-    if os.path.abspath(previous_root) != abs_root:
-        for project_root in {previous_root, abs_root}:
-            clear_project_index(project_root)
+    # الفهارس project-scoped persistent؛ لا نحذف فهرس A أو B عند التبديل.
+    # إعادة البناء تتم صراحةً عند طلب scan، لا كأثر جانبي لتغيير المشروع.
 
     _active_project = ProjectContext(root=abs_root)
+    try:
+        from lab_v4_dev.awareness import project_knowledge
+        project_knowledge.invalidate_cache()
+    except Exception:
+        pass
 
     registry = load_registry()
     registry["active_project"] = _active_project.to_dict()

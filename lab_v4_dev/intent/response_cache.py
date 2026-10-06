@@ -2,7 +2,9 @@
 # intent/response_cache.py
 import json, os
 
-CACHE_PATH = "project_data/response_cache.json"
+def _cache_path() -> str:
+    from lab_v4_dev.core.project_context import project_data_file
+    return project_data_file("response_cache.json")
 
 # سياسة الـ Cache لكل intent
 CACHE_POLICY = {
@@ -38,16 +40,18 @@ def should_save(intent: str, text: str) -> bool:
     return True
 
 def _load():
-    if os.path.exists(CACHE_PATH):
+    path = _cache_path()
+    if os.path.exists(path):
         try:
-            with open(CACHE_PATH, encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return json.load(f)
         except: pass
     return {}
 
 def _save(data):
-    os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
-    with open(CACHE_PATH, "w", encoding="utf-8") as f:
+    path = _cache_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def get(intent, target=""):

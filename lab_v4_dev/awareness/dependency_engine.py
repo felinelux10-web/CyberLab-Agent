@@ -20,12 +20,7 @@ def _load(name):
 def index_missing() -> bool:
     """هل المشروع النشط حالياً بدون فهرس بُني له؟"""
     primary = os.path.join(_get_index_dir(), "project_snapshot.json")
-    if os.path.exists(primary):
-        return False
-    # fallback: cache المحلي
-    fallback = os.path.join(os.path.dirname(__file__), "..", "cache", "project_memory.json")
-    fallback = os.path.normpath(fallback)
-    return not os.path.exists(fallback)
+    return not os.path.exists(primary)
 
 
 def _path_to_module(file_path):
@@ -111,14 +106,7 @@ def _load_memory():
                 return data
     except Exception:
         pass
-    try:
-        fallback = os.path.join(os.path.dirname(__file__), "..", "cache", "project_memory.json")
-        fallback = os.path.normpath(fallback)
-        with open(fallback, encoding="utf-8") as f:
-            return json.load(f)
-
-    except Exception:
-        return {}
+    return {}
 
 def get_entry_points():
     snapshot = _load("project_snapshot.json")

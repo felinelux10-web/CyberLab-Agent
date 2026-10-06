@@ -4,20 +4,21 @@ Intent Cache — v5.9.3
 """
 import json, os
 
-CACHE_FILE = os.path.expanduser(
-    "~/cyberlab_agent/project_data/intent_cache.json"
-)
+def _cache_file() -> str:
+    from lab_v4_dev.core.project_context import project_data_file
+    return project_data_file("intent_cache.json")
 
 def _load() -> dict:
     try:
-        with open(CACHE_FILE, encoding="utf-8") as f:
+        with open(_cache_file(), encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
 
 def _save(cache: dict):
-    os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+    path = _cache_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(cache, f, ensure_ascii=False, indent=2)
 
 def get(text: str) -> str | None:

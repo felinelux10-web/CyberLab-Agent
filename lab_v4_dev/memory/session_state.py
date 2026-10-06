@@ -5,7 +5,9 @@ import json
 import os
 from datetime import datetime
 
-SESSION_FILE = "project_data/session_state.json"
+def _session_file() -> str:
+    from lab_v4_dev.core.project_context import project_data_file
+    return project_data_file("session_state.json")
 
 def save_session(active_goal: str = None, completed: list = None,
                  next_step: str = None, last_files: list = None,
@@ -26,8 +28,9 @@ def save_session(active_goal: str = None, completed: list = None,
         pk_save(data)
     except Exception:
         # FALLBACK — يُستخدم فقط إذا تعذر استيراد project_knowledge
-        os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
-        with open(SESSION_FILE, "w", encoding="utf-8") as f:
+        path = _session_file()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     return data
 
@@ -39,5 +42,6 @@ def load_session() -> dict:
         return {}
 
 def clear_session():
-    if os.path.exists(SESSION_FILE):
-        os.remove(SESSION_FILE)
+    path = _session_file()
+    if os.path.exists(path):
+        os.remove(path)

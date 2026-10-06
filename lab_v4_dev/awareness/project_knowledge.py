@@ -13,8 +13,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-BASE = os.path.expanduser("~/cyberlab_agent")
-DATA = os.path.join(BASE, "project_data")
+def _data_dir() -> str:
+    from lab_v4_dev.core.project_context import project_data_dir
+    return project_data_dir()
 
 # ─── Cache Layer ───
 _cache = {}
@@ -196,10 +197,16 @@ class ProjectKnowledgeModel:
 
 def _project_root_from_context() -> str:
     """Find the active project root from common local paths."""
+    try:
+        from lab_v4_dev.core.project_context import get_active_project_root
+        active_root = get_active_project_root()
+        if active_root and os.path.isdir(active_root):
+            return active_root
+    except Exception:
+        pass
     candidates = [
         os.getcwd(),
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        os.path.join(os.path.expanduser("~"), "cyberlab_agent"),
     ]
     for candidate in candidates:
         if candidate and os.path.isdir(candidate):
@@ -425,7 +432,7 @@ def _load_all():
     if _cache_state["loaded"]:
         return
     for filename in ["roadmap.json", "session_state.json", "project_history.json", "version_history.json"]:
-        fpath = os.path.join(DATA, filename)
+        fpath = os.path.join(_data_dir(), filename)
         if os.path.exists(fpath):
             try:
                 with open(fpath, encoding="utf-8") as f:
@@ -458,7 +465,7 @@ def reload_file(filename: str):
     """إعادة تحميل ملف واحد فقط من القرص"""
     global _cache
     _load_all()
-    fpath = os.path.join(DATA, filename)
+    fpath = os.path.join(_data_dir(), filename)
     if os.path.exists(fpath):
         try:
             with open(fpath, encoding="utf-8") as f:
@@ -659,8 +666,9 @@ def _write(filename: str, data: dict):
     """يكتب إلى الملف ويحدث Cache و_cache_state"""
     global _cache, _cache_state
     _load_all()
-    fpath = os.path.join(DATA, filename)
-    os.makedirs(DATA, exist_ok=True)
+    data_dir = _data_dir()
+    fpath = os.path.join(data_dir, filename)
+    os.makedirs(data_dir, exist_ok=True)
     with open(fpath, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     _cache[filename] = data

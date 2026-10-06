@@ -74,19 +74,14 @@ def save_memory(db) -> str:
     return _memory_file()
 
 def load_memory() -> dict:
-    # أولاً: مسار الفهرس الديناميكي
     primary = _memory_file()
-    # ثانياً: fallback للـ cache المحلي
-    fallback = os.path.join(os.path.dirname(__file__), "..", "cache", "project_memory.json")
-    fallback = os.path.normpath(fallback)
-    for p in [primary, fallback]:
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if data.get("total_files"):
-                    return data
-        except Exception:
-            pass
+    try:
+        with open(primary, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if data.get("total_files"):
+                return data
+    except Exception:
+        pass
     return {}
 
 def get_file_info(file_path: str) -> dict:

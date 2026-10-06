@@ -5,7 +5,11 @@
 from pathlib import Path
 import json
 
-REGISTRY_FILE = Path("project_data/project_registry.json")
+REGISTRY_FILE = (
+    Path(__file__).resolve().parents[2]
+    / "project_data"
+    / "project_registry.json"
+)
 
 
 def load_registry():

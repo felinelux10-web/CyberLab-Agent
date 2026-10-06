@@ -5,18 +5,22 @@ import json
 import os
 from datetime import datetime
 
-TIMELINE_FILE = "project_data/project_timeline.json"
+def _timeline_file() -> str:
+    from lab_v4_dev.core.project_context import project_data_file
+    return project_data_file("project_timeline.json")
 
 def load_timeline() -> list:
+    path = _timeline_file()
     try:
-        with open(TIMELINE_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except:
         return []
 
 def save_timeline(timeline: list):
-    os.makedirs(os.path.dirname(TIMELINE_FILE), exist_ok=True)
-    with open(TIMELINE_FILE, "w", encoding="utf-8") as f:
+    path = _timeline_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(timeline, f, ensure_ascii=False, indent=2)
 
 def add_event(version: str, event: str, details: str = ""):
