@@ -74,18 +74,63 @@ def _prepare_request(
     timeout_ms=None,
 ):
     inspection = privacy.inspect(prompt)
-
-    sanitized = inspection.get("sanitized", prompt)
-    sanitized = privacy.sanitize(sanitized)
+    system_inspection = privacy.inspect(system) if system else {
+        "sanitized": system,
+        "allow_external": True,
+    }
+    sanitized = privacy.sanitize(inspection.get("sanitized", prompt))
+    sanitized_system = privacy.sanitize(system_inspection.get("sanitized", system))
 
     return LLMRequest(
         prompt=sanitized,
-        system=system,
+        system=sanitized_system,
         max_tokens=max_tokens,
         model=model,
         temperature=temperature,
         timeout_ms=timeout_ms,
     )
+
+
+def _privacy_decision(prompt, system=None) -> dict:
+    """Inspect every provider-bound text before routing or external I/O."""
+    prompt_result = privacy.inspect(prompt)
+    system_result = privacy.inspect(system) if system else {
+        "allow_external": True,
+        "privacy_level": "public",
+        "reasons": [],
+        "redactions": [],
+    }
+    allow_external = bool(
+        prompt_result.get("allow_external", True)
+        and system_result.get("allow_external", True)
+    )
+    levels = {prompt_result.get("privacy_level"), system_result.get("privacy_level")}
+    return {
+        "allow_external": allow_external,
+        "privacy_level": "blocked" if not allow_external else (
+            "sensitive" if "sensitive" in levels else "public"
+        ),
+        "prompt": prompt_result,
+        "system": system_result,
+    }
+
+
+def _privacy_blocked_response(decision) -> dict:
+    return {
+        "status": "error",
+        "text": "تم حجب الطلب محليًا لأن محتواه يتضمن سرًا تقنيًا لا يُسمح بإرساله إلى مزود خارجي.",
+        "provider_used": "gateway",
+        "provider": "gateway",
+        "model": None,
+        "tokens": 0,
+        "fallback_used": False,
+        "provider_chain": [],
+        "error": {
+            "code": "PRIVACY_EXTERNAL_BLOCKED",
+            "message": "Privacy policy denied external provider routing",
+        },
+        "metadata": {"privacy": decision},
+    }
 
 
 def _response_to_dict(resp: LLMResponse) -> dict:
@@ -144,6 +189,10 @@ def ask(
 
     Provider-specific implementation details must not escape here.
     """
+
+    privacy_decision = _privacy_decision(prompt, system)
+    if not privacy_decision["allow_external"]:
+        return _privacy_blocked_response(privacy_decision)
 
     request = _prepare_request(
         prompt=prompt,
