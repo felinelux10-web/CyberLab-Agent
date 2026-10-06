@@ -283,6 +283,15 @@ class DialogueMemory:
             "entity_type": entity_type,
         }
 
+    def previous_context_entity(self) -> dict | None:
+        """Return the latest side-branch subject available for a topic return."""
+        if not self.state.context_history:
+            return None
+        item = self.state.context_history[-1]
+        if not isinstance(item, dict):
+            return None
+        return dict(item)
+
     # --------------------------------------------------------
     # Reference resolution
     # --------------------------------------------------------
@@ -304,11 +313,22 @@ class DialogueMemory:
             return text
 
         resolved = f"{topic} {text.strip()}"
-        if "الحل الثاني" in text and len(self.state.last_items) >= 2:
-            resolved = resolved.replace(
-                "الحل الثاني",
-                str(self.state.last_items[1]),
-            )
+        ordinal_items = {
+            "الحل الثاني": 1,
+            "النقطة الثانية": 1,
+            "الجزء الثاني": 1,
+            "النقطة 2": 1,
+            "الجزء 2": 1,
+            "الحل الأول": 0,
+            "النقطة الأولى": 0,
+            "الجزء الأول": 0,
+            "النقطة 1": 0,
+            "الجزء 1": 0,
+        }
+        for marker, index in ordinal_items.items():
+            if marker in text and len(self.state.last_items) > index:
+                resolved = resolved.replace(marker, str(self.state.last_items[index]))
+                break
         return resolved
 
     # --------------------------------------------------------

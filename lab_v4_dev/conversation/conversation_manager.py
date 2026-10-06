@@ -119,6 +119,14 @@ class ConversationManager:
                 )
                 if callable(get_context):
                     context_entity = get_context(candidate.get("target"))
+                if context_entity is None:
+                    get_previous = getattr(
+                        self.dialogue_memory,
+                        "previous_context_entity",
+                        None,
+                    )
+                    if callable(get_previous):
+                        context_entity = get_previous()
             elif transition.value in CONTEXTUAL_TRANSITIONS:
                 get_active_context = getattr(
                     self.dialogue_memory,
@@ -420,6 +428,22 @@ class ConversationManager:
         conversation_act = parsed.get("conversation_act")
         if intent in _AGENT_SELF_INTENTS:
             return ContextTransition.NEW_INDEPENDENT
+        if conversation_act == "TOPIC_RETURN":
+            get_previous = getattr(
+                self.dialogue_memory,
+                "previous_context_entity",
+                None,
+            ) if self.dialogue_memory else None
+            return (
+                ContextTransition.RESTORE
+                if callable(get_previous) and get_previous()
+                else ContextTransition.AMBIGUOUS
+            )
+        if conversation_act in {"CORRECTION", "COMPOUND_REFERENCE"}:
+            return (
+                ContextTransition.CONTINUE
+                if active_topic else ContextTransition.AMBIGUOUS
+            )
         if is_style_act(conversation_act) and not target:
             return (
                 ContextTransition.CONTINUE

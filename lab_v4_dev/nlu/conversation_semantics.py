@@ -96,6 +96,12 @@ _RESPONSE_REFERENCES = {
     "هذا", "هذه", "ذلك", "تلك",
     "خاطب", "تحدث", "تكلم", "معي",
 }
+_CORRECTION_MARKERS = {"اقصد", "اقصده", "المقصود", "تصحيح", "صحح"}
+_CORRECTION_NEGATIONS = {"لا", "ليس", "مو", "مش", "غلط"}
+_COMPOUND_REFERENCE_MARKERS = {
+    "هذا", "هذه", "ذلك", "تلك", "جزء", "نقطه", "شرح", "موضوع", "السابق",
+}
+_RETURN_MARKERS = {"ارجع", "عوده", "رجوع", "الرئيسي", "الرئيسيه"}
 _QUESTION_MARKERS = {"هل", "ما", "ماذا", "كيف", "من", "مين", "ايش", "شو", "بماذا"}
 _WORKING_MARKERS = {"يعمل", "تعمل", "يشتغل", "تشتغل", "works", "working"}
 _PROJECT_MARKERS = {
@@ -480,6 +486,33 @@ def classify_conversation_semantics(
 
     has_response_reference = _has_any(bases, _RESPONSE_REFERENCES)
     attrs = {}
+    has_correction = (
+        _has_any(bases, _CORRECTION_MARKERS)
+        and _has_any(bases, _CORRECTION_NEGATIONS | {"بل"})
+    )
+    has_compound_reference = (
+        len(tokens) >= 2
+        and _has_any(bases, {"نقطه", "جزء", "موضوع"})
+        and _has_any(bases, _COMPOUND_REFERENCE_MARKERS)
+    )
+    if has_correction:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CORRECTION",
+            "confidence": 0.92,
+            "response_attributes": {},
+            "conversational": True,
+        }
+    if _has_any(bases, _RETURN_MARKERS) and _has_any(
+        bases, {"موضوع", "الرئيسي", "السابق"}
+    ):
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "TOPIC_RETURN",
+            "confidence": 0.90,
+            "response_attributes": {},
+            "conversational": True,
+        }
     if has_response_reference:
         if _has_any(bases, _SIMPLIFY_MARKERS):
             attrs["interaction_style"] = "simplified"
@@ -510,6 +543,15 @@ def classify_conversation_semantics(
             "conversation_act": act,
             "confidence": 0.92,
             "response_attributes": attrs,
+            "conversational": True,
+        }
+
+    if has_compound_reference:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "COMPOUND_REFERENCE",
+            "confidence": 0.86,
+            "response_attributes": {},
             "conversational": True,
         }
 
