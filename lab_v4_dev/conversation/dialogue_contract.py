@@ -91,6 +91,7 @@ class DialogueState:
             "last_confidence": self.last_confidence,
             "pending_clarification": self.pending_clarification,
             "messages": len(self.turns),
+            "history": self.history,
             "last_items": list(self.last_items),
             "context_history": [dict(item) for item in self.context_history],
         }

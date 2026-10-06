@@ -83,6 +83,32 @@ class DialogueMemory:
         """
         self.state = DialogueState()
 
+    def restore_snapshot(self, snapshot: dict | None) -> bool:
+        """Restore bounded dialogue state from an explicit recoverable checkpoint."""
+        if not isinstance(snapshot, dict):
+            return False
+        restored = DialogueState()
+        for field in (
+            "last_topic", "pending_topic", "last_mode", "last_intent",
+            "last_target", "last_entity_type", "last_confidence",
+            "pending_clarification", "last_items", "context_history",
+        ):
+            if field in snapshot:
+                setattr(restored, field, snapshot[field])
+        for turn in (snapshot.get("history") or [])[-8:]:
+            if not isinstance(turn, dict) or not turn.get("role"):
+                continue
+            restored.add_turn(
+                role=turn.get("role", ""),
+                content=turn.get("content", ""),
+                mode=turn.get("mode"),
+                intent=turn.get("intent"),
+                target=turn.get("target"),
+                confidence=turn.get("confidence", 0.0),
+            )
+        self.state = restored
+        return True
+
     def update(
         self,
         text: str,

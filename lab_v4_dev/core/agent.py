@@ -26,6 +26,7 @@ class Agent:
         self.loop    = None
         self.context = None
         self.runtime = None
+        self._pending_session = None
 
     def boot(self) -> bool:
         log.info("=== CyberLab Agent v4.0 BOOTING ===")
@@ -105,6 +106,7 @@ class Agent:
             from lab_v4_dev.data.project_timeline import init_timeline
             init_timeline()
             s = load_session()
+            self._pending_session = s if isinstance(s, dict) else None
             if s and s.get("active_goal"):
                 print(f"\n[v4.8] جلسة سابقة موجودة:")
                 print(f"  الهدف   : {s.get('active_goal','?')}")
@@ -134,7 +136,55 @@ class Agent:
         if result.get("status") == "success" and result.get("executed") is True:
             self.session.record_task()
 
+        if result.get("status") == "success":
+            self._save_recoverable_checkpoint()
+
         return result
+
+    def _save_recoverable_checkpoint(self) -> None:
+        """Persist a bounded work/dialogue checkpoint after a successful turn."""
+        try:
+            from lab_v4_dev.memory.session_state import save_recoverable_checkpoint
+            from lab_v4_dev.core.project_context import get_active_project_root
+            dialogue = self.dialogue_memory.snapshot() if self.dialogue_memory else None
+            context = self.context.get_last() if self.context else None
+            topic = (dialogue or {}).get("last_topic") or (context or {}).get("subject")
+            version = self._meta.get_version() if getattr(self, "_meta", None) else "unknown"
+            save_recoverable_checkpoint(
+                active_goal=topic or "عمل جاري",
+                next_step=(f"استكمال: {topic}" if topic else "استكمال الجلسة"),
+                last_files=[(context or {}).get("file")] if (context or {}).get("file") else [],
+                version=version,
+                dialogue_state=dialogue,
+                context_state=context,
+                project_root=get_active_project_root(),
+            )
+        except Exception as exc:
+            log.debug(f"Recoverable checkpoint skipped: {exc}")
+
+    def restore_session_context(self) -> bool:
+        """Restore only the explicit bounded checkpoint, never implicit history."""
+        try:
+            from lab_v4_dev.memory.session_state import load_session
+            saved = load_session()
+            restored = False
+            if self.dialogue_memory:
+                restored = self.dialogue_memory.restore_snapshot(
+                    saved.get("dialogue_state")
+                )
+            context_state = saved.get("context_state") or {}
+            if self.context and isinstance(context_state, dict):
+                for name in (
+                    "last_intent", "last_target", "last_result", "current_subject",
+                    "current_version", "current_file", "current_analysis",
+                ):
+                    if name in context_state:
+                        setattr(self.context, name, context_state[name])
+            self._pending_session = saved
+            return restored or bool(context_state)
+        except Exception as exc:
+            log.warning(f"Session context restore skipped: {exc}")
+            return False
 
 
     def reset_conversation_context(self):

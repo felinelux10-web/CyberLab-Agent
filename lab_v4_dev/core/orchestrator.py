@@ -1652,14 +1652,17 @@ SOURCE CODE:
             if not s:
                 return {"status":"success","intent":intent,
                         "text":"لا توجد جلسة سابقة محفوظة"}
+            restore_context = getattr(self.agent, "restore_session_context", None)
+            restored = bool(restore_context()) if callable(restore_context) else False
             lines = [
                 "=== آخر جلسة محفوظة ===",
                 f"التاريخ  : {s.get('timestamp','?')[:16]}",
                 f"الهدف    : {s.get('active_goal','?')}",
                 f"الخطوة   : {s.get('next_step','?')}",
                 f"الملفات  : {', '.join(s.get('last_files',[])) or 'لا شيء'}",
+                f"السياق   : {'تمت استعادته' if restored else 'metadata فقط'}",
                 "",
-                "💡 للسياق الكامل والتفصيلي اكتب: سياق العمل",
+                "💡 لاستكمال الحوار استخدم موضوعه أو اكتب: سياق العمل",
             ]
             return {"status":"success","intent":intent,
                     "text":"\n".join(lines)}
@@ -1672,7 +1675,12 @@ SOURCE CODE:
                 active_goal = self.context.current_subject or "عمل جاري",
                 next_step   = (f"استكمال: {self.context.current_subject}" if self.context.current_subject else "غير محددة"),
                 last_files  = [self.context.current_file] if self.context.current_file else [],
-                version     = self.agent._meta.get_version()
+                version     = self.agent._meta.get_version(),
+                dialogue_state = (
+                    self.agent.dialogue_memory.snapshot()
+                    if getattr(self.agent, "dialogue_memory", None) else None
+                ),
+                context_state = self.context.get_last(),
             )
             add_event(self.agent._meta.get_version(), f"Session saved: {s['active_goal']}")
             return {"status":"success","intent":intent,

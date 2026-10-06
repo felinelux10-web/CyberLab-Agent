@@ -11,7 +11,9 @@ def _session_file() -> str:
 
 def save_session(active_goal: str = None, completed: list = None,
                  next_step: str = None, last_files: list = None,
-                 version: str = "unknown"):
+                 version: str = "unknown", *, dialogue_state: dict = None,
+                 context_state: dict = None, project_root: str = None,
+                 decisions: list = None, open_questions: list = None):
     data = {
         "session_id"   : datetime.now().strftime("%Y%m%d_%H%M%S"),
         "version"      : version,
@@ -21,6 +23,16 @@ def save_session(active_goal: str = None, completed: list = None,
         "next_step"    : next_step or "",
         "last_files"   : last_files or [],
     }
+    if dialogue_state is not None:
+        data["dialogue_state"] = dialogue_state
+    if context_state is not None:
+        data["context_state"] = context_state
+    if project_root:
+        data["project_root"] = project_root
+    if decisions is not None:
+        data["decisions"] = list(decisions)
+    if open_questions is not None:
+        data["open_questions"] = list(open_questions)
     # المسار الرئيسي: project_knowledge (Single Writer)
     # الـ fallback: كتابة مباشرة فقط عند فشل الاستيراد (استثناء معروف)
     try:
@@ -28,6 +40,43 @@ def save_session(active_goal: str = None, completed: list = None,
         pk_save(data)
     except Exception:
         # FALLBACK — يُستخدم فقط إذا تعذر استيراد project_knowledge
+        path = _session_file()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    return data
+
+
+def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
+                                last_files: list = None, version: str = "unknown",
+                                dialogue_state: dict = None, context_state: dict = None,
+                                project_root: str = None, decisions: list = None,
+                                open_questions: list = None) -> dict:
+    """Persist a bounded checkpoint without replacing existing work metadata."""
+    existing = load_session()
+    data = dict(existing or {})
+    data.update({
+        "session_id": data.get("session_id") or datetime.now().strftime("%Y%m%d_%H%M%S"),
+        "timestamp": datetime.now().isoformat(),
+        "version": version or data.get("version", "unknown"),
+        "active_goal": active_goal or data.get("active_goal", ""),
+        "next_step": next_step or data.get("next_step", ""),
+        "last_files": list(last_files or data.get("last_files", [])),
+    })
+    if dialogue_state is not None:
+        data["dialogue_state"] = dialogue_state
+    if context_state is not None:
+        data["context_state"] = context_state
+    if project_root:
+        data["project_root"] = project_root
+    if decisions is not None:
+        data["decisions"] = list(decisions)
+    if open_questions is not None:
+        data["open_questions"] = list(open_questions)
+    try:
+        from lab_v4_dev.awareness.project_knowledge import save_session as pk_save
+        pk_save(data)
+    except Exception:
         path = _session_file()
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
