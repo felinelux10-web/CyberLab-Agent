@@ -9,6 +9,51 @@ def _session_file() -> str:
     from lab_v4_dev.core.project_context import project_data_file
     return project_data_file("session_state.json")
 
+
+MAX_RECENT_SESSIONS = 5
+
+
+def _archive_file() -> str:
+    from lab_v4_dev.core.project_context import project_data_file
+    return project_data_file("session_archive.json")
+
+
+def _append_recent_archive(data: dict) -> None:
+    """Keep compact summaries only; never archive the bounded transcript."""
+    path = _archive_file()
+    try:
+        with open(path, encoding="utf-8") as f:
+            archive = json.load(f)
+    except Exception:
+        archive = []
+    if not isinstance(archive, list):
+        archive = []
+    summary = {
+        key: data.get(key)
+        for key in (
+            "session_id", "timestamp", "active_goal", "completed_work",
+            "next_step", "last_files", "decisions", "open_questions", "project_root",
+        )
+        if key in data
+    }
+    if archive and archive[-1].get("session_id") == summary.get("session_id"):
+        archive[-1] = summary
+    else:
+        archive.append(summary)
+    archive = archive[-MAX_RECENT_SESSIONS:]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(archive, f, ensure_ascii=False, indent=2)
+
+
+def get_recent_sessions() -> list:
+    try:
+        with open(_archive_file(), encoding="utf-8") as f:
+            data = json.load(f)
+        return data[-MAX_RECENT_SESSIONS:] if isinstance(data, list) else []
+    except Exception:
+        return []
+
 def save_session(active_goal: str = None, completed: list = None,
                  next_step: str = None, last_files: list = None,
                  version: str = "unknown", *, dialogue_state: dict = None,
@@ -44,6 +89,7 @@ def save_session(active_goal: str = None, completed: list = None,
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+    _append_recent_archive(data)
     return data
 
 
@@ -81,6 +127,7 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+    _append_recent_archive(data)
     return data
 
 def load_session() -> dict:
