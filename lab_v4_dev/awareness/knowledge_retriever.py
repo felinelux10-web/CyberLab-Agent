@@ -14,6 +14,64 @@ from lab_v4_dev.awareness.project_knowledge import (
 )
 
 
+class ProjectScope:
+    """Deterministic scope labels used before current-project retrieval."""
+
+    CURRENT_PROJECT = "CURRENT_PROJECT"
+    EXTERNAL_PROJECT = "EXTERNAL_PROJECT"
+    GENERIC_PROJECT = "GENERIC_PROJECT"
+    HISTORICAL_PROJECT = "HISTORICAL_PROJECT"
+    UNKNOWN = "UNKNOWN"
+
+
+def resolve_project_scope(question: str) -> str:
+    """Resolve whether a question authorizes current-project knowledge.
+
+    This is deliberately local and conservative.  The word ``project`` by
+    itself is not evidence that the user means CyberLab Agent.
+    """
+    q = str(question or "").strip().lower()
+    if not q:
+        return ProjectScope.UNKNOWN
+
+    historical_markers = (
+        "سابق", "سابقا", "سابقًا", "قديم", "النسخة القديمة", "نسخة قديمة",
+        "ما الذي تغير", "تاريخ", "historical", "legacy", "archive", "archived",
+    )
+    external_markers = (
+        "غير مشروعنا", "مشروع اخر", "مشروع آخر", "مشروع خارجي",
+        "مشروع خارج", "خارج cyberlab", "المشروع الموجود عندي",
+        "مشروع في الفضاء", "مشروع خارج الكرة", "مشروع وهمي", "مشروع عالمي",
+        "external project", "another project", "outside cyberlab",
+    )
+    generic_markers = (
+        "ما هو المشروع الجيد", "ما هو المشروع", "ما هي مراحل تطوير المشروع",
+        "مراحل تطوير مشروع", "إدارة مشروع", "ادارة مشروع",
+        "العمل على مشروع بشكل صحيح", "العمل على مشروع",
+        "كيف تعمل على مشروع بشكل صحيح", "كيف أعمل على مشروع",
+        "كيف اعمل على مشروع", "كيف يمكنك العمل على مشروع بشكل صحيح",
+        "كيف تعمل على مشروع بشكل صحيح",
+    )
+    current_markers = (
+        "cyberlab", "cyberlab-agent", "cyberlab agent", "مشروعنا",
+        "مشروعك", "في مشروعك", "مشروعنا الحالي", "الوكيل",
+        "conversationmanager", "conversation_manager", "intentparser",
+        "intent_parser", "orchestrator", "eventloop", "event_loop", "run.py",
+        "من أنت", "من انت", "هويتك", "بنيتك", "كيف تعالج رسالتي",
+        "كيف تنتقل الطلبات داخل",
+    )
+
+    if any(marker in q for marker in historical_markers):
+        return ProjectScope.HISTORICAL_PROJECT
+    if any(marker in q for marker in external_markers):
+        return ProjectScope.EXTERNAL_PROJECT
+    if any(marker in q for marker in generic_markers):
+        return ProjectScope.GENERIC_PROJECT
+    if any(marker in q for marker in current_markers):
+        return ProjectScope.CURRENT_PROJECT
+    return ProjectScope.UNKNOWN
+
+
 class QuestionClassifier:
     """Classify questions to determine retrieval strategy."""
     
@@ -67,20 +125,56 @@ class KnowledgeRetriever:
     
     def retrieve(self, question: str) -> Dict[str, Any]:
         """Main retrieval entry point."""
+        scope = resolve_project_scope(question)
+        if scope != ProjectScope.CURRENT_PROJECT:
+            return self._scope_safe_result(scope)
+
         question_type = QuestionClassifier.classify(question)
         
         if question_type == "architecture":
-            return self._retrieve_architecture(question)
+            result = self._retrieve_architecture(question)
         elif question_type == "relationship":
-            return self._retrieve_relationship(question)
+            result = self._retrieve_relationship(question)
         elif question_type == "execution":
-            return self._retrieve_execution(question)
+            result = self._retrieve_execution(question)
         elif question_type == "file":
-            return self._retrieve_file(question)
+            result = self._retrieve_file(question)
         elif question_type == "capability":
-            return self._retrieve_capability(question)
+            result = self._retrieve_capability(question)
         else:
-            return self._retrieve_general(question)
+            result = self._retrieve_general(question)
+        result["project_scope"] = scope
+        result["current_project_knowledge"] = True
+        return result
+
+    @staticmethod
+    def _scope_safe_result(scope: str) -> Dict[str, Any]:
+        """Return scope evidence without exposing current-project metadata."""
+        recommendation = {
+            ProjectScope.EXTERNAL_PROJECT: (
+                "تم تحديد مشروع خارجي؛ لا توجد بيانات مشروع خارجي محدد في هذا السياق."
+            ),
+            ProjectScope.GENERIC_PROJECT: (
+                "السؤال عام عن المشاريع؛ أجب معرفة عامة دون استبداله بمشروع CyberLab."
+            ),
+            ProjectScope.HISTORICAL_PROJECT: (
+                "السؤال تاريخي؛ لا تُعرض المعرفة الحالية ما لم يوجد استرجاع تاريخي صريح."
+            ),
+            ProjectScope.UNKNOWN: (
+                "نطاق المشروع غير مؤكد؛ لا تفترض أن المقصود هو CyberLab."
+            ),
+        }[scope]
+        return {
+            "type": "scope_only",
+            "project_scope": scope,
+            "current_project_knowledge": False,
+            "provenance": {
+                "source": "local project-scope resolution",
+                "confidence": ConfidenceLevel.STATIC_VERIFIED,
+                "evidence": "deterministic lexical scope gate",
+            },
+            "recommendation": recommendation,
+        }
     
     def _extract_identifiers(self, text: str) -> List[str]:
         """Extract potential component/file names from text."""

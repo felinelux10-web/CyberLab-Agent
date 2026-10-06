@@ -251,7 +251,13 @@ def _infer_layer(rel_path: str) -> str:
     parts = rel_path.replace("\\", "/").split("/")
     if not parts:
         return "root"
-    return parts[0] if parts[0] else "root"
+    if len(parts) == 1:
+        return "repository"
+    if parts[0] == "tests":
+        return "tests"
+    if parts[0] == "lab_v4_dev":
+        return f"lab_v4_dev/{parts[1]}"
+    return "repository"
 
 
 def build_project_knowledge(root: Optional[str] = None) -> ProjectKnowledgeModel:
@@ -272,6 +278,9 @@ def build_project_knowledge(root: Optional[str] = None) -> ProjectKnowledgeModel
         "workspace",
         "archive",
         "archives",
+        "lab_v4",
+        "legacy",
+        "_archived_orphans_20260621",
         "project_indices",
         ".git",
     }
