@@ -43,6 +43,7 @@ class DNICore:
         self.knowledge = KnowledgeMap()
         self.classifier = CognitiveClassifier()
         self.last_analysis = {}
+        self._dialogue_memory_ref = None
 
     def status(self):
         return {
@@ -85,24 +86,30 @@ class DNICore:
 
 
     def attach_dialogue_memory(self, memory):
-        """
-        Deprecated compatibility hook.
-
-        DialogueMemory is owned by the conversation/memory layer.
-        DNI does not retain or own the supplied instance.
-        """
-        return False
+        """Attach a read-only integration reference; ownership stays external."""
+        if memory is None:
+            return False
+        self._dialogue_memory_ref = memory
+        return True
 
     def has_dialogue_memory(self):
-        """DNI no longer owns DialogueMemory."""
-        return False
+        return self._dialogue_memory_ref is not None
 
     def get_dialogue_memory(self):
-        """Deprecated compatibility hook; DNI does not own DialogueMemory."""
-        return None
+        """Return the externally-owned reference for inspection only."""
+        return self._dialogue_memory_ref
 
     def get_last_message(self):
-        """DNI does not own or inspect dialogue history."""
+        """Read the latest message through the external dialogue owner."""
+        memory = self._dialogue_memory_ref
+        if memory is not None:
+            history = getattr(getattr(memory, "state", None), "history", [])
+            if history:
+                last = history[-1]
+                return {
+                    "role": last.get("role"),
+                    "content": last.get("content"),
+                }
         return {
             "role": None,
             "content": None,
@@ -124,35 +131,43 @@ class DNICore:
 
     def conversation_snapshot(self):
         analysis = dict(getattr(self, "last_analysis", {}))
+        memory = self._dialogue_memory_ref
+        state = getattr(memory, "state", None) if memory is not None else None
 
         return {
-            "attached": False,
+            "attached": memory is not None,
             "analysis": analysis,
             "intent": analysis.get("intent"),
             "mode": analysis.get("mode"),
-            "last_topic": None,
-            "pending_topic": None,
-            "messages": 0,
+            "last_topic": getattr(state, "last_topic", None),
+            "pending_topic": getattr(state, "pending_topic", None),
+            "messages": len(getattr(state, "turns", []) or []),
         }
 
 
     def cognitive_snapshot(self):
+        attached = self._dialogue_memory_ref is not None
         return {
             "conversation": self.conversation_snapshot(),
             "analysis_available": bool(self.last_analysis),
-            "memory_attached": False,
+            "memory_attached": attached,
         }
 
 
     def conversation_summary(self):
-        """Compatibility snapshot; dialogue history remains externally owned."""
+        """Read-only summary; dialogue history remains externally owned."""
+        memory = self._dialogue_memory_ref
+        state = getattr(memory, "state", None) if memory is not None else None
+        history = getattr(state, "history", []) if state is not None else []
+        last_user = next((item for item in reversed(history) if item.get("role") == "user"), {})
+        last_assistant = next((item for item in reversed(history) if item.get("role") == "assistant"), {})
         return {
-            "attached": False,
-            "messages": 0,
-            "pending_topic": None,
-            "last_topic": None,
-            "last_user": None,
-            "last_assistant": None,
-            "last_role": None,
-            "last_content": None,
+            "attached": memory is not None,
+            "messages": len(history),
+            "pending_topic": getattr(state, "pending_topic", None),
+            "last_topic": getattr(state, "last_topic", None),
+            "last_user": last_user.get("content"),
+            "last_assistant": last_assistant.get("content"),
+            "last_role": (history[-1].get("role") if history else None),
+            "last_content": (history[-1].get("content") if history else None),
         }
