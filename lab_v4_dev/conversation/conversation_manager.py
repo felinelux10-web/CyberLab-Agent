@@ -78,6 +78,43 @@ class ConversationManager:
         self.dialogue_memory = dialogue_memory
         self.dni = dni
 
+    @staticmethod
+    def _is_bare_confirmation(text: str) -> bool:
+        return str(text).strip().casefold() in {
+            "نعم", "أجل", "اجل", "بلى", "لا", "كلا",
+            "yes", "no",
+        }
+
+    def _pending_confirmation_intent(self, text: str):
+        """Resolve bare confirmations only against an explicit pending operation."""
+        if not self._is_bare_confirmation(text):
+            return None
+        context = getattr(self.orchestrator, "context", None)
+        last_result = getattr(context, "last_result", None) if context else None
+        last_result = last_result if isinstance(last_result, dict) else {}
+        pending = last_result.get("pending_confirmation")
+        if not pending and last_result.get("pending_save"):
+            pending = {"kind": "save_kb"}
+        if isinstance(pending, str):
+            pending = {"kind": pending}
+        if not isinstance(pending, dict):
+            return None
+        affirmative = str(text).strip().casefold() not in {"لا", "كلا", "no"}
+        kind = pending.get("kind")
+        if kind == "save_kb":
+            return Intent.SAVE_KB if affirmative else Intent.SKIP_KB
+        if kind == "resume":
+            return Intent.RESUME if affirmative else Intent.CANCEL
+        return None
+
+    def _clear_unrelated_execution_file(self, transition, parsed):
+        """Do not let an old execution file become a new generic question target."""
+        if transition != ContextTransition.NEW_INDEPENDENT or (parsed or {}).get("target"):
+            return
+        context = getattr(self.orchestrator, "context", None)
+        if context is not None:
+            context.current_file = None
+
     def process(self, user_input: str) -> dict:
         # Consume an existing project-list ordering clarification
         # before treating "1/2/3" as a new independent request.
@@ -105,8 +142,23 @@ class ConversationManager:
         # Parse the current turn without any persistent NLU context first.
         # The transition decision below is the sole authority that may grant
         # the active DialogueMemory topic to a second canonical parse.
-        candidate = self._safe_parse(user_input)
+        confirmation_intent = self._pending_confirmation_intent(user_input)
+        candidate = (
+            {
+                "intent": confirmation_intent,
+                "target": "",
+                "context": "general",
+                "confidence": 1.0,
+                "raw": user_input,
+                "source": "pending_confirmation",
+                "entity_type": "CONFIRMATION",
+                "semantic_pattern": "PENDING_CONFIRMATION",
+            }
+            if confirmation_intent is not None
+            else self._safe_parse(user_input)
+        )
         transition = self._classify_context_transition(mode, candidate)
+        self._clear_unrelated_execution_file(transition, candidate)
         resolved_input = user_input
         parsed = candidate
         context_entity = None
@@ -266,7 +318,13 @@ class ConversationManager:
 
         # ConversationManager owns dialogue-state lifecycle.
         # Agent remains only the runtime facade.
-        if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
+        if (
+            self.dialogue_memory
+            and hasattr(self.dialogue_memory, "update")
+            and result.get("status") == "success"
+            and result.get("source") != "fallback"
+            and not result.get("error")
+        ):
             self.dialogue_memory.update(
                 user_input,
                 result,

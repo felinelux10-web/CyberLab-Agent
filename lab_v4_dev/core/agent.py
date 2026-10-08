@@ -16,6 +16,18 @@ from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.dni.dni_core import DNICore
 
 
+_RECOVERABLE_EXECUTION_INTENTS = {
+    "modify_code", "modify_file", "modify_function", "modify_class",
+    "replace_body", "add_function", "add_class", "remove_function",
+    "remove_class", "create_file", "delete_file", "move_file", "rename_file",
+    "refactor_file", "refactor_project", "cleanup_code", "optimize_code",
+    "upgrade_code", "run", "run_project", "run_file", "run_tests",
+    "test_project", "test_file", "test_function", "generate_test",
+    "generate_code", "analyze_code", "repair_approve", "repair_reject",
+    "project_scan", "read_external_project", "switch_project", "session_save",
+}
+
+
 
 class Agent:
 
@@ -136,7 +148,11 @@ class Agent:
         if result.get("status") == "success" and result.get("executed") is True:
             self.session.record_task()
 
-        if result.get("status") == "success":
+        if (
+            result.get("status") == "success"
+            and str(getattr(result.get("intent"), "value", result.get("intent")))
+            in _RECOVERABLE_EXECUTION_INTENTS
+        ):
             self._save_recoverable_checkpoint()
 
         return result

@@ -1374,19 +1374,6 @@ SOURCE CODE:
                     except Exception:
                         pass
 
-            # DNI-10: احتياطي — إن لم يُحدَّد target كملف صريح، استخدم آخر ملف
-            # من سياق السلسلة (current_file المحقون من task_chain.py أو الخطوات السابقة)
-            if not _project_file_code and getattr(self.context, "current_file", None):
-                _cf = self.context.current_file
-                for _c in [_cf, os.path.join("lab_v4_dev", _cf)]:
-                    if os.path.exists(_c):
-                        try:
-                            _project_file_code = open(_c, encoding="utf-8").read()[:3000]
-                            target = _c
-                        except Exception:
-                            pass
-                        break
-
             # ─── البصمة الشخصية ───
             try:
                 from lab_v4_dev.user_data.profile_loader import load_profile
@@ -1481,6 +1468,10 @@ SOURCE CODE:
                 "source"       : get_active_provider(),
                 "text"         : answer,
                 "pending_save" : raw if result.get("status") == "success" else None,
+                "pending_confirmation": (
+                    {"kind": "save_kb", "topic": raw}
+                    if result.get("status") == "success" else None
+                ),
                 "save_prompt"  : "💾 هل تحفظ هذا الشرح في الذاكرة المحلية؟ (نعم / لا / تجاوز)",
             }
 

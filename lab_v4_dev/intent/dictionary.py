@@ -171,7 +171,6 @@ DICTIONARY = {
     "نعم احفظ"                    : Intent.SAVE_KB,
     "احفظ"                        : Intent.SAVE_KB,
     "احفظ هذا"                    : Intent.SAVE_KB,
-    "نعم"                         : Intent.SAVE_KB,
     "صح احفظ"                     : Intent.SAVE_KB,
     "لا تحفظ"                     : Intent.SKIP_KB,
     "تجاهل"                       : Intent.SKIP_KB,
