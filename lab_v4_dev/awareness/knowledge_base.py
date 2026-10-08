@@ -1,82 +1,113 @@
-"""
-Knowledge Base - v5.9.1-B
-بسيط: exact match فقط، بدون embeddings أو similarity
-"""
-from lab_v4_dev.llm.provider_names import GROQ
-import os
+"""Project-scoped technical KnowledgeBase with explicit admission semantics."""
+from __future__ import annotations
 import json
+import os
+import re
+import unicodedata
 from datetime import datetime
+from lab_v4_dev.llm.provider_names import GROQ
+KB_SCHEMA_VERSION = 2
+BAD_PATTERNS = ["لا أستطيع التذكر", "لا أملك ذاكرة", "كمساعد ذكاء اصطناعي", "غير موجود في البيانات", "لا يوجد في البيانات", "لا أعرف", "I cannot", "as an AI"]
+_STOP_WORDS = {"ما", "ماذا", "هل", "هو", "هي", "في", "عن", "من", "هذا", "هذه", "اشرح", "شرح", "لي", "the", "what", "is", "a", "an", "how"}
 
-KB_PATH = os.path.expanduser(
-    "~/cyberlab_agent/workspace/knowledge_base/cyber_explain.json"
-)
+def _kb_path() -> str:
+    from lab_v4_dev.core.project_context import project_data_file
+    return project_data_file("knowledge_base/cyber_explain.json")
 
-def _load():
-    os.makedirs(os.path.dirname(KB_PATH), exist_ok=True)
-    if not os.path.exists(KB_PATH):
-        return {}
-    with open(KB_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+KB_PATH = os.path.expanduser("~/cyberlab_agent/workspace/knowledge_base/cyber_explain.json")
 
-def _save(data):
-    with open(KB_PATH, "w", encoding="utf-8") as f:
+def _load() -> dict:
+    path = _kb_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if not os.path.exists(path):
+        return {"schema_version": KB_SCHEMA_VERSION, "records": {}}
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if "records" not in data:
+        records = {}
+        for key, value in data.items():
+            records[key] = dict(value) if isinstance(value, dict) else {"answer": str(value)}
+        data = {"schema_version": KB_SCHEMA_VERSION, "records": records}
+    data.setdefault("schema_version", KB_SCHEMA_VERSION)
+    data.setdefault("records", {})
+    return data
+
+def _save(data: dict) -> None:
+    path = _kb_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-def _normalize(text):
-    return text.strip().lower()
+def _normalize(text: str) -> str:
+    text = unicodedata.normalize("NFKC", str(text or "")).casefold()
+    text = re.sub(r"[\u064B-\u065F]", "", text)
+    text = re.sub(r"[؟?!،؛:.,()\[\]{}\"']", " ", text)
+    return " ".join(text.split())
+
+def _concept_key(text: str) -> str:
+    normalized = _normalize(text)
+    tokens = [token for token in normalized.split() if token not in _STOP_WORDS]
+    if "tcp" in tokens and any(
+        marker in normalized
+        for marker in ("handshake", "three-way", "مصافحة", "المصافحة", "إنشاء اتصال")
+    ):
+        return "net tcp three way handshake"
+    return " ".join(tokens)
+
+def _record_matches(record: dict, key: str) -> bool:
+    if record.get("canonical_key") == key:
+        return True
+    aliases = {_concept_key(alias) for alias in record.get("aliases", [])}
+    if key in aliases:
+        return True
+    left, right = set(key.split()), set(record.get("canonical_key", "").split())
+    return bool(left and right and len(left & right) / max(len(left), len(right)) >= 0.8)
 
 def search(topic: str) -> str | None:
-    key = _normalize(topic)
+    key = _concept_key(topic)
     data = _load()
-    entry = data.get(key)
-    if entry:
-        return entry["answer"]
+    for record in data.get("records", {}).values():
+        if _record_matches(record, key) and record.get("status", "ACTIVE") != "ARCHIVED":
+            record["hits"] = int(record.get("hits", record.get("access_count", 0))) + 1
+            record["access_count"] = record["hits"]
+            record["last_accessed_at"] = datetime.now().isoformat()
+            _save(data)
+            return record.get("answer")
     return None
 
-BAD_PATTERNS = [
-    "لا أستطيع التذكر",
-    "لا أملك ذاكرة",
-    "كمساعد ذكاء اصطناعي",
-    "غير موجود في البيانات",
-    "لا يوجد في البيانات",
-    "لا أعرف",
-    "I cannot",
-    "as an AI",
-]
-
 def is_quality(answer: str, topic: str = "") -> bool:
-    """يتحقق أن الإجابة تستحق الحفظ"""
-    if len(answer) < 100:
+    answer = str(answer or "")
+    if len(answer) < 100 or any(p.casefold() in answer.casefold() for p in BAD_PATTERNS):
         return False
-    for pattern in BAD_PATTERNS:
-        if pattern in answer:
-            return False
-    # رفض المصطلحات القصيرة جداً (أقل من 3 أحرف)
-    if topic:
-        words = topic.strip().split()
-        last_word = words[-1] if words else ""
-        if len(last_word) < 3:
-            return False
+    return bool(_concept_key(topic))
+
+def store(topic: str, answer: str, source: str = GROQ, *, confirmed: bool = False, scope: str = "technical", confidence: str = "OBSERVED", importance: float = 0.5):
+    """Admit a technical record only after quality or explicit confirmation."""
+    if not confirmed and not is_quality(answer, topic):
+        return False
+    key = _concept_key(topic)
+    if not key:
+        return False
+    data = _load()
+    records = data.setdefault("records", {})
+    now = datetime.now().isoformat()
+    existing_key = next((k for k, record in records.items() if _record_matches(record, key)), None)
+    if existing_key is not None:
+        record = records[existing_key]
+        record.setdefault("aliases", []).append(str(topic))
+        record["aliases"] = list(dict.fromkeys(record["aliases"]))[-20:]
+        record.update({"answer": answer, "updated_at": now, "status": "ACTIVE", "source": source, "confidence": confidence})
+        record["importance"] = max(float(record.get("importance", 0.0)), float(importance))
+    else:
+        records[key] = {
+            "memory_id": f"kb:{len(records) + 1}", "concept_id": f"TECH.{key.replace(' ', '.')}", "canonical_key": key,
+            "aliases": [str(topic)], "answer": answer, "source": source, "scope": scope,
+            "confidence": confidence, "quality": "validated" if is_quality(answer, topic) else "explicitly_confirmed",
+            "importance": float(importance), "created_at": now, "updated_at": now,
+            "last_accessed_at": None, "access_count": 0, "hits": 0, "status": "ACTIVE", "relationships": [],
+        }
+    _save(data)
     return True
 
-def store(topic: str, answer: str, source: str = GROQ):
-    # Manual approval: explicit user confirmation means save unconditionally.
-    key = _normalize(topic)
-    data = _load()
-    if key not in data:
-        data[key] = {
-            "answer": answer,
-            "source": source,
-            "created_at": datetime.now().strftime("%Y-%m-%d"),
-            "hits": 0,
-        }
-    else:
-        data[key]["hits"] = data[key].get("hits", 0) + 1
-    _save(data)
-
 def hit(topic: str):
-    key = _normalize(topic)
-    data = _load()
-    if key in data:
-        data[key]["hits"] = data[key].get("hits", 0) + 1
-        _save(data)
+    return search(topic)

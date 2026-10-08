@@ -97,3 +97,35 @@ def resolve_nlu_context(
 ) -> dict:
     from lab_v4_dev.nlu.context_resolver import resolve
     return resolve(nlu_result, previous_entity=previous_entity)
+
+
+# ─── Section 7: Private Personal Memory (least privilege) ───
+def get_personal_preferences(*, category: str, purpose: str, requester: str) -> dict:
+    from lab_v4_dev.memory.personal_memory import get_personal_preferences as _f
+    return _f(category=category, purpose=purpose, requester=requester)
+
+
+def remember_personal_preference(key: str, value: str, *, category: str, purpose: str = "explicit user request") -> bool:
+    from lab_v4_dev.memory.personal_memory import PersonalMemoryAccess, PersonalMemoryStore
+    return PersonalMemoryStore().remember(
+        key,
+        value,
+        category=category,
+        access=PersonalMemoryAccess(
+            requester="explicit_user_command",
+            purpose=purpose,
+            scope=category,
+        ),
+    )
+
+
+def forget_personal_preference(key: str, *, category: str, purpose: str = "explicit user request") -> bool:
+    from lab_v4_dev.memory.personal_memory import PersonalMemoryAccess, PersonalMemoryStore
+    return PersonalMemoryStore().forget(
+        key,
+        access=PersonalMemoryAccess(
+            requester="explicit_user_command",
+            purpose=purpose,
+            scope=category,
+        ),
+    )

@@ -2094,7 +2094,7 @@ SOURCE CODE:
             topic = pending or last.get("pending_save")
             answer = last.get("text", "")
             if topic and answer:
-                store(topic, answer)
+                store(topic, answer, confirmed=True, confidence="EXPLICIT")
                 self.context.pending_save = None
                 return {"status":"success","intent":intent,
                         "text":"✅ تم الحفظ في الذاكرة المحلية"}

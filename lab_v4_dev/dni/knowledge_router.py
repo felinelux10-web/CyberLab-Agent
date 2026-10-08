@@ -10,7 +10,7 @@ def search_cyber_kb(topic: str):
 
 def store_cyber_kb(topic: str, answer: str):
     from lab_v4_dev.awareness.knowledge_base import store
-    return store(topic, answer)
+    return store(topic, answer, confirmed=True, confidence="EXPLICIT")
 
 # ─── Change Planning / Impact Analysis ───
 
