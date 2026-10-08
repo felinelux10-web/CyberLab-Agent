@@ -7,6 +7,8 @@ import unicodedata
 from datetime import datetime
 from lab_v4_dev.llm.provider_names import GROQ
 KB_SCHEMA_VERSION = 2
+DEFAULT_REVIEW_DAYS = 30
+DEFAULT_ARCHIVE_DAYS = 90
 BAD_PATTERNS = ["لا أستطيع التذكر", "لا أملك ذاكرة", "كمساعد ذكاء اصطناعي", "غير موجود في البيانات", "لا يوجد في البيانات", "لا أعرف", "I cannot", "as an AI"]
 _STOP_WORDS = {"ما", "ماذا", "هل", "هو", "هي", "في", "عن", "من", "هذا", "هذه", "اشرح", "شرح", "لي", "the", "what", "is", "a", "an", "how"}
 
@@ -73,6 +75,8 @@ def search(topic: str) -> str | None:
             record["last_accessed_at"] = datetime.now().isoformat()
             _save(data)
             return record.get("answer")
+    if restore(topic):
+        return search(topic)
     return None
 
 def is_quality(answer: str, topic: str = "") -> bool:
@@ -111,3 +115,47 @@ def store(topic: str, answer: str, source: str = GROQ, *, confirmed: bool = Fals
 
 def hit(topic: str):
     return search(topic)
+
+
+def review_lifecycle(*, now=None, review_days: int = DEFAULT_REVIEW_DAYS, archive_days: int = DEFAULT_ARCHIVE_DAYS) -> dict:
+    """Review age/usage/importance; never archive critical or frequently used records."""
+    from datetime import datetime, timedelta
+    now = now or datetime.now()
+    data = _load()
+    reviewed = {"active": 0, "warm": 0, "cold": 0, "archived": 0}
+    for record in data.get("records", {}).values():
+        if record.get("status") == "ARCHIVED":
+            reviewed["archived"] += 1
+            continue
+        updated = record.get("updated_at") or record.get("created_at")
+        try:
+            age = now - datetime.fromisoformat(updated).replace(tzinfo=None)
+        except (TypeError, ValueError):
+            age = timedelta(0)
+        important = float(record.get("importance", 0.0)) >= 0.8
+        hits = int(record.get("access_count", record.get("hits", 0)))
+        if important or hits >= 3 or age < timedelta(days=review_days):
+            record["status"] = "ACTIVE"
+            reviewed["active"] += 1
+        elif age >= timedelta(days=archive_days) and hits == 0:
+            record["status"] = "ARCHIVED"
+            record["archive_reference"] = record.get("memory_id")
+            reviewed["archived"] += 1
+        else:
+            record["status"] = "WARM" if hits else "COLD"
+            reviewed[record["status"].lower()] += 1
+    _save(data)
+    return reviewed
+
+
+def restore(topic: str) -> bool:
+    """Restore an archived record to WARM on explicit retrieval."""
+    key = _concept_key(topic)
+    data = _load()
+    for record in data.get("records", {}).values():
+        if _record_matches(record, key) and record.get("status") == "ARCHIVED":
+            record["status"] = "WARM"
+            record["updated_at"] = datetime.now().isoformat()
+            _save(data)
+            return True
+    return False
