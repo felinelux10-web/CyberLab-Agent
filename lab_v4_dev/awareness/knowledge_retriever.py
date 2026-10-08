@@ -24,13 +24,42 @@ class ProjectScope:
     UNKNOWN = "UNKNOWN"
 
 
+_QUESTION_PARTICLES = {
+    "هل", "هو", "هي", "ما", "ماذا", "كيف", "اين", "أين", "لماذا",
+    "الملف", "ملف", "موجود", "فعلا", "فعلًا", "من", "في", "عن",
+}
+_FILE_PATH_RE = re.compile(
+    r"(?<![\w.-])(?:[A-Za-z0-9_~.-]+/)+[A-Za-z0-9_~.-]+(?:\.[A-Za-z0-9_-]+)?"
+    r"|(?<![\w.-])[A-Za-z0-9_~.-]+\.(?:py|js|ts|tsx|jsx|json|yaml|yml|md|txt|sh|html|css|sql)"
+    r"(?![\w.-])",
+)
+
+
+def normalize_project_question(question: str) -> str:
+    """Normalize question punctuation without destroying file path syntax."""
+    text = str(question or "")
+    text = text.replace("؟", " ").replace("?", " ")
+    text = re.sub(r"[،؛:!]", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def extract_file_paths(question: str) -> List[str]:
+    """Extract canonical file paths and strip only trailing punctuation."""
+    paths = []
+    for match in _FILE_PATH_RE.finditer(normalize_project_question(question)):
+        value = match.group(0).strip(".,،؛:!?؟()[]{}\"'")
+        if value and value not in paths:
+            paths.append(value)
+    return paths
+
+
 def resolve_project_scope(question: str, intent: str | None = None) -> str:
     """Resolve whether a question authorizes current-project knowledge.
 
     This is deliberately local and conservative.  The word ``project`` by
     itself is not evidence that the user means CyberLab Agent.
     """
-    q = str(question or "").strip().lower()
+    q = normalize_project_question(question).lower()
     if not q:
         return ProjectScope.UNKNOWN
 
@@ -75,6 +104,8 @@ def resolve_project_scope(question: str, intent: str | None = None) -> str:
         return ProjectScope.GENERIC_PROJECT
     if any(marker in q for marker in current_markers):
         return ProjectScope.CURRENT_PROJECT
+    if extract_file_paths(q):
+        return ProjectScope.CURRENT_PROJECT
     if str(getattr(intent, "value", intent) or "") in project_intents:
         return ProjectScope.CURRENT_PROJECT
     return ProjectScope.UNKNOWN
@@ -109,7 +140,7 @@ class QuestionClassifier:
     @classmethod
     def classify(cls, question: str) -> str:
         """Classify a question to determine retrieval approach."""
-        q = question.lower()
+        q = normalize_project_question(question).lower()
         
         if any(m in q for m in cls.ARCHITECTURE_MARKERS):
             return "architecture"
@@ -186,15 +217,14 @@ class KnowledgeRetriever:
     
     def _extract_identifiers(self, text: str) -> List[str]:
         """Extract potential component/file names from text."""
-        identifiers = []
+        identifiers = list(extract_file_paths(text))
         
         # CamelCase or snake_case names
-        words = re.findall(r'\b[a-zA-Z_]\w*\b', text)
+        words = re.findall(r'\b[a-zA-Z_]\w*\b', normalize_project_question(text))
         for word in words:
-            if len(word) > 3:
+            if len(word) > 3 and word.casefold() not in _QUESTION_PARTICLES:
                 identifiers.append(word.lower())
-        
-        return identifiers
+        return list(dict.fromkeys(identifiers))
     
     def _retrieve_architecture(self, question: str) -> Dict[str, Any]:
         """Retrieve architecture-related knowledge."""
@@ -284,11 +314,18 @@ class KnowledgeRetriever:
     def _retrieve_file(self, question: str) -> Dict[str, Any]:
         """Retrieve file/module-specific knowledge."""
         identifiers = self._extract_identifiers(question)
+        explicit_paths = [path.lower() for path in extract_file_paths(question)]
         matching_files = []
         
         for entity in self.model.entities.values():
+            entity_path = str(entity.path).replace("\\", "/").lower()
+            if explicit_paths and not any(
+                entity_path.endswith(path) or entity_path == path
+                for path in explicit_paths
+            ):
+                continue
             for identifier in identifiers:
-                if identifier in entity.path.lower():
+                if identifier.replace("\\", "/").lower() in entity_path:
                     matching_files.append({
                         "path": entity.path,
                         "layer": entity.layer,
