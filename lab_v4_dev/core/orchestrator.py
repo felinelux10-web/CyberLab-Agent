@@ -1194,7 +1194,9 @@ class Orchestrator:
                     else os.path.join(active_root, explicit_target)
                 )
                 try:
-                    inside_root = os.path.commonpath([active_root, candidate]) == active_root
+                    real_root = os.path.realpath(active_root)
+                    real_candidate = os.path.realpath(candidate)
+                    inside_root = os.path.commonpath([real_root, real_candidate]) == real_root
                 except ValueError:
                     inside_root = False
                 if not inside_root or not os.path.isfile(candidate):

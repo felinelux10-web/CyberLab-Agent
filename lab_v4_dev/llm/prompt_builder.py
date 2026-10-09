@@ -38,6 +38,9 @@ def _format_retrieved_knowledge(knowledge: dict) -> str:
     
     lines = []
     ktype = knowledge.get("type", "")
+    if knowledge.get("retrieval_error"):
+        lines.append("=== تعذر استرجاع أدلة المشروع ===")
+        lines.append("لا توجد أدلة كافية للإجابة؛ لا تخترع تفاصيل.")
     
     if ktype == "architecture":
         lines.append("=== بنية المشروع ===")
@@ -87,6 +90,15 @@ def _format_retrieved_knowledge(knowledge: dict) -> str:
                 values = component.get(key, [])
                 if values:
                     lines.append(f"  {label}: {', '.join(values[:8])}")
+            relationships = component.get("relationships", [])
+            for relationship in relationships[:8]:
+                lines.append(
+                    "  علاقة موثقة ({type}؛ {evidence}): {path}".format(
+                        type=relationship.get("type", "unknown"),
+                        evidence=relationship.get("evidence", "project model"),
+                        path=relationship.get("path", "?"),
+                    )
+                )
         rec = knowledge.get("recommendation", "")
         if rec:
             lines.append(f"تنويه: {rec}")

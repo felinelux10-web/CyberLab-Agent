@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any, Dict, List, Optional
 
@@ -232,8 +233,16 @@ class KnowledgeRetriever:
         
         # CamelCase or snake_case names
         words = re.findall(r'(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_]*', normalize_project_question(text))
+        generic = {
+            "agent", "cyberlab", "current", "project", "component", "components",
+            "what", "which", "how", "role", "difference", "compare",
+        }
         for word in words:
-            if len(word) > 3 and word.casefold() not in _QUESTION_PARTICLES:
+            if (
+                len(word) > 3
+                and word.casefold() not in _QUESTION_PARTICLES
+                and word.casefold() not in generic
+            ):
                 identifiers.append(word.lower())
         return list(dict.fromkeys(identifiers))
     
@@ -261,17 +270,43 @@ class KnowledgeRetriever:
         identifiers = self._extract_identifiers(question)
         matched = []
         seen = set()
+        normalize_id = lambda value: str(value).lower().replace("_", "").replace("-", "")
+        normalized_identifiers = {normalize_id(item) for item in identifiers}
         for entity_id, entity in self.model.entities.items():
-            haystack = f"{entity.name} {entity.path}".lower().replace("_", "")
-            if not any(
-                identifier.lower().replace("_", "") in haystack
-                for identifier in identifiers
-            ):
+            file_name = os.path.splitext(os.path.basename(entity.path))[0]
+            file_aliases = {normalize_id(file_name), normalize_id(entity.name)}
+            class_aliases = {
+                normalize_id(item) for item in entity.metadata.get("classes", [])
+            }
+            function_aliases = {
+                normalize_id(item) for item in entity.metadata.get("functions", [])
+            }
+            exact_file = bool(normalized_identifiers & file_aliases)
+            exact_class = bool(normalized_identifiers & class_aliases)
+            exact_function = bool(normalized_identifiers & function_aliases)
+            if not (exact_file or exact_class or exact_function):
                 continue
             if entity_id in seen:
                 continue
             seen.add(entity_id)
-            related = self.model.get_related_entities(entity_id)
+            relationships = [
+                {
+                    "type": relationship.type,
+                    "path": (
+                        self.model.entities[relationship.to_entity].path
+                        if relationship.to_entity in self.model.entities
+                        else relationship.to_entity
+                    ),
+                    "evidence": (
+                        relationship.provenance.evidence
+                        if relationship.provenance
+                        else "relationship in project model"
+                    ),
+                }
+                for relationship in self.model.relationships
+                if relationship.from_entity == entity_id
+                or relationship.to_entity == entity_id
+            ]
             matched.append({
                 "name": entity.name,
                 "path": entity.path,
@@ -280,8 +315,14 @@ class KnowledgeRetriever:
                 "classes": entity.metadata.get("classes", []),
                 "imports": entity.metadata.get("imports", []),
                 "calls": entity.metadata.get("calls", []),
-                "related_to": [item.path for item in related],
+                "relationships": relationships,
+                "related_to": [item["path"] for item in relationships],
+                "match_kind": (
+                    "file" if exact_file else "class" if exact_class else "function"
+                ),
+                "relevance": 3 if exact_file else 2 if exact_class else 1,
             })
+        matched.sort(key=lambda item: (-item["relevance"], item["path"]))
         return {
             "type": "component",
             "components": matched[:8],

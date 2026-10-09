@@ -375,6 +375,34 @@ class ConversationManager:
                 history=chat_history,
             )
 
+        # Component/project questions are knowledge requests, not executable
+        # operations. Route them through the evidence-backed chat path before
+        # the generic executable-intent fallback below. Explicit file analysis
+        # and test/run intents remain owned by Orchestrator.
+        knowledge_type = QuestionClassifier.classify(user_question or text)
+        knowledge_scope = resolve_project_scope(
+            user_question or text,
+            intent=intent,
+        )
+        knowledge_intents = {
+            Intent.CYBER_EXPLAIN,
+            Intent.ARCHITECTURE,
+        }
+        explicit_target = str((parsed or {}).get("target") or "").strip()
+        if (
+            intent in knowledge_intents
+            and knowledge_scope == ProjectScope.CURRENT_PROJECT
+            and knowledge_type in {"component", "relationship", "execution"}
+            and not explicit_target
+        ):
+            return self._handle_chat(
+                text,
+                mode,
+                parsed=parsed,
+                user_question=user_question or text,
+                history=chat_history,
+            )
+
         if (
             intent in (Intent.UNSUPPORTED, "unsupported")
             and parsed
@@ -696,9 +724,20 @@ class ConversationManager:
             ):
                 try:
                     project_knowledge = retrieve_for_question(user_question)
-                except Exception:
-                    # If retrieval fails, continue without project knowledge
-                    project_knowledge = None
+                except Exception as exc:
+                    # Preserve a truthful, evidence-empty result instead of
+                    # silently falling through to an apparently grounded LLM
+                    # answer.
+                    project_knowledge = {
+                        "type": knowledge_type,
+                        "components": [],
+                        "current_project_knowledge": True,
+                        "retrieval_error": type(exc).__name__,
+                        "recommendation": (
+                            "تعذر استرجاع أدلة المشروع؛ صرّح بعدم كفاية الأدلة "
+                            "ولا تستبدلها بوصف عام."
+                        ),
+                    }
             
             system, prompt = build_chat_prompt(
                 text,
