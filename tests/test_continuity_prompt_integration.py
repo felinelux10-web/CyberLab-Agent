@@ -36,6 +36,22 @@ def test_executable_explanation_receives_selected_branch_history(monkeypatch):
     assert call["kwargs"]["context_transition"] == "restore"
 
 
+def test_explicit_independent_topic_does_not_receive_previous_branch():
+    orchestrator = CapturingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+
+    manager.process("اشرح SQL Injection")
+    result = manager.process(
+        "اشرح CSRF بالتفصيل، وابدأ شرحًا مستقلًا عن الموضوع السابق"
+    )
+
+    assert result["status"] == "success"
+    call = orchestrator.calls[-1]
+    assert call["kwargs"]["conversation_history"] == []
+    assert call["kwargs"]["context_transition"] == "new_independent"
+
+
 def test_cyber_prompt_contains_branch_history_and_resume_instruction():
     system, prompt = build_cybersec_prompt(
         "SQL Injection",

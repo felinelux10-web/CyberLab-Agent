@@ -159,6 +159,11 @@ class ConversationManager:
             else self._safe_parse(user_input)
         )
         transition = self._classify_context_transition(mode, candidate)
+        # An explicit independent-topic marker overrides a parser-produced
+        # compound/reference act. The old branch must not enter a new topic's
+        # prompt or trigger privacy blocking because of stale content.
+        if self._is_explicit_independent_topic(user_input, candidate):
+            transition = ContextTransition.NEW_INDEPENDENT
         self._clear_unrelated_execution_file(transition, candidate)
         resolved_input = user_input
         parsed = candidate
@@ -505,6 +510,16 @@ class ConversationManager:
             return result if isinstance(result, dict) else {}
         except Exception:
             return {}
+
+    @staticmethod
+    def _is_explicit_independent_topic(text: str, parsed: dict) -> bool:
+        if not (parsed or {}).get("target"):
+            return False
+        normalized = str(text or "").casefold()
+        return any(marker in normalized for marker in (
+            "مستقل", "موضوع جديد", "موضوعًا جديدًا", "موضوعا جديدا",
+            "independent topic", "new topic",
+        ))
 
     def _conversation_history_answer(self, text: str) -> dict | None:
         """Answer recent-dialogue questions from bounded dialogue memory only."""
