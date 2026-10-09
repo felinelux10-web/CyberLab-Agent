@@ -1174,14 +1174,55 @@ class Orchestrator:
             from lab_v4_dev.awareness.project_index import search_index, save_index
             import re
             from lab_v4_dev.core.project_context import get_active_project_root, project_index_dir
+            active_root = os.path.abspath(get_active_project_root())
             if not os.path.exists(os.path.join(
-                project_index_dir(get_active_project_root()), "project_index.json"
+                project_index_dir(active_root), "project_index.json"
             )):
                 save_index()
-            # استخرج الكلمة المفتاحية من الأمر
+            # An explicit path is authoritative; never replace it with the
+            # last natural-language token (e.g. "المشروع؟").
+            explicit_target = str(target or "").strip().strip(".,،؛:!?؟()[]{}\"'")
+            is_explicit_path = bool(
+                explicit_target
+                and ("/" in explicit_target or "\\" in explicit_target
+                     or re.search(r"\.[A-Za-z0-9_-]+$", explicit_target))
+            )
+            if is_explicit_path:
+                candidate = os.path.abspath(
+                    os.path.expanduser(explicit_target)
+                    if os.path.isabs(os.path.expanduser(explicit_target))
+                    else os.path.join(active_root, explicit_target)
+                )
+                try:
+                    inside_root = os.path.commonpath([active_root, candidate]) == active_root
+                except ValueError:
+                    inside_root = False
+                if not inside_root or not os.path.isfile(candidate):
+                    return {
+                        "status": "success", "intent": intent,
+                        "text": f"❌ الملف '{explicit_target}' غير موجود في ملفات المشروع الحقيقية",
+                        "target": explicit_target,
+                        "evidence": "filesystem_check",
+                    }
+                q = os.path.relpath(candidate, active_root).replace(os.sep, "/")
+                results = search_index(q)
+                if not results:
+                    results = [{"path": q, "role": "", "score": 0}]
+                lines = [f"✅ الملف '{q}' موجود في المشروع الحقيقي:"]
+                for item in results[:3]:
+                    role = f" — {item['role']}" if item.get("role") else ""
+                    lines.append(f"  📄 {item['path']}{role}")
+                return {
+                    "status": "success", "intent": intent,
+                    "source": "local_index+filesystem", "target": q,
+                    "evidence": "filesystem_check_and_project_index",
+                    "text": "\n".join(lines),
+                }
+
+            # Keyword search remains available when no explicit path exists.
             stop_words = ["أين","اين","وين","يوجد","في","اي","ملف","ابحث","عن","عن","ما","الملف","المسؤول"]
             words = [w for w in raw.split() if w not in stop_words and len(w) > 2]
-            q = words[-1] if words else target or raw
+            q = words[-1] if words else raw
             results = search_index(q)
             if not results:
                 return {"status":"success","intent":intent,

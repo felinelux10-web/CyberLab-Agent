@@ -136,12 +136,21 @@ class QuestionClassifier:
     CAPABILITY_MARKERS = {
         "قدرات", "قادر", "يستطيع", "ممكن", "capabilities", "can", "able",
     }
+    COMPARISON_MARKERS = {
+        "ما الفرق", "الفرق بين", "قارن", "مقارنة", "compare", "difference",
+    }
+    COMPONENT_MARKERS = {
+        "دور", "وظيفة", "مسؤولية", "مكون", "مكوّن", "component", "role",
+    }
     
     @classmethod
     def classify(cls, question: str) -> str:
         """Classify a question to determine retrieval approach."""
         q = normalize_project_question(question).lower()
-        
+        if any(m in q for m in cls.COMPARISON_MARKERS):
+            return "component"
+        if any(m in q for m in cls.COMPONENT_MARKERS):
+            return "component"
         if any(m in q for m in cls.ARCHITECTURE_MARKERS):
             return "architecture"
         if any(m in q for m in cls.RELATIONSHIP_MARKERS):
@@ -172,6 +181,8 @@ class KnowledgeRetriever:
         
         if question_type == "architecture":
             result = self._retrieve_architecture(question)
+        elif question_type == "component":
+            result = self._retrieve_component(question)
         elif question_type == "relationship":
             result = self._retrieve_relationship(question)
         elif question_type == "execution":
@@ -220,7 +231,7 @@ class KnowledgeRetriever:
         identifiers = list(extract_file_paths(text))
         
         # CamelCase or snake_case names
-        words = re.findall(r'\b[a-zA-Z_]\w*\b', normalize_project_question(text))
+        words = re.findall(r'(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_]*', normalize_project_question(text))
         for word in words:
             if len(word) > 3 and word.casefold() not in _QUESTION_PARTICLES:
                 identifiers.append(word.lower())
@@ -242,6 +253,47 @@ class KnowledgeRetriever:
             "recommendation": (
                 "استخدم معلومات الطبقات والمكونات للإجابة عن سؤال البنية المعمارية. "
                 "لا تخترع طبقات غير موجودة."
+            ),
+        }
+
+    def _retrieve_component(self, question: str) -> Dict[str, Any]:
+        """Return source-backed facts for named components and their edges."""
+        identifiers = self._extract_identifiers(question)
+        matched = []
+        seen = set()
+        for entity_id, entity in self.model.entities.items():
+            haystack = f"{entity.name} {entity.path}".lower().replace("_", "")
+            if not any(
+                identifier.lower().replace("_", "") in haystack
+                for identifier in identifiers
+            ):
+                continue
+            if entity_id in seen:
+                continue
+            seen.add(entity_id)
+            related = self.model.get_related_entities(entity_id)
+            matched.append({
+                "name": entity.name,
+                "path": entity.path,
+                "layer": entity.layer,
+                "functions": entity.metadata.get("functions", []),
+                "classes": entity.metadata.get("classes", []),
+                "imports": entity.metadata.get("imports", []),
+                "calls": entity.metadata.get("calls", []),
+                "related_to": [item.path for item in related],
+            })
+        return {
+            "type": "component",
+            "components": matched[:8],
+            "evidence_count": len(matched),
+            "provenance": {
+                "source": "project knowledge model",
+                "confidence": ConfidenceLevel.STATIC_VERIFIED,
+                "evidence": "static AST metadata and relationship graph",
+            },
+            "recommendation": (
+                "أجب فقط بما تثبته الملفات والدوال والاستيرادات والعلاقات. "
+                "إذا لم يوجد مكوّن مطابق، صرّح بأن الدليل غير كافٍ."
             ),
         }
     

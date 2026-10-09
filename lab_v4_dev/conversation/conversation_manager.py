@@ -42,6 +42,7 @@ from lab_v4_dev.llm.gateway import ask as gateway_ask
 from lab_v4_dev.awareness.agent_self_knowledge import build_agent_self_knowledge
 from lab_v4_dev.awareness.knowledge_retriever import (
     ProjectScope,
+    QuestionClassifier,
     resolve_project_scope,
     retrieve_for_question,
 )
@@ -684,9 +685,13 @@ class ConversationManager:
             
             # Retrieve project knowledge for the question if applicable
             project_knowledge = None
+            knowledge_type = QuestionClassifier.classify(user_question or text)
             if (
                 user_question
-                and intent in _AGENT_SELF_INTENTS
+                and (
+                    intent in _AGENT_SELF_INTENTS
+                    or knowledge_type in {"component", "relationship", "execution", "file"}
+                )
                 and project_scope == ProjectScope.CURRENT_PROJECT
             ):
                 try:

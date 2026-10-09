@@ -72,6 +72,24 @@ def _format_retrieved_knowledge(knowledge: dict) -> str:
             lines.append(f"- {path}")
             if funcs:
                 lines.append(f"  الدوال: {', '.join(funcs[:3])}")
+
+    elif ktype == "component":
+        lines.append("=== أدلة المكونات من الشفرة ===")
+        components = knowledge.get("components", [])
+        if not components:
+            lines.append("لا يوجد مكوّن مطابق في نموذج Project Knowledge.")
+        for component in components[:8]:
+            lines.append(
+                f"- {component.get('name', '?')}: {component.get('path', '?')}"
+            )
+            for label, key in (("الفئات", "classes"), ("الدوال", "functions"),
+                               ("الاستيرادات", "imports"), ("العلاقات", "related_to")):
+                values = component.get(key, [])
+                if values:
+                    lines.append(f"  {label}: {', '.join(values[:8])}")
+        rec = knowledge.get("recommendation", "")
+        if rec:
+            lines.append(f"تنويه: {rec}")
     
     elif ktype == "capability":
         lines.append("=== القدرات ===")

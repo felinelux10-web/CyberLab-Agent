@@ -36,18 +36,21 @@ def detect_context(text: str) -> str:
 
 
 def _extract_target(text: str) -> str:
+    def _clean(value: str) -> str:
+        return value.strip().strip(".,،؛:!?؟()[]{}\"'")
     # أولاً: مسار كامل يبدأ بـ ~/ أو /
     m = re.search(r"(?:^|\s)([~/][\w./_~-]+\.\w+)", text)
     if m:
-        return m.group(1)
+        return _clean(m.group(1))
     # ثانياً: مسار نسبي أو اسم ملف
     m = re.search(r"(?<![؀-ۿ])([\w][\w./:-]*\.\w+)", text)
     if m:
-        return m.group(0)
+        return _clean(m.group(0))
     # ثالثاً: بعد كلمة ملف/file
     m = re.search(r"(?:ملف|file)\s+(\S+)", text)
     if m:
-        return m.group(1)
+        value = _clean(m.group(1))
+        return value if "." in value or "/" in value or "\\" in value else ""
     return ""
 
 
@@ -483,6 +486,48 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     agent_self_result = _agent_self_result(user_input)
     if agent_self_result is not None:
         return agent_self_result
+
+    if re.search(r"الفرق بين سؤال عام.*تحليل ملف|سؤال عام.*ملف محدد", raw):
+        return {
+            "intent": Intent.PERSONAL_CHAT,
+            "target": "",
+            "context": "general",
+            "confidence": 0.93,
+            "raw": user_input,
+            "source": "meta_question",
+            "entity_type": "CONVERSATION",
+        }
+
+    # Project component questions are conversational knowledge requests, not
+    # file-operation targets. Keep the target empty so later NLU fallback
+    # cannot turn the remainder of the sentence into a pseudo-file target.
+    _component_names = (
+        "conversationmanager", "conversation_manager", "orchestrator",
+        "intentparser", "intent_parser", "eventloop", "event_loop",
+    )
+    _component_text = normalize(user_input).casefold().replace(" ", "")
+    _component_question = any(name in _component_text for name in _component_names)
+    _component_project_words = ("مشروع", "cyberlab", "بنية", "مكون", "دور", "فرق", "علاقة")
+    if _component_question and any(word in normalize(user_input) for word in _component_project_words):
+        if re.search(r"ما الفرق|الفرق بين|قارن|مقارنة", raw):
+            return {
+                "intent": Intent.ARCHITECTURE,
+                "target": "",
+                "context": "project_level",
+                "confidence": 0.94,
+                "raw": user_input,
+                "source": "project_component_comparison",
+                "entity_type": "COMPONENT",
+            }
+        return {
+            "intent": Intent.CYBER_EXPLAIN,
+            "target": "",
+            "context": "project_level",
+            "confidence": 0.94,
+            "raw": user_input,
+            "source": "project_component_question",
+            "entity_type": "COMPONENT",
+        }
 
     if _is_action_target_request(
         user_input,
