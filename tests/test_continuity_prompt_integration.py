@@ -168,3 +168,20 @@ def test_bare_resume_does_not_restore_old_work_session_implicitly():
     assert "استكمال العمل" in result["text"]
     assert result["semantic_request"]["context_kind"] == "unknown"
     assert orchestrator.calls == []
+
+
+def test_social_state_and_greeting_are_local_without_gateway(monkeypatch):
+    orchestrator = CapturingOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("gateway called")),
+    )
+
+    state = manager.process("كيف الحال اليوم")
+    friendly = manager.process("اريد حوار ودي عادي")
+
+    assert state["source"] == "local_social"
+    assert friendly["source"] == "local_social"
+    assert state["semantic_request"]["context_kind"] == "social"
+    assert "كيف حالك" in state["text"]

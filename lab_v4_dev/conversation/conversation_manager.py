@@ -280,6 +280,16 @@ class ConversationManager:
             context_kind=self._context_kind(user_input, parsed, transition),
         )
 
+        local_social = self._local_social_answer(user_input, parsed)
+        if local_social is not None:
+            local_social["semantic_request"] = semantic.as_dict()
+            if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
+                self.dialogue_memory.update(
+                    user_input, local_social, mode=mode, parsed=parsed,
+                    context_transition=transition,
+                )
+            return local_social
+
         # ----------------------------------------------------
         # أسئلة تاريخ الحوار تُجاب من DialogueMemory محليًا، لا من سياق
         # المشروع أو مزود النموذج.
@@ -639,6 +649,10 @@ class ConversationManager:
         ):
             return "social"
         if any(marker in normalized for marker in (
+            "اهلا", "أهلا", "مرحبا", "كيفك", "كيف الحال", "ماهو الحال",
+        )):
+            return "social"
+        if any(marker in normalized for marker in (
             "العمل", "المهمة", "المهام", "الملف", "استكمل", "أكمل",
             "جلسة العمل", "work", "task", "file",
         )):
@@ -647,6 +661,31 @@ class ConversationManager:
         if scope == ProjectScope.CURRENT_PROJECT:
             return "project"
         return "unknown"
+
+    @staticmethod
+    def _local_social_answer(text: str, parsed: dict) -> dict | None:
+        normalized = str(text or "").casefold()
+        if any(marker in normalized for marker in (
+            "اكمل", "أكمل", "استكمل", "نكمل", "ارجع", "استرجع",
+        )):
+            return None
+        social_markers = (
+            "كيفك", "كيف الحال", "ماهو الحال", "حوار ودي", "حوار عادي",
+        )
+        if not any(marker in normalized for marker in social_markers):
+            return None
+        if any(marker in normalized for marker in ("كيفك", "كيف الحال", "ماهو الحال")):
+            reply = "أنا بخير، شكرًا لسؤالك. كيف حالك أنت؟"
+        else:
+            reply = "أكيد، يمكننا متابعة حوار ودي وبسيط. ما الموضوع الذي تود الحديث عنه؟"
+        return {
+            "status": "success",
+            "intent": Intent.PERSONAL_CHAT,
+            "text": reply,
+            "mode": "CHAT",
+            "source": "local_social",
+            "executed": False,
+        }
 
     def _conversation_history_answer(self, text: str) -> dict | None:
         """Answer recent-dialogue questions from bounded dialogue memory only."""
