@@ -299,6 +299,17 @@ class ConversationManager:
                 ),
                 "executed": False,
             }
+        if self._ambiguous_resume_without_domain(user_input, parsed):
+            return {
+                "status": "needs_clarification",
+                "intent": parsed.get("intent") or Intent.RESUME,
+                "source": "conversation_manager",
+                "text": (
+                    "هل تريد استكمال الحوار السابق أم استكمال العمل في جلسة أو ملف؟"
+                ),
+                "executed": False,
+                "semantic_request": semantic.as_dict(),
+            }
         if conversation_history_answer is not None:
             result = conversation_history_answer
             result["semantic_request"] = semantic.as_dict()
@@ -596,8 +607,29 @@ class ConversationManager:
             "نكمل كلامنا", "استكمل الحوار", "استكمل كلامنا",
         ))
 
+    def _ambiguous_resume_without_domain(self, text: str, parsed: dict) -> bool:
+        normalized = str(text or "").casefold().strip()
+        resume_intents = {Intent.RESUME, Intent.SESSION_RESTORE, "resume", "session_restore"}
+        intent = getattr(parsed.get("intent"), "value", parsed.get("intent"))
+        if intent not in resume_intents and not any(marker in normalized for marker in (
+            "اكمل", "أكمل", "استكمل", "نكمل",
+        )):
+            return False
+        if any(marker in normalized for marker in (
+            "العمل", "الملف", "المهمة", "جلسة", "مشروع", "work", "file", "task",
+        )):
+            return False
+        active = (
+            self.dialogue_memory.active_context_entity()
+            if self.dialogue_memory and hasattr(self.dialogue_memory, "active_context_entity")
+            else None
+        )
+        return not bool(active)
+
     def _context_kind(self, text: str, parsed: dict, transition) -> str:
         normalized = str(text or "").casefold()
+        if self._ambiguous_resume_without_domain(text, parsed):
+            return "unknown"
         if self._dialogue_recall_requested(text) or transition.value in CONTEXTUAL_TRANSITIONS:
             return "dialogue"
         if parsed.get("intent") in _AGENT_SELF_INTENTS:

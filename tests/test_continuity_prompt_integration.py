@@ -155,3 +155,16 @@ def test_work_request_is_marked_work_without_using_dialogue_recall():
 
     assert result["status"] == "success"
     assert result["semantic_request"]["context_kind"] == "work"
+
+
+def test_bare_resume_does_not_restore_old_work_session_implicitly():
+    orchestrator = CapturingOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+
+    result = manager.process("تمام اكمل ايضا")
+
+    assert result["status"] == "needs_clarification"
+    assert result["source"] == "conversation_manager"
+    assert "استكمال العمل" in result["text"]
+    assert result["semantic_request"]["context_kind"] == "unknown"
+    assert orchestrator.calls == []
