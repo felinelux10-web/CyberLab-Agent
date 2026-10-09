@@ -80,3 +80,22 @@ def test_conversation_history_question_uses_dialogue_memory_not_project_context(
     assert result["topics"] == ["SQL Injection", "CSRF"]
     assert "SQL Injection" in result["text"]
     assert "CSRF" in result["text"]
+
+
+def test_generic_topic_references_resolve_from_dialogue_topics_only():
+    orchestrator = CapturingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+
+    manager.process("اشرح SQL Injection")
+    manager.process("اشرح CSRF")
+
+    first = manager.process("ارجع الى الموضوع الاول")
+    assert first["status"] == "success"
+    assert orchestrator.calls[-1]["parsed"]["target"] == "SQL Injection"
+    assert first["semantic_request"]["context_transition"] == "restore"
+
+    previous = manager.process("ارجع إلى الموضوع السابق")
+    assert previous["status"] == "success"
+    assert orchestrator.calls[-1]["parsed"]["target"] == "SQL Injection"
+    assert previous["intent"] == "cyber_explain"

@@ -158,6 +158,23 @@ class ConversationManager:
             if confirmation_intent is not None
             else self._safe_parse(user_input)
         )
+        generic_topic = self._resolve_generic_topic_reference(user_input)
+        if generic_topic:
+            candidate = dict(candidate or {})
+            is_ordinal_return = any(marker in str(user_input or "").casefold() for marker in (
+                "الأول", "الاول", "الثاني", "الثانى", "first", "second",
+            ))
+            candidate.update({
+                "intent": Intent.CYBER_EXPLAIN,
+                "target": generic_topic,
+                "entity_type": "CONCEPT",
+                "semantic_pattern": "GENERIC_TOPIC_REFERENCE",
+                "conversation_domain": "technical",
+                "conversation_act": (
+                    "TOPIC_RETURN" if is_ordinal_return else "COMPOUND_REFERENCE"
+                ),
+                "conversation_confidence": 0.95,
+            })
         transition = self._classify_context_transition(mode, candidate)
         # An explicit independent-topic marker overrides a parser-produced
         # compound/reference act. The old branch must not enter a new topic's
@@ -521,9 +538,42 @@ class ConversationManager:
             "independent topic", "new topic",
         ))
 
+    def _resolve_generic_topic_reference(self, text: str) -> str | None:
+        """Resolve ordinal/previous topic references without task-history fallback."""
+        normalized = str(text or "").casefold()
+        if not any(marker in normalized for marker in (
+            "موضوع", "topic", "ارجع", "عد إلى", "عد الى",
+        )):
+            return None
+        state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
+        history = getattr(state, "history", []) if state is not None else []
+        topics = []
+        for turn in history or []:
+            if not isinstance(turn, dict) or turn.get("role") != "user":
+                continue
+            target = str(turn.get("target") or "").strip()
+            intent = str(getattr(turn.get("intent"), "value", turn.get("intent")) or "").casefold()
+            if target and intent in {"cyber_explain", "explain", "question"} and target not in topics:
+                topics.append(target)
+        if not topics:
+            return None
+        if any(marker in normalized for marker in ("الأول", "الاول", "first")):
+            return topics[0]
+        if any(marker in normalized for marker in ("الثاني", "الثانى", "second")) and len(topics) > 1:
+            return topics[1]
+        if any(marker in normalized for marker in ("السابق", "السابقه", "السابقَ", "previous")):
+            active = getattr(self.dialogue_memory, "last_topic", None)
+            return str(active).strip() if active else topics[-1]
+        return None
+
     def _conversation_history_answer(self, text: str) -> dict | None:
         """Answer recent-dialogue questions from bounded dialogue memory only."""
         normalized = str(text or "").casefold()
+        if any(marker in normalized for marker in (
+            "ارجع", "عد إلى", "عد الى", "الاول", "الأول", "الثاني", "السابق",
+            "previous", "first", "second",
+        )):
+            return None
         markers = (
             "موضوعين", "الموضوعين", "موضوعات", "المواضيع", "آخر موضوع",
             "اخر موضوع", "ماذا شرح", "ماذا شرحت", "شرحنا", "تكلمنا",
@@ -585,6 +635,12 @@ class ConversationManager:
         )
 
         conversation_act = parsed.get("conversation_act")
+        if parsed.get("semantic_pattern") == "GENERIC_TOPIC_REFERENCE":
+            return (
+                ContextTransition.RESTORE
+                if conversation_act == "TOPIC_RETURN"
+                else ContextTransition.REFERENCE
+            )
         if intent in _AGENT_SELF_INTENTS:
             return ContextTransition.NEW_INDEPENDENT
         if conversation_act == "TOPIC_RETURN":
