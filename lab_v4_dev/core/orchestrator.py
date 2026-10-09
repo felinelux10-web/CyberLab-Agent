@@ -1514,7 +1514,13 @@ SOURCE CODE:
             )
             answer = result.get("text","لم أتمكن من الإجابة")
             if result.get("status") != "success":
-                answer = f"LLM ERROR DEBUG: {result}"
+                # Provider/privacy diagnostics remain in the structured result;
+                # never expose prompts, redaction spans, or provider metadata
+                # through the normal conversation surface.
+                answer = (
+                    "تعذر إكمال الشرح حاليًا بسبب سياسة الخصوصية أو تعذر مزود "
+                    "اللغة. لم يتم إرسال البيانات المحمية إلى مزود خارجي."
+                )
             # ─── حفظ الموضوع في السياق ───
             if result.get("status") == "success":
                 self.context.current_subject = raw

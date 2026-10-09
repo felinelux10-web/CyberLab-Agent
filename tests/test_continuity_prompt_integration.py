@@ -2,6 +2,8 @@ from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
+from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.intent.intents import Intent
 
 
 class CapturingOrchestrator:
@@ -99,3 +101,34 @@ def test_generic_topic_references_resolve_from_dialogue_topics_only():
     assert previous["status"] == "success"
     assert orchestrator.calls[-1]["parsed"]["target"] == "SQL Injection"
     assert previous["intent"] == "cyber_explain"
+
+
+def test_provider_privacy_error_is_not_rendered_as_debug_dump(monkeypatch):
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.context.context_store import ContextStore
+
+    monkeypatch.setattr(orchestrator_module, "ask", lambda *args, **kwargs: {
+        "status": "error",
+        "text": "internal provider details",
+        "error": {"code": "PRIVACY_EXTERNAL_BLOCKED"},
+    })
+    monkeypatch.setattr(orchestrator_module, "get_active_provider", lambda: "gateway")
+    monkeypatch.setattr(
+        "lab_v4_dev.awareness.knowledge_base.search",
+        lambda *_args, **_kwargs: None,
+    )
+
+    agent = type("Agent", (), {"db": None})()
+    orchestrator = Orchestrator(agent, ContextStore())
+    result = orchestrator._route(
+        Intent.CYBER_EXPLAIN,
+        "CSRF",
+        "general",
+        "اشرح CSRF",
+        conversation_history=[],
+        context_transition="new_independent",
+    )
+
+    assert "LLM ERROR DEBUG" not in result["text"]
+    assert "internal provider details" not in result["text"]
+    assert "الخصوصية" in result["text"]
