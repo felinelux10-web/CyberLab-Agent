@@ -258,6 +258,20 @@ class ConversationManager:
         )
 
         # ----------------------------------------------------
+        # أسئلة تاريخ الحوار تُجاب من DialogueMemory محليًا، لا من سياق
+        # المشروع أو مزود النموذج.
+        conversation_history_answer = self._conversation_history_answer(user_input)
+        if conversation_history_answer is not None:
+            result = conversation_history_answer
+            result["semantic_request"] = semantic.as_dict()
+            if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
+                self.dialogue_memory.update(
+                    user_input, result, mode=mode, parsed=parsed,
+                    context_transition=transition,
+                )
+            return result
+
+        # ----------------------------------------------------
         # ONE execution owner.
         # ----------------------------------------------------
         result = self._dispatch(
@@ -266,6 +280,7 @@ class ConversationManager:
             parsed,
             user_question=user_input,
             chat_history=chat_history,
+            context_transition=transition.value,
         )
 
         # Project-list clarification is conversation-owned state.
@@ -344,6 +359,7 @@ class ConversationManager:
         *,
         user_question: str | None = None,
         chat_history: list | None = None,
+        context_transition: str | None = None,
     ) -> dict:
         """
         Select exactly ONE execution owner.
@@ -429,6 +445,8 @@ class ConversationManager:
                 text,
                 parsed=parsed,
                 context_resolved=True,
+                conversation_history=chat_history,
+                context_transition=context_transition,
             )
             result = dict(result)
             result["executed"] = result.get("status") != "needs_clarification"
@@ -462,6 +480,8 @@ class ConversationManager:
                 text,
                 parsed=parsed,
                 context_resolved=True,
+                conversation_history=chat_history,
+                context_transition=context_transition,
             )
             result = dict(result)
             result["executed"] = result.get("status") != "needs_clarification"
@@ -485,6 +505,43 @@ class ConversationManager:
             return result if isinstance(result, dict) else {}
         except Exception:
             return {}
+
+    def _conversation_history_answer(self, text: str) -> dict | None:
+        """Answer recent-dialogue questions from bounded dialogue memory only."""
+        normalized = str(text or "").casefold()
+        markers = (
+            "موضوعين", "الموضوعين", "موضوعات", "المواضيع", "آخر موضوع",
+            "اخر موضوع", "ماذا شرح", "ماذا شرحت", "شرحنا", "تكلمنا",
+            "ناقشنا", "سجل المحادث", "تاريخ المحادث",
+        )
+        if not any(marker in normalized for marker in markers):
+            return None
+        state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
+        history = getattr(state, "history", []) if state is not None else []
+        topics = []
+        for turn in history or []:
+            if not isinstance(turn, dict) or turn.get("role") != "user":
+                continue
+            target = str(turn.get("target") or "").strip()
+            intent = str(turn.get("intent") or "").casefold()
+            if not target or intent not in {"cyber_explain", "explain", "question"}:
+                continue
+            if target not in topics:
+                topics.append(target)
+        if not topics:
+            return {
+                "status": "success", "intent": Intent.MEMORY_DUMP,
+                "source": "dialogue_memory",
+                "text": "لا توجد موضوعات تعليمية مسجلة في الحوار الحالي.",
+                "executed": False,
+            }
+        return {
+            "status": "success", "intent": Intent.MEMORY_DUMP,
+            "source": "dialogue_memory",
+            "text": "الموضوعات التي نوقشت بالترتيب: " + "، ".join(topics),
+            "topics": topics,
+            "executed": False,
+        }
 
     def _classify_context_transition(
         self,

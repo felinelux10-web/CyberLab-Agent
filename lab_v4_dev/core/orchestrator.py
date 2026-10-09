@@ -21,6 +21,7 @@ from lab_v4_dev.config.provider_config import get_active_provider
 import os
 import shutil
 import uuid
+import inspect
 
 class Orchestrator:
 
@@ -67,6 +68,8 @@ class Orchestrator:
         parsed: dict | None = None,
         *,
         context_resolved: bool = False,
+        conversation_history: list | None = None,
+        context_transition: str | None = None,
     ) -> dict:
         request = Request.from_input(request)
         raw_request = request.raw_text
@@ -135,16 +138,15 @@ class Orchestrator:
             except:
                 pass
         response_attributes = parsed.get("response_attributes") or {}
-        if response_attributes:
-            result = self._route(
-                intent,
-                target,
-                ctx_hint,
-                raw_request,
-                response_attributes=response_attributes,
-            )
-        else:
-            result = self._route(intent, target, ctx_hint, raw_request)
+        route_kwargs = {}
+        route_parameters = inspect.signature(self._route).parameters
+        if response_attributes and "response_attributes" in route_parameters:
+            route_kwargs["response_attributes"] = response_attributes
+        if "conversation_history" in route_parameters:
+            route_kwargs["conversation_history"] = conversation_history
+        if "context_transition" in route_parameters:
+            route_kwargs["context_transition"] = context_transition
+        result = self._route(intent, target, ctx_hint, raw_request, **route_kwargs)
         if _rt:
             try:
                 _rt.end({
@@ -235,6 +237,8 @@ class Orchestrator:
         raw,
         *,
         response_attributes: dict | None = None,
+        conversation_history: list | None = None,
+        context_transition: str | None = None,
     ) -> dict:
 
         # ─── Response Cache ───
@@ -1318,7 +1322,10 @@ class Orchestrator:
         # ─── Cyber Explain (v5.9.1-B) ───
         elif intent == Intent.CYBER_EXPLAIN:
             from lab_v4_dev.awareness.knowledge_base import search, store, hit
-            cached = None if response_attributes else search(raw)
+            is_continuation = context_transition in {
+                "continue", "restore", "reference", "clarification",
+            }
+            cached = None if response_attributes or is_continuation else search(raw)
             if cached:
                 hit(raw)
                 self.context.current_subject = raw
@@ -1482,7 +1489,13 @@ SOURCE CODE:
 {_project_file_code}"""
             else:
                 from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
-                system, _prompt = build_cybersec_prompt(raw)
+                system, _prompt = build_cybersec_prompt(
+                    raw,
+                    history=conversation_history,
+                    continuation=bool(context_transition in {
+                        "continue", "restore", "reference",
+                    }),
+                )
 
             if response_attributes:
                 from lab_v4_dev.llm.prompt_builder import (

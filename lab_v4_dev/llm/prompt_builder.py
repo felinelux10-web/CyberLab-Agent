@@ -236,7 +236,13 @@ def build_release_prompt(version: str, content: str, question: str) -> str:
 السؤال: {question}"""
 
 
-def build_cybersec_prompt(topic: str, level: str = "مبتدئ") -> tuple:
+def build_cybersec_prompt(
+    topic: str,
+    level: str = "مبتدئ",
+    *,
+    history: list | None = None,
+    continuation: bool = False,
+) -> tuple:
     """prompt متخصص للأمن السيبراني"""
     system = """أنت خبير أمن سيبراني ومعلم متخصص.
 أسلوبك: شرح واضح خطوة بخطوة بالعربية.
@@ -253,6 +259,23 @@ def build_cybersec_prompt(topic: str, level: str = "مبتدئ") -> tuple:
 2. كيف تعمل الثغرة؟ (شرح مفاهيمي داخل مختبر آمن)
 3. كيف تحمي نفسك؟
 4. مثال توضيحي آمن (ثغرة مفاهيمية vs حماية)، دون payload هجومي"""
+
+    if history:
+        turns = []
+        for item in history[-8:]:
+            if not isinstance(item, dict) or not item.get("content"):
+                continue
+            role = "المستخدم" if item.get("role") == "user" else "الوكيل"
+            turns.append(f"{role}: {item['content']}")
+        if turns:
+            prompt += "\n\n=== سياق الفرع الحواري المستعاد ===\n" + "\n".join(turns)
+    if continuation:
+        prompt += (
+            "\n\n=== تعليمات الاستئناف ===\n"
+            "هذا طلب متابعة أو عودة إلى فرع سابق. لا تبدأ الشرح من الصفر، "
+            "ولا تكرر ما شرحه الوكيل في السجل. تابع من آخر نقطة ظاهرة في الرد "
+            "السابق، واذكر الخطوة التالية فقط ما لم يطلب المستخدم إعادة الشرح."
+        )
 
     return system, prompt
 
