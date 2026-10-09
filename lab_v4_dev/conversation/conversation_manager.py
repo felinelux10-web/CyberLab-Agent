@@ -277,12 +277,28 @@ class ConversationManager:
             ),
             requires_context=(transition.value in CONTEXTUAL_TRANSITIONS),
             context_transition=transition,
+            context_kind=self._context_kind(user_input, parsed, transition),
         )
 
         # ----------------------------------------------------
         # أسئلة تاريخ الحوار تُجاب من DialogueMemory محليًا، لا من سياق
         # المشروع أو مزود النموذج.
         conversation_history_answer = self._conversation_history_answer(user_input)
+        if (
+            conversation_history_answer is None
+            and self._dialogue_recall_requested(user_input)
+            and not self._resolve_generic_topic_reference(user_input)
+        ):
+            conversation_history_answer = {
+                "status": "needs_clarification",
+                "intent": Intent.MEMORY_DUMP,
+                "source": "dialogue_memory",
+                "text": (
+                    "لا أجد موضوعًا حواريًا واضحًا لاستعادته في هذه الجلسة. "
+                    "هل تقصد آخر موضوع تعليمي أم سياق العمل؟"
+                ),
+                "executed": False,
+            }
         if conversation_history_answer is not None:
             result = conversation_history_answer
             result["semantic_request"] = semantic.as_dict()
@@ -542,7 +558,7 @@ class ConversationManager:
         """Resolve ordinal/previous topic references without task-history fallback."""
         normalized = str(text or "").casefold()
         if not any(marker in normalized for marker in (
-            "موضوع", "topic", "ارجع", "عد إلى", "عد الى",
+            "موضوع", "topic", "ارجع", "عد إلى", "عد الى", "قبل هذا الموضوع",
         )):
             return None
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
@@ -565,6 +581,40 @@ class ConversationManager:
             active = getattr(self.dialogue_memory, "last_topic", None)
             return str(active).strip() if active else topics[-1]
         return None
+
+    @staticmethod
+    def _dialogue_recall_requested(text: str) -> bool:
+        normalized = str(text or "").casefold()
+        if any(marker in normalized for marker in (
+            "سياق العمل", "آخر جلسة", "اخر جلسة", "المهام", "ملف العمل",
+        )):
+            return False
+        return any(marker in normalized for marker in (
+            "سياق الحوار", "سياق المحادث", "استرجاع الحوار", "استرجاع المحادث",
+            "ماذا كنا نقول", "قبل هذا الموضوع", "الموضوع السابق",
+            "ارجع الى الموضوع", "ارجع إلى الموضوع", "نكمل حوارنا",
+            "نكمل كلامنا", "استكمل الحوار", "استكمل كلامنا",
+        ))
+
+    def _context_kind(self, text: str, parsed: dict, transition) -> str:
+        normalized = str(text or "").casefold()
+        if self._dialogue_recall_requested(text) or transition.value in CONTEXTUAL_TRANSITIONS:
+            return "dialogue"
+        if parsed.get("intent") in _AGENT_SELF_INTENTS:
+            return "project"
+        if parsed.get("intent") == Intent.PERSONAL_CHAT or is_social_act(
+            parsed.get("conversation_act")
+        ):
+            return "social"
+        if any(marker in normalized for marker in (
+            "العمل", "المهمة", "المهام", "الملف", "استكمل", "أكمل",
+            "جلسة العمل", "work", "task", "file",
+        )):
+            return "work"
+        scope = resolve_project_scope(text, intent=parsed.get("intent"))
+        if scope == ProjectScope.CURRENT_PROJECT:
+            return "project"
+        return "unknown"
 
     def _conversation_history_answer(self, text: str) -> dict | None:
         """Answer recent-dialogue questions from bounded dialogue memory only."""

@@ -35,6 +35,10 @@ CONVERSATION_DOMAINS = frozenset({
     "agent_self",
 })
 
+CONTEXT_KINDS = frozenset({
+    "dialogue", "work", "project", "personal", "social", "system", "unknown",
+})
+
 CONVERSATION_ACTS = frozenset({
     "NONE",
     "EXECUTABLE_REQUEST",
@@ -113,12 +117,15 @@ class SemanticRequest:
     context_transition: str = ContextTransition.AMBIGUOUS.value
     requires_planning: bool = False
     target: Optional[str] = None
+    context_kind: str = "unknown"
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
             raise ValueError(f"invalid semantic mode: {self.mode}")
         if self.action_type not in ACTION_TYPES:
             raise ValueError(f"invalid action type: {self.action_type}")
+        if self.context_kind not in CONTEXT_KINDS:
+            raise ValueError(f"invalid context kind: {self.context_kind}")
         if self.conversation_domain not in CONVERSATION_DOMAINS:
             raise ValueError(f"invalid conversation domain: {self.conversation_domain}")
         if self.conversation_act not in CONVERSATION_ACTS:
@@ -162,6 +169,7 @@ def build_semantic_request(
     requires_context: bool = False,
     context_transition: str = ContextTransition.AMBIGUOUS.value,
     requires_planning: Optional[bool] = None,
+    context_kind: str = "unknown",
 ) -> SemanticRequest:
     if requires_planning is None:
         requires_planning = compound or mode == "TASK"
@@ -190,4 +198,5 @@ def build_semantic_request(
         ),
         requires_planning=requires_planning,
         target=target,
+        context_kind=context_kind,
     )

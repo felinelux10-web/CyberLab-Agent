@@ -132,3 +132,26 @@ def test_provider_privacy_error_is_not_rendered_as_debug_dump(monkeypatch):
     assert "LLM ERROR DEBUG" not in result["text"]
     assert "internal provider details" not in result["text"]
     assert "الخصوصية" in result["text"]
+
+
+def test_dialogue_recall_without_dialogue_does_not_fall_back_to_work_history():
+    orchestrator = CapturingOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+
+    result = manager.process("ارجع إلى الموضوع السابق")
+
+    assert result["status"] == "needs_clarification"
+    assert result["source"] == "dialogue_memory"
+    assert "آخر المهام" not in result["text"]
+    assert result["semantic_request"]["context_kind"] == "dialogue"
+    assert orchestrator.calls == []
+
+
+def test_work_request_is_marked_work_without_using_dialogue_recall():
+    orchestrator = CapturingOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+
+    result = manager.process("استكمل العمل في الملف lab_v4_dev/core/agent.py")
+
+    assert result["status"] == "success"
+    assert result["semantic_request"]["context_kind"] == "work"
