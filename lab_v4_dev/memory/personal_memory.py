@@ -41,56 +41,105 @@ class PersonalMemoryStore:
             return {"schema_version": 1, "records": {}}
         with open(self.path, encoding="utf-8") as handle:
             data = json.load(handle)
+        if not isinstance(data, dict):
+            raise ValueError("personal memory must be a JSON object")
         data.setdefault("records", {})
+        if not isinstance(data["records"], dict):
+            raise ValueError("personal memory records must be an object")
         return data
 
     def _save(self, data: dict) -> None:
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        directory = os.path.dirname(os.path.abspath(self.path))
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        try:
+            os.chmod(directory, 0o700)
+        except OSError:
+            pass
         temporary = f"{self.path}.{secrets.token_hex(4)}.tmp"
-        with open(temporary, "w", encoding="utf-8") as handle:
-            json.dump(data, handle, ensure_ascii=False, indent=2)
-        os.replace(temporary, self.path)
+        try:
+            with open(temporary, "w", encoding="utf-8") as handle:
+                os.chmod(temporary, 0o600)
+                json.dump(data, handle, ensure_ascii=False, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self.path)
+            try:
+                os.chmod(self.path, 0o600)
+            except OSError:
+                pass
+        except Exception:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+            raise
 
-    def _authorize(self, access: PersonalMemoryAccess) -> bool:
-        allowed = access.permission == "allowed" and access.scope in _ALLOWED.get(access.requester, set())
+    def _audit_event(self, access: PersonalMemoryAccess, operation: str, allowed: bool, success: bool) -> None:
         self._audit.append({
-            "requester": access.requester, "purpose": access.purpose,
-            "scope": access.scope, "allowed": allowed, "at": _now(),
+            "operation": operation,
+            "requester": access.requester,
+            "purpose": access.purpose,
+            "scope": access.scope,
+            "allowed": allowed,
+            "success": success,
+            "at": _now(),
         })
+
+    def _authorize(self, access: PersonalMemoryAccess, operation: str = "access") -> bool:
+        allowed = access.permission == "allowed" and access.scope in _ALLOWED.get(access.requester, set())
+        self._audit_event(access, operation, allowed, False)
         return allowed
 
     def remember(self, key: str, value: str, *, category: str, source: str = "explicit_user_command", confidence: str = "EXPLICIT", access: PersonalMemoryAccess) -> bool:
-        if access.requester != "explicit_user_command" or not self._authorize(access):
+        if (
+            access.requester != "explicit_user_command"
+            or category != access.scope
+            or not self._authorize(access, "remember")
+        ):
             return False
-        data = self._load()
-        data["records"][key] = {
-            "memory_id": f"pm:{secrets.token_hex(8)}", "key": key, "value": value,
-            "category": category, "confidence": confidence, "source": source,
-            "created_at": data.get("records", {}).get(key, {}).get("created_at", _now()),
-            "updated_at": _now(), "status": "ACTIVE",
-        }
-        self._save(data)
-        return True
+        try:
+            data = self._load()
+            data["records"][key] = {
+                "memory_id": f"pm:{secrets.token_hex(8)}", "key": key, "value": value,
+                "category": category, "confidence": confidence, "source": source,
+                "created_at": data.get("records", {}).get(key, {}).get("created_at", _now()),
+                "updated_at": _now(), "status": "ACTIVE",
+            }
+            self._save(data)
+            self._audit[-1]["success"] = True
+            return True
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return False
 
     def get_preferences(self, *, category: str, access: PersonalMemoryAccess) -> dict:
-        if access.scope != category or not self._authorize(access):
+        if access.scope != category or not self._authorize(access, "read"):
             return {}
-        data = self._load()
+        try:
+            data = self._load()
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return {}
         return {
             record["key"]: record["value"]
             for record in data.get("records", {}).values()
-            if record.get("category") == category and record.get("status") == "ACTIVE"
+            if isinstance(record, dict)
+            and record.get("category") == category
+            and record.get("status") == "ACTIVE"
         }
 
     def forget(self, key: str, *, access: PersonalMemoryAccess) -> bool:
-        if access.requester != "explicit_user_command" or not self._authorize(access):
+        if access.requester != "explicit_user_command" or not self._authorize(access, "forget"):
             return False
-        data = self._load()
-        existed = key in data.get("records", {})
-        if existed:
+        try:
+            data = self._load()
+            record = data.get("records", {}).get(key)
+            if not record or record.get("category") != access.scope:
+                return False
             del data["records"][key]
             self._save(data)
-        return existed
+            self._audit[-1]["success"] = True
+            return True
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return False
 
     def audit_events(self) -> list[dict]:
         return list(self._audit)
