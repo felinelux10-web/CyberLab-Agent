@@ -377,24 +377,25 @@ def _as_clean_list(value) -> list[str]:
 
 
 def _evidence_labels(value) -> list[str]:
-    """Return labels only from structured, positive evidence records."""
+    """Return labels only from structured records with positive evidence.
+
+    Free-form descriptions are deliberately ignored here.  They remain
+    available through ``completed_work``/pending fields, but cannot establish
+    that an operation actually completed successfully.
+    """
     labels = []
-    proposal_markers = ("اقترح", "اقتراح", "يمكن", "ينبغي", "يجب", "سوف", "قد ن", "ربما")
     items = value if isinstance(value, (list, tuple)) else ([value] if value else [])
     for item in items:
-        if isinstance(item, dict):
-            status = str(item.get("status") or item.get("result") or "").casefold()
-            verified = item.get("verified") is True or item.get("passed") is True or item.get("executed") is True
-            positive = status in {"success", "passed", "pass", "verified", "completed", "ok"}
-            if not (verified or positive):
-                continue
-            label = item.get("label") or item.get("step") or item.get("action") or item.get("intent") or item.get("step_id")
-            if label:
-                labels.append(str(label).strip())
+        if not isinstance(item, dict):
             continue
-        text = str(item).strip()
-        if text and not any(marker in text for marker in proposal_markers):
-            labels.append(text)
+        status = str(item.get("status") or item.get("result") or "").casefold()
+        verified = item.get("verified") is True or item.get("passed") is True or item.get("executed") is True
+        positive = status in {"success", "passed", "pass", "verified", "completed", "ok"}
+        if not (verified or positive):
+            continue
+        label = item.get("label") or item.get("step") or item.get("action") or item.get("intent") or item.get("step_id")
+        if label:
+            labels.append(str(label).strip())
     return list(dict.fromkeys(label for label in labels if label))
 
 
@@ -433,10 +434,9 @@ def analyze_session(data: dict | None = None) -> dict:
              or context.get("current_subject") or (structured_topics[-1] if structured_topics else None)
              or session.get("topic") or session.get("active_goal"))
     goal = session.get("active_goal") or context.get("current_subject")
-    completed = _evidence_labels(session.get("completed_work"))
+    # Keep descriptive work history, but do not treat it as proof.
+    completed = _as_clean_list(session.get("completed_work"))
     confirmed = _evidence_labels(session.get("confirmed_achievements"))
-    if not confirmed:
-        confirmed = list(completed)
     for field in ("execution_results", "test_results", "verified_results", "results"):
         for label in _evidence_labels(session.get(field)):
             if label not in confirmed:
@@ -493,6 +493,7 @@ def analyze_session(data: dict | None = None) -> dict:
         "status": status,
         "current_state": current_state,
         "completed_work": completed,
+        "unverified_work": [item for item in completed if item not in confirmed],
         "confirmed_achievements": confirmed,
         "last_completed_step": confirmed[-1] if confirmed else "غير محدد من البيانات المتاحة",
         "pending_tasks": pending,
@@ -541,21 +542,24 @@ def build_session_restore_summary(data: dict | None = None, *, report_mode: str 
         "3) ما نُفّذ والإنجازات المؤكدة",
         *bullets(report['confirmed_achievements']),
         "",
-        "4) الحالة الحالية ونقطة التوقف",
+        "4) أوصاف أعمال غير متحققة",
+        *bullets(report['unverified_work']),
+        "",
+        "5) الحالة الحالية ونقطة التوقف",
         f"- الحالة: {report['status']}",
         f"- وصف الحالة: {report['current_state']}",
         f"- آخر خطوة مؤكدة: {report['last_completed_step']}",
         "",
-        "5) الأعمال المتبقية والخطوة التالية",
+        "6) الأعمال المتبقية والخطوة التالية",
         *bullets(report['pending_tasks']),
         f"- الخطوة التالية: {report['next_step']}",
         "",
-        "6) الملفات والقرارات والقيود المهمة",
+        "7) الملفات والقرارات والقيود المهمة",
         "الملفات:", *bullets(report['relevant_files']),
         "القرارات:", *bullets(report['decisions']),
         "الأسئلة المفتوحة:", *bullets(report['open_questions']),
         "",
-        "7) نتيجة الاستعادة",
+        "8) نتيجة الاستعادة",
         "تم تحميل السياق الدلالي فقط؛ لم يتم عرض سجل الحوار الحرفي؛ لم يتم تنفيذ الخطوة التالية تلقائيًا.",
     ]
     return "\n".join(lines)

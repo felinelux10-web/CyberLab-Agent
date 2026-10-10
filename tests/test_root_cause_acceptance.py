@@ -253,7 +253,8 @@ def test_session_analyzer_derives_grounded_fields_without_transcript_leak():
     report = analyze_session(session)
     assert report["topic"] == "استعادة الجلسات"
     assert report["active_goal"] == "إصلاح استعادة الجلسات"
-    assert report["confirmed_achievements"] == ["تحديد سبب فقد السياق"]
+    assert report["completed_work"] == ["تحديد سبب فقد السياق"]
+    assert report["confirmed_achievements"] == []
     assert report["pending_tasks"] == ["تشغيل اختبار الاستعادة"]
     rendered = build_session_restore_summary(session)
     assert "معلومة خاصة لا يجب عرضها" not in rendered
@@ -333,3 +334,61 @@ def test_failed_result_is_not_reported_as_success_and_sessions_do_not_mix():
     assert "موضوع أ" not in build_session_restore_summary(other)
     assert "سر أ" not in build_session_restore_summary(failed)
     assert "سر ب" not in build_session_restore_summary(other)
+
+
+def test_unverified_descriptions_never_become_confirmed_achievements():
+    from lab_v4_dev.memory.session_state import analyze_session
+
+    session = {
+        "session_id": "evidence-1",
+        "completed_work": ["إضافة نظام النسخ الاحتياطي", "تصميم خطة التحقق القادمة"],
+        "confirmed_achievements": ["تنفيذ النسخ الاحتياطي في المستقبل"],
+        "execution_results": [
+            {"status": "failed", "label": "اختبار النسخ الاحتياطي"},
+        ],
+    }
+    report = analyze_session(session)
+    assert report["completed_work"] == ["إضافة نظام النسخ الاحتياطي", "تصميم خطة التحقق القادمة"]
+    assert report["confirmed_achievements"] == []
+
+
+def test_only_verified_execution_evidence_is_confirmed():
+    from lab_v4_dev.memory.session_state import analyze_session
+
+    report = analyze_session({
+        "session_id": "evidence-2",
+        "completed_work": ["وصف غير موثق للعمل"],
+        "execution_results": [
+            {"status": "success", "label": "إنشاء الملف", "executed": True},
+            {"status": "failed", "label": "تشغيل الاختبار الفاشل"},
+        ],
+        "test_results": [
+            {"status": "passed", "label": "اختبار القبول"},
+        ],
+    })
+    assert report["confirmed_achievements"] == ["إنشاء الملف", "اختبار القبول"]
+    assert "وصف غير موثق للعمل" not in report["confirmed_achievements"]
+    assert "تشغيل الاختبار الفاشل" not in report["confirmed_achievements"]
+
+
+def test_missing_confirmed_field_does_not_promote_completed_work():
+    from lab_v4_dev.memory.session_state import analyze_session, build_session_restore_summary
+
+    report = analyze_session({
+        "session_id": "evidence-3",
+        "completed_work": ["خطة مستقبلية للعمل على الجلسة"],
+        "dialogue_state": {"exchange_archive": [
+            {"target": "الجلسة أ", "user": "نص حوار لا يجب عرضه"},
+        ]},
+    })
+    rendered = build_session_restore_summary({
+        "session_id": "evidence-3",
+        "completed_work": ["خطة مستقبلية للعمل على الجلسة"],
+        "dialogue_state": {"exchange_archive": [
+            {"target": "الجلسة أ", "user": "نص حوار لا يجب عرضه"},
+        ]},
+    })
+    assert report["confirmed_achievements"] == []
+    assert "4) أوصاف أعمال غير متحققة" in rendered
+    assert "خطة مستقبلية للعمل على الجلسة" in rendered
+    assert "نص حوار لا يجب عرضه" not in rendered
