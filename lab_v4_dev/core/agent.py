@@ -122,9 +122,11 @@ class Agent:
             checkpoint_intent = str(
                 (s.get("context_state") or {}).get("last_intent") or ""
             ).casefold() if isinstance(s, dict) else ""
-            if s and s.get("active_goal") and checkpoint_intent not in {
-                "project_scan", "switch_project", "read_external_project",
-            }:
+            # A legacy checkpoint with only a generic goal (for example
+            # "مشروع") is not enough evidence for an actionable resume.
+            # Show the boot prompt only for an explicitly recoverable work
+            # intent; dialogue/project discovery must remain silent here.
+            if s and s.get("active_goal") and checkpoint_intent in _RECOVERABLE_EXECUTION_INTENTS:
                 print(f"\n[v4.8] جلسة سابقة موجودة:")
                 print(f"  الهدف   : {s.get('active_goal','?')}")
                 print(f"  الخطوة  : {s.get('next_step','?')}")
