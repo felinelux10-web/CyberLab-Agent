@@ -15,7 +15,7 @@ SYSTEM = """أنت مبرمج Python دقيق ومنضبط.
 4. لا تستخدم input() أبداً
 5. لا تضف أوامر نظام (os.system, subprocess) إلا إذا طُلب صراحة
 6. لا تضف صلاحيات أو أدوات أمان إلا إذا طُلب صراحة
-7. الكود يعمل مباشرة بدون تدخل
+7. الكود يعمل مباشرة؛ البرامج التفاعلية مثل الألعاب يمكنها استخدام input()
 8. إذا الطلب: فحص منفذ → استخدم socket فقط
 9. إذا الطلب: HTTP → استخدم requests فقط
 10. لا تخرج عن نطاق الطلب أبداً
@@ -40,6 +40,36 @@ def save_file(code, filename, folder="scripts"):
 
 
 TEMPLATES = {
+    "guessing_game": """import random
+
+
+def play_game():
+    secret = random.randint(1, 100)
+    attempts = 0
+    print("لعبة تخمين الرقم (اكتب خروج للإنهاء)")
+    while True:
+        raw = input("خمن رقمًا بين 1 و100: ").strip()
+        if raw.casefold() in {"خروج", "exit", "quit", "q"}:
+            print("تم إنهاء اللعبة.")
+            return
+        try:
+            guess = int(raw)
+        except ValueError:
+            print("إدخال غير صحيح: اكتب رقمًا أو خروج.")
+            continue
+        attempts += 1
+        if guess < secret:
+            print("الرقم السري أكبر.")
+        elif guess > secret:
+            print("الرقم السري أصغر.")
+        else:
+            print(f"أحسنت! وجدت الرقم بعد {attempts} محاولة.")
+            return
+
+
+if __name__ == "__main__":
+    play_game()
+""",
     "port_check": """import socket
 
 def check_port(host, port, timeout=1):
@@ -91,6 +121,9 @@ for f in os.listdir(path):
 def _match_template(description: str) -> str:
     import re
     desc = description.lower()
+
+    if any(w in desc for w in ["لعبة", "لعبه", "game"]):
+        return TEMPLATES["guessing_game"]
 
     if any(w in desc for w in ["فحص منفذ","يفحص منفذ","يفحص المنفذ","يفحص المنافذ","check port","port scan","منافذ","فحص المنافذ","فحص منافذ"]):
         ip    = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|localhost)", desc)
@@ -169,6 +202,21 @@ def modify_code(code, instruction):
         return {"status":"needs_clarification","text":"ماذا تريد أن أعدل؟ صف التعديل المطلوب بوضوح."}
     if not code or not code.strip():
         return {"status":"failed","text":"لا يوجد كود للتعديل"}
+    normalized_instruction = instruction.casefold()
+    if any(marker in normalized_instruction for marker in ("لون", "ألوان", "الوان", "color")):
+        if "\033[" not in code and "colorize" not in code:
+            colored = (
+                'COLOR = "\\033[96m"\nRESET = "\\033[0m"\n\n'
+                'def colorize(text):\n    return f"{COLOR}{text}{RESET}"\n\n'
+            )
+            modified = colored + code
+            modified = re.sub(r'print\(([^\n]+)\)', r'print(colorize(\1))', modified)
+            return {
+                "status": "success",
+                "code": modified,
+                "explanation": "أضيفت ألوان ANSI مع نص بديل مقروء في البيئات غير الداعمة.",
+                "saved_to": None,
+            }
     lang   = detect_language(code)
     prompt = "عدل هذا الكود:\n```" + lang + "\n" + code[:2000] + "\n```\nالتعديل: " + instruction + "\naكتب الكود المعدل داخل ```" + lang + "...``` ثم اشرح التغييرات."
     result = ask(prompt, system=SYSTEM, max_tokens=800)

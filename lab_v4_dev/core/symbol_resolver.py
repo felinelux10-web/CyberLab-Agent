@@ -35,10 +35,20 @@ def resolve(raw: str, target: str = "") -> dict:
                 "instruction": raw, "found": bool(file_path)}
 
     # 3. ابحث عن اسم دالة في كل ملفات المشروع
-    symbol_name = _find_symbol_in_project(raw, root)
-    if symbol_name:
+    symbol_matches = _find_symbol_in_project(raw, root)
+    if len(symbol_matches) == 1:
+        symbol_name = symbol_matches[0]
         return {"file": symbol_name["file"], "symbol": symbol_name["symbol"],
                 "instruction": raw, "found": True}
+    if len(symbol_matches) > 1:
+        return {
+            "file": "",
+            "symbol": "",
+            "instruction": raw,
+            "found": False,
+            "ambiguous": True,
+            "candidates": symbol_matches,
+        }
 
     return {"file": "", "symbol": "", "instruction": raw, "found": False}
 
@@ -70,13 +80,11 @@ def _extract_symbol_name(raw: str, file_path: str) -> str:
 
 
 def _find_symbol_in_project(raw: str, root: str) -> dict:
-    """يبحث عن دالة بالاسم في كل ملفات المشروع"""
-    src = os.path.join(root, "lab_v4_dev")
-    if not os.path.exists(src):
-        src = root
-    for dirpath, dirs, files in os.walk(src):
+    """يبحث عن دالة بالاسم في كل ملفات المشروع، بما فيها workspace."""
+    matches = []
+    for dirpath, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d not in
-                   ["__pycache__", "stable", "releases", "workspace"]]
+                   ["__pycache__", ".git", "stable", "releases", "archives"]]
         for f in files:
             if not f.endswith(".py"):
                 continue
@@ -85,7 +93,7 @@ def _find_symbol_in_project(raw: str, root: str) -> dict:
                 symbols = list_symbols(fp)
                 for s in symbols:
                     if s["name"] in raw:
-                        return {"file": fp, "symbol": s["name"]}
+                        matches.append({"file": fp, "symbol": s["name"]})
             except:
                 pass
-    return {}
+    return matches

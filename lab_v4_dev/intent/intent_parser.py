@@ -334,6 +334,19 @@ def _early_conversation_result(user_input: str) -> dict | None:
     ):
         return None
 
+    normalized = normalize(user_input).casefold()
+    tokens = set(re.findall(r"[\w]+", normalized, flags=re.UNICODE))
+    if tokens & {
+        "اكتب", "انشئ", "انشاء", "اصنع", "عدل", "تعديل", "اضف", "اضافة",
+        "نفذ", "شغل", "اعرض", "اقرا", "اقرأ", "حلل", "افحص", "راجع",
+        "ابحث", "احذف", "امسح", "اختبر", "قارن", "write", "create",
+        "edit", "modify", "add", "run", "show", "read", "analyze", "test",
+    } and tokens & {
+        "لعبة", "لعبه", "سكريبت", "سكربت", "كود", "ملف", "دالة", "مشروع",
+        "game", "script", "code", "file", "function", "project",
+    }:
+        return None
+
     # Exact/word dictionary operations and explicit targets retain authority.
     # Weak semantic/fuzzy matches such as "STATUS" for a personal question do
     # not override a clear conversational act.
@@ -454,7 +467,8 @@ def _has_project_request_evidence(user_input: str) -> bool:
         return True
     evidence = {
         "افحص", "فحص", "حلل", "تحليل", "اعرض", "اقرا", "اقرأ", "اشرح",
-        "خريطة", "هيكل", "بنية", "مكونات", "طبقات", "ملفات", "عدد",
+        "خريطة", "هيكل", "بنية", "بنيه", "مكونات", "طبقات", "ملفات", "الملفات",
+        "مهم", "مهمة", "مهمه", "المهم", "المهمة", "المهمه", "عدد",
         "تقدم", "وصلنا", "انجزنا", "نظرة", "حالة", "الحالي", "النشط",
         "اخر", "آخر", "اشتغل", "اشتغلت", "عمل", "عملت", "عملنا",
         "where", "what", "how", "show", "read", "analyze", "scan",
@@ -568,6 +582,70 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
             "entity_type": "PROJECT",
             "semantic_pattern": "PROJECT_HISTORY_QUERY",
         }
+
+    _project_name_tokens = set(
+        re.findall(r"[\w]+", normalize(user_input).casefold(), flags=re.UNICODE)
+    )
+    if (
+        _project_name_tokens & {"مشاريع", "المشاريع", "project", "projects"}
+        and _project_name_tokens
+        & {"اسماء", "اسامي", "قائمة", "تظهر", "موجودة", "المسجلة"}
+    ):
+        return {
+            "intent": Intent.PROJECT_INDEX,
+            "target": "",
+            "context": "project_level",
+            "confidence": 0.96,
+            "raw": user_input,
+            "source": "project_registry_semantics",
+            "entity_type": "PROJECT",
+            "semantic_pattern": "PROJECT_NAMES_QUERY",
+        }
+
+    if _has_cleanup_action(user_input):
+        _cleanup_tokens = set(
+            re.findall(r"[\w]+", normalize(user_input).casefold(), flags=re.UNICODE)
+        )
+        if _cleanup_tokens & {
+            "كود", "الكود", "مشروع", "المشروع", "ملف", "الملف", "code", "project", "file"
+        }:
+            return {
+                "intent": Intent.CLEANUP_CODE,
+                "target": _extract_target(user_input),
+                "context": "file_operation",
+                "confidence": 0.96,
+                "raw": user_input,
+                "source": "explicit_cleanup_request",
+                "entity_type": "FILE",
+                "semantic_pattern": "CODE_CLEANUP_REQUEST",
+            }
+
+    _work_tokens = set(
+        re.findall(r"[\w]+", normalize(user_input).casefold(), flags=re.UNICODE)
+    )
+    if _work_tokens & {"لعبة", "اللعبة", "لعبه", "اللعبه", "سكريبت", "السكريبت", "سكربت", "game", "script"}:
+        if _work_tokens & {"اكتب", "انشئ", "انشاء", "اصنع", "create", "write", "make"}:
+            return {
+                "intent": Intent.GENERATE_CODE,
+                "target": "",
+                "context": "file_operation",
+                "confidence": 0.97,
+                "raw": user_input,
+                "source": "explicit_code_generation",
+                "entity_type": "FILE",
+                "semantic_pattern": "CODE_GENERATION_REQUEST",
+            }
+        if _work_tokens & {"عدل", "تعديل", "اضف", "اضافه", "اضافة", "غير", "غيّر", "edit", "modify", "add"}:
+            return {
+                "intent": Intent.MODIFY_CODE,
+                "target": "",
+                "context": "file_operation",
+                "confidence": 0.97,
+                "raw": user_input,
+                "source": "explicit_code_modification",
+                "entity_type": "FILE",
+                "semantic_pattern": "CODE_MODIFICATION_REQUEST",
+            }
 
     # A project noun inside a social/meta sentence is not a project command.
     # Require explicit project evidence before allowing PROJECT_SCAN below.
@@ -685,11 +763,22 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
             _nlu_intent = nlu_result.get("intent")
             _nlu_confidence = nlu_result.get("confidence", 0)
 
+            _normalized_tokens = set(
+                re.findall(r"[\w]+", normalize(user_input).casefold(), flags=re.UNICODE)
+            )
+            _explicit_work = bool(
+                _normalized_tokens & {
+                    "اكتب", "انشئ", "انشاء", "اصنع", "عدل", "تعديل", "اضف", "اضافه",
+                    "اضافة", "نفذ", "شغل", "اعرض", "اقرا", "اقرأ", "حلل", "افحص",
+                    "راجع", "ابحث", "احذف", "امسح", "اختبر", "قارن",
+                }
+                and _normalized_tokens & {"لعبة", "لعبه", "سكريبت", "سكربت", "كود", "ملف", "game", "script"}
+            )
             if (
-                _nlu_intent == Intent.PERSONAL_CHAT
-                or (
-                    _nlu_intent
-                    and _nlu_confidence >= 0.85
+                not _explicit_work
+                and (
+                    _nlu_intent == Intent.PERSONAL_CHAT
+                    or (_nlu_intent and _nlu_confidence >= 0.85)
                 )
             ):
                 # Context Resolver — استكمال العناصر الناقصة

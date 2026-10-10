@@ -116,6 +116,12 @@ class ConversationManager:
         """Do not let an old execution file become a new generic question target."""
         if transition != ContextTransition.NEW_INDEPENDENT or (parsed or {}).get("target"):
             return
+        if (parsed or {}).get("intent") in {
+            Intent.MODIFY_CODE,
+            Intent.MODIFY_FILE,
+            Intent.GENERATE_CODE,
+        }:
+            return
         context = getattr(self.orchestrator, "context", None)
         if context is not None:
             context.current_file = None
@@ -207,6 +213,28 @@ class ConversationManager:
         # prompt or trigger privacy blocking because of stale content.
         if self._is_explicit_independent_topic(user_input, candidate):
             transition = ContextTransition.NEW_INDEPENDENT
+            # The legacy context resolver may have already inherited the old
+            # target before the transition marker was evaluated. Recover the
+            # explicit subject after "اشرح/عن/حول" for the new branch.
+            import re as _re
+            independent_subject = _re.search(
+                r"(?:اشرح|عن|حول|explain)\s+([^،,.؟?]+)",
+                user_input,
+                flags=_re.IGNORECASE,
+            )
+            if independent_subject:
+                subject = independent_subject.group(1).strip()
+                subject = _re.split(
+                    r"\s+(?=بالتفصيل|باختصار|ثم(?:\s|$)|و(?:\s|$))",
+                    subject,
+                    maxsplit=1,
+                )[0]
+                if subject:
+                    candidate = dict(candidate or {})
+                    candidate["target"] = subject
+                    candidate["intent"] = Intent.CYBER_EXPLAIN
+                    candidate["entity_type"] = "CONCEPT"
+                    candidate["conversation_domain"] = "technical"
         self._clear_unrelated_execution_file(transition, candidate)
         resolved_input = user_input
         parsed = candidate
@@ -258,6 +286,19 @@ class ConversationManager:
                     resolved_input,
                     context_entity=context_entity,
                 )
+
+        if (
+            context_entity
+            and transition.value in CONTEXTUAL_TRANSITIONS
+            and not style_request
+            and parsed.get("intent") in _NON_EXECUTABLE_INTENTS
+            and str(context_entity.get("entity_type", "")).upper() in {"FILE", "COMPONENT", "PROJECT"}
+        ):
+            parsed = dict(parsed or {})
+            parsed["intent"] = Intent.CYBER_EXPLAIN
+            parsed["target"] = context_entity.get("entity")
+            parsed["entity_type"] = context_entity.get("entity_type")
+            parsed["conversation_domain"] = "project"
 
         chat_history = self._history_for_transition(transition, parsed)
 
@@ -468,6 +509,17 @@ class ConversationManager:
         """
 
         intent = parsed.get("intent") if parsed else None
+        explicit_target = str((parsed or {}).get("target") or "").strip()
+        if (
+            intent in _NON_EXECUTABLE_INTENTS
+            and context_transition in CONTEXTUAL_TRANSITIONS
+            and explicit_target
+            and (parsed or {}).get("conversation_domain") == "project"
+            and not is_style_act((parsed or {}).get("conversation_act"))
+        ):
+            parsed = dict(parsed or {})
+            parsed["intent"] = Intent.CYBER_EXPLAIN
+            intent = Intent.CYBER_EXPLAIN
 
         # Agent self-description is grounded conversation, not a system action.
         # This check deliberately precedes SYSTEM mode dispatch.

@@ -937,6 +937,7 @@ class Orchestrator:
                 "اسماؤها", "أسماؤها", "اسناؤها", "اسناءها",
                 "قائمة المشاريع", "المشاريع المسجلة", "عدد المشاريع", "كم مشروع",
                 "ترتب المشاريع", "رتب المشاريع", "ترتيب المشاريع",
+                "المشاريع التي تظهر", "المشاريع الموجودة",
             )
             _is_project_list = any(term in raw for term in _project_list_terms)
 
@@ -1813,11 +1814,19 @@ SOURCE CODE:
             from lab_v4_dev.core.code_engine import modify_code
 
             words = raw.strip().split()
-            if len(words) < 4:
+            if len(words) < 2:
                 return {"status":"needs_target","intent":intent,
                         "text":"\u0645\u0627\u0630\u0627 \u062a\u0631\u064a\u062f \u0623\u0646 \u0623\u0639\u062f\u0644\u061f"}
 
-            resolved = sym_resolve(raw, target or "")
+            # Use the execution context only when this request omits a target.
+            context_file = getattr(self.context, "current_file", None)
+            target_path = target or context_file or ""
+            resolved = sym_resolve(raw, target_path)
+            if resolved.get("ambiguous"):
+                candidates = [item.get("file", "") for item in resolved.get("candidates", [])]
+                return {"status": "needs_clarification", "intent": intent,
+                        "text": "وجدت أكثر من ملف مرشح. حدّد الملف: " + "، ".join(candidates[:5]),
+                        "candidates": candidates}
             if not resolved["found"]:
                 return {"status":"needs_target","intent":intent,
                         "text":"\u0644\u0645 \u0623\u062c\u062f \u0627\u0644\u0645\u0644\u0641 \u0623\u0648 \u0627\u0644\u062f\u0627\u0644\u0629"}
@@ -1864,17 +1873,31 @@ SOURCE CODE:
                 return {"status":"failed","intent":intent,
                         "text":"\u274c \u063a\u064a\u0631 \u0622\u0645\u0646: " + str(_vcheck)}
 
+            if final_code == _orig_source:
+                return {"status":"failed","intent":intent,
+                        "text":"لم ينتج التعديل أي تغيير في الملف"}
+
             try:
-                from lab_v4_dev.executor.safe_pipeline import SafePipeline
                 _db = self.agent.db
-                if _db.conn is None: _db.connect()
-                pipeline = SafePipeline(_db)
+                if _db is not None and getattr(_db, "conn", None) is None:
+                    _db.connect()
+                pipeline = self.pipeline or SafePipeline(_db)
                 plan = {"files": [fp], "reason": raw}
                 pipe_result = pipeline.execute(plan, {fp: final_code})
                 mode = "surgical" if is_surgical else "full"
                 if pipe_result.get("status") == "success":
+                    if not os.path.isfile(fp):
+                        return {"status":"failed","intent":intent,
+                                "text":"فشل التحقق: الملف غير موجود بعد الكتابة"}
+                    with open(fp, encoding="utf-8") as _after_file:
+                        _after_source = _after_file.read()
+                    if _after_source != final_code:
+                        return {"status":"failed","intent":intent,
+                                "text":"فشل التحقق: المحتوى المكتوب لا يطابق التعديل"}
+                    self.context.current_file = fp
                     return {"status":"success","intent":intent,
-                            "text":"\u2705 [" + mode + "] " + (symbol or fp.split("/")[-1])}
+                            "text":"\u2705 [" + mode + "] " + (symbol or fp.split("/")[-1]),
+                            "file": fp, "verified": True}
                 else:
                     return {"status":"failed","intent":intent,
                             "text":"\u274c " + str(pipe_result.get("reason",""))}
