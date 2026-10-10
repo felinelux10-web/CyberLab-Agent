@@ -2184,35 +2184,20 @@ SOURCE CODE:
 
         # ─── Work Context Report ───
         elif intent == Intent.WORK_CONTEXT:
-            lines = ["=== سياق العمل ==="]
-
-            # 1. آخر FINAL_REPORT.md
-            rel_dir = "releases"
-            latest_report = None
-            latest_ver = None
-            if os.path.exists(rel_dir):
-                for d in sorted(os.listdir(rel_dir), reverse=True):
-                    p = os.path.join(rel_dir, d, "FINAL_REPORT.md")
-                    if os.path.exists(p):
-                        latest_report = p
-                        latest_ver = d
-                        break
-            if latest_report:
-                with open(latest_report, "r", encoding="utf-8") as f:
-                    content = f.read()
-                lines.append(f"\n📄 آخر تقرير ({latest_ver}):")
-                lines.append(content[:1200])
-            else:
-                lines.append("\nلا يوجد تقرير محفوظ")
-
-            # 2. آخر المهام
-            tasks = self.agent.memory.recent_tasks(5)
+            # Work context is a live operational ledger. Archived FINAL_REPORT
+            # files belong to project knowledge/reporting and must not be
+            # presented as the answer to "what were we doing?".
+            lines = ["=== سجل العمل الحالي ==="]
+            tasks = self.agent.memory.recent_tasks(8)
             if tasks:
-                lines.append("\n📋 آخر المهام:")
+                lines.append("\n📋 العمليات المسجلة فعليًا:")
                 for t in tasks:
-                    lines.append(f"  [{t['status']}] {t['intent'][:50]}")
+                    detail = str(t.get("plan") or t.get("intent") or "").strip()
+                    lines.append(f"  [{t['status']}] {detail[:120]}")
+            else:
+                lines.append("\nلا توجد عمليات عمل مسجلة في هذه الجلسة.")
 
-            # 3. الإصلاحات المعلقة
+            # Pending repairs are live state and remain part of the ledger.
             from lab_v4_dev.core.repair.diff_approval import list_pending
             pending = list_pending()
             if pending:

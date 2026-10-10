@@ -24,7 +24,7 @@ _RECOVERABLE_EXECUTION_INTENTS = {
     "upgrade_code", "run", "run_project", "run_file", "run_tests",
     "test_project", "test_file", "test_function", "generate_test",
     "generate_code", "analyze_code", "repair_approve", "repair_reject",
-    "project_scan", "read_external_project", "switch_project", "session_save",
+    "session_save",
 }
 
 
@@ -119,7 +119,12 @@ class Agent:
             init_timeline()
             s = load_session()
             self._pending_session = s if isinstance(s, dict) else None
-            if s and s.get("active_goal"):
+            checkpoint_intent = str(
+                (s.get("context_state") or {}).get("last_intent") or ""
+            ).casefold() if isinstance(s, dict) else ""
+            if s and s.get("active_goal") and checkpoint_intent not in {
+                "project_scan", "switch_project", "read_external_project",
+            }:
                 print(f"\n[v4.8] جلسة سابقة موجودة:")
                 print(f"  الهدف   : {s.get('active_goal','?')}")
                 print(f"  الخطوة  : {s.get('next_step','?')}")
