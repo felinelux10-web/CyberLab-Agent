@@ -192,6 +192,98 @@ def recoverable_work_checkpoint(data: dict | None = None) -> dict | None:
         }
     return None
 
+
+def build_session_restore_summary(data: dict | None = None) -> str:
+    """Render the complete bounded session context for an explicit restore.
+
+    This is deliberately a local renderer: restoring a session must explain
+    the saved state without calling an LLM, executing a task, or flattening
+    dialogue turns into an ambiguous paragraph.
+    """
+    session = data if isinstance(data, dict) else load_session()
+    if not isinstance(session, dict) or not session:
+        return "لا توجد جلسة سابقة محفوظة."
+
+    def value(key: str, default: str = "غير مسجل") -> str:
+        raw = session.get(key)
+        if raw is None or raw == "":
+            return default
+        return str(raw)
+
+    def bullet_list(items, empty: str = "لا يوجد") -> list[str]:
+        if not isinstance(items, (list, tuple)):
+            items = [items] if items else []
+        cleaned = [str(item).strip() for item in items if str(item).strip()]
+        return [f"- {item}" for item in cleaned] or [f"- {empty}"]
+
+    dialogue = session.get("dialogue_state") or {}
+    if not isinstance(dialogue, dict):
+        dialogue = {}
+    exchanges = [
+        item for item in (dialogue.get("exchange_archive") or [])
+        if isinstance(item, dict)
+        and (str(item.get("user") or "").strip() or str(item.get("assistant") or "").strip())
+    ]
+    # Older checkpoints may have turns but no exchange archive. Preserve the
+    # available transcript rather than claiming that the dialogue is empty.
+    if not exchanges:
+        turns = [item for item in (dialogue.get("history") or []) if isinstance(item, dict)]
+        pending_user = None
+        for turn in turns:
+            role = str(turn.get("role") or "").casefold()
+            content = str(turn.get("content") or "").strip()
+            if not content:
+                continue
+            if role == "user":
+                pending_user = content
+            elif role == "assistant":
+                exchanges.append({"user": pending_user or "", "assistant": content})
+                pending_user = None
+        if pending_user:
+            exchanges.append({"user": pending_user, "assistant": ""})
+
+    lines = [
+        "=== ملخص استرجاع الجلسة ===",
+        f"معرّف الجلسة: {value('session_id')}",
+        f"وقت الحفظ: {value('timestamp')}",
+        "",
+        "1) ماذا كنا نفعل؟",
+        f"- الهدف الحالي: {value('active_goal')}",
+        f"- الموضوع الحواري النشط: {str(dialogue.get('last_topic') or 'غير مسجل')}",
+        "",
+        "2) ماذا فعلنا؟",
+        *bullet_list(session.get("completed_work"), "لا توجد إنجازات مسجلة"),
+        "",
+        "3) أين توقفنا؟",
+        f"- الخطوة التالية: {value('next_step')}",
+        f"- النية الأخيرة: {str((session.get('context_state') or {}).get('last_intent') or 'غير مسجلة')}",
+        "",
+        "4) الملفات والسياق التنفيذي:",
+        *bullet_list(session.get("last_files"), "لا توجد ملفات مسجلة"),
+        "",
+        "5) القرارات المتخذة:",
+        *bullet_list(session.get("decisions"), "لا توجد قرارات مسجلة"),
+        "",
+        "6) الأسئلة أو الأمور المفتوحة:",
+        *bullet_list(session.get("open_questions"), "لا توجد أمور مفتوحة مسجلة"),
+        "",
+        "7) مضمون الحوار المحفوظ كاملًا:",
+    ]
+    if exchanges:
+        for index, exchange in enumerate(exchanges, 1):
+            user = str(exchange.get("user") or "").strip()
+            assistant = str(exchange.get("assistant") or "").strip()
+            lines.append(f"[{index}] المستخدم: {user or 'غير مسجل'}")
+            lines.append(f"    الوكيل: {assistant or 'لا توجد إجابة محفوظة'}")
+    else:
+        lines.append("- لا يوجد مضمون حواري محفوظ في هذه الجلسة.")
+    lines.extend([
+        "",
+        "8) حالة الاستعادة:",
+        "- تمت استعادة المعلومات فقط؛ لم يتم تنفيذ الخطوة التالية تلقائيًا.",
+    ])
+    return "\n".join(lines)
+
 def clear_session():
     path = _session_file()
     if os.path.exists(path):

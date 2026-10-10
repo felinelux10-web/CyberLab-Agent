@@ -126,3 +126,62 @@ def test_dialogue_recall_keeps_user_and_assistant_pairs_and_excludes_work():
     assert "الوكيل: توقفنا عند آلية الحدوث." in result["text"]
     assert "المستخدم: اشرح CSRF" in result["text"]
     assert "game.py" not in result["text"]
+
+
+def test_session_restore_returns_structured_full_summary(monkeypatch):
+    import lab_v4_dev.memory.session_state as session_state
+
+    checkpoint = {
+        "session_id": "session-summary-1",
+        "timestamp": "2026-10-10T14:00:00",
+        "active_goal": "إكمال منظومة الاستمرارية",
+        "completed_work": ["إصلاح توجيه النوايا", "حفظ تبادلات الحوار"],
+        "next_step": "اختبار الاستعادة بعد إعادة التشغيل",
+        "last_files": ["game.py", "conversation_manager.py"],
+        "decisions": ["عدم تنفيذ الخطوة التالية تلقائيًا"],
+        "open_questions": ["هل نحتاج اختبارًا إضافيًا؟"],
+        "context_state": {"last_intent": "modify_code"},
+        "dialogue_state": {
+            "last_topic": "استمرارية الجلسات",
+            "exchange_archive": [
+                {"user": "ماذا أصلحنا؟", "assistant": "أصلحنا دورة الاستمرارية."},
+                {"user": "أين توقفنا؟", "assistant": "عند اختبار الاستعادة."},
+            ],
+        },
+    }
+    monkeypatch.setattr(session_state, "load_session", lambda: checkpoint)
+    agent = SimpleNamespace(restore_session_context=lambda: True)
+    result = Orchestrator(agent).handle(
+        "استكمل الجلسة",
+        parsed={"intent": Intent.SESSION_RESTORE, "target": "", "context": "general"},
+    )
+    text = result["text"]
+    assert result["status"] == "success"
+    for section in (
+        "ماذا كنا نفعل؟", "ماذا فعلنا؟", "أين توقفنا؟",
+        "الملفات والسياق التنفيذي", "القرارات المتخذة",
+        "الأسئلة أو الأمور المفتوحة", "مضمون الحوار المحفوظ كاملًا",
+    ):
+        assert section in text
+    assert "إصلاح توجيه النوايا" in text
+    assert "اختبار الاستعادة بعد إعادة التشغيل" in text
+    assert "المستخدم: ماذا أصلحنا؟" in text
+    assert "الوكيل: أصلحنا دورة الاستمرارية." in text
+    assert "لم يتم تنفيذ الخطوة التالية تلقائيًا" in text
+
+
+def test_session_summary_falls_back_to_legacy_turns():
+    from lab_v4_dev.memory.session_state import build_session_restore_summary
+
+    summary = build_session_restore_summary({
+        "active_goal": "حوار محفوظ",
+        "next_step": "متابعة الحوار",
+        "dialogue_state": {
+            "history": [
+                {"role": "user", "content": "اشرح الفكرة"},
+                {"role": "assistant", "content": "توقفنا عند المثال"},
+            ],
+        },
+    })
+    assert "المستخدم: اشرح الفكرة" in summary
+    assert "الوكيل: توقفنا عند المثال" in summary

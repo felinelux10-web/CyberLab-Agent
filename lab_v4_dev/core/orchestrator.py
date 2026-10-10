@@ -1703,6 +1703,7 @@ SOURCE CODE:
         elif intent in (Intent.RESUME, Intent.SESSION_RESTORE):
             from lab_v4_dev.memory.session_state import (
                 load_session, recoverable_work_checkpoint,
+                build_session_restore_summary,
             )
             s = load_session()
             if not s:
@@ -1745,18 +1746,15 @@ SOURCE CODE:
                 }
             restore_context = getattr(self.agent, "restore_session_context", None)
             restored = bool(restore_context()) if callable(restore_context) else False
-            lines = [
-                "=== آخر جلسة محفوظة ===",
-                f"التاريخ  : {s.get('timestamp','?')[:16]}",
-                f"الهدف    : {s.get('active_goal','?')}",
-                f"الخطوة   : {s.get('next_step','?')}",
-                f"الملفات  : {', '.join(s.get('last_files',[])) or 'لا شيء'}",
-                f"السياق   : {'تمت استعادته' if restored else 'metadata فقط'}",
-                "",
-                "💡 لاستكمال الحوار استخدم موضوعه أو اكتب: سياق العمل",
-            ]
+            summary = build_session_restore_summary(s)
+            summary += (
+                "\n\nنتيجة تحميل السياق: "
+                + ("تمت استعادة السياق المحفوظ؛ تمت استعادته بنجاح." if restored else "تم عرض الملخص؛ تعذر تحميل السياق التنفيذي بالكامل.")
+            )
             return {"status":"success","intent":intent,
-                    "text":"\n".join(lines)}
+                    "text":summary,
+                    "session_summary": summary,
+                    "context_restored": restored}
 
         # ─── Session Save ───
         elif intent == Intent.SESSION_SAVE:
