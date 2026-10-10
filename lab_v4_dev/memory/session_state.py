@@ -137,6 +137,61 @@ def load_session() -> dict:
     except:
         return {}
 
+
+def recoverable_work_checkpoint(data: dict | None = None) -> dict | None:
+    """Return a checkpoint only when it contains verifiable executable work.
+
+    A saved dialogue summary is intentionally not enough to resume work. The
+    caller needs a concrete goal and next step plus either a recoverable
+    execution intent or a file that still exists under the saved project root.
+    """
+    checkpoint = data if isinstance(data, dict) else load_session()
+    if not isinstance(checkpoint, dict):
+        return None
+    goal = str(checkpoint.get("active_goal") or "").strip()
+    next_step = str(checkpoint.get("next_step") or "").strip()
+    if not goal or not next_step:
+        return None
+    generic = {"مشروع", "عمل جاري", "حفظ الجلسة", "استكمال الجلسة", "جلسة جديدة"}
+    if goal.casefold() in generic or next_step.casefold() in generic:
+        return None
+
+    context = checkpoint.get("context_state") or {}
+    if not isinstance(context, dict):
+        context = {}
+    intent = str(context.get("last_intent") or "").casefold()
+    recoverable_intents = {
+        "modify_code", "modify_file", "generate_code", "create_file",
+        "analyze_code", "delete_file", "run", "run_file", "run_project",
+        "run_tests", "test_project", "test_file", "cleanup_code",
+        "repair_approve", "refactor_file", "session_save",
+    }
+    files = list(checkpoint.get("last_files") or [])
+    for candidate in (context.get("current_file"), context.get("file"), *files):
+        if not candidate:
+            continue
+        path = os.path.expanduser(str(candidate))
+        if not os.path.isabs(path):
+            root = checkpoint.get("project_root")
+            path = os.path.join(str(root), path) if root else path
+        if os.path.isfile(path):
+            return {
+                "checkpoint": checkpoint,
+                "goal": goal,
+                "next_step": next_step,
+                "file": os.path.abspath(path),
+                "intent": intent,
+            }
+    if intent in recoverable_intents and (context.get("subject") or goal):
+        return {
+            "checkpoint": checkpoint,
+            "goal": goal,
+            "next_step": next_step,
+            "file": None,
+            "intent": intent,
+        }
+    return None
+
 def clear_session():
     path = _session_file()
     if os.path.exists(path):

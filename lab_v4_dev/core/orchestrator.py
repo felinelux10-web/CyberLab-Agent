@@ -89,9 +89,9 @@ class Orchestrator:
         if parsed is None:
             parsed = parse(raw_request)
 
-        intent    = parsed["intent"]
-        target    = parsed["target"]
-        ctx_hint  = parsed["context"]
+        intent    = parsed.get("intent")
+        target    = parsed.get("target", "")
+        ctx_hint  = parsed.get("context", "general")
 
         entry = {
             "timestamp": timestamp,
@@ -1699,13 +1699,50 @@ SOURCE CODE:
                 text = get_full_history()
             return {"status":"success","intent":intent,"text":text}
 
-        # ─── Session Restore ───
-        elif intent == Intent.SESSION_RESTORE:
-            from lab_v4_dev.memory.session_state import load_session
+        # ─── Resume Work / Session Restore ───
+        elif intent in (Intent.RESUME, Intent.SESSION_RESTORE):
+            from lab_v4_dev.memory.session_state import (
+                load_session, recoverable_work_checkpoint,
+            )
             s = load_session()
             if not s:
                 return {"status":"success","intent":intent,
                         "text":"لا توجد جلسة سابقة محفوظة"}
+            recoverable = recoverable_work_checkpoint(s)
+            if intent == Intent.RESUME:
+                if not recoverable:
+                    return {
+                        "status": "needs_clarification",
+                        "intent": intent,
+                        "source": "session_resume",
+                        "text": (
+                            "لا توجد مهمة تنفيذية قابلة للاستئناف في الجلسة المحفوظة. "
+                            "حدّد الملف والهدف أو ابدأ مهمة جديدة."
+                        ),
+                        "executed": False,
+                    }
+                restore_context = getattr(self.agent, "restore_session_context", None)
+                restored = bool(restore_context()) if callable(restore_context) else False
+                if not restored:
+                    return {
+                        "status": "failed", "intent": intent,
+                        "text": "تعذر تحميل سياق المهمة القابلة للاستئناف",
+                        "executed": False,
+                    }
+                file_text = recoverable.get("file") or "لا يوجد ملف محدد"
+                return {
+                    "status": "success", "intent": intent,
+                    "source": "session_resume", "executed": False,
+                    "goal": recoverable["goal"],
+                    "next_step": recoverable["next_step"],
+                    "file": recoverable.get("file"),
+                    "text": (
+                        "تم استئناف سياق العمل دون تنفيذ خطوة تلقائيًا\n"
+                        f"الهدف: {recoverable['goal']}\n"
+                        f"الخطوة التالية: {recoverable['next_step']}\n"
+                        f"الملف: {file_text}"
+                    ),
+                }
             restore_context = getattr(self.agent, "restore_session_context", None)
             restored = bool(restore_context()) if callable(restore_context) else False
             lines = [
@@ -1820,6 +1857,8 @@ SOURCE CODE:
 
             # Use the execution context only when this request omits a target.
             context_file = getattr(self.context, "current_file", None)
+            if context_file and not os.path.isfile(os.path.expanduser(str(context_file))):
+                context_file = ""
             target_path = target or context_file or ""
             resolved = sym_resolve(raw, target_path)
             if resolved.get("ambiguous"):

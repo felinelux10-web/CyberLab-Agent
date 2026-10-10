@@ -149,6 +149,22 @@ class ConversationManager:
                     user_input = f"{base_request} {order}".strip()
 
         mode = detect_mode(user_input)
+        if str(user_input or "").strip().casefold() in {"جلسة جديدة", "جلسه جديده", "new session"}:
+            reset = getattr(self.orchestrator, "reset_conversation_context", None)
+            if callable(reset):
+                reset()
+            else:
+                agent = getattr(self.orchestrator, "agent", None)
+                reset = getattr(agent, "reset_conversation_context", None)
+                if callable(reset):
+                    reset()
+            return {
+                "status": "success",
+                "intent": Intent.RESTART,
+                "source": "conversation_manager",
+                "text": "بدأت جلسة جديدة. لم يتم إنشاء أو حفظ أي كود تلقائيًا.",
+                "executed": False,
+            }
 
         # Parse the current turn without any persistent NLU context first.
         # The transition decision below is the sole authority that may grant
@@ -834,9 +850,8 @@ class ConversationManager:
         if not topics:
             dialogue_exchanges = [
                 item for item in exchanges
-                if item.get("context_kind") in {"dialogue", "social", "personal"}
-                or item.get("conversation_domain") in {"general", "social"}
-                or item.get("intent") == Intent.PERSONAL_CHAT
+                if item.get("context_kind") not in {"work", "execution"}
+                and item.get("conversation_domain") not in {"execution", "work"}
             ][-6:]
             if dialogue_exchanges:
                 return {
@@ -857,8 +872,21 @@ class ConversationManager:
             }
         text = "الموضوعات التي نوقشت بالترتيب: " + "، ".join(topics)
         if history_act == "CONVERSATION_HISTORY_QUERY" and exchanges:
+            # Select complete archived exchanges, not individual turns. Keep
+            # technical dialogue relevant to the requested topics while never
+            # importing a work/execution exchange into social recall.
+            selected = [
+                item for item in exchanges
+                if item.get("context_kind") not in {"work", "execution"}
+                and item.get("conversation_domain") not in {"execution", "work"}
+                and (
+                    not item.get("target")
+                    or item.get("target") in topics
+                    or any(str(topic).casefold() in str(item.get("user", "")).casefold() for topic in topics)
+                )
+            ][-6:]
             text += "\n\nالتبادل الأخير:\n" + "\n".join(
-                self._format_dialogue_exchanges(exchanges[-6:])
+                self._format_dialogue_exchanges(selected)
             )
         return {
             "status": "success", "intent": Intent.MEMORY_DUMP,
