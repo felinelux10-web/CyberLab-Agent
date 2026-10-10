@@ -114,23 +114,34 @@ class Agent:
 
         # 7. Auto Context Restore (v4.8)
         try:
-            from lab_v4_dev.memory.session_state import load_session, recoverable_work_checkpoint
+            from lab_v4_dev.memory.session_state import (
+                load_session, recoverable_work_checkpoint, get_session_index,
+                get_session_by_id, analyze_session,
+            )
             from lab_v4_dev.data.project_timeline import init_timeline
             init_timeline()
             s = load_session()
             self._pending_session = s if isinstance(s, dict) else None
-            recoverable = recoverable_work_checkpoint(s) if isinstance(s, dict) else None
-            if s and s.get("session_id", s.get("active_goal")):
-                print(f"\n[v4.8] جلسة سابقة موجودة:")
-                print(f"  المعرّف : {s.get('session_id','?')}")
-                print(f"  النوع   : {s.get('session_type','غير محدد')}")
-                print(f"  الحالة  : {s.get('status','محفوظة')}")
-                if recoverable:
-                    print(f"  المهمة  : {recoverable.get('goal','?')}")
-                    print(f"  الخطوة  : {recoverable.get('next_step','?')}")
-                    print("  اكتب 'استكمل العمل' للاستعادة دون تنفيذ تلقائي")
-                else:
-                    print("  هذه جلسة محفوظة للحوار/المراجعة وليست مهمة تنفيذية جاهزة للاستئناف")
+            index = [item for item in get_session_index() if item.get("status") == "paused"]
+            if not index and isinstance(s, dict) and s.get("session_id", s.get("active_goal")):
+                index = [s]
+            if index:
+                print("\n[v4.8] جلسات عمل معلّقة مكتشفة:")
+                for number, item in enumerate(index[-5:], 1):
+                    selected = get_session_by_id(item.get("session_id")) or item
+                    report = analyze_session(selected)
+                    recoverable = recoverable_work_checkpoint(selected)
+                    print(f"\n  [{number}] المعرّف: {report['session_id']}")
+                    print(f"  الموضوع: {report['topic']}")
+                    print(f"  الهدف: {report['active_goal']}")
+                    print(f"  الحالة: {report['status']} — آخر تحديث: {report['last_updated']}")
+                    print(f"  آخر إنجاز مؤكد: {report['last_completed_step']}")
+                    print(f"  نقطة التوقف: {report['current_state']}")
+                    print(f"  الخطوة التالية: {report['next_step']}")
+                    if recoverable:
+                        print("  اكتب 'استكمل الجلسة' أو استخدم معرّف الجلسة للاستعادة دون تنفيذ تلقائي")
+                    else:
+                        print("  جلسة محفوظة للمراجعة وليست قابلة للاستئناف التنفيذي حسب الأدلة الحالية")
         except Exception as exc:
             log.warning(f"Session discovery skipped: {exc}")
 

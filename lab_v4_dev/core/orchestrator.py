@@ -1706,11 +1706,28 @@ SOURCE CODE:
         elif intent in (Intent.RESUME, Intent.SESSION_RESTORE):
             from lab_v4_dev.memory.session_state import (
                 load_session, recoverable_work_checkpoint,
-                build_session_restore_summary, get_session_by_id,
+                build_session_restore_summary, analyze_session, get_session_by_id,
                 get_session_index, search_sessions,
             )
             selector = session_selector or {}
             selected_id = None
+            report_mode = selector.get("report_mode", "standard")
+            if selector.get("kind") == "compare":
+                recent = get_session_index()[-2:]
+                if len(recent) < 2:
+                    return {"status": "success", "intent": intent,
+                            "text": "لا توجد جلستان محفوظتان كافيتان للمقارنة."}
+                lines = ["=== مقارنة آخر جلستين ==="]
+                for index, item in enumerate(recent, 1):
+                    report = analyze_session(get_session_by_id(item.get("session_id")) or item)
+                    lines.extend([
+                        f"{index}) {report['session_id']}",
+                        f"- الموضوع: {report['topic']}",
+                        f"- الحالة: {report['status']}",
+                        f"- آخر إنجاز مؤكد: {report['last_completed_step']}",
+                        f"- الخطوة التالية: {report['next_step']}",
+                    ])
+                return {"status": "success", "intent": intent, "text": "\n".join(lines), "sessions": recent}
             if selector.get("kind") == "status":
                 candidates = search_sessions(status=selector.get("status"), limit=10)
                 if not candidates:
@@ -1718,21 +1735,36 @@ SOURCE CODE:
                             "text": "لا توجد جلسات معلقة محفوظة."}
                 lines = ["=== الجلسات المعلقة ==="]
                 for index, item in enumerate(candidates, 1):
-                    lines.append(
-                        f"{index}. {item.get('title') or item.get('active_goal') or 'جلسة بلا عنوان'} "
-                        f"[{item.get('session_id', '?')}] — الخطوة: {item.get('next_step') or 'غير محددة'}"
-                    )
+                    if report_mode == "compact":
+                        lines.append(f"{index}. المعرّف: {item.get('session_id', '?')} — الموضوع: {item.get('topic') or item.get('active_goal') or 'غير محدد'} — الحالة: {item.get('status', 'غير محددة')}")
+                    else:
+                        lines.append(f"{index}. {item.get('title') or item.get('active_goal') or 'جلسة بلا عنوان'} [{item.get('session_id', '?')}] — الخطوة: {item.get('next_step') or 'غير محددة'}")
                 lines.append("اكتب طلبًا يذكر موضوع الجلسة للعودة إليها.")
                 return {"status": "success", "intent": intent, "text": "\n".join(lines), "sessions": candidates}
             if selector.get("kind") == "latest":
                 index = get_session_index()
                 if index:
                     selected_id = index[-1].get("session_id")
+            elif selector.get("kind") == "id":
+                selected_id = selector.get("session_id")
+                if not get_session_by_id(selected_id):
+                    return {"status": "success", "intent": intent,
+                            "text": "لم أجد جلسة بهذا المعرّف."}
             elif selector.get("kind") == "search":
                 candidates = search_sessions(selector.get("query", raw), limit=5)
                 if not candidates:
                     return {"status": "success", "intent": intent,
                             "text": "لم أجد جلسة محفوظة تطابق الموضوع المطلوب."}
+                if report_mode == "compact":
+                    lines = ["=== نتائج البحث في الجلسات ==="]
+                    for item in candidates:
+                        lines.append(
+                            f"المعرّف: {item.get('session_id', '?')} — "
+                            f"الموضوع: {item.get('topic') or item.get('active_goal') or 'غير محدد'} — "
+                            f"الحالة: {item.get('status', 'غير محددة')}"
+                        )
+                    return {"status": "success", "intent": intent,
+                            "text": "\n".join(lines), "sessions": candidates}
                 if len(candidates) > 1 and candidates[0].get("match_score", 0) == candidates[1].get("match_score", 0):
                     lines = ["وجدت أكثر من جلسة محتملة. اختر واحدة بذكر عنوانها أو معرّفها:"]
                     for item in candidates:
@@ -1789,7 +1821,7 @@ SOURCE CODE:
                 restored = bool(restore_selected(s))
             else:
                 restored = bool(restore_context()) if callable(restore_context) else False
-            summary = build_session_restore_summary(s)
+            summary = build_session_restore_summary(s, report_mode=report_mode)
             summary += (
                 "\n\nنتيجة تحميل السياق: "
                 + ("تمت استعادة السياق المحفوظ؛ تمت استعادته بنجاح." if restored else "تم عرض الملخص؛ تعذر تحميل السياق التنفيذي بالكامل.")

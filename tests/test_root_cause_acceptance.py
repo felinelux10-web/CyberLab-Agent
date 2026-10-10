@@ -128,7 +128,7 @@ def test_dialogue_recall_keeps_user_and_assistant_pairs_and_excludes_work():
     assert "game.py" not in result["text"]
 
 
-def test_session_restore_returns_structured_full_summary(monkeypatch):
+def test_session_restore_returns_structured_semantic_summary(monkeypatch):
     import lab_v4_dev.memory.session_state as session_state
 
     checkpoint = {
@@ -158,19 +158,19 @@ def test_session_restore_returns_structured_full_summary(monkeypatch):
     text = result["text"]
     assert result["status"] == "success"
     for section in (
-        "ماذا كنا نفعل؟", "ماذا فعلنا؟", "أين توقفنا؟",
-        "الملفات والسياق التنفيذي", "القرارات المتخذة",
-        "الأسئلة أو الأمور المفتوحة", "مضمون الحوار المحفوظ كاملًا",
+        "التقرير الدلالي للجلسة", "الموضوع والهدف", "ما نوقش فعليًا",
+        "ما نُفّذ والإنجازات المؤكدة", "الحالة الحالية ونقطة التوقف",
+        "الملفات والقرارات والقيود المهمة",
     ):
         assert section in text
     assert "إصلاح توجيه النوايا" in text
     assert "اختبار الاستعادة بعد إعادة التشغيل" in text
-    assert "المستخدم: ماذا أصلحنا؟" in text
-    assert "الوكيل: أصلحنا دورة الاستمرارية." in text
+    assert "المستخدم: ماذا أصلحنا؟" not in text
+    assert "الوكيل: أصلحنا دورة الاستمرارية." not in text
     assert "لم يتم تنفيذ الخطوة التالية تلقائيًا" in text
 
 
-def test_session_summary_falls_back_to_legacy_turns():
+def test_session_summary_does_not_fallback_to_legacy_transcript():
     from lab_v4_dev.memory.session_state import build_session_restore_summary
 
     summary = build_session_restore_summary({
@@ -183,8 +183,9 @@ def test_session_summary_falls_back_to_legacy_turns():
             ],
         },
     })
-    assert "المستخدم: اشرح الفكرة" in summary
-    assert "الوكيل: توقفنا عند المثال" in summary
+    assert "المستخدم: اشرح الفكرة" not in summary
+    assert "الوكيل: توقفنا عند المثال" not in summary
+    assert "غير محدد من البيانات المتاحة" in summary
 
 
 def test_session_index_keeps_twenty_sessions_and_restores_old_details(monkeypatch, tmp_path):
@@ -232,3 +233,39 @@ def test_natural_project_session_return_reaches_session_selector():
     assert result["status"] == "success"
     assert orchestrator.calls[-1]["parsed"]["intent"] == Intent.SESSION_RESTORE
     assert orchestrator.calls[-1]["parsed"]["session_selector"]["kind"] == "search"
+
+
+def test_session_analyzer_derives_grounded_fields_without_transcript_leak():
+    from lab_v4_dev.memory.session_state import analyze_session, build_session_restore_summary
+
+    session = {
+        "session_id": "semantic-1",
+        "active_goal": "إصلاح استعادة الجلسات",
+        "status": "paused",
+        "next_step": "تشغيل اختبار الاستعادة",
+        "completed_work": ["تحديد سبب فقد السياق"],
+        "last_files": ["session_state.py"],
+        "dialogue_state": {
+            "last_topic": "استعادة الجلسات",
+            "exchange_archive": [{"user": "معلومة خاصة لا يجب عرضها", "assistant": "رد خاص"}],
+        },
+    }
+    report = analyze_session(session)
+    assert report["topic"] == "استعادة الجلسات"
+    assert report["active_goal"] == "إصلاح استعادة الجلسات"
+    assert report["confirmed_achievements"] == ["تحديد سبب فقد السياق"]
+    assert report["pending_tasks"] == ["تشغيل اختبار الاستعادة"]
+    rendered = build_session_restore_summary(session)
+    assert "معلومة خاصة لا يجب عرضها" not in rendered
+    assert "رد خاص" not in rendered
+    assert "تشغيل اختبار الاستعادة" in rendered
+
+
+def test_session_report_commands_extract_clean_query_and_report_mode():
+    from lab_v4_dev.memory.session_state import session_selector
+
+    request = session_selector(
+        "ابحث في الجلسات المحفوظة عن جلسة SQL Injection، واعرض معرّف الجلسة وموضوعها وحالتها فقط"
+    )
+    assert request == {"kind": "search", "query": "SQL Injection", "report_mode": "compact"}
+    assert session_selector("استعد جلسة بمعرّف semantic-1")["kind"] == "id"
