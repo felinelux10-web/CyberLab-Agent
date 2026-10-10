@@ -96,12 +96,21 @@ _RESPONSE_REFERENCES = {
     "هذا", "هذه", "ذلك", "تلك",
     "خاطب", "تحدث", "تكلم", "معي",
 }
+_HISTORY_REFERENCE_MARKERS = {
+    "سابق", "سابقه", "قبل", "ردود", "نقول", "قلنا", "نناقش", "ناقشنا",
+    "نحكي", "نتحدث", "نتكلم", "حوار", "محادثه", "نقاش", "حديث", "جلسه",
+    "موضوع",
+}
+_HISTORY_QUERY_MARKERS = {
+    "ماذا", "ما", "اين", "أين", "كيف", "راجع", "تذكر", "نسيت", "كنا",
+    "كان", "الذي", "التي", "نتحدث", "نقول", "نناقش", "تكلمنا",
+}
 _CORRECTION_MARKERS = {"اقصد", "اقصده", "المقصود", "تصحيح", "صحح"}
 _CORRECTION_NEGATIONS = {"لا", "ليس", "مو", "مش", "غلط"}
 _COMPOUND_REFERENCE_MARKERS = {
     "هذا", "هذه", "ذلك", "تلك", "جزء", "نقطه", "شرح", "موضوع", "السابق",
 }
-_RETURN_MARKERS = {"ارجع", "عوده", "رجوع", "الرئيسي", "الرئيسيه"}
+_RETURN_MARKERS = {"ارجع", "نرجع", "عوده", "رجوع", "الرئيسي", "الرئيسيه"}
 _QUESTION_MARKERS = {"هل", "ما", "ماذا", "كيف", "من", "مين", "ايش", "شو", "بماذا"}
 _WORKING_MARKERS = {"يعمل", "تعمل", "يشتغل", "تشتغل", "works", "working"}
 _PROJECT_MARKERS = {
@@ -472,6 +481,36 @@ def classify_conversation_semantics(
     agent_signal = classify_agent_self_query(raw)
     if agent_signal and intent_value in _NON_EXECUTABLE_INTENTS:
         return agent_signal
+
+    # A dialogue-history query is a relationship to the conversation, not a
+    # HISTORY/CONTEXT_REPORT execution request. Require two semantic signals:
+    # a reference to earlier dialogue and a recollection/question cue.
+    if (
+        _has_any(bases, _HISTORY_REFERENCE_MARKERS)
+        and _has_any(bases, _HISTORY_QUERY_MARKERS)
+        and _has_any(bases, {"سابق", "سابقه", "قبل", "ردود", "كنا", "نقول", "قلنا", "ناقشنا", "جلسه"})
+        and not _has_any(bases, {"العمل", "مهام", "مهمه", "ملف", "مشروع"})
+    ):
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.92,
+            "response_attributes": {},
+            "conversational": True,
+        }
+
+    if (
+        _has_any(bases, {"استكمال", "استكمل", "نكمل"})
+        and _has_any(bases, {"حوار", "محادثه", "حديث"})
+        and _has_any(bases, {"فقط", "ليس", "مش", "مو", "بدون"})
+    ):
+        return {
+            "conversation_domain": "social",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "confidence": 0.94,
+            "response_attributes": {},
+            "conversational": True,
+        }
 
     # Returning to a previous dialogue topic is a conversational act even when
     # the parser tentatively produced resume/history. It must be resolved before

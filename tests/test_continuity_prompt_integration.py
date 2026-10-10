@@ -206,3 +206,50 @@ def test_previous_dialogue_phrases_are_not_operational_history():
         parsed = parse(text)
         assert parsed["intent"] == Intent.PERSONAL_CHAT
         assert parsed["conversation_act"] == "TOPIC_RETURN"
+
+
+def test_social_dialogue_is_saved_as_typed_memory_and_recalled_without_work_history(monkeypatch):
+    import lab_v4_dev.conversation.conversation_manager as manager_module
+
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda *_args, **_kwargs: {"status": "success", "text": "رد حواري"},
+    )
+    orchestrator = CapturingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+
+    manager.process("ماذا تقترح انت")
+    manager.process("دعنا نتحدث محادثة ودية")
+    manager.process("موضوع عام عن التقنية")
+
+    result = manager.process("ماذا كنا نقول في الردود السابقة؟")
+    assert result["source"] == "dialogue_memory"
+    assert "ماذا تقترح انت" in result["text"]
+    assert "موضوع عام عن التقنية" in result["text"]
+    assert "آخر المهام" not in result["text"]
+    assert all(
+        turn.get("context_kind") in {"social", "dialogue"}
+        for turn in memory.state.history
+        if turn.get("role") == "user"
+    )
+
+
+def test_return_to_social_dialogue_does_not_ask_for_work_or_learning_context(monkeypatch):
+    import lab_v4_dev.conversation.conversation_manager as manager_module
+
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda *_args, **_kwargs: {"status": "success", "text": "رد حواري"},
+    )
+    orchestrator = CapturingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+    manager.process("موضوع عام عن التقنية")
+
+    result = manager.process("ارجع للنقاش السابق")
+    assert result["source"] == "dialogue_memory"
+    assert "سياق العمل" not in result["text"]
+    assert "موضوع عام عن التقنية" in result["text"]

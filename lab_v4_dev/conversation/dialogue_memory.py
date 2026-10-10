@@ -105,6 +105,9 @@ class DialogueMemory:
                 intent=turn.get("intent"),
                 target=turn.get("target"),
                 confidence=turn.get("confidence", 0.0),
+                conversation_domain=turn.get("conversation_domain", "general"),
+                conversation_act=turn.get("conversation_act", "NONE"),
+                context_kind=turn.get("context_kind", "unknown"),
             )
         self.state = restored
         return True
@@ -127,6 +130,15 @@ class DialogueMemory:
 
         parsed = parsed or {}
         previous_context = self.active_context_entity()
+
+        semantic = result.get("semantic_request") or {}
+        conversation_domain = parsed.get(
+            "conversation_domain", semantic.get("conversation_domain", "general")
+        )
+        conversation_act = parsed.get(
+            "conversation_act", semantic.get("conversation_act", "NONE")
+        )
+        context_kind = semantic.get("context_kind", "unknown")
 
         turn_intent = parsed.get("intent") or result.get("intent")
         turn_target = parsed.get("target") or result.get("target")
@@ -208,6 +220,9 @@ class DialogueMemory:
             intent=turn_intent,
             target=turn_target,
             confidence=turn_confidence,
+            conversation_domain=conversation_domain,
+            conversation_act=conversation_act,
+            context_kind=context_kind,
         )
 
         self.state.add_turn(
@@ -217,6 +232,9 @@ class DialogueMemory:
             intent=turn_intent,
             target=turn_target,
             confidence=turn_confidence,
+            conversation_domain=conversation_domain,
+            conversation_act=conversation_act,
+            context_kind=context_kind,
         )
 
         items = result.get("items") or result.get("files") or []

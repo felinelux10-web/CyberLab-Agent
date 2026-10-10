@@ -49,7 +49,11 @@ from lab_v4_dev.awareness.knowledge_retriever import (
 from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.nlu.context_resolver import is_incomplete
-from lab_v4_dev.nlu.conversation_semantics import is_social_act, is_style_act
+from lab_v4_dev.nlu.conversation_semantics import (
+    classify_conversation_semantics,
+    is_social_act,
+    is_style_act,
+)
 
 
 _AGENT_SELF_INTENTS = {
@@ -156,8 +160,29 @@ class ConversationManager:
                 "semantic_pattern": "PENDING_CONFIRMATION",
             }
             if confirmation_intent is not None
-            else self._safe_parse(user_input)
+        else self._safe_parse(user_input)
         )
+        # The raw semantic signal is an authority boundary: a dialogue-history
+        # or continuation turn must not be hijacked by HISTORY/CONTEXT_REPORT/
+        # RESUME parser fallbacks before DialogueMemory sees it.
+        raw_signal = classify_conversation_semantics(user_input)
+        raw_act = raw_signal.get("conversation_act")
+        if raw_act in {
+            "CONVERSATION_HISTORY_QUERY",
+            "CONVERSATION_CONTINUATION",
+            "TOPIC_RETURN",
+        }:
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": "",
+                "entity_type": "REFERENCE",
+                "conversation_domain": raw_signal.get("conversation_domain", "general"),
+                "conversation_act": raw_act,
+                "conversation_confidence": raw_signal.get("confidence", 0.0),
+                "semantic_pattern": "DIALOGUE_SEMANTIC_OVERRIDE",
+                "source": "dialogue_semantic_override",
+            })
         generic_topic = self._resolve_generic_topic_reference(user_input)
         if generic_topic:
             candidate = dict(candidate or {})
@@ -294,10 +319,14 @@ class ConversationManager:
         # ----------------------------------------------------
         # أسئلة تاريخ الحوار تُجاب من DialogueMemory محليًا، لا من سياق
         # المشروع أو مزود النموذج.
-        conversation_history_answer = self._conversation_history_answer(user_input)
+        conversation_history_answer = (
+            None
+            if generic_topic
+            else self._conversation_history_answer(user_input, parsed)
+        )
         if (
             conversation_history_answer is None
-            and self._dialogue_recall_requested(user_input)
+            and self._dialogue_recall_requested(user_input, parsed)
             and not self._resolve_generic_topic_reference(user_input)
         ):
             conversation_history_answer = {
@@ -581,7 +610,7 @@ class ConversationManager:
         normalized = str(text or "").casefold()
         if not any(marker in normalized for marker in (
             "موضوع", "topic", "ارجع", "عد إلى", "عد الى", "حوار", "محادث",
-            "نقاش", "حديث", "قبل هذا الموضوع",
+            "نقاش", "حديث", "نرجع", "قبل هذا الموضوع",
         )):
             return None
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
@@ -603,7 +632,7 @@ class ConversationManager:
         if any(marker in normalized for marker in (
             "السابق", "السابقه", "السابقَ", "previous", "الاصلي", "الأصلي",
             "الرئيسي", "الرئيسيه", "موضوعنا", "حوارنا", "نقاشنا",
-        )) or any(marker in normalized for marker in ("ارجع", "عد إلى", "عد الى")):
+        )) or any(marker in normalized for marker in ("ارجع", "نرجع", "عد إلى", "عد الى")):
             state = getattr(self.dialogue_memory, "state", None)
             last_turn = next(
                 (
@@ -617,7 +646,7 @@ class ConversationManager:
                 isinstance(last_turn, dict)
                 and (
                     last_turn.get("conversation_act") == "TOPIC_RETURN"
-                    or any(marker in last_content for marker in ("ارجع", "عد إلى", "عد الى"))
+                    or any(marker in last_content for marker in ("ارجع", "نرجع", "عد إلى", "عد الى"))
                 )
             ):
                 previous = self.dialogue_memory.active_context_entity()
@@ -631,12 +660,14 @@ class ConversationManager:
         return None
 
     @staticmethod
-    def _dialogue_recall_requested(text: str) -> bool:
+    def _dialogue_recall_requested(text: str, parsed: dict | None = None) -> bool:
         normalized = str(text or "").casefold()
         if any(marker in normalized for marker in (
             "سياق العمل", "آخر جلسة", "اخر جلسة", "المهام", "ملف العمل",
         )):
             return False
+        if str((parsed or {}).get("conversation_act") or "").upper() == "CONVERSATION_HISTORY_QUERY":
+            return True
         return any(marker in normalized for marker in (
             "سياق الحوار", "سياق المحادث", "استرجاع الحوار", "استرجاع المحادث",
             "ماذا كنا نقول", "قبل هذا الموضوع", "الموضوع السابق", "الحوار السابق",
@@ -716,10 +747,13 @@ class ConversationManager:
             "executed": False,
         }
 
-    def _conversation_history_answer(self, text: str) -> dict | None:
+    def _conversation_history_answer(self, text: str, parsed: dict | None = None) -> dict | None:
         """Answer recent-dialogue questions from bounded dialogue memory only."""
         normalized = str(text or "").casefold()
-        if any(marker in normalized for marker in (
+        history_act = str((parsed or {}).get("conversation_act") or "").upper()
+        if history_act == "TOPIC_RETURN" and str((parsed or {}).get("target") or "").strip():
+            return None
+        if history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"} and any(marker in normalized for marker in (
             "ارجع", "عد إلى", "عد الى", "الاول", "الأول", "الثاني", "السابق",
             "previous", "first", "second",
         )):
@@ -729,7 +763,7 @@ class ConversationManager:
             "اخر موضوع", "ماذا شرح", "ماذا شرحت", "شرحنا", "تكلمنا",
             "ناقشنا", "سجل المحادث", "تاريخ المحادث",
         )
-        if not any(marker in normalized for marker in markers):
+        if history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"} and not any(marker in normalized for marker in markers):
             return None
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
         history = getattr(state, "history", []) if state is not None else []
@@ -744,6 +778,29 @@ class ConversationManager:
             if target not in topics:
                 topics.append(target)
         if not topics:
+            dialogue_turns = [
+                turn for turn in (history or [])
+                if isinstance(turn, dict)
+                and turn.get("role") == "user"
+                and (
+                    turn.get("context_kind") in {"dialogue", "social", "personal"}
+                    or turn.get("conversation_domain") in {"general", "social"}
+                    or turn.get("intent") == Intent.PERSONAL_CHAT
+                )
+            ]
+            excerpts = [str(turn.get("content", "")).strip() for turn in dialogue_turns[-4:]]
+            excerpts = [item for item in excerpts if item]
+            if excerpts:
+                return {
+                    "status": "success", "intent": Intent.MEMORY_DUMP,
+                    "source": "dialogue_memory",
+                    "text": "في الحوار السابق كنا نتحدث عبر هذه الرسائل الأخيرة: "
+                    + " | ".join(excerpts),
+                    "dialogue_turns": excerpts,
+                    "executed": False,
+                }
+            if history_act == "TOPIC_RETURN":
+                return None
             return {
                 "status": "success", "intent": Intent.MEMORY_DUMP,
                 "source": "dialogue_memory",

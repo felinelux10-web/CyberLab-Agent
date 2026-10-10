@@ -19,6 +19,9 @@ class DialogueTurn:
     intent: str | None = None
     target: str | None = None
     confidence: float = 0.0
+    conversation_domain: str = "general"
+    conversation_act: str = "NONE"
+    context_kind: str = "unknown"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -28,6 +31,9 @@ class DialogueTurn:
             "intent": self.intent,
             "target": self.target,
             "confidence": self.confidence,
+            "conversation_domain": self.conversation_domain,
+            "conversation_act": self.conversation_act,
+            "context_kind": self.context_kind,
         }
 
 
@@ -63,6 +69,9 @@ class DialogueState:
         intent: str | None = None,
         target: str | None = None,
         confidence: float = 0.0,
+        conversation_domain: str = "general",
+        conversation_act: str = "NONE",
+        context_kind: str = "unknown",
     ) -> None:
         self.turns.append(
             DialogueTurn(
@@ -72,6 +81,9 @@ class DialogueState:
                 intent=intent,
                 target=target,
                 confidence=float(confidence),
+                conversation_domain=conversation_domain,
+                conversation_act=conversation_act,
+                context_kind=context_kind,
             )
         )
         self.turns = self.turns[-8:]
