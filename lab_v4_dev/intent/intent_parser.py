@@ -445,6 +445,28 @@ def _project_architecture_intent(user_input: str):
     return None
 
 
+def _has_project_request_evidence(user_input: str) -> bool:
+    """Require a project operation/question, not the noun's mere presence."""
+    text = normalize(user_input).casefold()
+    tokens = set(re.findall(r"[\w]+", text, flags=re.UNICODE))
+    project_words = {"مشروع", "المشروع", "project", "repository", "cyberlab"}
+    if not tokens & project_words:
+        return True
+    evidence = {
+        "افحص", "فحص", "حلل", "تحليل", "اعرض", "اقرا", "اقرأ", "اشرح",
+        "خريطة", "هيكل", "بنية", "مكونات", "طبقات", "ملفات", "عدد",
+        "تقدم", "وصلنا", "انجزنا", "نظرة", "حالة", "الحالي", "النشط",
+        "where", "what", "how", "show", "read", "analyze", "scan",
+    }
+    return bool(tokens & evidence)
+
+
+def _project_mention_without_request(user_input: str) -> bool:
+    text = normalize(user_input).casefold()
+    tokens = set(re.findall(r"[\w]+", text, flags=re.UNICODE))
+    return bool(tokens & {"مشروع", "المشروع", "project", "repository", "cyberlab"}) and not _has_project_request_evidence(user_input)
+
+
 
 # ============================================================
 # P04 / Canonical Intent Contract Boundary
@@ -487,6 +509,26 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     if agent_self_result is not None:
         return agent_self_result
 
+    # Dialogue-history references are not operational HISTORY requests.
+    # Keep them conversational so ConversationManager can resolve them from
+    # DialogueMemory rather than from task/project history.
+    normalized_raw = normalize(user_input).casefold()
+    if any(marker in normalized_raw for marker in (
+        "الحوار السابق", "النقاش السابق", "الحديث السابق", "محادثتنا السابقة",
+    )):
+        return {
+            "intent": Intent.PERSONAL_CHAT,
+            "target": "",
+            "context": "general",
+            "confidence": 0.92,
+            "raw": user_input,
+            "source": "dialogue_reference",
+            "entity_type": "REFERENCE",
+            "conversation_act": "TOPIC_RETURN",
+            "conversation_domain": "general",
+            "conversation_confidence": 0.92,
+        }
+
     if re.search(r"الفرق بين سؤال عام.*تحليل ملف|سؤال عام.*ملف محدد", raw):
         return {
             "intent": Intent.PERSONAL_CHAT,
@@ -495,6 +537,19 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
             "confidence": 0.93,
             "raw": user_input,
             "source": "meta_question",
+            "entity_type": "CONVERSATION",
+        }
+
+    # A project noun inside a social/meta sentence is not a project command.
+    # Require explicit project evidence before allowing PROJECT_SCAN below.
+    if _project_mention_without_request(user_input):
+        return {
+            "intent": Intent.PERSONAL_CHAT,
+            "target": "",
+            "context": "general",
+            "confidence": 0.86,
+            "raw": user_input,
+            "source": "ambiguous_project_mention",
             "entity_type": "CONVERSATION",
         }
 

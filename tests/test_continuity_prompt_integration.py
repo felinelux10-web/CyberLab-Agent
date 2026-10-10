@@ -4,6 +4,7 @@ from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
 from lab_v4_dev.core.orchestrator import Orchestrator
 from lab_v4_dev.intent.intents import Intent
+from lab_v4_dev.intent.intent_parser import parse
 
 
 class CapturingOrchestrator:
@@ -185,3 +186,23 @@ def test_social_state_and_greeting_are_local_without_gateway(monkeypatch):
     assert friendly["source"] == "local_social"
     assert state["semantic_request"]["context_kind"] == "social"
     assert "كيف حالك" in state["text"]
+
+
+def test_project_word_inside_social_sentence_does_not_trigger_project_scan():
+    for text in (
+        "لماذا تظهر المشروع",
+        "اي كلمة فيها المشروع",
+        "مشروع",
+        "دعنا نتحدث عنك انت كوكيل في هذا المشروع",
+    ):
+        parsed = parse(text)
+        assert parsed["intent"] != Intent.PROJECT_SCAN
+
+    assert parse("ما هو المشروع الحالي")["intent"] == Intent.SWITCH_PROJECT
+
+
+def test_previous_dialogue_phrases_are_not_operational_history():
+    for text in ("الحوار السابق", "النقاش السابق", "الحديث السابق"):
+        parsed = parse(text)
+        assert parsed["intent"] == Intent.PERSONAL_CHAT
+        assert parsed["conversation_act"] == "TOPIC_RETURN"

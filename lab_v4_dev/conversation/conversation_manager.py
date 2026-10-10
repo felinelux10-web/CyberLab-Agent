@@ -163,6 +163,7 @@ class ConversationManager:
             candidate = dict(candidate or {})
             is_ordinal_return = any(marker in str(user_input or "").casefold() for marker in (
                 "الأول", "الاول", "الثاني", "الثانى", "first", "second",
+                "ارجع", "عد إلى", "عد الى",
             ))
             candidate.update({
                 "intent": Intent.CYBER_EXPLAIN,
@@ -579,7 +580,8 @@ class ConversationManager:
         """Resolve ordinal/previous topic references without task-history fallback."""
         normalized = str(text or "").casefold()
         if not any(marker in normalized for marker in (
-            "موضوع", "topic", "ارجع", "عد إلى", "عد الى", "قبل هذا الموضوع",
+            "موضوع", "topic", "ارجع", "عد إلى", "عد الى", "حوار", "محادث",
+            "نقاش", "حديث", "قبل هذا الموضوع",
         )):
             return None
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
@@ -598,7 +600,32 @@ class ConversationManager:
             return topics[0]
         if any(marker in normalized for marker in ("الثاني", "الثانى", "second")) and len(topics) > 1:
             return topics[1]
-        if any(marker in normalized for marker in ("السابق", "السابقه", "السابقَ", "previous")):
+        if any(marker in normalized for marker in (
+            "السابق", "السابقه", "السابقَ", "previous", "الاصلي", "الأصلي",
+            "الرئيسي", "الرئيسيه", "موضوعنا", "حوارنا", "نقاشنا",
+        )) or any(marker in normalized for marker in ("ارجع", "عد إلى", "عد الى")):
+            state = getattr(self.dialogue_memory, "state", None)
+            last_turn = next(
+                (
+                    item for item in reversed(getattr(state, "history", []) or [])
+                    if isinstance(item, dict) and item.get("role") == "user"
+                ),
+                {},
+            ) if state is not None else {}
+            last_content = str(last_turn.get("content", "")).casefold() if isinstance(last_turn, dict) else ""
+            if (
+                isinstance(last_turn, dict)
+                and (
+                    last_turn.get("conversation_act") == "TOPIC_RETURN"
+                    or any(marker in last_content for marker in ("ارجع", "عد إلى", "عد الى"))
+                )
+            ):
+                previous = self.dialogue_memory.active_context_entity()
+            else:
+                get_previous = getattr(self.dialogue_memory, "previous_context_entity", None)
+                previous = get_previous() if callable(get_previous) else None
+            if isinstance(previous, dict) and previous.get("entity"):
+                return str(previous["entity"]).strip()
             active = getattr(self.dialogue_memory, "last_topic", None)
             return str(active).strip() if active else topics[-1]
         return None
@@ -612,8 +639,10 @@ class ConversationManager:
             return False
         return any(marker in normalized for marker in (
             "سياق الحوار", "سياق المحادث", "استرجاع الحوار", "استرجاع المحادث",
-            "ماذا كنا نقول", "قبل هذا الموضوع", "الموضوع السابق",
-            "ارجع الى الموضوع", "ارجع إلى الموضوع", "نكمل حوارنا",
+            "ماذا كنا نقول", "قبل هذا الموضوع", "الموضوع السابق", "الحوار السابق",
+            "النقاش السابق", "الحديث السابق", "موضوعنا الاصلي", "موضوعنا الأصلي",
+            "ارجع الى الموضوع", "ارجع إلى الموضوع", "ارجع للحوار", "ارجع إلى الحوار",
+            "ارجع للنقاش", "ارجع إلى النقاش", "نكمل حوارنا",
             "نكمل كلامنا", "استكمل الحوار", "استكمل كلامنا",
         ))
 

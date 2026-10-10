@@ -473,6 +473,20 @@ def classify_conversation_semantics(
     if agent_signal and intent_value in _NON_EXECUTABLE_INTENTS:
         return agent_signal
 
+    # Returning to a previous dialogue topic is a conversational act even when
+    # the parser tentatively produced resume/history. It must be resolved before
+    # the generic executable-intent fallback below.
+    if _has_any(bases, _RETURN_MARKERS) and _has_any(
+        bases, {"موضوع", "الرئيسي", "السابق", "حوار", "نقاش", "محادثه"}
+    ):
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "TOPIC_RETURN",
+            "confidence": 0.90,
+            "response_attributes": {},
+            "conversational": True,
+        }
+
     # An explicit canonical operation is not demoted by a friendly word or
     # response-style cue embedded in its wording.
     if intent_value and intent_value not in _NON_EXECUTABLE_INTENTS:
@@ -500,16 +514,6 @@ def classify_conversation_semantics(
             "conversation_domain": "general",
             "conversation_act": "CORRECTION",
             "confidence": 0.92,
-            "response_attributes": {},
-            "conversational": True,
-        }
-    if _has_any(bases, _RETURN_MARKERS) and _has_any(
-        bases, {"موضوع", "الرئيسي", "السابق"}
-    ):
-        return {
-            "conversation_domain": "general",
-            "conversation_act": "TOPIC_RETURN",
-            "confidence": 0.90,
             "response_attributes": {},
             "conversational": True,
         }
