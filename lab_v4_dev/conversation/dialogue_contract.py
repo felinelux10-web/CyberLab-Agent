@@ -59,6 +59,9 @@ class DialogueState:
     turns: list[DialogueTurn] = field(default_factory=list)
     last_items: list[Any] = field(default_factory=list)
     context_history: list[dict[str, str]] = field(default_factory=list)
+    # Compact exchange archive used for recall; prompt history remains bounded
+    # separately so long conversations do not leak unbounded context.
+    exchange_archive: list[dict[str, Any]] = field(default_factory=list)
 
     def add_turn(
         self,
@@ -106,4 +109,5 @@ class DialogueState:
             "history": self.history,
             "last_items": list(self.last_items),
             "context_history": [dict(item) for item in self.context_history],
+            "exchange_archive": [dict(item) for item in self.exchange_archive],
         }

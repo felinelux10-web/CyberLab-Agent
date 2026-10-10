@@ -767,6 +767,8 @@ class ConversationManager:
             return None
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
         history = getattr(state, "history", []) if state is not None else []
+        exchanges = getattr(state, "exchange_archive", []) if state is not None else []
+        exchanges = [item for item in (exchanges or []) if isinstance(item, dict)]
         topics = []
         for turn in history or []:
             if not isinstance(turn, dict) or turn.get("role") != "user":
@@ -778,25 +780,19 @@ class ConversationManager:
             if target not in topics:
                 topics.append(target)
         if not topics:
-            dialogue_turns = [
-                turn for turn in (history or [])
-                if isinstance(turn, dict)
-                and turn.get("role") == "user"
-                and (
-                    turn.get("context_kind") in {"dialogue", "social", "personal"}
-                    or turn.get("conversation_domain") in {"general", "social"}
-                    or turn.get("intent") == Intent.PERSONAL_CHAT
-                )
-            ]
-            excerpts = [str(turn.get("content", "")).strip() for turn in dialogue_turns[-4:]]
-            excerpts = [item for item in excerpts if item]
-            if excerpts:
+            dialogue_exchanges = [
+                item for item in exchanges
+                if item.get("context_kind") in {"dialogue", "social", "personal"}
+                or item.get("conversation_domain") in {"general", "social"}
+                or item.get("intent") == Intent.PERSONAL_CHAT
+            ][-6:]
+            if dialogue_exchanges:
                 return {
                     "status": "success", "intent": Intent.MEMORY_DUMP,
                     "source": "dialogue_memory",
-                    "text": "في الحوار السابق كنا نتحدث عبر هذه الرسائل الأخيرة: "
-                    + " | ".join(excerpts),
-                    "dialogue_turns": excerpts,
+                    "text": "في الحوار السابق دار التبادل التالي:\n"
+                    + "\n".join(self._format_dialogue_exchanges(dialogue_exchanges)),
+                    "dialogue_turns": dialogue_exchanges,
                     "executed": False,
                 }
             if history_act == "TOPIC_RETURN":
@@ -807,13 +803,31 @@ class ConversationManager:
                 "text": "لا توجد موضوعات تعليمية مسجلة في الحوار الحالي.",
                 "executed": False,
             }
+        text = "الموضوعات التي نوقشت بالترتيب: " + "، ".join(topics)
+        if history_act == "CONVERSATION_HISTORY_QUERY" and exchanges:
+            text += "\n\nالتبادل الأخير:\n" + "\n".join(
+                self._format_dialogue_exchanges(exchanges[-6:])
+            )
         return {
             "status": "success", "intent": Intent.MEMORY_DUMP,
             "source": "dialogue_memory",
-            "text": "الموضوعات التي نوقشت بالترتيب: " + "، ".join(topics),
+            "text": text,
             "topics": topics,
             "executed": False,
         }
+
+    @staticmethod
+    def _format_dialogue_exchanges(exchanges: list[dict]) -> list[str]:
+        """Render bounded recall with explicit user/assistant roles."""
+        lines = []
+        for item in exchanges:
+            user = str(item.get("user") or "").strip()
+            assistant = str(item.get("assistant") or "").strip()
+            if user:
+                lines.append(f"- المستخدم: {user}")
+            if assistant:
+                lines.append(f"  الوكيل: {assistant[:1200]}")
+        return lines
 
     def _classify_context_transition(
         self,

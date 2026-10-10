@@ -254,3 +254,27 @@ def test_return_to_social_dialogue_does_not_ask_for_work_or_learning_context(mon
     assert result["source"] == "dialogue_memory"
     assert "سياق العمل" not in result["text"]
     assert "موضوع عام عن التقنية" in result["text"]
+
+
+def test_dialogue_recall_contains_both_roles_and_survives_prompt_window(monkeypatch):
+    import lab_v4_dev.conversation.conversation_manager as manager_module
+
+    replies = iter(["اقتراح أول محدد", "اقتراح ثان محدد", "اقتراح ثالث محدد"])
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda *_args, **_kwargs: {"status": "success", "text": next(replies)},
+    )
+    orchestrator = CapturingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+    manager.process("أعطني اقتراحات")
+    manager.process("ماذا أيضًا؟")
+    manager.process("أعطني اقتراحات أكثر")
+
+    result = manager.process("ماذا كنا نقول قبل قليل في الردود السابقة؟")
+    assert result["source"] == "dialogue_memory"
+    assert "اقتراح أول محدد" in result["text"]
+    assert "اقتراح ثان محدد" in result["text"]
+    assert "المستخدم:" in result["text"]
+    assert "الوكيل:" in result["text"]

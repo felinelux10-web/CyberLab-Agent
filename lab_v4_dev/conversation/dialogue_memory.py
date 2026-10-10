@@ -92,6 +92,7 @@ class DialogueMemory:
             "last_topic", "pending_topic", "last_mode", "last_intent",
             "last_target", "last_entity_type", "last_confidence",
             "pending_clarification", "last_items", "context_history",
+            "exchange_archive",
         ):
             if field in snapshot:
                 setattr(restored, field, snapshot[field])
@@ -145,6 +146,22 @@ class DialogueMemory:
         turn_confidence = parsed.get("confidence", result.get("confidence", 0.0))
         relation = getattr(context_transition, "value", context_transition)
         conversation_act = parsed.get("conversation_act")
+        # Keep one compact user/assistant exchange for recall. This survives
+        # the shorter prompt transcript without making every old turn part of
+        # an LLM request. Failed/provider-error responses are not resumable.
+        if result.get("status") == "success" and result.get("text"):
+            exchange = {
+                "user": str(text),
+                "assistant": str(result.get("text")),
+                "intent": getattr(turn_intent, "value", turn_intent),
+                "target": turn_target,
+                "conversation_domain": conversation_domain,
+                "conversation_act": conversation_act or semantic.get("conversation_act", "NONE"),
+                "context_kind": context_kind,
+            }
+            archive = list(getattr(self.state, "exchange_archive", []) or [])
+            archive.append(exchange)
+            self.state.exchange_archive = archive[-12:]
         preserve_active_subject = bool(
             self.state.last_topic
             and not turn_target
