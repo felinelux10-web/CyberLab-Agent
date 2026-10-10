@@ -35,9 +35,10 @@ def _append_recent_archive(data: dict) -> None:
     summary = {key: data.get(key)
         for key in (
             "schema_version", "session_id", "created_at", "updated_at", "timestamp", "title",
-            "session_type", "status", "project", "summary", "active_goal",
-            "completed_work", "next_step", "last_files", "decisions",
-            "open_questions", "project_root",
+            "session_type", "status", "project", "summary", "topic", "current_state",
+            "active_goal", "completed_work", "confirmed_achievements", "last_completed_step",
+            "pending_tasks", "next_step", "last_files", "relevant_files", "decisions",
+            "open_questions", "project_root", "last_updated",
         )
         if key in data
     }
@@ -105,8 +106,9 @@ def _load_session_detail(session_id: str) -> dict:
 
 def _session_text(item: dict) -> str:
     fields = (
-        "title", "project", "session_type", "status", "summary",
-        "active_goal", "next_step", "completed_work", "decisions", "open_questions",
+        "title", "project", "session_type", "status", "topic", "current_state",
+        "active_goal", "next_step", "completed_work", "confirmed_achievements",
+        "decisions", "open_questions",
     )
     return " ".join(str(item.get(field, "")) for field in fields).casefold()
 
@@ -132,7 +134,7 @@ def search_sessions(query: str = "", *, status: str | None = None,
             continue
         score = 0
         if needle:
-            for key in ("title", "project", "active_goal", "summary", "next_step"):
+            for key in ("title", "project", "topic", "active_goal", "next_step"):
                 field = str(item.get(key, "")).casefold()
                 matched_tokens = sum(contains_token(field, token) for token in tokens)
                 if needle in field or matched_tokens:
@@ -229,9 +231,6 @@ def save_session(active_goal: str = None, completed: list = None,
         data["decisions"] = list(decisions)
     if open_questions is not None:
         data["open_questions"] = list(open_questions)
-    if not data["summary"]:
-        completed_text = "، ".join(str(item) for item in data["completed_work"][:3]) or "لا توجد إنجازات مسجلة"
-        data["summary"] = f"الهدف: {data['active_goal'] or 'غير مسجل'}؛ أُنجز: {completed_text}؛ التوقف: {data['next_step'] or 'غير محدد'}"
     _enrich_session_fields(data)
     # المسار الرئيسي: project_knowledge (Single Writer)
     # الـ fallback: كتابة مباشرة فقط عند فشل الاستيراد (استثناء معروف)
@@ -257,6 +256,7 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
     """Persist a bounded checkpoint without replacing existing work metadata."""
     existing = load_session()
     data = dict(existing or {})
+    next_step_provided = bool(str(next_step or "").strip())
     now = datetime.now().isoformat()
     data.update({
         "schema_version": data.get("schema_version", SESSION_SCHEMA_VERSION),
@@ -271,7 +271,17 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
     data.setdefault("created_at", data.get("timestamp"))
     data.setdefault("title", data.get("active_goal") or "جلسة غير معنونة")
     data.setdefault("session_type", "mixed" if dialogue_state and context_state else "work")
-    data.setdefault("status", "paused" if data.get("next_step") else "completed")
+    previous_status = str(data.get("status") or "").casefold()
+    last_result = (context_state or data.get("context_state") or {}).get("last_result", {})
+    last_result_status = str(last_result.get("status") if isinstance(last_result, dict) else "").casefold()
+    if last_result_status in {"failed", "error"}:
+        data["status"] = "failed"
+    elif next_step_provided:
+        data["status"] = "paused"
+    elif previous_status in {"completed", "paused", "failed", "active"}:
+        data["status"] = previous_status
+    else:
+        data["status"] = "completed" if not data.get("next_step") else "paused"
     data.setdefault("project", project_root or data.get("project_root", ""))
     data.setdefault("summary", "")
     if dialogue_state is not None:
@@ -284,9 +294,6 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
         data["decisions"] = list(decisions)
     if open_questions is not None:
         data["open_questions"] = list(open_questions)
-    if not data["summary"]:
-        completed_text = "، ".join(str(item) for item in data.get("completed_work", [])[:3]) or "لا توجد إنجازات مسجلة"
-        data["summary"] = f"الهدف: {data.get('active_goal') or 'غير مسجل'}؛ أُنجز: {completed_text}؛ التوقف: {data.get('next_step') or 'غير محدد'}"
     _enrich_session_fields(data)
     try:
         from lab_v4_dev.awareness.project_knowledge import save_session as pk_save
@@ -369,6 +376,44 @@ def _as_clean_list(value) -> list[str]:
     return [str(item).strip() for item in value if str(item).strip()]
 
 
+def _evidence_labels(value) -> list[str]:
+    """Return labels only from structured, positive evidence records."""
+    labels = []
+    proposal_markers = ("اقترح", "اقتراح", "يمكن", "ينبغي", "يجب", "سوف", "قد ن", "ربما")
+    items = value if isinstance(value, (list, tuple)) else ([value] if value else [])
+    for item in items:
+        if isinstance(item, dict):
+            status = str(item.get("status") or item.get("result") or "").casefold()
+            verified = item.get("verified") is True or item.get("passed") is True or item.get("executed") is True
+            positive = status in {"success", "passed", "pass", "verified", "completed", "ok"}
+            if not (verified or positive):
+                continue
+            label = item.get("label") or item.get("step") or item.get("action") or item.get("intent") or item.get("step_id")
+            if label:
+                labels.append(str(label).strip())
+            continue
+        text = str(item).strip()
+        if text and not any(marker in text for marker in proposal_markers):
+            labels.append(text)
+    return list(dict.fromkeys(label for label in labels if label))
+
+
+def _structured_topics(dialogue: dict) -> list[str]:
+    topics = []
+    for key in ("exchange_archive", "history", "turns"):
+        records = dialogue.get(key, [])
+        if not isinstance(records, list):
+            continue
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            for field in ("target", "topic", "entity", "subject"):
+                value = str(record.get(field) or "").strip()
+                if value and value not in topics:
+                    topics.append(value)
+    return topics
+
+
 def analyze_session(data: dict | None = None) -> dict:
     """Derive a grounded semantic report without exposing transcript content."""
     session = data if isinstance(data, dict) else load_session()
@@ -383,48 +428,49 @@ def analyze_session(data: dict | None = None) -> dict:
     if not isinstance(result, dict):
         result = {}
 
-    topic = (
-        session.get("topic") or dialogue.get("last_topic") or context.get("subject")
-        or context.get("current_subject") or session.get("active_goal")
-    )
+    structured_topics = _structured_topics(dialogue)
+    topic = (dialogue.get("last_topic") or context.get("subject")
+             or context.get("current_subject") or (structured_topics[-1] if structured_topics else None)
+             or session.get("topic") or session.get("active_goal"))
     goal = session.get("active_goal") or context.get("current_subject")
-    completed = _as_clean_list(session.get("completed_work"))
-    confirmed = _as_clean_list(session.get("confirmed_achievements"))
+    completed = _evidence_labels(session.get("completed_work"))
+    confirmed = _evidence_labels(session.get("confirmed_achievements"))
     if not confirmed:
         confirmed = list(completed)
-    # Only an explicitly successful execution is promoted to a confirmed result.
+    for field in ("execution_results", "test_results", "verified_results", "results"):
+        for label in _evidence_labels(session.get(field)):
+            if label not in confirmed:
+                confirmed.append(label)
     if result.get("status") == "success" and result.get("executed") is True:
-        intent = str(result.get("intent") or context.get("last_intent") or "").strip()
-        if intent:
-            marker = f"اكتمل تنفيذ العملية: {intent}"
-            if marker not in confirmed:
-                confirmed.append(marker)
+        label = result.get("label") or result.get("action") or result.get("intent") or context.get("last_intent")
+        if label and str(label).strip() not in confirmed:
+            confirmed.append(str(label).strip())
+
     last_result_status = str(result.get("status") or "").casefold()
-    status = str(session.get("status") or "").strip()
-    if not status:
-        status = "failed" if last_result_status in {"failed", "error"} else "paused" if session.get("next_step") else "completed" if confirmed else "active"
-    last_completed = session.get("last_completed_step")
-    if not last_completed:
-        last_completed = confirmed[-1] if confirmed else "غير محدد من البيانات المتاحة"
+    status = str(session.get("status") or "").casefold()
+    if status not in {"completed", "paused", "failed", "active", "running"}:
+        status = ""
+    if last_result_status in {"failed", "error"}:
+        status = "failed"
+    elif session.get("next_step") and status == "completed":
+        status = "paused"
+    elif not status:
+        status = "paused" if session.get("next_step") else "completed" if confirmed else "active"
+
     pending = _as_clean_list(session.get("pending_tasks"))
     if not pending:
         pending = _as_clean_list(session.get("open_questions"))
-    if not pending and session.get("next_step"):
-        pending = [str(session.get("next_step")).strip()]
-    next_step = session.get("next_step") or (pending[0] if pending else "غير محدد من البيانات المتاحة")
+    next_step = str(session.get("next_step") or (pending[0] if pending else "غير محدد من البيانات المتاحة")).strip()
+    if next_step != "غير محدد من البيانات المتاحة" and next_step not in pending:
+        pending.insert(0, next_step)
     files = _as_clean_list(session.get("relevant_files"))
     for item in [*_as_clean_list(session.get("last_files")), context.get("current_file")]:
         item = str(item or "").strip()
         if item and item not in files:
             files.append(item)
     decisions = _as_clean_list(session.get("decisions"))
-    topics = []
-    context_history = dialogue.get("context_history", [])
-    if not isinstance(context_history, list):
-        context_history = []
-    for item in [dialogue.get("last_topic"), topic, *context_history]:
-        if isinstance(item, dict):
-            item = item.get("entity")
+    topics = structured_topics
+    for item in [dialogue.get("last_topic"), context.get("subject"), context.get("current_subject"), topic]:
         item = str(item or "").strip()
         if item and item not in topics:
             topics.append(item)
@@ -432,28 +478,31 @@ def analyze_session(data: dict | None = None) -> dict:
     if not session_type:
         intent = str(context.get("last_intent") or "").casefold()
         session_type = "educational" if intent in {"cyber_explain", "analyze_code"} and not files else "programming" if files or intent in {"modify_code", "generate_code", "run_tests"} else "planning"
-    current_state = session.get("current_state") or (
-        "فشلت آخر عملية مثبتة" if status == "failed" else "المهمة متوقفة عند الخطوة التالية" if status == "paused" else "المهمة مكتملة حسب البيانات المحفوظة" if status == "completed" else "العمل جارٍ"
-    )
+    current_state = {
+        "failed": "فشلت آخر عملية مثبتة",
+        "paused": "المهمة متوقفة عند الخطوة التالية",
+        "completed": "المهمة مكتملة حسب الأدلة المحفوظة",
+        "running": "المهمة قيد التنفيذ",
+        "active": "المهمة نشطة دون نقطة توقف تنفيذية",
+    }.get(status, "غير محدد من البيانات المتاحة")
     return {
         "session_id": session.get("session_id") or "غير محدد من البيانات المتاحة",
         "topic": str(topic or "غير محدد من البيانات المتاحة"),
         "active_goal": str(goal or "غير محدد من البيانات المتاحة"),
         "session_type": session_type,
         "status": status,
-        "current_state": str(current_state),
+        "current_state": current_state,
         "completed_work": completed,
         "confirmed_achievements": confirmed,
-        "last_completed_step": str(last_completed),
+        "last_completed_step": confirmed[-1] if confirmed else "غير محدد من البيانات المتاحة",
         "pending_tasks": pending,
-        "next_step": str(next_step),
+        "next_step": next_step,
         "relevant_files": files,
         "decisions": decisions,
         "open_questions": _as_clean_list(session.get("open_questions")),
         "topics": topics,
         "last_updated": session.get("updated_at") or session.get("timestamp") or "غير محدد من البيانات المتاحة",
     }
-
 
 def build_session_restore_summary(data: dict | None = None, *, report_mode: str = "standard") -> str:
     """Render a grounded semantic report; never render the saved transcript."""
@@ -514,6 +563,13 @@ def build_session_restore_summary(data: dict | None = None, *, report_mode: str 
 
 def _enrich_session_fields(data: dict) -> dict:
     """Persist semantic fields so later reports do not depend on live context."""
+    # These fields are derived outputs.  Remove their previous values first so
+    # a checkpoint cannot keep a stale topic, state, or generic summary.
+    for key in (
+        "topic", "current_state", "last_completed_step", "pending_tasks",
+        "relevant_files", "last_updated", "summary",
+    ):
+        data.pop(key, None)
     report = analyze_session(data)
     data.update({
         "topic": report["topic"],
@@ -524,12 +580,7 @@ def _enrich_session_fields(data: dict) -> dict:
         "confirmed_achievements": report["confirmed_achievements"],
         "last_updated": report["last_updated"],
     })
-    if not data.get("summary"):
-        data["summary"] = (
-            f"الموضوع: {report['topic']}؛ الحالة: {report['status']}؛ "
-            f"آخر إنجاز مؤكد: {report['last_completed_step']}؛ "
-            f"الخطوة التالية: {report['next_step']}"
-        )
+    data["summary"] = build_session_restore_summary(data)
     return data
 
 def clear_session():

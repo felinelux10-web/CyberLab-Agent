@@ -269,3 +269,67 @@ def test_session_report_commands_extract_clean_query_and_report_mode():
     )
     assert request == {"kind": "search", "query": "SQL Injection", "report_mode": "compact"}
     assert session_selector("استعد جلسة بمعرّف semantic-1")["kind"] == "id"
+
+
+def test_long_multi_topic_session_extracts_structured_content_not_transcript():
+    from lab_v4_dev.memory.session_state import analyze_session, build_session_restore_summary
+
+    session = {
+        "session_id": "long-1", "active_goal": "إكمال إصلاح الاستعادة", "status": "paused",
+        "next_step": "تشغيل الاختبارات النهائية", "decisions": ["عدم التنفيذ التلقائي"],
+        "completed_work": ["إصلاح محلل النوايا", "اقترح إضافة تحسين لاحق"],
+        "execution_results": [{"status": "success", "action": "write_file"}],
+        "test_results": [{"status": "passed", "label": "اختبارات الاستمرارية"}],
+        "dialogue_state": {"last_topic": "استعادة الجلسات", "exchange_archive": [
+            {"target": "تحليل النوايا", "user": "رسالة سرية 1"},
+            {"target": "فهرسة الجلسات", "user": "رسالة سرية 2"},
+            {"target": "استعادة الجلسات", "user": "رسالة سرية 3"},
+        ]},
+    }
+    report = analyze_session(session)
+    assert {"تحليل النوايا", "فهرسة الجلسات", "استعادة الجلسات"} <= set(report["topics"])
+    assert "write_file" in report["confirmed_achievements"]
+    assert "اختبارات الاستمرارية" in report["confirmed_achievements"]
+    assert "اقترح إضافة تحسين لاحق" not in report["confirmed_achievements"]
+    rendered = build_session_restore_summary(session)
+    assert "رسالة سرية 1" not in rendered and "رسالة سرية 2" not in rendered
+
+
+def test_checkpoint_rebuilds_summary_and_changes_completed_to_paused(monkeypatch, tmp_path):
+    import lab_v4_dev.memory.session_state as session_state
+
+    monkeypatch.setattr(session_state, "_session_file", lambda: str(tmp_path / "session.json"))
+    monkeypatch.setattr(session_state, "_archive_file", lambda: str(tmp_path / "archive.json"))
+    monkeypatch.setattr(session_state, "_details_dir", lambda: str(tmp_path / "details"))
+    monkeypatch.setattr(session_state, "_write_session_detail", lambda _data: None)
+    monkeypatch.setattr("lab_v4_dev.awareness.project_knowledge.save_session", lambda _data: None)
+    first = session_state.save_session(
+        active_goal="مهمة مكتملة", completed=["تم التنفيذ"], status="completed",
+        dialogue_state={"last_topic": "الموضوع الأول"}, summary="ملخص قديم يجب ألا يبقى",
+    )
+    assert "ملخص قديم" not in first["summary"]
+    monkeypatch.setattr(session_state, "load_session", lambda: first)
+    updated = session_state.save_recoverable_checkpoint(
+        active_goal="مهمة مستأنفة", next_step="متابعة الاختبار",
+        context_state={"last_intent": "run_tests"},
+    )
+    assert updated["status"] == "paused"
+    assert "متابعة الاختبار" in updated["summary"]
+    assert "مهمة مستأنفة" in updated["summary"]
+
+
+def test_failed_result_is_not_reported_as_success_and_sessions_do_not_mix():
+    from lab_v4_dev.memory.session_state import analyze_session, build_session_restore_summary
+
+    failed = {"session_id": "failed-1", "active_goal": "مهمة أ", "status": "failed",
+              "context_state": {"last_result": {"status": "failed", "action": "run_tests"}},
+              "dialogue_state": {"exchange_archive": [{"target": "موضوع أ", "user": "سر أ"}]}}
+    other = {"session_id": "other-1", "active_goal": "مهمة ب", "status": "completed",
+             "execution_results": [{"status": "success", "label": "نتيجة ب"}],
+             "dialogue_state": {"exchange_archive": [{"target": "موضوع ب", "user": "سر ب"}]}}
+    assert analyze_session(failed)["status"] == "failed"
+    assert not analyze_session(failed)["confirmed_achievements"]
+    assert analyze_session(other)["topic"] == "موضوع ب"
+    assert "موضوع أ" not in build_session_restore_summary(other)
+    assert "سر أ" not in build_session_restore_summary(failed)
+    assert "سر ب" not in build_session_restore_summary(other)
