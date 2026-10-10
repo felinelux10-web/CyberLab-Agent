@@ -199,6 +199,7 @@ def test_project_word_inside_social_sentence_does_not_trigger_project_scan():
         assert parsed["intent"] != Intent.PROJECT_SCAN
 
     assert parse("ما هو المشروع الحالي")["intent"] == Intent.SWITCH_PROJECT
+    assert parse("ما هي المشاريع التي اشتغلت عليها فعليا")["intent"] == Intent.PROJECT_INDEX
 
 
 def test_previous_dialogue_phrases_are_not_operational_history():

@@ -468,6 +468,21 @@ def _project_mention_without_request(user_input: str) -> bool:
     return bool(tokens & {"مشروع", "المشروع", "project", "repository", "cyberlab"}) and not _has_project_request_evidence(user_input)
 
 
+def _project_history_intent(user_input: str):
+    """Resolve project-history questions from grammatical roles, not phrases."""
+    text = normalize(user_input).casefold()
+    tokens = set(re.findall(r"[\w]+", text, flags=re.UNICODE))
+    project_terms = {"مشروع", "المشروع", "مشاريع", "المشاريع", "project", "projects"}
+    work_terms = {"اشتغل", "اشتغلت", "اشتغلنا", "عمل", "عملت", "عملنا", "يعمل", "يشتغل"}
+    if not (tokens & project_terms and tokens & work_terms):
+        return None
+    if tokens & {"مشاريع", "المشاريع", "projects"}:
+        return Intent.PROJECT_INDEX
+    if tokens & {"اخر", "آخر", "السابق", "سابق"}:
+        return Intent.LAST_PROJECT
+    return Intent.PROJECT_INDEX
+
+
 
 # ============================================================
 # P04 / Canonical Intent Contract Boundary
@@ -539,6 +554,19 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
             "raw": user_input,
             "source": "meta_question",
             "entity_type": "CONVERSATION",
+        }
+
+    project_history_intent = _project_history_intent(user_input)
+    if project_history_intent is not None:
+        return {
+            "intent": project_history_intent,
+            "target": "",
+            "context": "project_level",
+            "confidence": 0.93,
+            "raw": user_input,
+            "source": "project_history_semantics",
+            "entity_type": "PROJECT",
+            "semantic_pattern": "PROJECT_HISTORY_QUERY",
         }
 
     # A project noun inside a social/meta sentence is not a project command.
