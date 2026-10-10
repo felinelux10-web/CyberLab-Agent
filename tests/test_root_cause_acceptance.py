@@ -185,3 +185,50 @@ def test_session_summary_falls_back_to_legacy_turns():
     })
     assert "المستخدم: اشرح الفكرة" in summary
     assert "الوكيل: توقفنا عند المثال" in summary
+
+
+def test_session_index_keeps_twenty_sessions_and_restores_old_details(monkeypatch, tmp_path):
+    import lab_v4_dev.memory.session_state as session_state
+
+    archive = tmp_path / "session_archive.json"
+    details = tmp_path / "sessions"
+    monkeypatch.setattr(session_state, "_archive_file", lambda: str(archive))
+    monkeypatch.setattr(session_state, "_details_dir", lambda: str(details))
+    monkeypatch.setattr(session_state, "_session_file", lambda: str(tmp_path / "session_state.json"))
+
+    saved = []
+    for index in range(25):
+        item = session_state.save_session(
+            active_goal=f"موضوع الجلسة {index}",
+            completed=[f"إنجاز {index}"],
+            next_step=f"خطوة {index}",
+            title=f"جلسة موضوع {index}",
+            project="CyberLab Agent" if index == 3 else "Other Project",
+            dialogue_state={"exchange_archive": [{"user": f"سؤال {index}", "assistant": f"جواب {index}"}]},
+        )
+        saved.append(item)
+
+    assert len(session_state.get_session_index()) == 25
+    matches = session_state.search_sessions("موضوع الجلسة 3")
+    assert matches and matches[0]["session_id"] == saved[3]["session_id"]
+    restored = session_state.get_session_by_id(saved[3]["session_id"])
+    assert restored["active_goal"] == "موضوع الجلسة 3"
+    assert restored["dialogue_state"]["exchange_archive"][0]["assistant"] == "جواب 3"
+
+
+def test_natural_project_session_return_reaches_session_selector():
+    class CapturingOrchestrator:
+        def __init__(self):
+            self.context = ContextStore()
+            self.calls = []
+
+        def handle(self, *args, **kwargs):
+            self.calls.append(kwargs)
+            return {"status": "success", "intent": Intent.SESSION_RESTORE, "text": "تم الاختبار"}
+
+    orchestrator = CapturingOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+    result = manager.process("أريد العودة إلى جلسة مشروع CyberLab Agent")
+    assert result["status"] == "success"
+    assert orchestrator.calls[-1]["parsed"]["intent"] == Intent.SESSION_RESTORE
+    assert orchestrator.calls[-1]["parsed"]["session_selector"]["kind"] == "search"

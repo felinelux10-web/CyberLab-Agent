@@ -3,6 +3,8 @@
 
 import json
 import os
+import re
+import uuid
 from datetime import datetime
 
 def _session_file() -> str:
@@ -11,6 +13,8 @@ def _session_file() -> str:
 
 
 MAX_RECENT_SESSIONS = 5
+MAX_SESSION_INDEX = 100
+SESSION_SCHEMA_VERSION = 2
 
 
 def _archive_file() -> str:
@@ -19,7 +23,7 @@ def _archive_file() -> str:
 
 
 def _append_recent_archive(data: dict) -> None:
-    """Keep compact summaries only; never archive the bounded transcript."""
+    """Keep a searchable compact index; never archive the transcript here."""
     path = _archive_file()
     try:
         with open(path, encoding="utf-8") as f:
@@ -28,11 +32,12 @@ def _append_recent_archive(data: dict) -> None:
         archive = []
     if not isinstance(archive, list):
         archive = []
-    summary = {
-        key: data.get(key)
+    summary = {key: data.get(key)
         for key in (
-            "session_id", "timestamp", "active_goal", "completed_work",
-            "next_step", "last_files", "decisions", "open_questions", "project_root",
+            "schema_version", "session_id", "created_at", "updated_at", "timestamp", "title",
+            "session_type", "status", "project", "summary", "active_goal",
+            "completed_work", "next_step", "last_files", "decisions",
+            "open_questions", "project_root",
         )
         if key in data
     }
@@ -40,7 +45,8 @@ def _append_recent_archive(data: dict) -> None:
         archive[-1] = summary
     else:
         archive.append(summary)
-    archive = archive[-MAX_RECENT_SESSIONS:]
+    # The archive is the durable searchable index. The UI helper below still
+    # returns only a small recent window for mobile/Termux memory limits.
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(archive, f, ensure_ascii=False, indent=2)
@@ -54,15 +60,140 @@ def get_recent_sessions() -> list:
     except Exception:
         return []
 
+
+def get_session_index() -> list:
+    """Load the compact durable index without loading dialogue transcripts."""
+    try:
+        with open(_archive_file(), encoding="utf-8") as f:
+            data = json.load(f)
+        return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _details_dir() -> str:
+    from lab_v4_dev.core.project_context import project_data_dir
+    return os.path.join(project_data_dir(), "sessions")
+
+
+def _detail_file(session_id: str) -> str:
+    safe_id = "".join(ch for ch in str(session_id or "") if ch.isalnum() or ch in "_-." )
+    return os.path.join(_details_dir(), f"{safe_id}.json")
+
+
+def _write_session_detail(data: dict) -> None:
+    session_id = str(data.get("session_id") or "").strip()
+    if not session_id:
+        return
+    path = _detail_file(session_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temporary = f"{path}.tmp"
+    with open(temporary, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(temporary, path)
+
+
+def _load_session_detail(session_id: str) -> dict:
+    path = _detail_file(session_id)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _session_text(item: dict) -> str:
+    fields = (
+        "title", "project", "session_type", "status", "summary",
+        "active_goal", "next_step", "completed_work", "decisions", "open_questions",
+    )
+    return " ".join(str(item.get(field, "")) for field in fields).casefold()
+
+
+def search_sessions(query: str = "", *, status: str | None = None,
+                    project: str | None = None, limit: int = 10) -> list:
+    """Search compact session metadata; details are loaded only after selection."""
+    needle = str(query or "").strip().casefold()
+    stop_words = {"جلسة", "الجلسة", "جلسه", "التي", "كنا", "في", "على", "إلى", "الى", "أريد", "اريد", "العودة", "ارجع", "استعد", "استرجع", "مشروع"}
+    tokens = [token for token in needle.split() if token not in stop_words and len(token) > 0]
+    def contains_token(field: str, token: str) -> bool:
+        if token.isdigit():
+            return bool(re.search(rf"(?<!\d){re.escape(token)}(?!\d)", field))
+        return token in field
+    results = []
+    for item in reversed(get_session_index()):
+        if status and str(item.get("status", "")).casefold() != str(status).casefold():
+            continue
+        if project and str(project).casefold() not in _session_text(item):
+            continue
+        haystack = _session_text(item)
+        if needle and needle not in haystack and not (tokens and all(contains_token(haystack, token) for token in tokens)):
+            continue
+        score = 0
+        if needle:
+            for key in ("title", "project", "active_goal", "summary", "next_step"):
+                field = str(item.get(key, "")).casefold()
+                matched_tokens = sum(contains_token(field, token) for token in tokens)
+                if needle in field or matched_tokens:
+                    score += (3 if key in {"title", "project", "active_goal"} else 1) * max(1, matched_tokens)
+        results.append({**item, "match_score": score})
+        if len(results) >= max(1, int(limit)):
+            break
+    return sorted(results, key=lambda item: (item.get("match_score", 0), item.get("updated_at", item.get("timestamp", ""))), reverse=True)
+
+
+def get_session_by_id(session_id: str) -> dict:
+    """Return the full selected session, never a different current session."""
+    wanted = str(session_id or "").strip()
+    if not wanted:
+        return {}
+    current = load_session()
+    if isinstance(current, dict) and current.get("session_id") == wanted:
+        return current
+    detail = _load_session_detail(wanted)
+    if detail:
+        return detail
+    for item in get_session_index():
+        if item.get("session_id") == wanted:
+            return item
+    return {}
+
+
+def session_selector(raw: str) -> dict:
+    """Classify explicit session selection language without an LLM."""
+    text = str(raw or "").strip().casefold()
+    if any(token in text for token in ("الجلسات المعلقة", "جلسات معلقة", "المهام المعلقة")):
+        return {"kind": "status", "status": "paused"}
+    if any(token in text for token in ("آخر جلسة", "اخر جلسة", "الجلسة الأخيرة", "الجلسه الاخيره")):
+        return {"kind": "latest"}
+    if any(token in text for token in ("جلسة مشروع", "جلسه مشروع", "جلسة إصلاح", "جلسة اختبار", "جلسه اختبار", "جلسة التي", "جلسه التي")):
+        return {"kind": "search", "query": text}
+    if any(token in text for token in ("لخص ما فعلناه", "ملخص الجلسة", "ملخص جلسة", "استكمل الجلسة", "استرجع الجلسة", "استعد الجلسة", "استكمال الجلسة")):
+        return {"kind": "latest"}
+    return {"kind": "none"}
+
 def save_session(active_goal: str = None, completed: list = None,
                  next_step: str = None, last_files: list = None,
                  version: str = "unknown", *, dialogue_state: dict = None,
                  context_state: dict = None, project_root: str = None,
-                 decisions: list = None, open_questions: list = None):
+                 decisions: list = None, open_questions: list = None,
+                 title: str = None, session_type: str = None,
+                 status: str = None, project: str = None,
+                 summary: str = None):
+    now = datetime.now().isoformat()
     data = {
-        "session_id"   : datetime.now().strftime("%Y%m%d_%H%M%S"),
+        "schema_version": SESSION_SCHEMA_VERSION,
+        "session_id"   : f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid.uuid4().hex[:8]}",
         "version"      : version,
-        "timestamp"    : datetime.now().isoformat(),
+        "created_at"   : now,
+        "updated_at"   : now,
+        "timestamp"    : now,
+        "title"        : title or active_goal or "جلسة غير معنونة",
+        "session_type" : session_type or ("mixed" if dialogue_state and context_state else "dialogue" if dialogue_state else "work"),
+        "status"       : status or ("paused" if next_step else "completed"),
+        "project"      : project or project_root or "",
+        "summary"      : summary or "",
         "active_goal"  : active_goal or "",
         "completed_work": completed or [],
         "next_step"    : next_step or "",
@@ -78,6 +209,9 @@ def save_session(active_goal: str = None, completed: list = None,
         data["decisions"] = list(decisions)
     if open_questions is not None:
         data["open_questions"] = list(open_questions)
+    if not data["summary"]:
+        completed_text = "، ".join(str(item) for item in data["completed_work"][:3]) or "لا توجد إنجازات مسجلة"
+        data["summary"] = f"الهدف: {data['active_goal'] or 'غير مسجل'}؛ أُنجز: {completed_text}؛ التوقف: {data['next_step'] or 'غير محدد'}"
     # المسار الرئيسي: project_knowledge (Single Writer)
     # الـ fallback: كتابة مباشرة فقط عند فشل الاستيراد (استثناء معروف)
     try:
@@ -89,6 +223,7 @@ def save_session(active_goal: str = None, completed: list = None,
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+    _write_session_detail(data)
     _append_recent_archive(data)
     return data
 
@@ -101,14 +236,23 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
     """Persist a bounded checkpoint without replacing existing work metadata."""
     existing = load_session()
     data = dict(existing or {})
+    now = datetime.now().isoformat()
     data.update({
-        "session_id": data.get("session_id") or datetime.now().strftime("%Y%m%d_%H%M%S"),
-        "timestamp": datetime.now().isoformat(),
+        "schema_version": data.get("schema_version", SESSION_SCHEMA_VERSION),
+        "session_id": data.get("session_id") or f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid.uuid4().hex[:8]}",
+        "updated_at": now,
+        "timestamp": now,
         "version": version or data.get("version", "unknown"),
         "active_goal": active_goal or data.get("active_goal", ""),
         "next_step": next_step or data.get("next_step", ""),
         "last_files": list(last_files or data.get("last_files", [])),
     })
+    data.setdefault("created_at", data.get("timestamp"))
+    data.setdefault("title", data.get("active_goal") or "جلسة غير معنونة")
+    data.setdefault("session_type", "mixed" if dialogue_state and context_state else "work")
+    data.setdefault("status", "paused" if data.get("next_step") else "completed")
+    data.setdefault("project", project_root or data.get("project_root", ""))
+    data.setdefault("summary", "")
     if dialogue_state is not None:
         data["dialogue_state"] = dialogue_state
     if context_state is not None:
@@ -119,6 +263,9 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
         data["decisions"] = list(decisions)
     if open_questions is not None:
         data["open_questions"] = list(open_questions)
+    if not data["summary"]:
+        completed_text = "، ".join(str(item) for item in data.get("completed_work", [])[:3]) or "لا توجد إنجازات مسجلة"
+        data["summary"] = f"الهدف: {data.get('active_goal') or 'غير مسجل'}؛ أُنجز: {completed_text}؛ التوقف: {data.get('next_step') or 'غير محدد'}"
     try:
         from lab_v4_dev.awareness.project_knowledge import save_session as pk_save
         pk_save(data)
@@ -127,6 +274,7 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+    _write_session_detail(data)
     _append_recent_archive(data)
     return data
 

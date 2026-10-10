@@ -184,6 +184,19 @@ class ConversationManager:
             if confirmation_intent is not None
         else self._safe_parse(user_input)
         )
+        from lab_v4_dev.memory.session_state import session_selector
+        selected_session = session_selector(user_input)
+        if selected_session.get("kind") != "none":
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.SESSION_RESTORE,
+                "target": "",
+                "context": "system",
+                "session_selector": selected_session,
+                "conversation_domain": "system",
+                "conversation_act": "ASSISTANT_STATE_QUERY",
+                "source": "session_selector",
+            })
         # The raw semantic signal is an authority boundary: a dialogue-history
         # or continuation turn must not be hijacked by HISTORY/CONTEXT_REPORT/
         # RESUME parser fallbacks before DialogueMemory sees it.
@@ -251,6 +264,17 @@ class ConversationManager:
                     candidate["intent"] = Intent.CYBER_EXPLAIN
                     candidate["entity_type"] = "CONCEPT"
                     candidate["conversation_domain"] = "technical"
+        if selected_session.get("kind") != "none":
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.SESSION_RESTORE,
+                "target": "",
+                "context": "system",
+                "session_selector": selected_session,
+                "conversation_domain": "system",
+                "conversation_act": "ASSISTANT_STATE_QUERY",
+                "source": "session_selector",
+            })
         self._clear_unrelated_execution_file(transition, candidate)
         resolved_input = user_input
         parsed = candidate

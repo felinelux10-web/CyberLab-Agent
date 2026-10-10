@@ -114,25 +114,25 @@ class Agent:
 
         # 7. Auto Context Restore (v4.8)
         try:
-            from lab_v4_dev.memory.session_state import load_session
+            from lab_v4_dev.memory.session_state import load_session, recoverable_work_checkpoint
             from lab_v4_dev.data.project_timeline import init_timeline
             init_timeline()
             s = load_session()
             self._pending_session = s if isinstance(s, dict) else None
-            checkpoint_intent = str(
-                (s.get("context_state") or {}).get("last_intent") or ""
-            ).casefold() if isinstance(s, dict) else ""
-            # A legacy checkpoint with only a generic goal (for example
-            # "مشروع") is not enough evidence for an actionable resume.
-            # Show the boot prompt only for an explicitly recoverable work
-            # intent; dialogue/project discovery must remain silent here.
-            if s and s.get("active_goal") and checkpoint_intent in _RECOVERABLE_EXECUTION_INTENTS:
+            recoverable = recoverable_work_checkpoint(s) if isinstance(s, dict) else None
+            if s and s.get("session_id", s.get("active_goal")):
                 print(f"\n[v4.8] جلسة سابقة موجودة:")
-                print(f"  الهدف   : {s.get('active_goal','?')}")
-                print(f"  الخطوة  : {s.get('next_step','?')}")
-                print(f"  اكتب 'استكمل الجلسة' للاسترجاع أو تجاهل الرسالة للبدء من جديد")
-        except:
-            pass
+                print(f"  المعرّف : {s.get('session_id','?')}")
+                print(f"  النوع   : {s.get('session_type','غير محدد')}")
+                print(f"  الحالة  : {s.get('status','محفوظة')}")
+                if recoverable:
+                    print(f"  المهمة  : {recoverable.get('goal','?')}")
+                    print(f"  الخطوة  : {recoverable.get('next_step','?')}")
+                    print("  اكتب 'استكمل العمل' للاستعادة دون تنفيذ تلقائي")
+                else:
+                    print("  هذه جلسة محفوظة للحوار/المراجعة وليست مهمة تنفيذية جاهزة للاستئناف")
+        except Exception as exc:
+            log.warning(f"Session discovery skipped: {exc}")
 
         log.info("=== AGENT READY ===")
         return True
@@ -189,7 +189,15 @@ class Agent:
         """Restore only the explicit bounded checkpoint, never implicit history."""
         try:
             from lab_v4_dev.memory.session_state import load_session
-            saved = load_session()
+            return self.restore_session_snapshot(load_session())
+        except Exception as exc:
+            log.warning(f"Session context restore skipped: {exc}")
+            return False
+
+    def restore_session_snapshot(self, saved: dict | None) -> bool:
+        """Restore the explicitly selected session, not merely the latest one."""
+        try:
+            saved = saved if isinstance(saved, dict) else {}
             restored = False
             if self.dialogue_memory:
                 restored = self.dialogue_memory.restore_snapshot(

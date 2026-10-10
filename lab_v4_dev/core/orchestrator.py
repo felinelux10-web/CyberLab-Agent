@@ -146,6 +146,8 @@ class Orchestrator:
             route_kwargs["conversation_history"] = conversation_history
         if "context_transition" in route_parameters:
             route_kwargs["context_transition"] = context_transition
+        if "session_selector" in route_parameters:
+            route_kwargs["session_selector"] = parsed.get("session_selector")
         result = self._route(intent, target, ctx_hint, raw_request, **route_kwargs)
         if _rt:
             try:
@@ -239,6 +241,7 @@ class Orchestrator:
         response_attributes: dict | None = None,
         conversation_history: list | None = None,
         context_transition: str | None = None,
+        session_selector: dict | None = None,
     ) -> dict:
 
         # ─── Response Cache ───
@@ -1703,9 +1706,41 @@ SOURCE CODE:
         elif intent in (Intent.RESUME, Intent.SESSION_RESTORE):
             from lab_v4_dev.memory.session_state import (
                 load_session, recoverable_work_checkpoint,
-                build_session_restore_summary,
+                build_session_restore_summary, get_session_by_id,
+                get_session_index, search_sessions,
             )
-            s = load_session()
+            selector = session_selector or {}
+            selected_id = None
+            if selector.get("kind") == "status":
+                candidates = search_sessions(status=selector.get("status"), limit=10)
+                if not candidates:
+                    return {"status": "success", "intent": intent,
+                            "text": "لا توجد جلسات معلقة محفوظة."}
+                lines = ["=== الجلسات المعلقة ==="]
+                for index, item in enumerate(candidates, 1):
+                    lines.append(
+                        f"{index}. {item.get('title') or item.get('active_goal') or 'جلسة بلا عنوان'} "
+                        f"[{item.get('session_id', '?')}] — الخطوة: {item.get('next_step') or 'غير محددة'}"
+                    )
+                lines.append("اكتب طلبًا يذكر موضوع الجلسة للعودة إليها.")
+                return {"status": "success", "intent": intent, "text": "\n".join(lines), "sessions": candidates}
+            if selector.get("kind") == "latest":
+                index = get_session_index()
+                if index:
+                    selected_id = index[-1].get("session_id")
+            elif selector.get("kind") == "search":
+                candidates = search_sessions(selector.get("query", raw), limit=5)
+                if not candidates:
+                    return {"status": "success", "intent": intent,
+                            "text": "لم أجد جلسة محفوظة تطابق الموضوع المطلوب."}
+                if len(candidates) > 1 and candidates[0].get("match_score", 0) == candidates[1].get("match_score", 0):
+                    lines = ["وجدت أكثر من جلسة محتملة. اختر واحدة بذكر عنوانها أو معرّفها:"]
+                    for item in candidates:
+                        lines.append(f"- {item.get('title') or item.get('active_goal') or 'جلسة بلا عنوان'} [{item.get('session_id', '?')}] — {item.get('next_step') or 'لا توجد خطوة تالية'}")
+                    return {"status": "needs_clarification", "intent": intent,
+                            "text": "\n".join(lines), "sessions": candidates}
+                selected_id = candidates[0].get("session_id")
+            s = get_session_by_id(selected_id) if selected_id else load_session()
             if not s:
                 return {"status":"success","intent":intent,
                         "text":"لا توجد جلسة سابقة محفوظة"}
@@ -1722,8 +1757,12 @@ SOURCE CODE:
                         ),
                         "executed": False,
                     }
+                restore_selected = getattr(self.agent, "restore_session_snapshot", None)
                 restore_context = getattr(self.agent, "restore_session_context", None)
-                restored = bool(restore_context()) if callable(restore_context) else False
+                if selected_id and callable(restore_selected):
+                    restored = bool(restore_selected(s))
+                else:
+                    restored = bool(restore_context()) if callable(restore_context) else False
                 if not restored:
                     return {
                         "status": "failed", "intent": intent,
@@ -1744,8 +1783,12 @@ SOURCE CODE:
                         f"الملف: {file_text}"
                     ),
                 }
+            restore_selected = getattr(self.agent, "restore_session_snapshot", None)
             restore_context = getattr(self.agent, "restore_session_context", None)
-            restored = bool(restore_context()) if callable(restore_context) else False
+            if selected_id and callable(restore_selected):
+                restored = bool(restore_selected(s))
+            else:
+                restored = bool(restore_context()) if callable(restore_context) else False
             summary = build_session_restore_summary(s)
             summary += (
                 "\n\nنتيجة تحميل السياق: "
