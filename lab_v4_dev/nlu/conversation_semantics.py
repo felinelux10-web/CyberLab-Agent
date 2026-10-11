@@ -469,6 +469,80 @@ def classify_conversation_semantics(
     intent_value = str(intent_value or "").casefold()
     domain = _domain(raw, bases, str(target or ""), str(entity_type or ""))
 
+    # Resolve dialogue-history actions before broad intent fallbacks. A request
+    # to summarize/refer to this conversation is not a project/session report.
+    dialogue_markers = {
+        "حوار", "محادثه", "حديث", "نقاش", "ردود", "رسائل", "سؤال", "جواب",
+    }
+    has_dialogue_reference = _has_any(bases, dialogue_markers)
+    summary_request = (
+        _has_any(bases, {"ملخص", "تلخيص", "لخص", "موجز"})
+        or (
+            _has_any(bases, {"كل", "كامل", "جميع"})
+            and _has_any(bases, {"تعرف", "نعرف", "محتوى"})
+            and has_dialogue_reference
+        )
+    )
+    explicit_transcript = (
+        _has_any(bases, {"انسخ", "نسخ", "حرفيا", "حرفي"})
+        and has_dialogue_reference
+    )
+    if has_dialogue_reference and summary_request and not explicit_transcript:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.97,
+            "response_attributes": {"dialogue_response_mode": "summary"},
+            "conversational": True,
+        }
+
+    # A direct question about the latest user message must resolve to that
+    # message, not to an unrelated project/technical intent.
+    if (
+        _has_any(bases, {"اخر", "سابق"})
+        and _has_any(bases, {"سؤال", "رساله", "رد"})
+        and _has_any(bases, {"سالت", "قلت", "طلبت", "وجهت", "طرحت"})
+    ):
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.97,
+            "response_attributes": {"dialogue_response_mode": "last_question"},
+            "conversational": True,
+        }
+
+    # Questions challenging an unsolicited explanation are about the current
+    # dialogue exchange, not a request to explain the referenced subject.
+    if (
+        _has_any(bases, {"من"})
+        and _has_any(bases, {"طلب", "طلبت"})
+        and _has_any(bases, {"هذا", "هذه"})
+        and _has_any(bases, {"شرح", "توضيح"})
+    ):
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.96,
+            "response_attributes": {"dialogue_response_mode": "answer"},
+            "conversational": True,
+        }
+
+    # Continue an ordinary conversational thread without confusing it with
+    # resuming an executable work session. Explicit work nouns keep their
+    # existing work/session authority.
+    if (
+        _has_any(bases, {"نكمل", "استكمل", "استكمال", "نواصل", "تابع", "اكمل"})
+        and _has_any(bases, {"حوار", "محادثه", "حديث", "كلام", "موضوع", "سياق"})
+        and not _has_any(bases, {"العمل", "ملف", "مهمه", "جلسه", "مشروع", "كود", "اختبار", "تنفيذ"})
+    ):
+        return {
+            "conversation_domain": "social",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "confidence": 0.96,
+            "response_attributes": {},
+            "conversational": True,
+        }
+
     # A question about a previous message is dialogue history, even though
     # words such as "رسالة" and "شرح" also occur in the agent-flow lexicon.
     if (
@@ -480,7 +554,7 @@ def classify_conversation_semantics(
             "conversation_domain": "general",
             "conversation_act": "CONVERSATION_HISTORY_QUERY",
             "confidence": 0.95,
-            "response_attributes": {},
+            "response_attributes": {"dialogue_response_mode": "answer"},
             "conversational": True,
         }
 
@@ -510,7 +584,7 @@ def classify_conversation_semantics(
             "conversation_domain": "general",
             "conversation_act": "CONVERSATION_HISTORY_QUERY",
             "confidence": 0.92,
-            "response_attributes": {},
+            "response_attributes": {"dialogue_response_mode": "summary"},
             "conversational": True,
         }
 
