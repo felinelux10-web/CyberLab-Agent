@@ -120,3 +120,69 @@ def test_explicit_dialogue_continuation_excludes_saved_work_turns(monkeypatch):
     assert len(calls) == 2
     assert "تفاصيل عمل لا يجب إدخالها" not in calls[-1][0]
     assert "secret.py" not in calls[-1][0]
+
+def test_topic_restore_uses_archived_exchange_after_turn_window_rolls_over():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+
+    orchestrator = RecordingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+
+    # The bounded turn list now contains only a different, newer branch.
+    for role in ("user", "assistant") * 4:
+        memory.state.add_turn(
+            role=role,
+            content="محتوى أحدث لا يخص اللوحة",
+            target="موضوع أحدث",
+            intent="cyber_explain",
+            conversation_domain="technical",
+            context_kind="dialogue",
+        )
+
+    memory.state.exchange_archive = [
+        {
+            "user": "استخدمت الذهب والبيج والأزرق الداكن في اللوحة",
+            "assistant": "هذه الألوان تخلق تباينًا بين الدفء والبرودة.",
+            "target": "اللوحة الفنية",
+            "intent": "personal_chat",
+            "conversation_domain": "general",
+            "context_kind": "dialogue",
+        },
+        {
+            "user": "تفاصيل عمل سرية",
+            "assistant": "رد عمل سري",
+            "target": "اللوحة الفنية",
+            "intent": "modify_file",
+            "conversation_domain": "work",
+            "context_kind": "work",
+        },
+    ]
+
+    restored = manager._history_for_transition(
+        ContextTransition.RESTORE,
+        {"target": "اللوحة الفنية"},
+    )
+    text = " ".join(turn["content"] for turn in restored)
+
+    assert "الذهب والبيج والأزرق الداكن" in text
+    assert "تخلق تباينًا" in text
+    assert "تفاصيل عمل سرية" not in text
+    assert "رد عمل سري" not in text
+
+
+def test_new_session_resets_dialogue_memory_even_without_orchestrator_reset_hook(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    memory.state.last_topic = "موضوع قديم"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.exchange_archive = [{
+        "user": "معلومة قديمة",
+        "assistant": "رد قديم",
+        "context_kind": "dialogue",
+        "conversation_domain": "general",
+    }]
+
+    result = manager.process("جلسة جديدة")
+
+    assert result["status"] == "success"
+    assert memory.state.last_topic is None
+    assert memory.state.exchange_archive == []
