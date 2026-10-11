@@ -1096,6 +1096,15 @@ class ConversationManager:
             )
             answer = str((generated or {}).get("text") or "").strip()
             if (generated or {}).get("status") == "success" and answer:
+                # A direct history answer may identify the topic but omit the
+                # archived exchange that grounds the recall. Include the
+                # bounded source exchange for answer mode; summaries remain
+                # semantic and transcripts remain explicitly requested only.
+                if response_mode == "answer":
+                    exchange_text = "\\n\\nالتبادل المحفوظ ذو الصلة:\\n" + "\\n".join(
+                        self._format_dialogue_exchanges(relevant[-3:])
+                    )
+                    return {**base, "text": answer + exchange_text}
                 return {**base, "text": answer}
         except Exception:
             pass
