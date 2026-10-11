@@ -632,6 +632,103 @@ def _lexical_mention_result(user_input: str) -> dict:
     }
 
 
+def _starts_with_normalized_phrase(text: str, phrases: tuple[str, ...]) -> bool:
+    normalized_text = normalize(str(text or "")).casefold().strip()
+    request_prefixes = (
+        "لو سمحت", "من فضلك", "رجاء", "يرجى", "اريد ان اعرف",
+        "اريد معرفه", "اريد ان اعرف", "please",
+    )
+    candidates = [normalized_text]
+    for prefix in request_prefixes:
+        normalized_prefix = normalize(prefix).casefold()
+        if normalized_text.startswith(normalized_prefix + " "):
+            candidates.append(normalized_text[len(normalized_prefix):].strip())
+    for candidate in candidates:
+        for phrase in phrases:
+            normalized_phrase = normalize(phrase).casefold().strip()
+            if normalized_phrase and (
+                candidate == normalized_phrase
+                or candidate.startswith(normalized_phrase + " ")
+            ):
+                return True
+    return False
+
+
+def _nlu_route_has_explicit_shape(text: str, intent: str) -> bool:
+    """Guard broad NLU phrase hits that occur only inside an unrelated sentence."""
+    routes = {
+        Intent.WORK_CONTEXT: (
+            "أين وصلنا", "ما الذي نعمل عليه", "ما الذي نشتغل عليه",
+            "ما الخطة", "ما الخطوة التالية", "ما الأولويات",
+            "ماذا أنجزنا", "ماذا انجزنا", "ما الذي بقي",
+            "ذكرني بما كنا نعمل", "راجع آخر جلسة",
+            "ماذا كنا نشتغل على هذا المشروع", "ما كنا نعمل عليه",
+        ),
+        Intent.WORK_STATUS: (
+            "أين وصلنا", "ما الذي نعمل عليه", "ما الخطة",
+            "ما الخطوة التالية", "ما الأولويات", "ماذا أنجزنا",
+        ),
+        Intent.PROJECT_SCAN: (
+            "حلل المشروع", "حلل هذا المشروع", "افحص المشروع",
+            "افحص هذا المشروع", "اعرض المشروع", "اعرض ملفات المشروع",
+            "ما هي بنية المشروع", "ما بنية المشروع", "ما هي طبقات المشروع",
+            "خريطة المشروع", "هيكل المشروع", "analyze project", "scan project",
+        ),
+        Intent.PROJECT_INDEX: (
+            "ما هي المشاريع", "ما المشاريع", "كم عدد المشاريع",
+            "قائمة المشاريع", "اعرض المشاريع", "خريطة المشروع",
+            "هيكل المشروع", "بنية المشروع",
+        ),
+        Intent.LAST_PROJECT: (
+            "ما آخر مشروع", "ما اخر مشروع", "آخر مشروع كنا نشتغل عليه",
+            "اخر مشروع كنا نشتغل عليه", "ما المشروع السابق",
+        ),
+        Intent.SWITCH_PROJECT: (
+            "ما المشروع الحالي", "ما هو المشروع الحالي", "ما اسم المشروع",
+            "ما المشروع النشط", "المشروع الحالي", "بدل المشروع", "غير المشروع",
+        ),
+        Intent.SPACE: (
+            "مساحة الهاتف", "مساحة الجهاز", "مساحة التخزين",
+            "كم المساحة", "كم مساحة", "ما المساحة", "ما مساحة",
+            "كم التخزين", "اعرض المساحة", "اعرض مساحة", "show storage",
+        ),
+        Intent.STATUS: (
+            "حالة النظام", "ما حالة النظام", "ما وضع النظام",
+            "حالة الوكيل", "وضع الوكيل", "system status",
+        ),
+        Intent.SYSTEM_STATUS: (
+            "حالة النظام", "ما حالة النظام", "كيف حال النظام",
+            "وضع النظام", "ما وضع النظام", "system status",
+        ),
+        Intent.SHOW_CHANGES: (
+            "اعرض التغييرات", "ما الذي تغير", "ماذا تغير",
+            "آخر تعديل", "اخر تعديل", "راجع آخر تعديل", "show changes",
+        ),
+        Intent.HISTORY: (
+            "سجل التعديلات", "تاريخ التعديلات", "سجل العمل",
+            "اعرض السجل", "ابحث في السجل", "show history",
+        ),
+        Intent.REPORT: (
+            "أعطني تقرير", "اعطني تقرير", "تقرير كامل",
+            "ملخص الجلسة", "لخص ما فعلناه", "show report",
+        ),
+        Intent.CONTEXT_REPORT: (
+            "سياق العمل", "تقرير السياق", "ملخص العمل",
+            "استرجع الجلسة", "تقرير كامل", "وين وصلنا",
+        ),
+        Intent.SESSION_RESTORE: (
+            "أكمل من حيث توقفنا", "اكمل من حيث توقفنا",
+            "استكمل الجلسة", "لخص ما فعلناه", "أعطني ملخص",
+        ),
+        Intent.READ_FILE: (
+            "اقرأ الملف", "اقرا الملف", "اعرض الملف", "افتح الملف",
+            "ما محتوى الملف", "ما داخل الملف", "read file", "show file",
+        ),
+    }
+    phrases = routes.get(intent)
+    return True if phrases is None else _starts_with_normalized_phrase(text, phrases)
+
+
 def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     # Semantic guards must run before broad NLU/family/cache fallbacks.
     if _is_lexical_mention(user_input):
@@ -970,6 +1067,12 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
 
                     chosen_intent = nlu_result["intent"]
                     chosen_conf   = nlu_result.get("confidence", 0.0)
+
+                    if not _nlu_route_has_explicit_shape(user_input, chosen_intent):
+                        chosen_intent = Intent.PERSONAL_CHAT
+                        nlu_result = dict(nlu_result)
+                        nlu_result["target"] = ""
+                        nlu_result["semantic_pattern"] = "INCIDENTAL_CONTEXT_MENTION"
 
                     # if NLU says a delete action but there's an explicit file target -> DELETE_FILE
                     if (
