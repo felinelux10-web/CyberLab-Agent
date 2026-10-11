@@ -1,45 +1,3 @@
-def _is_lexical_mention(text: str) -> bool:
-    """Keep discussion *about words/phrases* out of operational intent routing."""
-    normalized = normalize(str(text or "")).casefold()
-    tokens = set(re.findall(r"[\w]+", normalized, flags=re.UNICODE))
-    mention_markers = {
-        "كلمه", "الكلمه", "كلمات", "مصطلح", "المصطلح", "مصطلحات",
-        "عباره", "العباره", "عبارات", "لفظ", "اللفظ", "معنى", "المعنى",
-    }
-    explicit_action_openers = {
-        "احذف", "امسح", "نظف", "افحص", "حلل", "اعرض", "اقرا", "اقرأ",
-        "اكتب", "عدل", "عدّل", "شغل", "شغّل", "نفذ", "انشئ", "افتح",
-        "ابحث", "قارن", "delete", "remove", "clean", "run", "write",
-        "edit", "open", "search",
-    }
-    if tokens & mention_markers:
-        first = next(iter(re.findall(r"[\w]+", normalized, flags=re.UNICODE)), "")
-        return first not in explicit_action_openers
-    return any(marker in normalized for marker in (
-        "اي كلمة", "أي كلمة", "هذه الكلمة", "هذا المصطلح",
-        "لماذا تظهر", "لماذا يظهر", "لماذا تعرض", "لماذا يعرض",
-        "لماذا ترد", "لماذا يرد", "في هذه الجمله", "في هذه الجملة",
-        "في هذا النص", "في هذا المثال",
-    ))
-
-
-def _lexical_mention_result(user_input: str) -> dict:
-    return {
-        "intent": Intent.PERSONAL_CHAT,
-        "target": "",
-        "context": "general",
-        "confidence": 0.96,
-        "raw": user_input,
-        "source": "lexical_mention_guard",
-        "entity_type": "CONVERSATION",
-        "semantic_pattern": "INTENT_WORD_MENTION",
-        "conversation_domain": "general",
-        "conversation_act": "CASUAL_CONVERSATION",
-        "conversation_confidence": 0.96,
-        "response_attributes": {},
-    }
-
-
 # CyberLab Agent v4.6
 # intent/intent_parser.py
 
@@ -533,9 +491,6 @@ def _project_history_intent(user_input: str):
     if not (tokens & project_terms and tokens & work_terms):
         return None
 
-    # A plural project-list request is distinct from mentioning one project
-    # while discussing work. Do not turn every project+work co-occurrence into
-    # PROJECT_INDEX.
     if tokens & {"مشاريع", "المشاريع", "projects"} and tokens & {
         "قائمة", "اسماء", "اسامي", "عدد", "كم", "list", "names", "count",
     }:
@@ -554,35 +509,67 @@ def _project_history_intent(user_input: str):
 # P04 / Canonical Intent Contract Boundary
 # ============================================================
 
+def _is_lexical_mention(text: str) -> bool:
+    """Keep discussion about words/phrases out of operational intent routing."""
+    normalized = normalize(str(text or "")).casefold()
+    tokens = set(re.findall(r"[\w]+", normalized, flags=re.UNICODE))
+    mention_markers = {
+        "كلمه", "الكلمه", "كلمات", "مصطلح", "المصطلح", "مصطلحات",
+        "عباره", "العباره", "عبارات", "لفظ", "اللفظ", "معنى", "المعنى",
+    }
+    explicit_action_openers = {
+        "احذف", "امسح", "نظف", "افحص", "حلل", "اعرض", "اقرا", "اقرأ",
+        "اكتب", "عدل", "عدّل", "شغل", "شغّل", "نفذ", "انشئ", "افتح",
+        "ابحث", "قارن", "delete", "remove", "clean", "run", "write",
+        "edit", "open", "search",
+    }
+    if tokens & mention_markers:
+        first = next(iter(re.findall(r"[\w]+", normalized, flags=re.UNICODE)), "")
+        return first not in explicit_action_openers
+    return any(marker in normalized for marker in (
+        "اي كلمة", "أي كلمة", "هذه الكلمة", "هذا المصطلح",
+        "لماذا تظهر", "لماذا يظهر", "لماذا تعرض", "لماذا يعرض",
+        "لماذا ترد", "لماذا يرد", "في هذه الجمله", "في هذه الجملة",
+        "في هذا النص", "في هذا المثال",
+    ))
+
+
+def _lexical_mention_result(user_input: str) -> dict:
+    return {
+        "intent": Intent.PERSONAL_CHAT,
+        "target": "",
+        "context": "general",
+        "confidence": 0.96,
+        "raw": user_input,
+        "source": "lexical_mention_guard",
+        "entity_type": "CONVERSATION",
+        "semantic_pattern": "INTENT_WORD_MENTION",
+        "conversation_domain": "general",
+        "conversation_act": "CASUAL_CONVERSATION",
+        "conversation_confidence": 0.96,
+        "response_attributes": {},
+    }
+
+
 def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
-    # These are semantic boundaries, not low-priority fallbacks: a request to
-    # discuss a word must not execute the operation named by that word, and
-    # device RAM must not be reclassified by a broad NLU/cache family.
+    # Semantic guards must run before broad NLU/family/cache fallbacks.
     if _is_lexical_mention(user_input):
         return _lexical_mention_result(user_input)
 
     memory_request = _device_memory_request_kind(user_input)
-    if memory_request in {"unsupported", "knowledge"}:
-        if memory_request == "knowledge":
-            return {
-                "intent": Intent.PERSONAL_CHAT,
-                "target": "",
-                "context": "general",
-                "confidence": 0.90,
-                "raw": user_input,
-                "entity_type": "CONCEPT",
-                "semantic_pattern": "DEVICE_MEMORY_KNOWLEDGE",
-                "conversation_domain": "general",
-                "conversation_act": "CASUAL_CONVERSATION",
-                "conversation_confidence": 0.90,
-            }
+    if memory_request == "knowledge":
         return {
-            "intent": Intent.UNSUPPORTED,
-            "target": "",
-            "context": detect_context(user_input),
-            "confidence": 0.95,
-            "raw": user_input,
-            "entity_type": "UNKNOWN",
+            "intent": Intent.PERSONAL_CHAT, "target": "", "context": "general",
+            "confidence": 0.90, "raw": user_input, "entity_type": "CONCEPT",
+            "semantic_pattern": "DEVICE_MEMORY_KNOWLEDGE",
+            "conversation_domain": "general", "conversation_act": "CASUAL_CONVERSATION",
+            "conversation_confidence": 0.90,
+        }
+    if memory_request == "unsupported":
+        return {
+            "intent": Intent.UNSUPPORTED, "target": "",
+            "context": detect_context(user_input), "confidence": 0.95,
+            "raw": user_input, "entity_type": "UNKNOWN",
             "semantic_pattern": "DEVICE_MEMORY_UNSUPPORTED",
         }
 
