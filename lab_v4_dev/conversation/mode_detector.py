@@ -116,8 +116,9 @@ def _is_lexical_mention(text: str) -> bool:
     }
     contextual_mention = bool(bases & trigger_terms) and any(
         marker in normalized for marker in (
-            "في رد", "في نص", "في هذا نص", "في مثال", "في هذا مثال",
-            "في هذه جمله", "في هذه محادثه",
+            "في الرد", "في رد", "في النص", "في نص", "في هذا النص", "في هذا نص",
+            "في المثال", "في مثال", "في هذا المثال", "في هذا مثال",
+            "في هذه الجمله", "في هذه المحادثه",
         )
     ) and any(marker in normalized for marker in (
         "لماذا تظهر", "لماذا يظهر", "لماذا تعرض", "لماذا يعرض",
