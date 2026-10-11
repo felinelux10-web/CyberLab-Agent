@@ -89,19 +89,52 @@ def _is_short_follow_up(text: str, tokens: list[str]) -> bool:
     return False
 
 
+def _contains_phrase(text: str, phrase: str) -> bool:
+    normalized = normalize_text(text).casefold()
+    normalized_phrase = normalize_text(phrase).casefold().strip()
+    if not normalized_phrase:
+        return False
+    pattern = r"(?<!\\w)" + r"\\s+".join(
+        re.escape(part) for part in normalized_phrase.split()
+    ) + r"(?!\\w)"
+    return re.search(pattern, normalized, flags=re.UNICODE) is not None
+
+
+def _is_lexical_mention(text: str) -> bool:
+    tokens = _tokens(text)
+    bases = _token_bases(tokens)
+    if not bases & {
+        "كلمه", "الكلمه", "مصطلح", "المصطلح", "عباره", "العباره",
+        "لفظ", "اللفظ", "معنى", "المعنى",
+    }:
+        return False
+    first = tokens[0] if tokens else ""
+    return first not in {
+        "احذف", "امسح", "نظف", "افحص", "حلل", "اعرض", "اقرا", "اقرأ",
+        "اكتب", "عدل", "شغل", "نفذ", "انشئ", "افتح", "ابحث", "قارن",
+    }
+
+
 def detect_mode(text: str) -> str:
     """Return TASK, SYSTEM, DISCUSSION, QUESTION, FOLLOW_UP, or CHAT."""
     raw = str(text or "").strip()
     if not raw:
         return "CHAT"
 
+    # Mentioning an action word is not itself a request to execute it.
+    if _is_lexical_mention(raw):
+        tokens = _tokens(raw)
+        if "؟" in raw or "?" in raw or (tokens and tokens[0] in _QUESTION_WORDS):
+            return "QUESTION"
+        return "CHAT"
+
     # Explicit system controls precede generic action/question shape.
-    if any(pattern in raw for pattern in SYSTEM_PATTERNS):
+    if any(_contains_phrase(raw, pattern) for pattern in SYSTEM_PATTERNS):
         return "SYSTEM"
 
     # Preserve explicit operational verbs; intent remains authoritative for
     # whether an operation actually executes.
-    if any(pattern in raw for pattern in TASK_PATTERNS):
+    if any(_contains_phrase(raw, pattern) for pattern in TASK_PATTERNS):
         return "TASK"
 
     tokens = _tokens(raw)
