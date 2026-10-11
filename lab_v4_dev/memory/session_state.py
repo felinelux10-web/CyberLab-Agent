@@ -371,7 +371,20 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
         and current.get("session_id") == previous_id
         and str(current.get("session_type") or "work").casefold() != "dialogue"
     )
-    data = get_session_by_id(previous_id) if previous_id and not same_as_work else {}
+    # An explicitly empty dialogue snapshot represents a reset, not an
+    # update to the previous dialogue session. Give it a new ID so the old
+    # topic cannot remain the latest recoverable dialogue checkpoint.
+    empty_dialogue_reset = (
+        not str(state.get("last_topic") or state.get("pending_topic") or "").strip()
+        and not history
+        and not exchanges
+        and not (state.get("context_history") or [])
+    )
+    data = (
+        {}
+        if empty_dialogue_reset
+        else get_session_by_id(previous_id) if previous_id and not same_as_work else {}
+    )
     now = datetime.now().isoformat()
     if not isinstance(data, dict) or not data:
         data = {
