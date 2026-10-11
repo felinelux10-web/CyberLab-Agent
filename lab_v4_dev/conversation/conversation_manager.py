@@ -1287,62 +1287,96 @@ class ConversationManager:
         transition: ContextTransition,
         parsed: dict,
     ) -> list:
-        """Expose only bounded turns grounded in the selected active subject."""
+        """Build bounded prompt history from durable dialogue exchanges.
+
+        The visible turn list is intentionally short. Prefer the exchange archive
+        when selecting a branch so recent relevant turns survive transcript rollover.
+        Work/system exchanges are never admitted to a dialogue prompt.
+        """
         if not self.dialogue_memory:
             return []
 
-        if transition == ContextTransition.RESTORE:
+        state = getattr(self.dialogue_memory, "state", None)
+        history = getattr(state, "history", []) if state is not None else []
+        exchanges = getattr(state, "exchange_archive", []) if state is not None else []
+
+        def allowed(item):
+            if not isinstance(item, dict):
+                return False
+            kind = str(item.get("context_kind") or "").casefold()
+            domain = str(item.get("conversation_domain") or "").casefold()
+            return kind not in {"work", "system"} and domain not in {"work", "system"}
+
+        topic = None
+        if transition in {ContextTransition.RESTORE, ContextTransition.EXPLICIT_SWITCH}:
             topic = (parsed or {}).get("target")
         elif transition.value in CONTEXTUAL_TRANSITIONS:
-            active_context = self.dialogue_memory.active_context_entity()
-            topic = (
-                active_context.get("entity")
-                if isinstance(active_context, dict)
-                else None
-            )
-        elif transition == ContextTransition.EXPLICIT_SWITCH:
-            topic = (parsed or {}).get("target")
-        elif (
-            transition == ContextTransition.AMBIGUOUS
-            and str((parsed or {}).get("conversation_act") or "").upper()
-            == "CONVERSATION_CONTINUATION"
-        ):
-            # An explicit request to continue the dialogue authorizes recent
-            # dialogue history, but never work-session records.
-            state = getattr(self.dialogue_memory, "state", None)
-            history = getattr(state, "history", []) if state is not None else []
-            return [
-                turn for turn in (history or [])
-                if isinstance(turn, dict)
-                and turn.get("context_kind") not in {"work", "system"}
-                and turn.get("conversation_domain") != "work"
-            ][-8:]
-        elif transition == ContextTransition.AMBIGUOUS and is_social_act(
+            active = self.dialogue_memory.active_context_entity()
+            topic = active.get("entity") if isinstance(active, dict) else None
+
+        if transition == ContextTransition.AMBIGUOUS and is_social_act(
             (parsed or {}).get("conversation_act")
         ):
-            # Keep social-to-social continuity without exposing a prior
-            # technical subject that the current turn did not authorize.
-            state = getattr(self.dialogue_memory, "state", None)
-            history = getattr(state, "history", []) if state is not None else []
+            selected = [
+                item for item in (exchanges or [])
+                if allowed(item) and not item.get("target")
+            ][-8:]
+            if selected:
+                return self._exchange_history_turns(selected)[-8:]
             return [
                 turn for turn in (history or [])
-                if isinstance(turn, dict) and not turn.get("target")
+                if allowed(turn) and not turn.get("target")
             ][-8:]
-        else:
-            return []
+
+        if transition == ContextTransition.AMBIGUOUS and str(
+            (parsed or {}).get("conversation_act") or ""
+        ).upper() == "CONVERSATION_CONTINUATION":
+            selected = [item for item in (exchanges or []) if allowed(item)][-8:]
+            if selected:
+                return self._exchange_history_turns(selected)[-8:]
+            return [turn for turn in (history or []) if allowed(turn)][-8:]
 
         if not topic:
             return []
-        state = getattr(self.dialogue_memory, "state", None)
-        history = getattr(state, "history", []) if state is not None else []
+
+        selected = [
+            item for item in (exchanges or [])
+            if allowed(item) and item.get("target")
+            and self._same_topic(item.get("target"), topic)
+        ][-8:]
+        if selected:
+            return self._exchange_history_turns(selected)[-8:]
+
+        # Compatibility with checkpoints created before exchange archives.
         return [
             turn for turn in (history or [])
-            if isinstance(turn, dict)
-            and turn.get("target")
+            if allowed(turn) and turn.get("target")
             and self._same_topic(turn.get("target"), topic)
-        ]
+        ][-8:]
 
-    # --------------------------------------------------------
+    @staticmethod
+    def _exchange_history_turns(exchanges: list[dict]) -> list[dict]:
+        """Convert archived exchanges to the standard prompt-history shape."""
+        turns = []
+        for exchange in exchanges:
+            if not isinstance(exchange, dict):
+                continue
+            shared = {
+                "mode": exchange.get("mode"),
+                "intent": exchange.get("intent"),
+                "target": exchange.get("target"),
+                "conversation_domain": exchange.get("conversation_domain", "general"),
+                "conversation_act": exchange.get("conversation_act", "NONE"),
+                "context_kind": exchange.get("context_kind", "unknown"),
+            }
+            user_text = str(exchange.get("user") or "").strip()
+            assistant_text = str(exchange.get("assistant") or "").strip()
+            if user_text:
+                turns.append({"role": "user", "content": user_text, **shared})
+            if assistant_text:
+                turns.append({"role": "assistant", "content": assistant_text, **shared})
+        return turns
+
     # Compatibility entry points
     # --------------------------------------------------------
 
