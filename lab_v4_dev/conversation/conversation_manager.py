@@ -961,7 +961,16 @@ class ConversationManager:
                     "executed": False,
                 }
             if history_act == "TOPIC_RETURN":
-                return None
+                return {
+                    "status": "needs_clarification",
+                    "intent": Intent.MEMORY_DUMP,
+                    "source": "dialogue_memory",
+                    "text": (
+                        "لا يوجد موضوع سابق مسجل أستطيع الرجوع إليه في هذه الجلسة. "
+                        "اذكر الموضوع الذي تريد استعادته."
+                    ),
+                    "executed": False,
+                }
             return {
                 "status": "success", "intent": Intent.MEMORY_DUMP,
                 "source": "dialogue_memory",
