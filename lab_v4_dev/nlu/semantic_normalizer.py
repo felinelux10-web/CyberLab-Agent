@@ -41,9 +41,9 @@ def _contains_phrase(text: str, phrase: str) -> bool:
     normalized_phrase = normalize_text(phrase).casefold().strip()
     if not normalized_phrase:
         return False
-    pattern = r"(?<!\\w)" + r"\\s+".join(
+    pattern = r"(?<!\w)" + r"\s+".join(
         re.escape(part) for part in normalized_phrase.split()
-    ) + r"(?!\\w)"
+    ) + r"(?!\w)"
     return re.search(pattern, normalized_text, flags=re.UNICODE) is not None
 
 
