@@ -591,8 +591,8 @@ def _is_lexical_mention(text: str) -> bool:
     }
     has_mentioned_trigger = bool(tokens & trigger_terms)
     mentions_a_displayed_context = any(marker in normalized for marker in (
-        "في الرد", "في النص", "في هذا النص", "في المثال", "في هذا المثال",
-        "في هذه الجمله", "في هذه الجملة", "في هذه المحادثه", "في هذه المحادثة",
+        "في رد", "في نص", "في هذا نص", "في مثال", "في هذا مثال",
+        "في هذه جمله", "في هذه محادثه",
     ))
     return has_mentioned_trigger and mentions_a_displayed_context and any(
         marker in normalized for marker in (
