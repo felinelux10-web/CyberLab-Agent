@@ -476,10 +476,16 @@ def _project_architecture_intent(user_input: str):
                 bases.add(token[len(prefix):])
                 break
 
-    question = (
-        "؟" in user_input
-        or "?" in user_input
-        or bool(bases & {"ما", "ماذا", "كيف", "هل", "اشرح", "وضح", "حدثني"})
+    # An opinion/discussion about a project component is not a request to
+    # scan the project, even when the same sentence contains "بنية/طبقات".
+    if bases & {
+        "راي", "رايك", "رايي", "وجهه", "وجهة", "افضل", "بدائل",
+        "مقارنه", "مقارنة", "نقاش",
+    }:
+        return None
+
+    question = bool(
+        bases & {"ما", "ماذا", "كيف", "هل", "اشرح", "وضح", "حدثني", "اعرض", "حلل", "افحص"}
     )
     if not question:
         return None
