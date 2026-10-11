@@ -201,3 +201,24 @@ def test_restore_session_snapshot_obeys_session_type():
     }) is True
     assert agent.dialogue_memory.snapshot()["last_topic"] == "SQL Injection"
     assert context.current_file is None
+
+
+
+def test_legacy_mixed_snapshot_restores_work_only():
+    from lab_v4_dev.context.context_store import ContextStore
+    from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
+    from lab_v4_dev.core.agent import Agent
+
+    context = ContextStore()
+    agent = Agent.__new__(Agent)
+    agent.context = context
+    agent.dialogue_memory = DialogueMemory(context)
+    agent._pending_session = None
+
+    assert agent.restore_session_snapshot({
+        "session_type": "mixed",
+        "dialogue_state": {"last_topic": "legacy dialogue must not restore"},
+        "context_state": {"current_file": "work.py"},
+    }) is True
+    assert agent.dialogue_memory.snapshot().get("last_topic") != "legacy dialogue must not restore"
+    assert context.current_file == "work.py"

@@ -242,16 +242,16 @@ class Agent:
             dialogue_state = saved.get("dialogue_state")
             context_state = saved.get("context_state") or {}
 
-            # Legacy records without a type are classified from their payload.
+            # Legacy mixed records are treated as work when execution state is
+            # present. Never restore dialogue and execution context from one record.
             if not session_type:
-                if isinstance(dialogue_state, dict) and isinstance(context_state, dict) and context_state:
-                    session_type = "mixed"
-                elif isinstance(dialogue_state, dict):
-                    session_type = "dialogue"
-                else:
-                    session_type = "work"
+                session_type = (
+                    "dialogue"
+                    if isinstance(dialogue_state, dict) and not context_state
+                    else "work"
+                )
 
-            if session_type in {"dialogue", "mixed"} and self.dialogue_memory:
+            if session_type == "dialogue" and self.dialogue_memory:
                 restored = self.dialogue_memory.restore_snapshot(dialogue_state)
             context_restored = False
             if session_type in {"work", "mixed"} and self.context and isinstance(context_state, dict):
