@@ -82,14 +82,17 @@ FAMILIES = {
 
 def _contains_phrase(text: str, phrases: tuple[str, ...] | list[str]) -> bool:
     import re
+    from lab_v4_dev.intent.normalizer import normalize
+
+    normalized_text = normalize(str(text or "")).casefold()
     for phrase in phrases:
-        normalized_phrase = str(phrase).strip().lower()
+        normalized_phrase = normalize(str(phrase or "")).casefold().strip()
         if not normalized_phrase:
             continue
         pattern = r"(?<!\w)" + r"\s+".join(
             re.escape(part) for part in normalized_phrase.split()
         ) + r"(?!\w)"
-        if re.search(pattern, text, flags=re.UNICODE):
+        if re.search(pattern, normalized_text, flags=re.UNICODE):
             return True
     return False
 
