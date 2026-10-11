@@ -784,6 +784,20 @@ def _nlu_route_has_explicit_shape(text: str, intent: str) -> bool:
             "اقرأ الملف", "اقرا الملف", "اعرض الملف", "افتح الملف",
             "ما محتوى الملف", "ما داخل الملف", "read file", "show file",
         ),
+        Intent.MODIFY_FILE: (
+            "عدل الملف", "تعديل الملف", "حرر الملف", "تحرير الملف",
+            "غير الملف", "edit file", "modify file",
+        ),
+        Intent.MODIFY_CODE: (
+            "عدل الكود", "تعديل الكود", "حرر الكود", "تحرير الكود",
+            "غير الكود", "عدل السكريبت", "edit code", "modify code",
+        ),
+        Intent.MODIFY_FUNCTION: (
+            "عدل الدالة", "تعديل الدالة", "حرر الدالة", "modify function",
+        ),
+        Intent.MODIFY_CLASS: (
+            "عدل الصنف", "تعديل الصنف", "حرر الصنف", "modify class",
+        ),
     }
     phrases = routes.get(intent)
     return True if phrases is None else _starts_with_normalized_phrase(text, phrases)
