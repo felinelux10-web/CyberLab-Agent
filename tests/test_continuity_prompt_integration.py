@@ -278,3 +278,49 @@ def test_dialogue_recall_contains_both_roles_and_survives_prompt_window(monkeypa
     assert "اقتراح ثان محدد" in result["text"]
     assert "المستخدم:" in result["text"]
     assert "الوكيل:" in result["text"]
+
+
+def test_phase_continuation_stays_on_active_explanation_instead_of_session_restore():
+    orchestrator = CapturingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+
+    manager.process("اشرح SQL Injection")
+    result = manager.process(
+        "تابع إلى المرحلة الثانية، مع عدم تكرار ما شرحته في المرحلة الأولى"
+    )
+
+    assert result["status"] == "success"
+    assert result["intent"] == Intent.CYBER_EXPLAIN
+    assert result["target"] == "SQL Injection"
+    assert result["intent"] != Intent.SESSION_RESTORE
+
+
+def test_previous_message_question_is_dialogue_history_not_agent_flow():
+    parsed = parse("ما الموضوع الذي كنا نشرحه في رسالتي السابقة؟")
+    assert parsed["conversation_act"] == "CONVERSATION_HISTORY_QUERY"
+    assert parsed["intent"] == Intent.PERSONAL_CHAT
+
+
+def test_history_recall_keeps_relevant_execution_exchange():
+    orchestrator = CapturingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    memory.state.add_turn(
+        role="user", content="اشرح SQL Injection", target="SQL Injection",
+        intent="cyber_explain",
+    )
+    memory.state.exchange_archive = [
+        {
+            "user": "اشرح SQL Injection",
+            "assistant": "شرح التنفيذ المرتبط بالموضوع",
+            "target": "SQL Injection",
+            "intent": "cyber_explain",
+            "context_kind": "execution",
+            "conversation_domain": "technical",
+        },
+    ]
+    result = ConversationManager(orchestrator, memory).process(
+        "ما الموضوع الذي كنا نشرحه في رسالتي السابقة؟"
+    )
+    assert result["source"] == "dialogue_memory"
+    assert "شرح التنفيذ المرتبط بالموضوع" in result["text"]

@@ -1033,6 +1033,16 @@ def parse(user_input, *, context_entity: dict | None = None):
         target=legacy.get("target", ""),
         entity_type=legacy.get("entity_type", ""),
     )
+    # Conversation semantics is authoritative for dialogue-history and
+    # continuation turns; legacy parser fallbacks may label them as work or
+    # agent-flow intents before this adapter sees the signal.
+    signal_act = signal.get("conversation_act", "NONE")
+    if signal_act in {"CONVERSATION_HISTORY_QUERY", "CONVERSATION_CONTINUATION", "TOPIC_RETURN"}:
+        legacy["intent"] = Intent.PERSONAL_CHAT
+        legacy["conversation_domain"] = signal.get("conversation_domain", "general")
+        legacy["conversation_act"] = signal_act
+        legacy["conversation_confidence"] = float(signal.get("confidence", 0.0))
+        legacy["semantic_pattern"] = "DIALOGUE_SEMANTIC_OVERRIDE"
     legacy.setdefault(
         "conversation_domain",
         signal.get("conversation_domain", "general"),

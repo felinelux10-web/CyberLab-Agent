@@ -218,7 +218,20 @@ class ConversationManager:
                 "semantic_pattern": "DIALOGUE_SEMANTIC_OVERRIDE",
                 "source": "dialogue_semantic_override",
             })
-        generic_topic = self._resolve_generic_topic_reference(user_input)
+            if raw_act == "CONVERSATION_CONTINUATION" and self.dialogue_memory:
+                active_context = self.dialogue_memory.active_context_entity()
+                if isinstance(active_context, dict) and active_context.get("entity"):
+                    candidate.update({
+                        "intent": Intent.CYBER_EXPLAIN,
+                        "target": active_context["entity"],
+                        "entity_type": active_context.get("entity_type") or "CONCEPT",
+                        "conversation_domain": "technical",
+                    })
+        generic_topic = (
+            None
+            if raw_act == "CONVERSATION_HISTORY_QUERY"
+            else self._resolve_generic_topic_reference(user_input)
+        )
         if generic_topic:
             candidate = dict(candidate or {})
             is_ordinal_return = any(marker in str(user_input or "").casefold() for marker in (
@@ -874,8 +887,8 @@ class ConversationManager:
         if not topics:
             dialogue_exchanges = [
                 item for item in exchanges
-                if item.get("context_kind") not in {"work", "execution"}
-                and item.get("conversation_domain") not in {"execution", "work"}
+                if item.get("context_kind") != "work"
+                and item.get("conversation_domain") != "work"
             ][-6:]
             if dialogue_exchanges:
                 return {
@@ -897,12 +910,11 @@ class ConversationManager:
         text = "الموضوعات التي نوقشت بالترتيب: " + "، ".join(topics)
         if history_act == "CONVERSATION_HISTORY_QUERY" and exchanges:
             # Select complete archived exchanges, not individual turns. Keep
-            # technical dialogue relevant to the requested topics while never
-            # importing a work/execution exchange into social recall.
+            # relevant dialogue while excluding only explicit work context.
             selected = [
                 item for item in exchanges
-                if item.get("context_kind") not in {"work", "execution"}
-                and item.get("conversation_domain") not in {"execution", "work"}
+                if item.get("context_kind") != "work"
+                and item.get("conversation_domain") != "work"
                 and (
                     not item.get("target")
                     or item.get("target") in topics
@@ -980,6 +992,11 @@ class ConversationManager:
                 else ContextTransition.AMBIGUOUS
             )
         if conversation_act in {"CORRECTION", "COMPOUND_REFERENCE"}:
+            return (
+                ContextTransition.CONTINUE
+                if active_topic else ContextTransition.AMBIGUOUS
+            )
+        if conversation_act == "CONVERSATION_CONTINUATION":
             return (
                 ContextTransition.CONTINUE
                 if active_topic else ContextTransition.AMBIGUOUS

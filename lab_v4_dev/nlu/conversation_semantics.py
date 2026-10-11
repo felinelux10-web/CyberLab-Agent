@@ -469,6 +469,21 @@ def classify_conversation_semantics(
     intent_value = str(intent_value or "").casefold()
     domain = _domain(raw, bases, str(target or ""), str(entity_type or ""))
 
+    # A question about a previous message is dialogue history, even though
+    # words such as "رسالة" and "شرح" also occur in the agent-flow lexicon.
+    if (
+        _has_any(bases, {"موضوع", "رساله", "رسالتي"})
+        and _has_any(bases, {"سابق", "سابقه", "قبل"})
+        and _has_any(bases, {"ما", "ماذا", "كنا", "نشرح", "نشرحه"})
+    ):
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.95,
+            "response_attributes": {},
+            "conversational": True,
+        }
+
     if intent_value in _AGENT_QUERY_INTENTS:
         return {
             "conversation_domain": "agent_self",
@@ -508,6 +523,19 @@ def classify_conversation_semantics(
             "conversation_domain": "social",
             "conversation_act": "CONVERSATION_CONTINUATION",
             "confidence": 0.94,
+            "response_attributes": {},
+            "conversational": True,
+        }
+
+    if (
+        _has_any(bases, {"تابع", "استكمال", "استكمل", "نكمل"})
+        and _has_any(bases, {"مرحله", "شرح", "شرحته", "شرحنا"})
+        and _has_any(bases, {"عدم", "بدون", "دون", "تكرار"})
+    ):
+        return {
+            "conversation_domain": "technical",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "confidence": 0.95,
             "response_attributes": {},
             "conversational": True,
         }
