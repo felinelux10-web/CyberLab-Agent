@@ -97,6 +97,28 @@ def _contains_phrase(text: str, phrases: tuple[str, ...] | list[str]) -> bool:
     return False
 
 
+def _starts_with_phrase(text: str, phrases: tuple[str, ...] | list[str]) -> bool:
+    from lab_v4_dev.intent.normalizer import normalize
+
+    normalized_text = normalize(str(text or "")).casefold().strip()
+    request_prefixes = (
+        "لو سمحت", "من فضلك", "رجاء", "يرجى", "اريد", "اعطني", "please",
+    )
+    for phrase in phrases:
+        normalized_phrase = normalize(str(phrase or "")).casefold().strip()
+        if not normalized_phrase:
+            continue
+        if normalized_text == normalized_phrase or normalized_text.startswith(normalized_phrase + " "):
+            return True
+        for prefix in request_prefixes:
+            normalized_prefix = normalize(prefix).casefold()
+            if normalized_text.startswith(normalized_prefix + " "):
+                remainder = normalized_text[len(normalized_prefix):].strip()
+                if remainder == normalized_phrase or remainder.startswith(normalized_phrase + " "):
+                    return True
+    return False
+
+
 def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
     """A topic noun alone is not enough to authorize a routed operation."""
     import re
@@ -160,50 +182,63 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
         ))
         if tokens & {"راي", "رايي", "رأيي"}:
             return False
-        return bool(tokens & storage_terms) and storage_question
+        return bool(tokens & storage_terms) and _starts_with_phrase(text, (
+            "كم المساحه", "كم مساحة", "كم مساحه", "ما المساحه", "ما مساحة",
+            "ما مساحه", "كم التخزين", "كم تخزين", "المساحه المتبقيه",
+            "المتاح من التخزين", "اعرض المساحه", "اعرض مساحة", "اعرض مساحه",
+            "افحص المساحه", "افحص مساحة", "show storage", "storage space",
+        ))
 
     if intent == Intent.PROJECT_SCAN:
-        return bool(tokens & project_terms) and bool(tokens & project_actions)
+        return _starts_with_phrase(text, (
+            "حلل المشروع", "حلل هذا المشروع", "حلل مشروع",
+            "افحص المشروع", "افحص هذا المشروع", "افحص مشروع",
+            "اعرض المشروع", "اعرض ملفات المشروع", "خريطة المشروع",
+            "هيكل المشروع", "بنية المشروع", "حلل project", "analyze project",
+            "scan project", "كم عدد ملفات المشروع", "عدد ملفات المشروع",
+            "كم ملف في المشروع",
+        ))
 
     if intent == Intent.CLEAN:
         return bool(tokens & clean_actions)
 
     if intent == Intent.READ_FILE:
-        return _contains_phrase(text, (
+        return _starts_with_phrase(text, (
             "اقرا الملف", "اقرأ الملف", "اعرض الملف", "اعرض ملف",
             "افتح الملف", "افتح ملف", "ما محتوى الملف", "ما داخل الملف",
             "read file", "show file", "open file",
         ))
 
     if intent == Intent.SHOW_CHANGES:
-        return _contains_phrase(text, (
+        return _starts_with_phrase(text, (
             "اعرض التغييرات", "اعرض التغيير", "ما الذي تغير",
             "ماذا تغير", "اخر تعديل", "آخر تعديل", "راجع اخر تعديل",
             "راجع آخر تعديل", "show changes", "view diff",
         ))
 
     if intent == Intent.HISTORY:
-        return _contains_phrase(text, (
+        return _starts_with_phrase(text, (
             "سجل التعديلات", "تاريخ التعديلات", "سجل العمل",
             "ابحث في السجل", "اعرض السجل", "ماذا تغير سابقا",
             "history log", "show history",
         ))
 
     if intent == Intent.STATUS:
-        return _contains_phrase(text, (
-            "حالة النظام", "وضع النظام", "كيف حال النظام",
+        return _starts_with_phrase(text, (
+            "حالة النظام", "ما حالة النظام", "ما حاله النظام",
+            "وضع النظام", "ما وضع النظام", "كيف حال النظام",
             "حالة الوكيل", "وضع الوكيل", "system status", "agent status",
         ))
 
     if intent == Intent.HEALTH:
-        return _contains_phrase(text, (
+        return _starts_with_phrase(text, (
             "هل النظام سليم", "هل النظام يعمل بشكل سليم",
             "افحص صحة النظام", "فحص صحة النظام", "شخص مشكلة النظام",
             "check health", "diagnose system",
         ))
 
     if intent == Intent.REPORT:
-        return _contains_phrase(text, (
+        return _starts_with_phrase(text, (
             "اعطني تقرير", "أعطني تقرير", "تقرير كامل",
             "ملخص الجلسة", "لخص ما فعلناه", "show report", "full report",
         ))
@@ -215,26 +250,27 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
         )
 
     if intent == Intent.CONTEXT_REPORT:
-        return _contains_phrase(text, (
+        return _starts_with_phrase(text, (
             "سياق العمل", "تقرير السياق", "ملخص العمل", "استرجع الجلسة",
             "تقرير كامل", "وين وصلنا", "وين كنا", "context report",
         ))
 
     if intent == Intent.WORK_STATUS:
-        return _contains_phrase(text, (
-            "خطة عمل", "وضع عمل", "ما نعمل", "ما اكتمل", "تقدم عمل",
-            "work status", "أين وصلنا", "اين وصلنا", "ما الخطوة التالية",
+        return _starts_with_phrase(text, (
+            "خطة عمل", "وضع عمل", "ما نعمل", "ما الذي نعمل عليه",
+            "ما الذي نشتغل عليه", "ما اكتمل", "تقدم عمل", "work status",
+            "أين وصلنا", "اين وصلنا", "ما الخطوة التالية",
             "ما الأولويات", "ما الاولويات", "ماذا أنجزنا", "ماذا انجزنا",
         ))
 
     if intent == Intent.REMAINING_TASKS:
-        return _contains_phrase(text, (
+        return _starts_with_phrase(text, (
             "ما تبقى", "مهام متبقية", "مهام متبقيه", "لم ينجز",
             "غير مكتمل", "remaining tasks",
         ))
 
     if intent == Intent.NEXT_TASK:
-        return _contains_phrase(text, (
+        return _starts_with_phrase(text, (
             "ما التالي", "ماذا بعد", "الخطوة التالية", "مهمة تالية",
             "next step",
         ))
