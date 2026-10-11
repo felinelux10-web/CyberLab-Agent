@@ -36,6 +36,16 @@ def test_lexical_mentions_do_not_trigger_phone_storage_or_device_cleanup():
         }
 
 
+def test_incidental_cleanup_and_delete_nouns_do_not_authorize_actions():
+    cleanup = parse("هذا المشروع يحتاج تنظيف")
+    assert cleanup["intent"] not in {
+        Intent.CLEAN, Intent.CLEAN_DEVICE, Intent.CLEANUP_CODE,
+    }
+
+    deletion = parse("هل حذف الملف خطير؟")
+    assert deletion["intent"] != Intent.DELETE_FILE
+
+
 def test_explicit_operational_requests_keep_their_routes():
     assert parse("مساحة الهاتف")["intent"] == Intent.SPACE
     assert parse("كم مساحة التخزين؟")["intent"] == Intent.SPACE
