@@ -124,13 +124,9 @@ def _is_lexical_mention(text: str) -> bool:
         "لماذا تظهر", "لماذا يظهر", "لماذا تعرض", "لماذا يعرض",
         "لماذا ترد", "لماذا يرد",
     ))
-    if not has_word_marker and not contextual_mention:
-        return False
-    first = tokens[0] if tokens else ""
-    return first not in {
-        "احذف", "امسح", "نظف", "افحص", "حلل", "اعرض", "اقرا", "اقرأ",
-        "اكتب", "عدل", "شغل", "نفذ", "انشئ", "افتح", "ابحث", "قارن",
-    }
+    if has_word_marker:
+        return True
+    return contextual_mention
 
 
 def _has_explicit_task_request(text: str) -> bool:
