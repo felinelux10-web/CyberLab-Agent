@@ -20,17 +20,31 @@ FILE_INDICATORS   = ["ملف","file","مجلد"]
 
 
 def detect_context(text: str) -> str:
-    if any(w in text for w in ["كاملة","الكل","شامل"]):
+    """Infer a context label from whole normalized tokens, never substrings.
+
+    This label is descriptive metadata only; it must not turn a topic mention
+    into an operational request. Specific storage/file cues take precedence
+    over broad project/work vocabulary.
+    """
+    normalized = normalize(str(text or "")).casefold()
+    tokens = set(re.findall(r"[\\w]+", normalized, flags=re.UNICODE))
+
+    def has(*words: str) -> bool:
+        return bool(tokens.intersection(words))
+
+    if has("كاملة", "الكاملة", "الكل", "شامل", "شاملة", "full", "complete"):
         return "full"
-    if any(w in text for w in ["متبقي","متاح","فارغ"]):
+    if has("متبقي", "المتبقي", "متاح", "المتاح", "فارغ", "الفارغ", "free", "available"):
         return "free"
-    if any(w in text for w in ["مستهلك","مستخدم"]):
+    if has("مستهلك", "المستهلك", "مستخدم", "المستخدم", "used"):
         return "used"
-    if any(w in text for w in FILE_INDICATORS):
+    if has("ملف", "الملف", "ملفات", "مجلد", "المجلد", "file", "folder"):
         return "file_operation"
-    if any(w in text for w in ["مشروع","project","نظام"]):
+    if has("مساحة", "مساحه", "تخزين", "storage", "ram", "رام", "ذاكرة", "الذاكرة", "memory"):
+        return "device_resource"
+    if has("مشروع", "المشروع", "مشاريع", "project", "repository", "نظام", "النظام"):
         return "project_level"
-    if any(w in text for w in ["اخر","آخر","تعديل","تغيير"]):
+    if has("اخر", "آخر", "اخير", "السابق", "تعديل", "تغيير", "today", "yesterday"):
         return "temporal"
     return "general"
 
@@ -356,7 +370,10 @@ def _device_memory_request_kind(text: str) -> str | None:
         or (len(tokens) <= 2 and token_set.intersection(explicit_ram))
     ):
         return "unsupported"
-    return None
+
+    # A bare mention of RAM/memory is not a live device query. Keep it on
+    # the explanatory path rather than letting a broad SPACE family hijack it.
+    return "knowledge"
 
 
 _SOFT_CONVERSATION_INTENTS = {
@@ -1305,6 +1322,25 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
         from lab_v4_dev.intent.llm_intent_resolver import resolve
         intent     = resolve(user_input)
         confidence = 0.8
+
+    # 7.4 — Utterance-level gate for broad legacy/family matches.
+    # Dictionary word matches and keyword families are lexical candidates,
+    # not proof of user intent. Apply the same explicit-request shape check
+    # before any candidate can escape into a project/device/work operation.
+    _context_sensitive_intents = {
+        Intent.PROJECT_SCAN, Intent.SPACE, Intent.CLEAN, Intent.CLEAN_DEVICE,
+        Intent.CLEANUP_CODE, Intent.READ_FILE, Intent.DELETE_FILE,
+        Intent.SHOW_CHANGES, Intent.WORK_STATUS, Intent.WORK_CONTEXT,
+        Intent.CONTEXT_REPORT, Intent.HISTORY, Intent.REPORT, Intent.STATUS,
+        Intent.SYSTEM_STATUS, Intent.HEALTH, Intent.REMAINING_TASKS,
+        Intent.NEXT_TASK, Intent.RUN_PROJECT, Intent.RUN_FILE, Intent.RUN_SCRIPT,
+        Intent.RUN_TESTS, Intent.TEST_PROJECT, Intent.TEST_FILE,
+    }
+    if intent in _context_sensitive_intents and not _nlu_route_has_explicit_shape(
+        user_input, intent
+    ):
+        intent = Intent.PERSONAL_CHAT
+        confidence = max(float(confidence or 0.0), 0.60)
 
     # 7.5 — Natural dialogue fallback.
     # Reuse PERSONAL_CHAT for inputs that remain UNCLEAR only when
