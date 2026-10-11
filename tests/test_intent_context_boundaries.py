@@ -91,3 +91,14 @@ def test_work_word_mention_is_not_recorded_as_work_context():
 def test_project_plus_work_verb_requires_a_real_progress_question():
     result = parse("ماذا كنا نشتغل على هذا المشروع؟")
     assert result["intent"] == Intent.WORK_CONTEXT
+
+    opinion = parse("ما رأيك في مشروع كنا نعمل عليه؟")
+    assert opinion["intent"] != Intent.WORK_CONTEXT
+    assert opinion["intent"] != Intent.PROJECT_INDEX
+
+
+def test_status_and_report_nouns_do_not_route_from_opinion_questions():
+    status = parse("ما رأيك في حالة النظام؟")
+    report = parse("ما رأيك في التقرير؟")
+    assert status["intent"] != Intent.STATUS
+    assert report["intent"] != Intent.REPORT
