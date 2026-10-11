@@ -604,15 +604,8 @@ def _is_lexical_mention(text: str) -> bool:
         "كلمه", "الكلمه", "كلمات", "مصطلح", "المصطلح", "مصطلحات",
         "عباره", "العباره", "عبارات", "لفظ", "اللفظ", "معنى", "المعنى",
     }
-    explicit_action_openers = {
-        "احذف", "امسح", "نظف", "افحص", "حلل", "اعرض", "اقرا", "اقرأ",
-        "اكتب", "عدل", "عدّل", "شغل", "شغّل", "نفذ", "انشئ", "افتح",
-        "ابحث", "قارن", "delete", "remove", "clean", "run", "write",
-        "edit", "open", "search",
-    }
     if bases & mention_markers:
-        first = next(iter(re.findall(r"[\w]+", normalized, flags=re.UNICODE)), "")
-        return first not in explicit_action_openers
+        return True
     trigger_terms = {
         "مشروع", "مشاريع", "عمل", "اعمل", "اشتغل", "اشتغال", "شغل",
         "مساحه", "مساحة", "تخزين", "هاتف", "هاتف", "جهاز", "ذاكره",
