@@ -239,9 +239,57 @@ def _is_action_target_request(
     return has_verb_action
 
 
+def _is_explicit_action_request(
+    text: str,
+    action_suffixes: dict[str, tuple[str, ...]],
+) -> bool:
+    """Only an imperative/request frame may authorize a cleanup or delete action."""
+    normalized = normalize(str(text or "")).casefold()
+    tokens = re.findall(r"[\w]+", normalized, flags=re.UNICODE)
+    if not tokens:
+        return False
+
+    negators = {"لا", "لن", "ليس", "ليست", "مش", "مو", "ما"}
+    if tokens[0] in negators:
+        return False
+
+    # Questions and explanatory framing can discuss a destructive action
+    # without authorizing it.
+    if tokens[0] in {
+        "هل", "ما", "ماذا", "لماذا", "كيف", "متى", "كم", "why", "what",
+        "how", "can", "could", "would",
+    }:
+        return False
+
+    action_forms = {
+        stem + suffix
+        for stem, suffixes in action_suffixes.items()
+        for suffix in suffixes
+    }
+
+    def is_action(token: str) -> bool:
+        return any(form in action_forms for form in _token_prefix_forms(token))
+
+    if is_action(tokens[0]):
+        return True
+
+    # Polite request forms such as "أريد حذف الملف" remain valid.
+    request_openers = {
+        "اريد", "ارغب", "احتاج", "يرجى", "رجاء", "فضلا", "قم",
+        "please", "i", "want", "need",
+    }
+    if tokens[0] in request_openers and any(is_action(token) for token in tokens[1:4]):
+        return True
+
+    return False
+
+
 def _resolve_cleanup_intent(text: str, candidate: str) -> str:
     """Resolve cleanup as action + target, never by target mention alone."""
-    has_action = _has_cleanup_action(text)
+    has_action = (
+        _has_cleanup_action(text)
+        and _is_explicit_action_request(text, _CLEAN_ACTION_SUFFIXES)
+    )
     has_device_target = _has_stem_token(text, _DEVICE_TARGET_STEMS)
     has_code_target = _has_stem_token(text, _CODE_TARGET_STEMS) or bool(
         _extract_target(text)
@@ -675,7 +723,10 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
             "semantic_pattern": "PROJECT_NAMES_QUERY",
         }
 
-    if _has_cleanup_action(user_input):
+    if (
+        _has_cleanup_action(user_input)
+        and _is_explicit_action_request(user_input, _CLEAN_ACTION_SUFFIXES)
+    ):
         _cleanup_tokens = set(
             re.findall(r"[\w]+", normalize(user_input).casefold(), flags=re.UNICODE)
         )
@@ -891,7 +942,10 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
                     chosen_conf   = nlu_result.get("confidence", 0.0)
 
                     # if NLU says a delete action but there's an explicit file target -> DELETE_FILE
-                    if re.search(r"\bاحذ?ف\b", _txt_norm) and (any(_has_word(w) for w in FILE_INDICATORS) or _extract_target(user_input)):
+                    if (
+                        _is_explicit_action_request(user_input, _DELETE_ACTION_SUFFIXES)
+                        and (any(_has_word(w) for w in FILE_INDICATORS) or _extract_target(user_input))
+                    ):
                         chosen_intent = Intent.DELETE_FILE
 
                 chosen_intent = _resolve_cleanup_intent(user_input, chosen_intent)
@@ -1027,7 +1081,10 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     # An explicit delete-file request with a concrete file target
     # must never be downgraded/reinterpreted by later context
     # routing.
-    _explicit_delete = _has_delete_action(user_input)
+    _explicit_delete = (
+        _has_delete_action(user_input)
+        and _is_explicit_action_request(user_input, _DELETE_ACTION_SUFFIXES)
+    )
 
     if _explicit_delete and target:
         intent = Intent.DELETE_FILE
