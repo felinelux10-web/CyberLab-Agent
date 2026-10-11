@@ -545,9 +545,12 @@ def _project_history_intent(user_input: str):
     if not (tokens & project_terms and tokens & work_terms):
         return None
 
-    if tokens & {"مشاريع", "المشاريع", "projects"} and tokens & {
-        "قائمة", "اسماء", "اسامي", "عدد", "كم", "list", "names", "count",
-    }:
+    if tokens & {"مشاريع", "المشاريع", "projects"} and (
+        tokens & {
+            "قائمة", "اسماء", "اسامي", "عدد", "كم", "list", "names", "count",
+        }
+        or tokens & {"ما", "ماذا", "اين", "كيف", "where", "what", "how"}
+    ):
         return Intent.PROJECT_INDEX
     if tokens & {"اخر", "آخر", "السابق", "سابق"}:
         return Intent.LAST_PROJECT
