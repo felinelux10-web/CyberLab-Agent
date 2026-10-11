@@ -365,10 +365,7 @@ def _device_memory_request_kind(text: str) -> str | None:
         "مستخدم", "متاح", "usage", "used", "total", "available", "free",
     }
     explicit_ram = {"ram", "رام", "الرام"}
-    if (
-        token_set.intersection(device_terms | measurement_terms)
-        or (len(tokens) <= 2 and token_set.intersection(explicit_ram))
-    ):
+    if token_set.intersection(device_terms | measurement_terms):
         return "unsupported"
 
     # A bare mention of RAM/memory is not a live device query. Keep it on
