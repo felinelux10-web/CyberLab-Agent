@@ -348,3 +348,55 @@ def test_history_recall_keeps_relevant_execution_exchange():
     )
     assert result["source"] == "dialogue_memory"
     assert "شرح التنفيذ المرتبط بالموضوع" in result["text"]
+
+
+def test_independent_topic_does_not_send_previous_branch_secret_to_privacy_boundary(monkeypatch):
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.dni.privacy_engine import PrivacyEngine
+
+    secret = "DNI_RUNTIME_TEST_SECRET_OLD_BRANCH_ABC123"
+    outbound = []
+
+    def fake_ask(prompt, system=None, **_kwargs):
+        outbound.append((str(prompt or ""), str(system or "")))
+        if len(outbound) == 1:
+            return {"status": "success", "text": f"وصلنا إلى هذه النقطة: {secret}"}
+        return {"status": "success", "text": "بدأ شرح CSRF بصورة مستقلة."}
+
+    monkeypatch.setattr(orchestrator_module, "ask", fake_ask)
+    monkeypatch.setattr("lab_v4_dev.intent.response_cache.get", lambda *_args: None)
+    monkeypatch.setattr(
+        "lab_v4_dev.awareness.knowledge_base.search",
+        lambda *_args, **_kwargs: None,
+    )
+
+    context = ContextStore()
+    agent = type("Agent", (), {"db": None})()
+    orchestrator = Orchestrator(agent, context)
+    memory = DialogueMemory(context)
+    manager = ConversationManager(orchestrator, memory)
+
+    first = manager.process("اشرح SQL Injection")
+    second = manager.process(
+        "اشرح CSRF بالتفصيل، وابدأ شرحًا مستقلًا عن الموضوع السابق"
+    )
+
+    assert first["status"] == "success"
+    assert second["status"] == "success"
+    prompt, system = outbound[-1]
+    assert secret not in prompt
+    assert secret not in system
+    assert PrivacyEngine().inspect(prompt)["allow_external"] is True
+    assert PrivacyEngine().inspect(system)["allow_external"] is True
+
+
+def test_return_to_main_topic_without_history_is_classified_and_safe():
+    parsed = parse("ارجع للموضوع الرئيسي")
+    assert parsed["conversation_act"] == "TOPIC_RETURN"
+
+    orchestrator = CapturingOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+    result = manager.process("ارجع للموضوع الرئيسي")
+
+    assert result["status"] == "needs_clarification"
+    assert orchestrator.calls == []

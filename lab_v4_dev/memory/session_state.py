@@ -42,10 +42,15 @@ def _append_recent_archive(data: dict) -> None:
         )
         if key in data
     }
-    if archive and archive[-1].get("session_id") == summary.get("session_id"):
-        archive[-1] = summary
-    else:
-        archive.append(summary)
+    # Update an existing session wherever it appears, then move it to the end
+    # so the index has one authoritative, most-recent entry per session ID.
+    session_id = summary.get("session_id")
+    archive = [
+        item for item in archive
+        if not isinstance(item, dict) or item.get("session_id") != session_id
+    ]
+    archive.append(summary)
+    archive = archive[-MAX_SESSION_INDEX:]
     # The archive is the durable searchable index. The UI helper below still
     # returns only a small recent window for mobile/Termux memory limits.
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -162,6 +167,22 @@ def get_session_by_id(session_id: str) -> dict:
     return {}
 
 
+def get_latest_session_by_type(session_type: str) -> dict:
+    """Return the newest persisted session of exactly the requested type."""
+    wanted = str(session_type or "").strip().casefold()
+    if not wanted:
+        return {}
+    for item in reversed(get_session_index()):
+        if str(item.get("session_type") or "").casefold() != wanted:
+            continue
+        selected = get_session_by_id(item.get("session_id"))
+        return selected or item
+    current = load_session()
+    if isinstance(current, dict) and str(current.get("session_type") or "").casefold() == wanted:
+        return current
+    return {}
+
+
 def session_selector(raw: str) -> dict:
     """Classify explicit session selection/report language without an LLM."""
     raw_text = str(raw or "").strip()
@@ -269,8 +290,11 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
         "last_files": list(last_files or data.get("last_files", [])),
     })
     data.setdefault("created_at", data.get("timestamp"))
-    data.setdefault("title", data.get("active_goal") or "جلسة غير معنونة")
-    data.setdefault("session_type", "mixed" if dialogue_state and context_state else "work")
+    data["title"] = active_goal or data.get("title") or "جلسة عمل"
+    # This record is the canonical recoverable work checkpoint. Dialogue is
+    # persisted independently and cannot change the work session's type.
+    data["session_type"] = "work"
+    data.pop("dialogue_state", None)
     previous_status = str(data.get("status") or "").casefold()
     last_result = (context_state or data.get("context_state") or {}).get("last_result", {})
     last_result_status = str(last_result.get("status") if isinstance(last_result, dict) else "").casefold()
@@ -284,8 +308,8 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
         data["status"] = "completed" if not data.get("next_step") else "paused"
     data.setdefault("project", project_root or data.get("project_root", ""))
     data.setdefault("summary", "")
-    if dialogue_state is not None:
-        data["dialogue_state"] = dialogue_state
+    # Do not mix dialogue history into the canonical work checkpoint.
+    data.pop("dialogue_state", None)
     if context_state is not None:
         data["context_state"] = context_state
     if project_root:
@@ -307,11 +331,88 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
     _append_recent_archive(data)
     return data
 
+def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
+                             project_root: str = None) -> dict:
+    """Persist dialogue history without replacing the canonical work checkpoint."""
+    if not isinstance(dialogue_state, dict):
+        return {}
+
+    # Keep work turns out of the dialogue archive even when legacy callers have
+    # shared one DialogueMemory instance across both domains.
+    state = dict(dialogue_state)
+    history = [
+        turn for turn in (state.get("history") or [])
+        if isinstance(turn, dict)
+        and str(turn.get("context_kind") or "").casefold() != "work"
+        and str(turn.get("conversation_domain") or "").casefold() != "work"
+    ]
+    exchanges = [
+        exchange for exchange in (state.get("exchange_archive") or [])
+        if isinstance(exchange, dict)
+        and str(exchange.get("context_kind") or "").casefold() != "work"
+        and str(exchange.get("conversation_domain") or "").casefold() != "work"
+    ]
+    if not history and not exchanges:
+        return {}
+    state["history"] = history[-8:]
+    state["exchange_archive"] = exchanges[-12:]
+
+    index = get_session_index()
+    previous = next(
+        (item for item in reversed(index)
+         if str(item.get("session_type") or "").casefold() == "dialogue"),
+        {},
+    )
+    current = load_session()
+    previous_id = previous.get("session_id")
+    # A legacy mixed record can share its ID with the canonical work pointer.
+    # Do not mutate that work identity into a dialogue session.
+    same_as_work = (
+        previous_id
+        and isinstance(current, dict)
+        and current.get("session_id") == previous_id
+        and str(current.get("session_type") or "work").casefold() != "dialogue"
+    )
+    data = get_session_by_id(previous_id) if previous_id and not same_as_work else {}
+    now = datetime.now().isoformat()
+    if not isinstance(data, dict) or not data:
+        data = {
+            "schema_version": SESSION_SCHEMA_VERSION,
+            "session_id": f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid.uuid4().hex[:8]}",
+            "created_at": now,
+        }
+    topic = str(state.get("last_topic") or state.get("pending_topic") or "").strip()
+    data.update({
+        "schema_version": data.get("schema_version", SESSION_SCHEMA_VERSION),
+        "updated_at": now,
+        "timestamp": now,
+        "version": version or data.get("version", "unknown"),
+        "title": f"حوار: {topic}" if topic else "جلسة حوار",
+        "session_type": "dialogue",
+        "status": "completed",
+        "active_goal": topic or "حفظ سياق الحوار",
+        "next_step": "",
+        "last_files": [],
+        "project": project_root or data.get("project", ""),
+        "dialogue_state": state,
+    })
+    # A dialogue checkpoint must never retain execution context from a legacy
+    # mixed record.
+    data.pop("context_state", None)
+    data.pop("project_root", None)
+    data.pop("decisions", None)
+    data.pop("open_questions", None)
+    _enrich_session_fields(data)
+    _write_session_detail(data)
+    _append_recent_archive(data)
+    return data
+
+
 def load_session() -> dict:
     try:
         from lab_v4_dev.awareness.project_knowledge import get_session_state
         return get_session_state()
-    except:
+    except Exception:
         return {}
 
 
@@ -324,6 +425,8 @@ def recoverable_work_checkpoint(data: dict | None = None) -> dict | None:
     """
     checkpoint = data if isinstance(data, dict) else load_session()
     if not isinstance(checkpoint, dict):
+        return None
+    if str(checkpoint.get("session_type") or "").casefold() == "dialogue":
         return None
     goal = str(checkpoint.get("active_goal") or "").strip()
     next_step = str(checkpoint.get("next_step") or "").strip()

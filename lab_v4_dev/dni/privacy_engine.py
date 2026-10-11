@@ -71,15 +71,39 @@ def _find_matches(text: str):
 def _apply_redactions(text: str, redactions: List[Dict]) -> str:
     if not redactions:
         return text
-    # apply in reverse order to preserve indices
+
+    # Regexes can overlap (AUTH_HEADER, BEARER_TOKEN, and LONG_TOKEN may all
+    # match one credential). Merge spans before replacing so no secret fragment
+    # is duplicated or left visible by overlapping replacements.
+    ordered = sorted(redactions, key=lambda item: (item["start"], -item["end"]))
+    merged = []
+    for item in ordered:
+        start, end = int(item["start"]), int(item["end"])
+        if start < 0 or end <= start or end > len(text):
+            continue
+        if not merged or start >= merged[-1]["end"]:
+            merged.append({
+                "start": start,
+                "end": end,
+                "replacement": item["replacement"],
+                "span_length": end - start,
+            })
+            continue
+
+        current = merged[-1]
+        if end > current["end"]:
+            current["end"] = end
+        if end - start > current["span_length"]:
+            current["replacement"] = item["replacement"]
+            current["span_length"] = end - start
+
     parts = []
     last = len(text)
-    for r in sorted(redactions, key=lambda r: r["start"], reverse=True):
-        s, e = r["start"], r["end"]
-        parts.append(text[e:last])
-        parts.append(r["replacement"])
-        last = s
-    parts.append(text[0:last])
+    for item in reversed(merged):
+        parts.append(text[item["end"]:last])
+        parts.append(item["replacement"])
+        last = item["start"]
+    parts.append(text[:last])
     return "".join(reversed(parts))
 
 class PrivacyEngine:

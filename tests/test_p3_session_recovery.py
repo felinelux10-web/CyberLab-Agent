@@ -75,7 +75,8 @@ def test_recoverable_checkpoint_preserves_work_metadata_and_context(monkeypatch,
 
     assert saved["completed_work"] == ["خطوة 1"]
     assert loaded["decisions"] == ["قرار سابق"]
-    assert loaded["dialogue_state"]["last_topic"] == "SQL Injection"
+    assert loaded["session_type"] == "work"
+    assert "dialogue_state" not in loaded
     assert loaded["context_state"]["file"] == "main.py"
     assert loaded["project_root"] == str(project_root)
     assert loaded["active_goal"] == "شرح SQL Injection"
@@ -123,3 +124,80 @@ def test_session_restore_command_reports_recoverable_context(monkeypatch):
     assert result["status"] == "success"
     assert restored == [True]
     assert "تمت استعادته" in result["text"]
+
+
+
+def test_dialogue_checkpoint_is_persisted_separately_from_work(monkeypatch, tmp_path):
+    project_root = _isolate_project_data(monkeypatch, tmp_path)
+    from lab_v4_dev.memory.session_state import (
+        get_latest_session_by_type,
+        load_session,
+        save_dialogue_checkpoint,
+        save_recoverable_checkpoint,
+    )
+
+    work = save_recoverable_checkpoint(
+        active_goal="إصلاح ملف",
+        next_step="استكمال إصلاح الملف",
+        context_state={"last_intent": "modify_file", "current_file": "main.py"},
+        project_root=str(project_root),
+    )
+    dialogue = save_dialogue_checkpoint(
+        dialogue_state={
+            "last_topic": "SQL Injection",
+            "history": [
+                {"role": "user", "content": "اشرح SQL Injection", "target": "SQL Injection",
+                 "context_kind": "cybersecurity"},
+                {"role": "assistant", "content": "توقفنا عند آلية الحدوث.", "context_kind": "cybersecurity"},
+                {"role": "user", "content": "عدّل main.py", "context_kind": "work",
+                 "conversation_domain": "work"},
+            ],
+            "exchange_archive": [
+                {"user": "اشرح SQL Injection", "assistant": "توقفنا عند آلية الحدوث.",
+                 "context_kind": "cybersecurity"},
+                {"user": "عدّل main.py", "assistant": "تم التعديل",
+                 "context_kind": "work", "conversation_domain": "work"},
+            ],
+        },
+        version="test",
+        project_root=str(project_root),
+    )
+
+    assert load_session()["session_id"] == work["session_id"]
+    assert load_session()["session_type"] == "work"
+    assert "dialogue_state" not in load_session()
+    assert dialogue["session_type"] == "dialogue"
+    assert "context_state" not in dialogue
+    assert len(dialogue["dialogue_state"]["history"]) == 2
+    assert len(dialogue["dialogue_state"]["exchange_archive"]) == 1
+    latest_dialogue = get_latest_session_by_type("dialogue")
+    assert latest_dialogue["dialogue_state"]["last_topic"] == "SQL Injection"
+
+
+def test_restore_session_snapshot_obeys_session_type():
+    from lab_v4_dev.context.context_store import ContextStore
+    from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
+    from lab_v4_dev.core.agent import Agent
+
+    context = ContextStore()
+    agent = Agent.__new__(Agent)
+    agent.context = context
+    agent.dialogue_memory = DialogueMemory(context)
+    agent._pending_session = None
+
+    assert agent.restore_session_snapshot({
+        "session_type": "work",
+        "dialogue_state": {"last_topic": "must not restore"},
+        "context_state": {"current_file": "work.py"},
+    }) is True
+    assert agent.dialogue_memory.snapshot().get("last_topic") != "must not restore"
+    assert context.current_file == "work.py"
+
+    context.current_file = None
+    assert agent.restore_session_snapshot({
+        "session_type": "dialogue",
+        "dialogue_state": {"last_topic": "SQL Injection", "history": []},
+        "context_state": {"current_file": "stale-work.py"},
+    }) is True
+    assert agent.dialogue_memory.snapshot()["last_topic"] == "SQL Injection"
+    assert context.current_file is None

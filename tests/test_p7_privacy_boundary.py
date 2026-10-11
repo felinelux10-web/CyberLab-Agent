@@ -40,3 +40,16 @@ def test_secret_in_system_blocks_even_public_prompt(monkeypatch):
     assert result["status"] == "error"
     assert result["error"]["code"] == "PRIVACY_EXTERNAL_BLOCKED"
     assert provider_calls == []
+
+
+def test_overlapping_secret_patterns_redact_the_whole_match_once():
+    from lab_v4_dev.dni.privacy_engine import PrivacyEngine
+
+    engine = PrivacyEngine()
+    secret = "Authorization: Bearer supersecret_token_12345"
+    result = engine.inspect(secret)
+
+    assert result["allow_external"] is False
+    assert secret not in result["sanitized"]
+    assert result["sanitized"].count("[REDACTED:") == 1
+    assert "[REDACTED:AUTH_HEADER]" in result["sanitized"]

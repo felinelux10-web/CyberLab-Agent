@@ -116,13 +116,24 @@ class Agent:
         try:
             from lab_v4_dev.memory.session_state import (
                 load_session, recoverable_work_checkpoint, get_session_index,
-                get_session_by_id, analyze_session,
+                get_session_by_id, get_latest_session_by_type, analyze_session,
             )
             from lab_v4_dev.data.project_timeline import init_timeline
             init_timeline()
             s = load_session()
             self._pending_session = s if isinstance(s, dict) else None
-            index = [item for item in get_session_index() if item.get("status") == "paused"]
+
+            # Restore dialogue history independently of the work checkpoint.
+            # This does not restore ContextStore execution fields or resume work.
+            dialogue_session = get_latest_session_by_type("dialogue")
+            if dialogue_session and isinstance(dialogue_session.get("dialogue_state"), dict):
+                self.dialogue_memory.restore_snapshot(dialogue_session["dialogue_state"])
+
+            index = [
+                item for item in get_session_index()
+                if item.get("status") == "paused"
+                and str(item.get("session_type") or "work").casefold() != "dialogue"
+            ]
             if not index and isinstance(s, dict) and s.get("session_id", s.get("active_goal")):
                 index = [s]
             if index:
@@ -163,6 +174,9 @@ class Agent:
         if result.get("status") == "unsupported":
             return result
 
+        if result.get("status") == "success":
+            self._save_dialogue_checkpoint()
+
         if result.get("status") == "success" and result.get("executed") is True:
             self.session.record_task()
 
@@ -175,21 +189,35 @@ class Agent:
 
         return result
 
+    def _save_dialogue_checkpoint(self) -> None:
+        """Persist conversational history separately from executable work state."""
+        try:
+            from lab_v4_dev.memory.session_state import save_dialogue_checkpoint
+            from lab_v4_dev.core.project_context import get_active_project_root
+            dialogue = self.dialogue_memory.snapshot() if self.dialogue_memory else None
+            version = self._meta.get_version() if getattr(self, "_meta", None) else "unknown"
+            save_dialogue_checkpoint(
+                dialogue_state=dialogue,
+                version=version,
+                project_root=get_active_project_root(),
+            )
+        except Exception as exc:
+            log.debug(f"Dialogue checkpoint skipped: {exc}")
+
     def _save_recoverable_checkpoint(self) -> None:
-        """Persist a bounded work/dialogue checkpoint after a successful turn."""
+        """Persist only the recoverable work checkpoint after successful execution."""
         try:
             from lab_v4_dev.memory.session_state import save_recoverable_checkpoint
             from lab_v4_dev.core.project_context import get_active_project_root
-            dialogue = self.dialogue_memory.snapshot() if self.dialogue_memory else None
             context = self.context.get_last() if self.context else None
-            topic = (dialogue or {}).get("last_topic") or (context or {}).get("subject")
+            topic = (context or {}).get("subject") or (context or {}).get("current_subject")
             version = self._meta.get_version() if getattr(self, "_meta", None) else "unknown"
+            current_file = (context or {}).get("file") or (context or {}).get("current_file")
             save_recoverable_checkpoint(
                 active_goal=topic or "عمل جاري",
                 next_step=(f"استكمال: {topic}" if topic else "استكمال الجلسة"),
-                last_files=[(context or {}).get("file")] if (context or {}).get("file") else [],
+                last_files=[current_file] if current_file else [],
                 version=version,
-                dialogue_state=dialogue,
                 context_state=context,
                 project_root=get_active_project_root(),
             )
@@ -210,20 +238,32 @@ class Agent:
         try:
             saved = saved if isinstance(saved, dict) else {}
             restored = False
-            if self.dialogue_memory:
-                restored = self.dialogue_memory.restore_snapshot(
-                    saved.get("dialogue_state")
-                )
+            session_type = str(saved.get("session_type") or "").casefold()
+            dialogue_state = saved.get("dialogue_state")
             context_state = saved.get("context_state") or {}
-            if self.context and isinstance(context_state, dict):
+
+            # Legacy records without a type are classified from their payload.
+            if not session_type:
+                if isinstance(dialogue_state, dict) and isinstance(context_state, dict) and context_state:
+                    session_type = "mixed"
+                elif isinstance(dialogue_state, dict):
+                    session_type = "dialogue"
+                else:
+                    session_type = "work"
+
+            if session_type in {"dialogue", "mixed"} and self.dialogue_memory:
+                restored = self.dialogue_memory.restore_snapshot(dialogue_state)
+            context_restored = False
+            if session_type in {"work", "mixed"} and self.context and isinstance(context_state, dict):
                 for name in (
                     "last_intent", "last_target", "last_result", "current_subject",
                     "current_version", "current_file", "current_analysis",
                 ):
                     if name in context_state:
                         setattr(self.context, name, context_state[name])
+                context_restored = bool(context_state)
             self._pending_session = saved
-            return restored or bool(context_state)
+            return restored or context_restored
         except Exception as exc:
             log.warning(f"Session context restore skipped: {exc}")
             return False
