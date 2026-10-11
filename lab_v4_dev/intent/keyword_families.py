@@ -86,9 +86,9 @@ def _contains_phrase(text: str, phrases: tuple[str, ...] | list[str]) -> bool:
         normalized_phrase = str(phrase).strip().lower()
         if not normalized_phrase:
             continue
-        pattern = r"(?<!\\w)" + r"\\s+".join(
+        pattern = r"(?<!\w)" + r"\s+".join(
             re.escape(part) for part in normalized_phrase.split()
-        ) + r"(?!\\w)"
+        ) + r"(?!\w)"
         if re.search(pattern, text, flags=re.UNICODE):
             return True
     return False
@@ -98,7 +98,7 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
     """A topic noun alone is not enough to authorize a routed operation."""
     import re
 
-    tokens = set(re.findall(r"[\\w]+", clean, flags=re.UNICODE))
+    tokens = set(re.findall(r"[\w]+", clean, flags=re.UNICODE))
     meta_markers = {
         "كلمه", "الكلمه", "مصطلح", "المصطلح", "عباره", "العباره",
         "لفظ", "اللفظ", "معنى", "المعنى",
@@ -219,12 +219,12 @@ def match_family(text: str) -> str | None:
     # Ignore file names/paths while matching semantic families.
     import re
     text_match = re.sub(
-        r"[\\w./\\\\-]+\\.(py|ts|js|json|yaml|yml|md|txt|sh)",
+        r"[\w./\\-]+\.(py|ts|js|json|yaml|yml|md|txt|sh)",
         " ",
         text_lower,
         flags=re.IGNORECASE,
     )
-    clean = re.sub(r"\\bال", "", text_match).strip()
+    clean = re.sub(r"\bال", "", text_match).strip()
 
     best_intent = None
     best_score = 0
@@ -233,7 +233,7 @@ def match_family(text: str) -> str | None:
         score = 0
         for kw in keywords:
             try:
-                pattern = rf"(?<!\\w){re.escape(kw)}(?!\\w)"
+                pattern = rf"(?<!\w){re.escape(kw)}(?!\w)"
                 matched = bool(
                     re.search(pattern, clean, flags=re.IGNORECASE)
                     or re.search(pattern, text_match, flags=re.IGNORECASE)
