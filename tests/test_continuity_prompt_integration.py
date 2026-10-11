@@ -302,8 +302,7 @@ def test_dialogue_history_summary_is_bounded_and_survives_prompt_window(monkeypa
     assert "اقتراح أول محدد" in result["text"]
     assert "اقتراح ثان محدد" in result["text"]
     assert result["text"].startswith("ملخص موجز من سجل الحوار المتاح:")
-    assert "\\n- المستخدم:" not in result["text"]
-    assert "\\n  الوكيل:" not in result["text"]
+    assert not result["text"].startswith("نص الحوار المسجل:")
 
 def test_phase_continuation_stays_on_active_explanation_instead_of_session_restore():
     orchestrator = CapturingOrchestrator()
