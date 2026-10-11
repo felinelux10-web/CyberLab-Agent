@@ -496,7 +496,7 @@ def build_chat_prompt(
 
     if history:
         turns = []
-        for h in history[-16:]
+        for h in history[-16:]:
             if not isinstance(h, dict):
                 continue
 
