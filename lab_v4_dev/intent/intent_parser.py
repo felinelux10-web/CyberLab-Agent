@@ -27,7 +27,7 @@ def detect_context(text: str) -> str:
     over broad project/work vocabulary.
     """
     normalized = normalize(str(text or "")).casefold()
-    tokens = set(re.findall(r"[\\w]+", normalized, flags=re.UNICODE))
+    tokens = set(re.findall(r"[\w]+", normalized, flags=re.UNICODE))
 
     def has(*words: str) -> bool:
         return bool(tokens.intersection(words))
