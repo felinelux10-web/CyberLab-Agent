@@ -551,10 +551,7 @@ def _project_history_intent(user_input: str):
     text = normalize(user_input).casefold()
 
     def has_phrase(phrases: tuple[str, ...]) -> bool:
-        return any(
-            _token_has_word(text, normalize(phrase).casefold())
-            for phrase in phrases
-        )
+        return _starts_with_normalized_phrase(user_input, phrases)
 
     if has_phrase((
         "ما هي المشاريع", "ما المشاريع", "ما عدد المشاريع",
@@ -564,9 +561,9 @@ def _project_history_intent(user_input: str):
         return Intent.PROJECT_INDEX
 
     if has_phrase((
-        "ما آخر مشروع", "ما اخر مشروع", "آخر مشروع كنا نشتغل عليه",
-        "اخر مشروع كنا نشتغل عليه", "ما المشروع السابق",
-        "المشروع السابق",
+        "ما آخر مشروع", "ما اخر مشروع", "ماهو آخر مشروع كنا نشتغل عليه",
+        "ماهو اخر مشروع كنا نشتغل عليه", "آخر مشروع كنا نشتغل عليه",
+        "اخر مشروع كنا نشتغل عليه", "ما المشروع السابق", "المشروع السابق",
     )):
         return Intent.LAST_PROJECT
 
@@ -951,8 +948,12 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     )
     if (
         _project_name_tokens & {"مشاريع", "المشاريع", "project", "projects"}
-        and _project_name_tokens
-        & {"اسماء", "اسامي", "قائمة", "تظهر", "موجودة", "المسجلة"}
+        and _starts_with_normalized_phrase(user_input, (
+            "ما هي المشاريع", "ما المشاريع", "ما اسماء المشاريع",
+            "ما أسماء المشاريع", "قائمة المشاريع", "اعرض المشاريع",
+            "ما المشاريع الموجودة", "المشاريع المسجلة",
+            "اريد ان اعرف المشاريع المسجلة", "list projects",
+        ))
     ):
         return {
             "intent": Intent.PROJECT_INDEX,
