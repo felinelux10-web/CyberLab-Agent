@@ -1009,21 +1009,33 @@ class ConversationManager:
             "dialogue_response_mode": response_mode,
         }
         if response_mode == "last_question":
-            last_user = next(
-                (str(item.get("user") or "").strip() for item in reversed(relevant)
-                 if str(item.get("user") or "").strip()),
+            question_starts = (
+                "هل ", "ما ", "ماذا ", "كيف ", "لماذا ", "من ", "أين ",
+                "اين ", "متى ", "كم ", "أي ", "اي ", "ماهو ", "ما هي ",
+            )
+            last_question = next(
+                (
+                    str(item.get("user") or "").strip()
+                    for item in reversed(relevant)
+                    if str(item.get("user") or "").strip()
+                    and (
+                        "؟" in str(item.get("user") or "")
+                        or "?" in str(item.get("user") or "")
+                        or str(item.get("user") or "").strip().casefold().startswith(question_starts)
+                    )
+                ),
                 "",
             )
-            if not last_user:
+            if not last_question:
                 return {
                     **base,
                     "status": "needs_clarification",
-                    "text": "لا توجد رسالة سابقة كافية لتحديد آخر سؤال في هذه الجلسة.",
+                    "text": "لا أجد سؤالًا صريحًا في سجل الحوار القريب؛ لن أستبدله برسالة عادية.",
                 }
             return {
                 **base,
-                "text": f"آخر سؤال طرحته عليّ كان: «{last_user}».",
-                "last_user_message": last_user,
+                "text": f"آخر سؤال طرحته عليّ كان: «{last_question}».",
+                "last_user_message": last_question,
             }
 
         if not relevant:
