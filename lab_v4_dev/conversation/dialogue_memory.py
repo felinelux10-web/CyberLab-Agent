@@ -187,7 +187,10 @@ class DialogueMemory:
         # A targetless social/dialogue utterance is not itself a stable topic.
         # Treating the entire sentence as an entity poisons active-context
         # detection and makes later continuations look like missing work context.
-        if not turn_target and context_kind in {"dialogue", "social"}:
+        if not turn_target and (
+            context_kind in {"dialogue", "social"}
+            or conversation_domain in {"general", "social", "agent_self"}
+        ):
             topic = None
         if context_transition is None:
             # Compatibility for direct legacy callers; the main conversation
