@@ -222,3 +222,36 @@ def test_legacy_mixed_snapshot_restores_work_only():
     }) is True
     assert agent.dialogue_memory.snapshot().get("last_topic") != "legacy dialogue must not restore"
     assert context.current_file == "work.py"
+
+def test_empty_dialogue_checkpoint_supersedes_previous_dialogue_after_reset(monkeypatch, tmp_path):
+    project_root = _isolate_project_data(monkeypatch, tmp_path)
+    from lab_v4_dev.memory.session_state import (
+        get_latest_session_by_type,
+        save_dialogue_checkpoint,
+    )
+
+    previous = save_dialogue_checkpoint(
+        dialogue_state={
+            "last_topic": "موضوع قديم",
+            "history": [{"role": "user", "content": "رسالة قديمة"}],
+            "exchange_archive": [{"user": "رسالة قديمة", "assistant": "رد قديم"}],
+        },
+        version="test",
+        project_root=str(project_root),
+    )
+    cleared = save_dialogue_checkpoint(
+        dialogue_state={
+            "last_topic": None,
+            "history": [],
+            "exchange_archive": [],
+            "context_history": [],
+        },
+        version="test",
+        project_root=str(project_root),
+    )
+
+    latest = get_latest_session_by_type("dialogue")
+    assert previous["session_id"] != cleared["session_id"]
+    assert latest["session_id"] == cleared["session_id"]
+    assert latest["dialogue_state"]["history"] == []
+    assert latest["dialogue_state"]["exchange_archive"] == []
