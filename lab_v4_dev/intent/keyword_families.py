@@ -166,7 +166,11 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
         return bool(tokens & clean_actions)
 
     if intent == Intent.READ_FILE:
-        return bool(tokens & read_actions) and bool(tokens & file_terms)
+        return _contains_phrase(text, (
+            "اقرا الملف", "اقرأ الملف", "اعرض الملف", "اعرض ملف",
+            "افتح الملف", "افتح ملف", "ما محتوى الملف", "ما داخل الملف",
+            "read file", "show file", "open file",
+        ))
 
     if intent == Intent.SHOW_CHANGES:
         return _contains_phrase(text, (
@@ -176,21 +180,35 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
         ))
 
     if intent == Intent.HISTORY:
-        return bool(tokens & history_terms) and bool(tokens & question_or_request)
+        return _contains_phrase(text, (
+            "سجل التعديلات", "تاريخ التعديلات", "سجل العمل",
+            "ابحث في السجل", "اعرض السجل", "ماذا تغير سابقا",
+            "history log", "show history",
+        ))
 
     if intent == Intent.STATUS:
-        return bool(tokens & {"حاله", "حالة", "وضع", "status"}) and bool(
-            tokens & question_or_request
-        )
+        return _contains_phrase(text, (
+            "حالة النظام", "وضع النظام", "كيف حال النظام",
+            "حالة الوكيل", "وضع الوكيل", "system status", "agent status",
+        ))
 
     if intent == Intent.HEALTH:
-        return bool(tokens & {"صحه", "صحة", "فحص", "تشخيص", "health", "check"}) and bool(
-            tokens & question_or_request
-        )
+        return _contains_phrase(text, (
+            "هل النظام سليم", "هل النظام يعمل بشكل سليم",
+            "افحص صحة النظام", "فحص صحة النظام", "شخص مشكلة النظام",
+            "check health", "diagnose system",
+        ))
 
     if intent == Intent.REPORT:
-        return bool(tokens & {"تقرير", "ملخص", "report", "summary"}) and bool(
-            tokens & question_or_request
+        return _contains_phrase(text, (
+            "اعطني تقرير", "أعطني تقرير", "تقرير كامل",
+            "ملخص الجلسة", "لخص ما فعلناه", "show report", "full report",
+        ))
+
+    if intent == Intent.HELP:
+        return (
+            clean.strip(" ؟?!.،,") in {"مساعده", "help", "ساعدني"}
+            or text.strip(" ؟?!.،,") in {"مساعدة", "مساعده", "help", "ساعدني"}
         )
 
     if intent == Intent.CONTEXT_REPORT:
