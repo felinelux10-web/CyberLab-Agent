@@ -299,7 +299,10 @@ def _resolve_cleanup_intent(text: str, candidate: str) -> str:
         # A fuzzy/prefix-only action guess is ambiguous, not executable.
         if candidate in {Intent.CLEAN, Intent.CLEAN_DEVICE, Intent.CLEANUP_CODE}:
             return Intent.UNCLEAR
-        if candidate == Intent.DELETE_FILE and not _has_delete_action(text):
+        if candidate == Intent.DELETE_FILE and not (
+            _has_delete_action(text)
+            and _is_explicit_action_request(text, _DELETE_ACTION_SUFFIXES)
+        ):
             return Intent.UNCLEAR
         if candidate == Intent.READ_FILE and not _has_read_action(text):
             return Intent.UNCLEAR
