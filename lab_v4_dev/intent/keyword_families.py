@@ -123,8 +123,8 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
     }
     project_actions = {
         "حلل", "افحص", "اعرض", "اقرا", "اقرأ", "خريطه", "خريطة",
-        "هيكل", "بنيه", "بنية", "افتح", "عدد", "كم", "analyze", "scan",
-        "show", "read", "map", "structure", "count",
+        "هيكل", "بنيه", "بنية", "analyze", "scan", "show", "read",
+        "map", "structure",
     }
     clean_actions = {
         "نظف", "تنظيف", "نظفه", "تفريغ", "مسح", "clear", "clean",
@@ -135,8 +135,8 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
     history_terms = {"سجل", "تاريخ", "سابق", "عمليات", "نشاط", "history", "log"}
 
     if intent == Intent.SPACE:
-        # Accept a specific short storage query, or an explicit request to
-        # measure storage. Do not route an incidental mention of "مساحة".
+        # Require storage-specific grammar, not a general opinion/question
+        # that happens to contain the noun "space".
         exact_storage_queries = {
             "مساحة الهاتف", "مساحه الهاتف", "مساحه هاتف",
             "مساحة الجهاز", "مساحه الجهاز", "مساحه جهاز",
@@ -148,7 +148,16 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
             or text.strip(" ؟?!.،,") in exact_storage_queries
         ):
             return True
-        return bool(tokens & storage_terms) and bool(tokens & question_or_request)
+        storage_question = _contains_phrase(text, (
+            "كم المساحه", "كم مساحة", "كم مساحه", "ما المساحه",
+            "ما مساحة", "ما مساحه", "كم التخزين", "المساحه المتبقيه",
+            "المساحة المتبقية", "المتاح من التخزين", "اعرض المساحه",
+            "اعرض مساحة", "اعرض مساحه", "افحص المساحه", "افحص مساحة",
+            "show storage", "storage space",
+        ))
+        if tokens & {"راي", "رايي", "رأيي"}:
+            return False
+        return bool(tokens & storage_terms) and storage_question
 
     if intent == Intent.PROJECT_SCAN:
         return bool(tokens & project_terms) and bool(tokens & project_actions)
@@ -160,7 +169,11 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
         return bool(tokens & read_actions) and bool(tokens & file_terms)
 
     if intent == Intent.SHOW_CHANGES:
-        return bool(tokens & change_terms) and bool(tokens & question_or_request)
+        return _contains_phrase(text, (
+            "اعرض التغييرات", "اعرض التغيير", "ما الذي تغير",
+            "ماذا تغير", "اخر تعديل", "آخر تعديل", "راجع اخر تعديل",
+            "راجع آخر تعديل", "show changes", "view diff",
+        ))
 
     if intent == Intent.HISTORY:
         return bool(tokens & history_terms) and bool(tokens & question_or_request)
