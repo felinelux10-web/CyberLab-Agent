@@ -989,29 +989,45 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     _work_tokens = set(
         re.findall(r"[\w]+", normalize(user_input).casefold(), flags=re.UNICODE)
     )
-    if _work_tokens & {"لعبة", "اللعبة", "لعبه", "اللعبه", "سكريبت", "السكريبت", "سكربت", "game", "script"}:
-        if _work_tokens & {"اكتب", "انشئ", "انشاء", "اصنع", "create", "write", "make"}:
-            return {
-                "intent": Intent.GENERATE_CODE,
-                "target": "",
-                "context": "file_operation",
-                "confidence": 0.97,
-                "raw": user_input,
-                "source": "explicit_code_generation",
-                "entity_type": "FILE",
-                "semantic_pattern": "CODE_GENERATION_REQUEST",
-            }
-        if _work_tokens & {"عدل", "تعديل", "اضف", "اضافه", "اضافة", "غير", "غيّر", "edit", "modify", "add"}:
-            return {
-                "intent": Intent.MODIFY_CODE,
-                "target": "",
-                "context": "file_operation",
-                "confidence": 0.97,
-                "raw": user_input,
-                "source": "explicit_code_modification",
-                "entity_type": "FILE",
-                "semantic_pattern": "CODE_MODIFICATION_REQUEST",
-            }
+    _code_target_mentioned = bool(
+        _work_tokens & {
+            "لعبة", "اللعبة", "لعبه", "اللعبه", "سكريبت", "السكريبت",
+            "سكربت", "السكربت", "game", "script",
+        }
+    )
+    if _code_target_mentioned and _starts_with_normalized_phrase(user_input, (
+        "اكتب سكريبت", "اكتب سكربت", "اكتب لعبة", "انشئ سكريبت",
+        "انشئ لعبة", "اصنع لعبة", "اريد كتابة سكريبت",
+        "أريد أن أكتب سكريبت", "write script", "create game",
+    )):
+        return {
+            "intent": Intent.GENERATE_CODE,
+            "target": "",
+            "context": "file_operation",
+            "confidence": 0.97,
+            "raw": user_input,
+            "source": "explicit_code_generation",
+            "entity_type": "FILE",
+            "semantic_pattern": "CODE_GENERATION_REQUEST",
+        }
+
+    if _code_target_mentioned and _starts_with_normalized_phrase(user_input, (
+        "عدل السكريبت", "عدل السكربت", "عدل اللعبة", "عدل الكود",
+        "غير اللعبة", "غير السكريبت", "اضف ميزة للعبة",
+        "أريد تعديل السكريبت", "اريد تعديل السكريبت",
+        "أريد تعديل اللعبة", "اريد تعديل اللعبة",
+        "edit script", "modify script", "edit game",
+    )):
+        return {
+            "intent": Intent.MODIFY_CODE,
+            "target": "",
+            "context": "file_operation",
+            "confidence": 0.97,
+            "raw": user_input,
+            "source": "explicit_code_modification",
+            "entity_type": "FILE",
+            "semantic_pattern": "CODE_MODIFICATION_REQUEST",
+        }
 
     # A project noun inside a social/meta sentence is not a project command.
     # Require explicit project evidence before allowing PROJECT_SCAN below.
