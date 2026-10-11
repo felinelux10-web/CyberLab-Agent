@@ -583,12 +583,23 @@ def _is_lexical_mention(text: str) -> bool:
     if tokens & mention_markers:
         first = next(iter(re.findall(r"[\w]+", normalized, flags=re.UNICODE)), "")
         return first not in explicit_action_openers
-    return any(marker in normalized for marker in (
-        "اي كلمة", "أي كلمة", "هذه الكلمة", "هذا المصطلح",
-        "لماذا تظهر", "لماذا يظهر", "لماذا تعرض", "لماذا يعرض",
-        "لماذا ترد", "لماذا يرد", "في هذه الجمله", "في هذه الجملة",
-        "في هذا النص", "في هذا المثال",
+    trigger_terms = {
+        "مشروع", "مشاريع", "عمل", "اعمل", "اشتغل", "اشتغال", "شغل",
+        "مساحه", "مساحة", "تخزين", "هاتف", "هاتف", "جهاز", "ذاكره",
+        "رام", "ram", "memory", "تنظيف", "نظف", "حذف", "احذف",
+        "تعديل", "تحرير", "edit", "delete", "clean", "space", "project",
+    }
+    has_mentioned_trigger = bool(tokens & trigger_terms)
+    mentions_a_displayed_context = any(marker in normalized for marker in (
+        "في الرد", "في النص", "في المثال", "في هذه الجمله", "في هذه الجملة",
+        "في هذه المحادثه", "في هذه المحادثة",
     ))
+    return has_mentioned_trigger and mentions_a_displayed_context and any(
+        marker in normalized for marker in (
+            "لماذا تظهر", "لماذا يظهر", "لماذا تعرض", "لماذا يعرض",
+            "لماذا ترد", "لماذا يرد",
+        )
+    )
 
 
 def _lexical_mention_result(user_input: str) -> dict:
