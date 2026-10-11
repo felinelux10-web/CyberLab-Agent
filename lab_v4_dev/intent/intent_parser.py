@@ -40,7 +40,7 @@ def detect_context(text: str) -> str:
         return "used"
     if has("ملف", "الملف", "ملفات", "مجلد", "المجلد", "file", "folder"):
         return "file_operation"
-    if has("مساحة", "مساحه", "تخزين", "storage", "ram", "رام", "ذاكرة", "الذاكرة", "memory"):
+    if has("مساحة", "مساحه", "تخزين", "storage", "ram", "رام", "ذاكرة", "الذاكرة", "ذاكره", "الذاكره", "memory"):
         return "device_resource"
     if has("مشروع", "المشروع", "مشاريع", "project", "repository", "نظام", "النظام"):
         return "project_level"
