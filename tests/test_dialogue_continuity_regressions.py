@@ -43,6 +43,7 @@ def test_same_dialogue_continuation_does_not_become_work_resume_clarification(mo
 
     first = manager.process("ماذا تستطيع فعله؟")
     assert first["status"] == "success"
+    assert memory.active_context_entity() is None
 
     continued = manager.process("نعم نكمل في نفس سياق الموضوع")
 
@@ -70,6 +71,9 @@ def test_dialogue_summary_request_returns_summary_not_transcript(monkeypatch):
 
 
 def test_short_summary_phrase_is_resolved_as_dialogue_history():
+    continuation = classify_conversation_semantics("نعم نكمل في نفس سياق الموضوع")
+    assert continuation["conversation_act"] == "CONVERSATION_CONTINUATION"
+
     for text in ("ملخص الحوار", "ملخص حوار الجلسة", "اكتب ملخص الحوار"):
         result = classify_conversation_semantics(text)
         assert result["conversation_act"] == "CONVERSATION_HISTORY_QUERY"
