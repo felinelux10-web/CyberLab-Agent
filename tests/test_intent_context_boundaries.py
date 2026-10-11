@@ -60,6 +60,8 @@ def test_project_and_work_words_alone_do_not_force_project_prompt_domain():
     assert _chat_domain("لماذا تظهر كلمة المشروع في الرد؟") == "general"
     assert _chat_domain("أريد فهم معنى كلمة العمل") == "general"
     assert _chat_domain("ما رأيك في المشروع؟") == "general"
+    assert parse("ما رأيك في بنية المشروع؟")["intent"] != Intent.PROJECT_SCAN
+    assert parse("ما هي بنية المشروع؟")["intent"] == Intent.PROJECT_SCAN
     assert _chat_domain(
         "ما طبقات CyberLab Agent؟",
         ProjectScope.CURRENT_PROJECT,
