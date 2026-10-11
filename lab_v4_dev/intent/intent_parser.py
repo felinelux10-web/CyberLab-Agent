@@ -1214,6 +1214,21 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
 
                 chosen_intent = _resolve_cleanup_intent(user_input, chosen_intent)
 
+                if chosen_intent == Intent.UNCLEAR and (
+                    (
+                        _has_cleanup_action(user_input)
+                        and not _is_explicit_action_request(user_input, _CLEAN_ACTION_SUFFIXES)
+                    )
+                    or (
+                        _has_delete_action(user_input)
+                        and not _is_explicit_action_request(user_input, _DELETE_ACTION_SUFFIXES)
+                    )
+                ):
+                    chosen_intent = Intent.PERSONAL_CHAT
+                    nlu_result = dict(nlu_result)
+                    nlu_result["target"] = ""
+                    semantic_pattern = "INCIDENTAL_ACTION_MENTION"
+
                 # Dictionary matches must pass the same utterance-level gate
                 # as NLU; otherwise an embedded phrase can override the guard.
                 if not _nlu_route_has_explicit_shape(user_input, chosen_intent):
