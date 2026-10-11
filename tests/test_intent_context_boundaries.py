@@ -105,7 +105,11 @@ def test_status_report_storage_and_edit_nouns_do_not_route_from_opinion_question
     report = parse("ما رأيك في التقرير؟")
     storage = parse("ما رأيك في مساحة الهاتف؟")
     edit = parse("ما رأيك في تحرير الملف؟")
+    script_edit = parse("ما رأيك في تعديل السكريبت؟")
+    script_run = parse("ما رأيك في شغل الكود؟")
     assert status["intent"] not in {Intent.STATUS, Intent.SYSTEM_STATUS}
     assert report["intent"] != Intent.REPORT
     assert storage["intent"] != Intent.SPACE
     assert edit["intent"] not in {Intent.MODIFY_CODE, Intent.MODIFY_FILE}
+    assert script_edit["intent"] != Intent.MODIFY_CODE
+    assert script_run["intent"] not in {Intent.RUN_SCRIPT, Intent.RUN_PROJECT}
