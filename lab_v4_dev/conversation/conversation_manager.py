@@ -669,6 +669,23 @@ class ConversationManager:
         #
         # Therefore -> Orchestrator.
         # ----------------------------------------------------
+        # A generic request for suggestions without a subject is not yet
+        # an executable project proposal. Let the conversational layer clarify
+        # the domain instead of treating a broad NLU label as an actionable task.
+        if (
+            intent in {Intent.PROPOSE_SOLUTION, Intent.PLAN}
+            and not explicit_target
+            and str((parsed or {}).get("conversation_domain") or "general")
+            not in {"technical", "project", "system"}
+        ):
+            return self._handle_chat(
+                text,
+                mode,
+                parsed=parsed,
+                user_question=user_question or text,
+                history=chat_history,
+            )
+
         if intent not in _NON_EXECUTABLE_INTENTS:
             result = self.orchestrator.handle(
                 text,
@@ -826,6 +843,15 @@ class ConversationManager:
             "last_project", "current_version", "show_changes",
         }
         if intent_value in explicit_work_intents:
+            return "work"
+        # An explicit request to continue the work in a named file is a work
+        # continuation, not merely a question about project scope. Keep this
+        # narrower than generic mentions of a file or repository.
+        work_continuation_markers = (
+            "استكمل العمل", "اكمل العمل", "أكمل العمل",
+            "متابعة العمل", "تابع العمل", "واصل العمل",
+        )
+        if any(marker in normalized for marker in work_continuation_markers):
             return "work"
         scope = resolve_project_scope(text, intent=parsed.get("intent"))
         if scope == ProjectScope.CURRENT_PROJECT:

@@ -256,6 +256,24 @@ def test_return_to_social_dialogue_does_not_ask_for_work_or_learning_context(mon
     assert "موضوع عام عن التقنية" in result["text"]
 
 
+def test_targetless_generic_suggestions_stay_on_conversation_gateway(monkeypatch):
+    import lab_v4_dev.conversation.conversation_manager as manager_module
+
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda *_args, **_kwargs: {"status": "success", "text": "اقتراح حواري"},
+    )
+    orchestrator = CapturingOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+
+    result = manager.process("أعطني اقتراحات")
+
+    assert result["status"] == "success"
+    assert result["text"] == "اقتراح حواري"
+    assert orchestrator.calls == []
+
+
 def test_dialogue_recall_contains_both_roles_and_survives_prompt_window(monkeypatch):
     import lab_v4_dev.conversation.conversation_manager as manager_module
 
