@@ -487,7 +487,10 @@ def _project_history_intent(user_input: str):
     text = normalize(user_input).casefold()
     tokens = set(re.findall(r"[\w]+", text, flags=re.UNICODE))
     project_terms = {"مشروع", "المشروع", "مشاريع", "المشاريع", "project", "projects"}
-    work_terms = {"اشتغل", "اشتغلت", "اشتغلنا", "عمل", "عملت", "عملنا", "يعمل", "يشتغل"}
+    work_terms = {
+        "اشتغل", "اشتغلت", "اشتغلنا", "نشتغل", "تشتغل", "يشتغل", "يشتغلون",
+        "عمل", "عملت", "عملنا", "نعمل", "تعمل", "يعمل", "اشتغال", "الشغل",
+    }
     if not (tokens & project_terms and tokens & work_terms):
         return None
 
