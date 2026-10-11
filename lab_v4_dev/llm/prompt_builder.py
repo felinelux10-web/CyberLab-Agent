@@ -324,14 +324,24 @@ CYBER_HINTS = (
     "malware","exploit","buffer","overflow","hash","crypto"
 )
 
-def _chat_domain(user_input: str):
-    t = user_input.lower()
+def _chat_domain(user_input: str, project_scope: str | None = None):
+    """Choose a prompt domain from authorized scope, not incidental nouns."""
+    import re
 
-    if any(k.lower() in t for k in PROJECT_HINTS):
+    scope = project_scope or resolve_project_scope(user_input)
+    if scope == ProjectScope.CURRENT_PROJECT:
         return "project"
 
-    if any(k.lower() in t for k in CYBER_HINTS):
-        return "cyber"
+    text = str(user_input or "").casefold()
+    for hint in CYBER_HINTS:
+        phrase = str(hint).casefold().strip()
+        if not phrase:
+            continue
+        pattern = r"(?<!\w)" + r"\s+".join(
+            re.escape(part) for part in phrase.split()
+        ) + r"(?!\w)"
+        if re.search(pattern, text, flags=re.UNICODE):
+            return "cyber"
 
     return "general"
 
@@ -380,7 +390,7 @@ def build_chat_prompt(
     project_knowledge: optional retrieved knowledge dict from knowledge_retriever
     """
     scope = project_scope or resolve_project_scope(user_input)
-    domain = _chat_domain(user_input)
+    domain = _chat_domain(user_input, scope)
     authorized_project_knowledge = (
         scope == ProjectScope.CURRENT_PROJECT
         and isinstance(project_knowledge, dict)

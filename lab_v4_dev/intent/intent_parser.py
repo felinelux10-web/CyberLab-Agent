@@ -239,9 +239,57 @@ def _is_action_target_request(
     return has_verb_action
 
 
+def _is_explicit_action_request(
+    text: str,
+    action_suffixes: dict[str, tuple[str, ...]],
+) -> bool:
+    """Only an imperative/request frame may authorize a cleanup or delete action."""
+    normalized = normalize(str(text or "")).casefold()
+    tokens = re.findall(r"[\w]+", normalized, flags=re.UNICODE)
+    if not tokens:
+        return False
+
+    negators = {"لا", "لن", "ليس", "ليست", "مش", "مو", "ما"}
+    if tokens[0] in negators:
+        return False
+
+    # Questions and explanatory framing can discuss a destructive action
+    # without authorizing it.
+    if tokens[0] in {
+        "هل", "ما", "ماذا", "لماذا", "كيف", "متى", "كم", "why", "what",
+        "how", "can", "could", "would",
+    }:
+        return False
+
+    action_forms = {
+        stem + suffix
+        for stem, suffixes in action_suffixes.items()
+        for suffix in suffixes
+    }
+
+    def is_action(token: str) -> bool:
+        return any(form in action_forms for form in _token_prefix_forms(token))
+
+    if is_action(tokens[0]):
+        return True
+
+    # Polite request forms such as "أريد حذف الملف" remain valid.
+    request_openers = {
+        "اريد", "ارغب", "احتاج", "يرجى", "رجاء", "فضلا", "قم",
+        "please", "i", "want", "need",
+    }
+    if tokens[0] in request_openers and any(is_action(token) for token in tokens[1:4]):
+        return True
+
+    return False
+
+
 def _resolve_cleanup_intent(text: str, candidate: str) -> str:
     """Resolve cleanup as action + target, never by target mention alone."""
-    has_action = _has_cleanup_action(text)
+    has_action = (
+        _has_cleanup_action(text)
+        and _is_explicit_action_request(text, _CLEAN_ACTION_SUFFIXES)
+    )
     has_device_target = _has_stem_token(text, _DEVICE_TARGET_STEMS)
     has_code_target = _has_stem_token(text, _CODE_TARGET_STEMS) or bool(
         _extract_target(text)
@@ -251,7 +299,10 @@ def _resolve_cleanup_intent(text: str, candidate: str) -> str:
         # A fuzzy/prefix-only action guess is ambiguous, not executable.
         if candidate in {Intent.CLEAN, Intent.CLEAN_DEVICE, Intent.CLEANUP_CODE}:
             return Intent.UNCLEAR
-        if candidate == Intent.DELETE_FILE and not _has_delete_action(text):
+        if candidate == Intent.DELETE_FILE and not (
+            _has_delete_action(text)
+            and _is_explicit_action_request(text, _DELETE_ACTION_SUFFIXES)
+        ):
             return Intent.UNCLEAR
         if candidate == Intent.READ_FILE and not _has_read_action(text):
             return Intent.UNCLEAR
@@ -425,10 +476,16 @@ def _project_architecture_intent(user_input: str):
                 bases.add(token[len(prefix):])
                 break
 
-    question = (
-        "؟" in user_input
-        or "?" in user_input
-        or bool(bases & {"ما", "ماذا", "كيف", "هل", "اشرح", "وضح", "حدثني"})
+    # An opinion/discussion about a project component is not a request to
+    # scan the project, even when the same sentence contains "بنية/طبقات".
+    if bases & {
+        "راي", "رايك", "رايي", "وجهه", "وجهة", "افضل", "بدائل",
+        "مقارنه", "مقارنة", "نقاش",
+    }:
+        return None
+
+    question = bool(
+        bases & {"ما", "ماذا", "كيف", "هل", "اشرح", "وضح", "حدثني", "اعرض", "حلل", "افحص"}
     )
     if not question:
         return None
@@ -465,12 +522,19 @@ def _has_project_request_evidence(user_input: str) -> bool:
     project_words = {"مشروع", "المشروع", "project", "repository", "cyberlab"}
     if not tokens & project_words:
         return True
+    if _starts_with_normalized_phrase(user_input, (
+        "ما هو المشروع", "ماهو المشروع", "ما هو هذا المشروع",
+        "ما هدف المشروع", "ما الغرض من المشروع", "ما اسم المشروع",
+        "ماهو اسم المشروع", "ما المشروع الحالي", "ماهو المشروع الحالي",
+        "ما المشروع النشط", "ما المشروع السابق",
+    )):
+        return True
     evidence = {
         "افحص", "فحص", "حلل", "تحليل", "اعرض", "اقرا", "اقرأ", "اشرح",
         "خريطة", "هيكل", "بنية", "بنيه", "مكونات", "طبقات", "ملفات", "الملفات",
         "مهم", "مهمة", "مهمه", "المهم", "المهمة", "المهمه", "عدد",
-        "تقدم", "وصلنا", "انجزنا", "نظرة", "حالة", "الحالي", "النشط",
-        "اخر", "آخر", "اشتغل", "اشتغلت", "عمل", "عملت", "عملنا",
+        "تقدم", "وصلنا", "وصل", "انجزنا", "نظرة", "حالة", "حاله", "حالي",
+        "نشط", "اخر", "آخر", "سابق", "اسم",
         "where", "what", "how", "show", "read", "analyze", "scan",
     }
     return bool(tokens & evidence)
@@ -483,18 +547,41 @@ def _project_mention_without_request(user_input: str) -> bool:
 
 
 def _project_history_intent(user_input: str):
-    """Resolve project-history questions from grammatical roles, not phrases."""
+    """Resolve project-history questions only from explicit grammatical phrases."""
     text = normalize(user_input).casefold()
-    tokens = set(re.findall(r"[\w]+", text, flags=re.UNICODE))
-    project_terms = {"مشروع", "المشروع", "مشاريع", "المشاريع", "project", "projects"}
-    work_terms = {"اشتغل", "اشتغلت", "اشتغلنا", "عمل", "عملت", "عملنا", "يعمل", "يشتغل"}
-    if not (tokens & project_terms and tokens & work_terms):
-        return None
-    if tokens & {"مشاريع", "المشاريع", "projects"}:
+
+    def has_phrase(phrases: tuple[str, ...]) -> bool:
+        return _starts_with_normalized_phrase(user_input, phrases)
+
+    if has_phrase((
+        "ما هي المشاريع", "ما المشاريع", "ما عدد المشاريع",
+        "كم عدد المشاريع", "قائمة المشاريع", "اعرض المشاريع",
+        "ما هي المشاريع التي اشتغلت عليها", "list projects",
+    )):
         return Intent.PROJECT_INDEX
-    if tokens & {"اخر", "آخر", "السابق", "سابق"}:
+
+    if has_phrase((
+        "ما آخر مشروع", "ما اخر مشروع", "ماهو آخر مشروع كنا نشتغل عليه",
+        "ماهو اخر مشروع كنا نشتغل عليه", "آخر مشروع كنا نشتغل عليه",
+        "اخر مشروع كنا نشتغل عليه", "ما المشروع السابق", "المشروع السابق",
+    )):
         return Intent.LAST_PROJECT
-    return Intent.PROJECT_INDEX
+
+    if has_phrase((
+        "ماذا كنا نشتغل على هذا المشروع",
+        "ماذا كنا نعمل على هذا المشروع",
+        "ماذا كنا نشتغل عليه",
+        "ماذا كنا نعمل عليه",
+        "ما الذي نعمل عليه",
+        "ما الذي نشتغل عليه",
+        "ما نعمل عليه",
+        "أين وصلنا في عملنا",
+        "اين وصلنا في عملنا",
+        "ما الذي نعمل عليه في المشروع",
+    )):
+        return Intent.WORK_CONTEXT
+
+    return None
 
 
 
@@ -502,7 +589,281 @@ def _project_history_intent(user_input: str):
 # P04 / Canonical Intent Contract Boundary
 # ============================================================
 
+def _is_lexical_mention(text: str) -> bool:
+    """Keep discussion about words/phrases out of operational intent routing."""
+    normalized = normalize(str(text or "")).casefold()
+    tokens = set(re.findall(r"[\w]+", normalized, flags=re.UNICODE))
+    bases = set(tokens)
+    for token in tokens:
+        if token.startswith("ال") and len(token) > 3:
+            bases.add(token[2:])
+    mention_markers = {
+        "كلمه", "الكلمه", "كلمات", "مصطلح", "المصطلح", "مصطلحات",
+        "عباره", "العباره", "عبارات", "لفظ", "اللفظ", "معنى", "المعنى",
+    }
+    if bases & mention_markers:
+        return True
+    trigger_terms = {
+        "مشروع", "مشاريع", "عمل", "اعمل", "اشتغل", "اشتغال", "شغل",
+        "مساحه", "مساحة", "تخزين", "هاتف", "هاتف", "جهاز", "ذاكره",
+        "رام", "ram", "memory", "تنظيف", "نظف", "حذف", "احذف",
+        "تعديل", "تحرير", "edit", "delete", "clean", "space", "project",
+    }
+    has_mentioned_trigger = bool(bases & trigger_terms)
+    mentions_a_displayed_context = any(marker in normalized for marker in (
+        "في الرد", "في رد", "في النص", "في نص", "في هذا النص", "في هذا نص",
+        "في المثال", "في مثال", "في هذا المثال", "في هذا مثال",
+        "في هذه الجمله", "في هذه المحادثه",
+    ))
+    return has_mentioned_trigger and mentions_a_displayed_context and any(
+        marker in normalized for marker in (
+            "لماذا تظهر", "لماذا يظهر", "لماذا تعرض", "لماذا يعرض",
+            "لماذا ترد", "لماذا يرد",
+        )
+    )
+
+
+def _lexical_mention_result(user_input: str) -> dict:
+    return {
+        "intent": Intent.PERSONAL_CHAT,
+        "target": "",
+        "context": "general",
+        "confidence": 0.96,
+        "raw": user_input,
+        "source": "lexical_mention_guard",
+        "entity_type": "CONVERSATION",
+        "semantic_pattern": "INTENT_WORD_MENTION",
+        "conversation_domain": "general",
+        "conversation_act": "CASUAL_CONVERSATION",
+        "conversation_confidence": 0.96,
+        "response_attributes": {},
+    }
+
+
+def _starts_with_normalized_phrase(text: str, phrases: tuple[str, ...]) -> bool:
+    normalized_text = normalize(str(text or "")).casefold().strip()
+    request_prefixes = (
+        "لو سمحت", "من فضلك", "رجاء", "يرجى", "اريد ان اعرف",
+        "اريد معرفه", "please",
+    )
+    candidates = [normalized_text]
+    for prefix in request_prefixes:
+        normalized_prefix = normalize(prefix).casefold()
+        if normalized_text.startswith(normalized_prefix + " "):
+            candidates.append(normalized_text[len(normalized_prefix):].strip())
+
+    def starts_at_boundary(candidate: str, phrase: str) -> bool:
+        if candidate == phrase:
+            return True
+        if not candidate.startswith(phrase):
+            return False
+        return len(candidate) > len(phrase) and (
+            candidate[len(phrase)].isspace()
+            or candidate[len(phrase)] in "؟?!.،,;:"
+        )
+
+    for candidate in candidates:
+        for phrase in phrases:
+            normalized_phrase = normalize(phrase).casefold().strip()
+            if normalized_phrase and starts_at_boundary(candidate, normalized_phrase):
+                return True
+    return False
+
+
+def _nlu_route_has_explicit_shape(text: str, intent: str) -> bool:
+    """Guard broad NLU phrase hits that occur only inside an unrelated sentence."""
+    routes = {
+        Intent.WORK_CONTEXT: (
+            "أين وصلنا", "اين وصلنا", "أين أصبحنا الآن", "اين اصبحنا الان",
+            "أين وصل المشروع", "اين وصل المشروع", "أين وصل تطوير الوكيل",
+            "أين نحن من الخطة", "ما الذي انتهينا منه", "ما الذي بقي",
+            "ما المرحلة الحالية", "في أي مرحلة نحن", "ما الذي نعمل عليه",
+            "ما الذي نشتغل عليه", "ما الخطة", "ما الخطوة التالية",
+            "ما الأولويات", "ما أولويتنا الآن", "هل يوجد شيء مؤجل",
+            "ما أكبر مشكلة حاليا", "ما أكثر شيء ينقص الوكيل",
+            "ذكرني بما كنا نعمل عليه", "ذكرني بالخطة", "ذكرني بما اتفقنا عليه",
+            "راجع آخر جلسة", "راجع آخر تعديل", "لنراجع كل شيء",
+            "لنراجع قبل أن نكمل", "أين توقفنا في آخر عمل",
+            "ماهو آخر ملف كنا نعدل عليه", "ما آخر ملف كنا نعدل عليه",
+            "ماذا عدلنا على هذا الملف", "ما الذي أنجزناه حتى الآن",
+            "ما الذي أنجزناه", "كيف نقسم العمل", "ما ترتيب التنفيذ",
+            "هل نحن مستعدون للمرحلة القادمة", "دعنا نبدأ العمل خطوة خطوة",
+            "ماذا كنا نشتغل على هذا المشروع", "ماذا كنا نعمل على هذا المشروع",
+            "ما كنا نعمل عليه", "أين وصلنا في عملنا",
+        ),
+        Intent.WORK_STATUS: (
+            "أين وصلنا", "ما الذي نعمل عليه", "ما الخطة",
+            "ما الخطوة التالية", "ما الأولويات", "ماذا أنجزنا",
+        ),
+        Intent.PROJECT_SCAN: (
+            "حلل المشروع", "حلل هذا المشروع", "افحص المشروع",
+            "افحص هذا المشروع", "اعرض المشروع", "اعرض ملفات المشروع",
+            "ما هي بنية المشروع", "ما بنية المشروع", "ما هي طبقات المشروع",
+            "خريطة المشروع", "هيكل المشروع", "analyze project", "scan project",
+        ),
+        Intent.PROJECT_PURPOSE: (
+            "ما هو المشروع", "ماهو المشروع", "ما هو هذا المشروع",
+            "ما هدف المشروع", "ما الغرض من المشروع", "what is this project",
+        ),
+        Intent.PROJECT_REPORT: (
+            "تقرير المشروع", "اعرض تقرير المشروع", "أعطني تقرير المشروع",
+            "ملخص المشروع", "تقرير كامل عن المشروع",
+        ),
+        Intent.PROGRESS_REPORT: (
+            "تقرير التقدم", "تقدم العمل", "اعرض التقدم", "ملخص التقدم",
+        ),
+        Intent.REMAINING_WORK: (
+            "ما تبقى من العمل", "العمل المتبقي", "ما بقي من العمل",
+        ),
+        Intent.SESSION_REPORT: (
+            "تقرير الجلسة", "ملخص الجلسة", "راجع آخر جلسة",
+        ),
+        Intent.CURRENT_VERSION: (
+            "ما آخر إصدار", "ما اخر اصدار", "راجع آخر إصدار",
+            "ماهو آخر إصدار", "ماهو اخر اصدار",
+        ),
+        Intent.PROJECT_TIMELINE: (
+            "تاريخ المشروع", "الجدول الزمني للمشروع", "تطور المشروع عبر الزمن",
+        ),
+        Intent.RELEASE_INDEX: (
+            "قائمة الإصدارات", "ما هي الإصدارات", "كم عدد الإصدارات",
+        ),
+        Intent.PROJECT_INDEX: (
+            "ما هي المشاريع", "ما المشاريع", "كم عدد المشاريع",
+            "ما عدد المشاريع", "عدد المشاريع", "كم مشروع",
+            "قائمة المشاريع", "اعرض المشاريع", "خريطة المشروع",
+            "هيكل المشروع", "بنية المشروع",
+        ),
+        Intent.LAST_PROJECT: (
+            "ما آخر مشروع", "ما اخر مشروع", "آخر مشروع كنا نشتغل عليه",
+            "اخر مشروع كنا نشتغل عليه", "ما المشروع السابق",
+        ),
+        Intent.SWITCH_PROJECT: (
+            "ما المشروع الحالي", "ما هو المشروع الحالي", "ماهو المشروع الحالي",
+            "ما اسم المشروع", "ماهو اسم المشروع", "ما المشروع النشط",
+            "المشروع الحالي", "بدل المشروع", "غير المشروع",
+        ),
+        Intent.SPACE: (
+            "مساحة الهاتف", "مساحة الجهاز", "مساحة التخزين",
+            "كم المساحة", "كم مساحة", "ما المساحة", "ما مساحة",
+            "كم التخزين", "اعرض المساحة", "اعرض مساحة", "show storage",
+        ),
+        Intent.STATUS: (
+            "حالة النظام", "ما حالة النظام", "ما وضع النظام",
+            "حالة الوكيل", "وضع الوكيل", "system status",
+        ),
+        Intent.SYSTEM_STATUS: (
+            "حالة النظام", "ما حالة النظام", "كيف حال النظام",
+            "وضع النظام", "ما وضع النظام", "system status",
+        ),
+        Intent.SHOW_CHANGES: (
+            "اعرض التغييرات", "ما الذي تغير", "ماذا تغير",
+            "آخر تعديل", "اخر تعديل", "راجع آخر تعديل", "show changes",
+        ),
+        Intent.HISTORY: (
+            "سجل التعديلات", "تاريخ التعديلات", "سجل العمل",
+            "اعرض السجل", "ابحث في السجل", "show history",
+        ),
+        Intent.REPORT: (
+            "أعطني تقرير", "اعطني تقرير", "تقرير كامل",
+            "ملخص الجلسة", "لخص ما فعلناه", "show report",
+        ),
+        Intent.CONTEXT_REPORT: (
+            "سياق العمل", "تقرير السياق", "ملخص العمل",
+            "استرجع الجلسة", "تقرير كامل", "وين وصلنا",
+        ),
+        Intent.SESSION_RESTORE: (
+            "أكمل من حيث توقفنا", "اكمل من حيث توقفنا",
+            "استكمل الجلسة", "لخص ما فعلناه", "أعطني ملخص",
+            "أعطني ملخصا", "اعطني ملخصا", "أعطني ملخصا سريعا",
+            "اعطني ملخصا سريعا", "لنبدأ من جديد",
+        ),
+        Intent.READ_FILE: (
+            "اقرأ الملف", "اقرا الملف", "اعرض الملف", "افتح الملف",
+            "ما محتوى الملف", "ما داخل الملف", "read file", "show file",
+        ),
+        Intent.MODIFY_FILE: (
+            "عدل الملف", "حرر الملف", "غير الملف",
+            "أريد تعديل الملف", "اريد تعديل الملف",
+            "أريد تحرير الملف", "اريد تحرير الملف",
+            "edit file", "modify file",
+        ),
+        Intent.MODIFY_CODE: (
+            "عدل الكود", "حرر الكود", "غير الكود", "عدل السكريبت",
+            "أريد تعديل الكود", "اريد تعديل الكود",
+            "أريد تحرير الكود", "اريد تحرير الكود",
+            "edit code", "modify code",
+        ),
+        Intent.MODIFY_FUNCTION: (
+            "عدل الدالة", "حرر الدالة", "أريد تعديل الدالة",
+            "اريد تعديل الدالة", "modify function",
+        ),
+        Intent.MODIFY_CLASS: (
+            "عدل الصنف", "حرر الصنف", "أريد تعديل الصنف",
+            "اريد تعديل الصنف", "modify class",
+        ),
+        Intent.ANALYZE_CODE: (
+            "حلل الملف", "حلل الكود", "حلل هذه البنية",
+            "قيم هذه المعمارية", "افحص الملف", "افحص الكود",
+            "analyze code", "inspect file",
+        ),
+        Intent.GENERATE_CODE: (
+            "اكتب سكريبت", "اكتب سكربت", "اكتب برنامج",
+            "انشئ سكريبت", "انشئ لعبة", "اصنع لعبة",
+            "write code", "write script", "create script",
+        ),
+        Intent.RUN_SCRIPT: (
+            "شغل الكود", "شغل كود", "شغل السكريبت", "شغل سكريبت",
+            "شغل السكربت", "تشغيل الكود", "تشغيل السكريبت",
+            "run code", "run script",
+        ),
+        Intent.RUN_PROJECT: (
+            "شغل المشروع", "تشغيل المشروع", "run project",
+        ),
+        Intent.RUN_FILE: (
+            "شغل الملف", "تشغيل الملف", "run file",
+        ),
+        Intent.RUN_TESTS: (
+            "شغل الاختبارات", "شغل الاختبار", "نفذ الاختبارات",
+            "شغل tests", "run tests",
+        ),
+        Intent.TEST_PROJECT: (
+            "اختبر المشروع", "اختبار المشروع", "test project",
+        ),
+        Intent.TEST_FILE: (
+            "اختبر الملف", "اختبار الملف", "test file",
+        ),
+        Intent.RESUME: (
+            "استكمل العمل", "استكمل الجلسة", "تابع العمل",
+            "استأنف العمل", "resume work",
+        ),
+    }
+    phrases = routes.get(intent)
+    return True if phrases is None else _starts_with_normalized_phrase(text, phrases)
+
+
 def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
+    # Semantic guards must run before broad NLU/family/cache fallbacks.
+    if _is_lexical_mention(user_input):
+        return _lexical_mention_result(user_input)
+
+    memory_request = _device_memory_request_kind(user_input)
+    if memory_request == "knowledge":
+        return {
+            "intent": Intent.PERSONAL_CHAT, "target": "", "context": "general",
+            "confidence": 0.90, "raw": user_input, "entity_type": "CONCEPT",
+            "semantic_pattern": "DEVICE_MEMORY_KNOWLEDGE",
+            "conversation_domain": "general", "conversation_act": "CASUAL_CONVERSATION",
+            "conversation_confidence": 0.90,
+        }
+    if memory_request == "unsupported":
+        return {
+            "intent": Intent.UNSUPPORTED, "target": "",
+            "context": detect_context(user_input), "confidence": 0.95,
+            "raw": user_input, "entity_type": "UNKNOWN",
+            "semantic_pattern": "DEVICE_MEMORY_UNSUPPORTED",
+        }
+
     # --- Early deterministic detectors (high precedence) ---
     try:
         raw = user_input.strip()
@@ -588,8 +949,12 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     )
     if (
         _project_name_tokens & {"مشاريع", "المشاريع", "project", "projects"}
-        and _project_name_tokens
-        & {"اسماء", "اسامي", "قائمة", "تظهر", "موجودة", "المسجلة"}
+        and _starts_with_normalized_phrase(user_input, (
+            "ما هي المشاريع", "ما المشاريع", "ما اسماء المشاريع",
+            "ما أسماء المشاريع", "قائمة المشاريع", "اعرض المشاريع",
+            "ما المشاريع الموجودة", "المشاريع المسجلة",
+            "اريد ان اعرف المشاريع المسجلة", "list projects",
+        ))
     ):
         return {
             "intent": Intent.PROJECT_INDEX,
@@ -602,7 +967,10 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
             "semantic_pattern": "PROJECT_NAMES_QUERY",
         }
 
-    if _has_cleanup_action(user_input):
+    if (
+        _has_cleanup_action(user_input)
+        and _is_explicit_action_request(user_input, _CLEAN_ACTION_SUFFIXES)
+    ):
         _cleanup_tokens = set(
             re.findall(r"[\w]+", normalize(user_input).casefold(), flags=re.UNICODE)
         )
@@ -623,29 +991,45 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     _work_tokens = set(
         re.findall(r"[\w]+", normalize(user_input).casefold(), flags=re.UNICODE)
     )
-    if _work_tokens & {"لعبة", "اللعبة", "لعبه", "اللعبه", "سكريبت", "السكريبت", "سكربت", "game", "script"}:
-        if _work_tokens & {"اكتب", "انشئ", "انشاء", "اصنع", "create", "write", "make"}:
-            return {
-                "intent": Intent.GENERATE_CODE,
-                "target": "",
-                "context": "file_operation",
-                "confidence": 0.97,
-                "raw": user_input,
-                "source": "explicit_code_generation",
-                "entity_type": "FILE",
-                "semantic_pattern": "CODE_GENERATION_REQUEST",
-            }
-        if _work_tokens & {"عدل", "تعديل", "اضف", "اضافه", "اضافة", "غير", "غيّر", "edit", "modify", "add"}:
-            return {
-                "intent": Intent.MODIFY_CODE,
-                "target": "",
-                "context": "file_operation",
-                "confidence": 0.97,
-                "raw": user_input,
-                "source": "explicit_code_modification",
-                "entity_type": "FILE",
-                "semantic_pattern": "CODE_MODIFICATION_REQUEST",
-            }
+    _code_target_mentioned = bool(
+        _work_tokens & {
+            "لعبة", "اللعبة", "لعبه", "اللعبه", "سكريبت", "السكريبت",
+            "سكربت", "السكربت", "game", "script",
+        }
+    )
+    if _code_target_mentioned and _starts_with_normalized_phrase(user_input, (
+        "اكتب سكريبت", "اكتب سكربت", "اكتب لعبة", "انشئ سكريبت",
+        "انشئ لعبة", "اصنع لعبة", "اريد كتابة سكريبت",
+        "أريد أن أكتب سكريبت", "write script", "create game",
+    )):
+        return {
+            "intent": Intent.GENERATE_CODE,
+            "target": "",
+            "context": "file_operation",
+            "confidence": 0.97,
+            "raw": user_input,
+            "source": "explicit_code_generation",
+            "entity_type": "FILE",
+            "semantic_pattern": "CODE_GENERATION_REQUEST",
+        }
+
+    if _code_target_mentioned and _starts_with_normalized_phrase(user_input, (
+        "عدل السكريبت", "عدل السكربت", "عدل اللعبة", "عدل الكود",
+        "غير اللعبة", "غير السكريبت", "اضف ميزة للعبة",
+        "أريد تعديل السكريبت", "اريد تعديل السكريبت",
+        "أريد تعديل اللعبة", "اريد تعديل اللعبة",
+        "edit script", "modify script", "edit game",
+    )):
+        return {
+            "intent": Intent.MODIFY_CODE,
+            "target": "",
+            "context": "file_operation",
+            "confidence": 0.97,
+            "raw": user_input,
+            "source": "explicit_code_modification",
+            "entity_type": "FILE",
+            "semantic_pattern": "CODE_MODIFICATION_REQUEST",
+        }
 
     # A project noun inside a social/meta sentence is not a project command.
     # Require explicit project evidence before allowing PROJECT_SCAN below.
@@ -817,11 +1201,43 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
                     chosen_intent = nlu_result["intent"]
                     chosen_conf   = nlu_result.get("confidence", 0.0)
 
+                    if not _nlu_route_has_explicit_shape(user_input, chosen_intent):
+                        chosen_intent = Intent.PERSONAL_CHAT
+                        nlu_result = dict(nlu_result)
+                        nlu_result["target"] = ""
+                        nlu_result["semantic_pattern"] = "INCIDENTAL_CONTEXT_MENTION"
+
                     # if NLU says a delete action but there's an explicit file target -> DELETE_FILE
-                    if re.search(r"\bاحذ?ف\b", _txt_norm) and (any(_has_word(w) for w in FILE_INDICATORS) or _extract_target(user_input)):
+                    if (
+                        _is_explicit_action_request(user_input, _DELETE_ACTION_SUFFIXES)
+                        and (any(_has_word(w) for w in FILE_INDICATORS) or _extract_target(user_input))
+                    ):
                         chosen_intent = Intent.DELETE_FILE
 
                 chosen_intent = _resolve_cleanup_intent(user_input, chosen_intent)
+
+                if chosen_intent == Intent.UNCLEAR and (
+                    (
+                        _has_cleanup_action(user_input)
+                        and not _is_explicit_action_request(user_input, _CLEAN_ACTION_SUFFIXES)
+                    )
+                    or (
+                        _has_delete_action(user_input)
+                        and not _is_explicit_action_request(user_input, _DELETE_ACTION_SUFFIXES)
+                    )
+                ):
+                    chosen_intent = Intent.PERSONAL_CHAT
+                    nlu_result = dict(nlu_result)
+                    nlu_result["target"] = ""
+                    semantic_pattern = "INCIDENTAL_ACTION_MENTION"
+
+                # Dictionary matches must pass the same utterance-level gate
+                # as NLU; otherwise an embedded phrase can override the guard.
+                if not _nlu_route_has_explicit_shape(user_input, chosen_intent):
+                    chosen_intent = Intent.PERSONAL_CHAT
+                    nlu_result = dict(nlu_result)
+                    nlu_result["target"] = ""
+                    semantic_pattern = "INCIDENTAL_CONTEXT_MENTION"
 
                 return {
                     "intent"           : chosen_intent,
@@ -836,28 +1252,6 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
                 }
         except Exception:
             pass
-
-    memory_request = _device_memory_request_kind(user_input)
-    if memory_request == "unsupported":
-        return {
-            "intent": Intent.UNSUPPORTED,
-            "target": "",
-            "context": detect_context(user_input),
-            "confidence": 0.95,
-            "raw": user_input,
-            "entity_type": "UNKNOWN",
-            "semantic_pattern": "DEVICE_MEMORY_UNSUPPORTED",
-        }
-    if memory_request == "knowledge":
-        return {
-            "intent": Intent.PERSONAL_CHAT,
-            "target": "",
-            "context": detect_context(user_input),
-            "confidence": 0.90,
-            "raw": user_input,
-            "entity_type": "CONCEPT",
-            "semantic_pattern": "DEVICE_MEMORY_KNOWLEDGE",
-        }
 
     # 1. تطبيع عميق (يحل الأخطاء الإملائية)
     normalized_input = deep_normalize(user_input)
@@ -976,7 +1370,10 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     # An explicit delete-file request with a concrete file target
     # must never be downgraded/reinterpreted by later context
     # routing.
-    _explicit_delete = _has_delete_action(user_input)
+    _explicit_delete = (
+        _has_delete_action(user_input)
+        and _is_explicit_action_request(user_input, _DELETE_ACTION_SUFFIXES)
+    )
 
     if _explicit_delete and target:
         intent = Intent.DELETE_FILE

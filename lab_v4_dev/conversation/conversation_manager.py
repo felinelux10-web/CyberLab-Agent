@@ -817,10 +817,15 @@ class ConversationManager:
             "اهلا", "أهلا", "مرحبا", "كيفك", "كيف الحال", "ماهو الحال",
         )):
             return "social"
-        if any(marker in normalized for marker in (
-            "العمل", "المهمة", "المهام", "الملف", "استكمل", "أكمل",
-            "جلسة العمل", "work", "task", "file",
-        )):
+        intent_value = str(
+            getattr(parsed.get("intent"), "value", parsed.get("intent")) or ""
+        ).casefold()
+        explicit_work_intents = {
+            "work_context", "work_status", "remaining_tasks", "remaining_work",
+            "progress_report", "next_task", "project_report", "context_report",
+            "last_project", "current_version", "show_changes",
+        }
+        if intent_value in explicit_work_intents:
             return "work"
         scope = resolve_project_scope(text, intent=parsed.get("intent"))
         if scope == ProjectScope.CURRENT_PROJECT:
