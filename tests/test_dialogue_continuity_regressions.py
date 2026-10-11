@@ -186,3 +186,40 @@ def test_new_session_resets_dialogue_memory_even_without_orchestrator_reset_hook
     assert result["status"] == "success"
     assert memory.state.last_topic is None
     assert memory.state.exchange_archive == []
+
+def test_targetless_general_continuation_uses_recent_dialogue_archive():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+
+    orchestrator = RecordingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+    memory.state.exchange_archive = [
+        {
+            "user": "صنعت لوحة بنحت بارز",
+            "assistant": "حدثني عن تفاصيلها.",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+        },
+        {
+            "user": "ألوانها الذهبية والبيج والأزرق الداكن",
+            "assistant": "هذه الألوان تخلق تباينًا.",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+        },
+        {
+            "user": "تفاصيل عمل",
+            "assistant": "محتوى عمل",
+            "context_kind": "work",
+            "conversation_domain": "work",
+        },
+    ]
+
+    restored = manager._history_for_transition(
+        ContextTransition.CONTINUE,
+        {"conversation_act": "CONVERSATION_CONTINUATION"},
+    )
+    text = " ".join(turn["content"] for turn in restored)
+
+    assert "نحت بارز" in text
+    assert "الأزرق الداكن" in text
+    assert "محتوى عمل" not in text
