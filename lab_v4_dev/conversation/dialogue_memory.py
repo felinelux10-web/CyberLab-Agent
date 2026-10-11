@@ -161,7 +161,7 @@ class DialogueMemory:
             }
             archive = list(getattr(self.state, "exchange_archive", []) or [])
             archive.append(exchange)
-            self.state.exchange_archive = archive[-12:]
+            self.state.exchange_archive = archive[-32:]
         preserve_active_subject = bool(
             self.state.last_topic
             and not turn_target
