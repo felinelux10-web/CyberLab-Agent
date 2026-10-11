@@ -804,6 +804,41 @@ def _nlu_route_has_explicit_shape(text: str, intent: str) -> bool:
             "عدل الصنف", "حرر الصنف", "أريد تعديل الصنف",
             "اريد تعديل الصنف", "modify class",
         ),
+        Intent.ANALYZE_CODE: (
+            "حلل الملف", "حلل الكود", "حلل هذه البنية",
+            "قيم هذه المعمارية", "افحص الملف", "افحص الكود",
+            "analyze code", "inspect file",
+        ),
+        Intent.GENERATE_CODE: (
+            "اكتب سكريبت", "اكتب سكربت", "اكتب برنامج",
+            "انشئ سكريبت", "انشئ لعبة", "اصنع لعبة",
+            "write code", "write script", "create script",
+        ),
+        Intent.RUN_SCRIPT: (
+            "شغل الكود", "شغل كود", "شغل السكريبت", "شغل سكريبت",
+            "شغل السكربت", "تشغيل الكود", "تشغيل السكريبت",
+            "run code", "run script",
+        ),
+        Intent.RUN_PROJECT: (
+            "شغل المشروع", "تشغيل المشروع", "run project",
+        ),
+        Intent.RUN_FILE: (
+            "شغل الملف", "تشغيل الملف", "run file",
+        ),
+        Intent.RUN_TESTS: (
+            "شغل الاختبارات", "شغل الاختبار", "نفذ الاختبارات",
+            "شغل tests", "run tests",
+        ),
+        Intent.TEST_PROJECT: (
+            "اختبر المشروع", "اختبار المشروع", "test project",
+        ),
+        Intent.TEST_FILE: (
+            "اختبر الملف", "اختبار الملف", "test file",
+        ),
+        Intent.RESUME: (
+            "استكمل العمل", "استكمل الجلسة", "تابع العمل",
+            "استأنف العمل", "resume work",
+        ),
     }
     phrases = routes.get(intent)
     return True if phrases is None else _starts_with_normalized_phrase(text, phrases)
