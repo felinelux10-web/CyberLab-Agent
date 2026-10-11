@@ -115,6 +115,30 @@ def _is_lexical_mention(text: str) -> bool:
     }
 
 
+def _has_explicit_task_request(text: str) -> bool:
+    tokens = _tokens(text)
+    if not tokens:
+        return False
+    normalized = normalize_text(text).casefold().strip()
+    action_forms = tuple(TASK_PATTERNS)
+    first = tokens[0]
+    if any(_contains_phrase(first, action) for action in action_forms):
+        return True
+
+    # Common politeness/request prefixes may precede the actual imperative.
+    request_prefixes = (
+        "لو سمحت", "من فضلك", "رجاء", "يرجى", "أريد", "اريد",
+        "قم", "please", "i want", "i need",
+    )
+    if any(normalized.startswith(normalize_text(prefix).casefold()) for prefix in request_prefixes):
+        prefix_tokens = tokens[:5]
+        return any(
+            _contains_phrase(" ".join(prefix_tokens), action)
+            for action in action_forms
+        )
+    return False
+
+
 def detect_mode(text: str) -> str:
     """Return TASK, SYSTEM, DISCUSSION, QUESTION, FOLLOW_UP, or CHAT."""
     raw = str(text or "").strip()
@@ -128,13 +152,21 @@ def detect_mode(text: str) -> str:
             return "QUESTION"
         return "CHAT"
 
-    # Explicit system controls precede generic action/question shape.
-    if any(_contains_phrase(raw, pattern) for pattern in SYSTEM_PATTERNS):
+    # Explicit system controls must lead the request (or follow a
+    # recognized request prefix); an incidental phrase is not a system command.
+    system_prefixes = ("لو سمحت", "من فضلك", "رجاء", "يرجى", "please")
+    normalized_raw = normalize_text(raw).casefold()
+    if any(_contains_phrase(raw, pattern) for pattern in SYSTEM_PATTERNS) and (
+        any(normalized_raw.startswith(normalize_text(prefix).casefold()) for prefix in system_prefixes)
+        or any(
+            normalized_raw.startswith(normalize_text(pattern).casefold())
+            for pattern in SYSTEM_PATTERNS
+        )
+    ):
         return "SYSTEM"
 
-    # Preserve explicit operational verbs; intent remains authoritative for
-    # whether an operation actually executes.
-    if any(_contains_phrase(raw, pattern) for pattern in TASK_PATTERNS):
+    # Only an imperative/request frame makes an operational cue TASK.
+    if _has_explicit_task_request(raw):
         return "TASK"
 
     tokens = _tokens(raw)
