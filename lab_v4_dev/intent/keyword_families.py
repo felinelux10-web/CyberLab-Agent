@@ -141,7 +141,10 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
             "مساحة الهاتف", "مساحه الهاتف", "مساحة الجهاز", "مساحه الجهاز",
             "مساحة التخزين", "مساحه التخزين", "مساحة الهاتف؟", "مساحة الجهاز؟",
         }
-        if clean.strip(" ؟?!.،,") in exact_storage_queries:
+        if (
+            clean.strip(" ؟?!.،,") in exact_storage_queries
+            or text.strip(" ؟?!.،,") in exact_storage_queries
+        ):
             return True
         return bool(tokens & storage_terms) and bool(tokens & question_or_request)
 
