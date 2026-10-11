@@ -158,6 +158,11 @@ class ConversationManager:
                 reset = getattr(agent, "reset_conversation_context", None)
                 if callable(reset):
                     reset()
+            # Keep the dialogue owner authoritative even when the orchestrator
+            # has no runtime reset hook or a legacy hook only resets execution state.
+            memory_reset = getattr(self.dialogue_memory, "reset", None)
+            if callable(memory_reset):
+                memory_reset()
             return {
                 "status": "success",
                 "intent": Intent.RESTART,
