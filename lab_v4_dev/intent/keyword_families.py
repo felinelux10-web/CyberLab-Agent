@@ -151,33 +151,14 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
     if tokens & meta_markers:
         return False
 
-    question_or_request = {
-        "ما", "ماذا", "كيف", "هل", "كم", "اين", "أين", "اعرض", "أعرض",
-        "اظهر", "أظهر", "افحص", "حلل", "اقرا", "اقرأ", "اشرح", "وضح",
-        "اريد", "أريد", "اعطني", "أعطني", "ابحث", "راجع", "قارن",
-        "show", "check", "analyze", "read", "explain", "find", "list",
-    }
     storage_terms = {
         "مساحه", "مساحة", "تخزين", "storage", "الهاتف", "هاتف", "الجهاز",
         "جهاز", "phone", "device", "المتبقي", "متبقي", "المتاح", "متاح",
         "الفارغ", "فارغ", "free", "available", "used", "total",
     }
-    project_terms = {
-        "مشروع", "المشروع", "مشاريع", "المشاريع", "project", "projects",
-        "cyberlab", "repository",
-    }
-    project_actions = {
-        "حلل", "افحص", "اعرض", "اقرا", "اقرأ", "خريطه", "خريطة",
-        "هيكل", "بنيه", "بنية", "analyze", "scan", "show", "read",
-        "map", "structure",
-    }
     clean_actions = {
         "نظف", "تنظيف", "نظفه", "تفريغ", "مسح", "clear", "clean",
     }
-    file_terms = {"ملف", "الملف", "مجلد", "الملفات", "file", "directory"}
-    read_actions = {"اقرا", "اقرأ", "اعرض", "افتح", "اقرأ", "read", "show", "open"}
-    change_terms = {"تعديل", "تغيير", "التغييرات", "تغير", "changes", "diff"}
-    history_terms = {"سجل", "تاريخ", "سابق", "عمليات", "نشاط", "history", "log"}
 
     if intent == Intent.SPACE:
         # Require storage-specific grammar, not a general opinion/question
@@ -193,13 +174,6 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
             or text.strip(" ؟?!.،,") in exact_storage_queries
         ):
             return True
-        storage_question = _contains_phrase(text, (
-            "كم المساحه", "كم مساحة", "كم مساحه", "ما المساحه",
-            "ما مساحة", "ما مساحه", "كم التخزين", "المساحه المتبقيه",
-            "المساحة المتبقية", "المتاح من التخزين", "اعرض المساحه",
-            "اعرض مساحة", "اعرض مساحه", "افحص المساحه", "افحص مساحة",
-            "show storage", "storage space",
-        ))
         if tokens & {"راي", "رايي", "رأيي"}:
             return False
         return bool(tokens & storage_terms) and _starts_with_phrase(text, (
