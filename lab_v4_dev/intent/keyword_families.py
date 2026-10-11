@@ -80,20 +80,151 @@ FAMILIES = {
 }
 
 
-def match_family(text: str) -> str | None:
-    text_lower = text.lower()
+def _contains_phrase(text: str, phrases: tuple[str, ...] | list[str]) -> bool:
+    import re
+    for phrase in phrases:
+        normalized_phrase = str(phrase).strip().lower()
+        if not normalized_phrase:
+            continue
+        pattern = r"(?<!\\w)" + r"\\s+".join(
+            re.escape(part) for part in normalized_phrase.split()
+        ) + r"(?!\\w)"
+        if re.search(pattern, text, flags=re.UNICODE):
+            return True
+    return False
 
-    # تجاهل أسماء الملفات والمسارات أثناء تصنيف النية
+
+def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
+    """A topic noun alone is not enough to authorize a routed operation."""
+    import re
+
+    tokens = set(re.findall(r"[\\w]+", clean, flags=re.UNICODE))
+    meta_markers = {
+        "كلمه", "الكلمه", "مصطلح", "المصطلح", "عباره", "العباره",
+        "لفظ", "اللفظ", "معنى", "المعنى",
+    }
+    if tokens & meta_markers:
+        return False
+
+    question_or_request = {
+        "ما", "ماذا", "كيف", "هل", "كم", "اين", "أين", "اعرض", "أعرض",
+        "اظهر", "أظهر", "افحص", "حلل", "اقرا", "اقرأ", "اشرح", "وضح",
+        "اريد", "أريد", "اعطني", "أعطني", "ابحث", "راجع", "قارن",
+        "show", "check", "analyze", "read", "explain", "find", "list",
+    }
+    storage_terms = {
+        "مساحه", "مساحة", "تخزين", "storage", "الهاتف", "هاتف", "الجهاز",
+        "جهاز", "phone", "device", "المتبقي", "متبقي", "المتاح", "متاح",
+        "الفارغ", "فارغ", "free", "available", "used", "total",
+    }
+    project_terms = {
+        "مشروع", "المشروع", "مشاريع", "المشاريع", "project", "projects",
+        "cyberlab", "repository",
+    }
+    project_actions = {
+        "حلل", "افحص", "اعرض", "اقرا", "اقرأ", "خريطه", "خريطة",
+        "هيكل", "بنيه", "بنية", "افتح", "عدد", "كم", "analyze", "scan",
+        "show", "read", "map", "structure", "count",
+    }
+    clean_actions = {
+        "نظف", "تنظيف", "نظفه", "تفريغ", "مسح", "clear", "clean",
+    }
+    file_terms = {"ملف", "الملف", "مجلد", "الملفات", "file", "directory"}
+    read_actions = {"اقرا", "اقرأ", "اعرض", "افتح", "اقرأ", "read", "show", "open"}
+    change_terms = {"تعديل", "تغيير", "التغييرات", "تغير", "changes", "diff"}
+    history_terms = {"سجل", "تاريخ", "سابق", "عمليات", "نشاط", "history", "log"}
+
+    if intent == Intent.SPACE:
+        # Accept a specific short storage query, or an explicit request to
+        # measure storage. Do not route an incidental mention of "مساحة".
+        exact_storage_queries = {
+            "مساحة الهاتف", "مساحه الهاتف", "مساحة الجهاز", "مساحه الجهاز",
+            "مساحة التخزين", "مساحه التخزين", "مساحة الهاتف؟", "مساحة الجهاز؟",
+        }
+        if clean.strip(" ؟?!.،,") in exact_storage_queries:
+            return True
+        return bool(tokens & storage_terms) and bool(tokens & question_or_request)
+
+    if intent == Intent.PROJECT_SCAN:
+        return bool(tokens & project_terms) and bool(tokens & project_actions)
+
+    if intent == Intent.CLEAN:
+        return bool(tokens & clean_actions)
+
+    if intent == Intent.READ_FILE:
+        return bool(tokens & read_actions) and bool(tokens & file_terms)
+
+    if intent == Intent.SHOW_CHANGES:
+        return bool(tokens & change_terms) and bool(tokens & question_or_request)
+
+    if intent == Intent.HISTORY:
+        return bool(tokens & history_terms) and bool(tokens & question_or_request)
+
+    if intent == Intent.STATUS:
+        return bool(tokens & {"حاله", "حالة", "وضع", "status"}) and bool(
+            tokens & question_or_request
+        )
+
+    if intent == Intent.HEALTH:
+        return bool(tokens & {"صحه", "صحة", "فحص", "تشخيص", "health", "check"}) and bool(
+            tokens & question_or_request
+        )
+
+    if intent == Intent.REPORT:
+        return bool(tokens & {"تقرير", "ملخص", "report", "summary"}) and bool(
+            tokens & question_or_request
+        )
+
+    if intent == Intent.CONTEXT_REPORT:
+        return _contains_phrase(text, (
+            "سياق العمل", "تقرير السياق", "ملخص العمل", "استرجع الجلسة",
+            "تقرير كامل", "وين وصلنا", "وين كنا", "context report",
+        ))
+
+    if intent == Intent.WORK_STATUS:
+        return _contains_phrase(text, (
+            "خطة عمل", "وضع عمل", "ما نعمل", "ما اكتمل", "تقدم عمل",
+            "work status", "أين وصلنا", "اين وصلنا", "ما الخطوة التالية",
+            "ما الأولويات", "ما الاولويات", "ماذا أنجزنا", "ماذا انجزنا",
+        ))
+
+    if intent == Intent.REMAINING_TASKS:
+        return _contains_phrase(text, (
+            "ما تبقى", "مهام متبقية", "مهام متبقيه", "لم ينجز",
+            "غير مكتمل", "remaining tasks",
+        ))
+
+    if intent == Intent.NEXT_TASK:
+        return _contains_phrase(text, (
+            "ما التالي", "ماذا بعد", "الخطوة التالية", "مهمة تالية",
+            "next step",
+        ))
+
+    if intent == Intent.COMPARE_VERSIONS:
+        return bool(tokens & {"قارن", "مقارنة", "فرق", "اختلاف", "compare", "diff"}) and bool(
+            tokens & {"اصدار", "إصدار", "نسخه", "نسخة", "version", "release", "بين"}
+        )
+
+    # Multi-word, explicitly phrased families remain available. Single-word
+    # incidental matches are not enough to change the route.
+    return _contains_phrase(text, tuple(
+        keyword for keyword in FAMILIES.get(intent, [])
+        if len(str(keyword).split()) >= 2
+    ))
+
+
+def match_family(text: str) -> str | None:
+    text_lower = str(text or "").lower()
+
+    # Ignore file names/paths while matching semantic families.
     import re
     text_match = re.sub(
-        r"[\w./\\-]+\.(py|ts|js|json|yaml|yml|md|txt|sh)",
+        r"[\\w./\\\\-]+\\.(py|ts|js|json|yaml|yml|md|txt|sh)",
         " ",
         text_lower,
         flags=re.IGNORECASE,
     )
-
-    # أزل ال التعريف للمقارنة
-    clean = re.sub(r"\bال", "", text_match).strip()
+    clean = re.sub(r"\\bال", "", text_match).strip()
 
     best_intent = None
     best_score = 0
@@ -101,21 +232,17 @@ def match_family(text: str) -> str | None:
     for intent, keywords in FAMILIES.items():
         score = 0
         for kw in keywords:
-            matched = False
-            # Use Unicode-aware whole-token matching to avoid substring collisions
             try:
-                pattern = rf"(?<!\w){re.escape(kw)}(?!\w)"
-                if re.search(pattern, clean, flags=re.IGNORECASE):
-                    matched = True
-                elif re.search(pattern, text_match, flags=re.IGNORECASE):
-                    matched = True
+                pattern = rf"(?<!\\w){re.escape(kw)}(?!\\w)"
+                matched = bool(
+                    re.search(pattern, clean, flags=re.IGNORECASE)
+                    or re.search(pattern, text_match, flags=re.IGNORECASE)
+                )
             except re.error:
-                # Fallback to simple substring search if pattern invalid
                 matched = (kw in clean) or (kw in text_match)
-
             if matched:
                 score += 1
-        if score > best_score:
+        if score > best_score and _family_request_allowed(intent, text_match, clean):
             best_score = score
             best_intent = intent
 
