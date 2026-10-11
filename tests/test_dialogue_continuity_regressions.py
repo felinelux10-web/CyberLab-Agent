@@ -23,7 +23,7 @@ def _manager(monkeypatch):
 
     def fake_gateway(prompt, **kwargs):
         calls.append((prompt, kwargs))
-        if "ملخص الحوار" in prompt or "تلخيص" in prompt:
+        if "طلب المستخدم الحالي: اكتب ملخص" in prompt or "ماذا كنا نقول" in prompt:
             answer = "ملخص: بدأ الحوار بموضوع عام، ثم طلب المستخدم الاستمرار في السياق نفسه."
         else:
             answer = f"رد حواري رقم {len(calls)}"
