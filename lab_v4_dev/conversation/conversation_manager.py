@@ -219,7 +219,11 @@ class ConversationManager:
                 "semantic_pattern": "DIALOGUE_SEMANTIC_OVERRIDE",
                 "source": "dialogue_semantic_override",
             })
-            if raw_act == "CONVERSATION_CONTINUATION" and self.dialogue_memory:
+            if (
+                raw_act == "CONVERSATION_CONTINUATION"
+                and raw_signal.get("conversation_domain") in {"technical", "project"}
+                and self.dialogue_memory
+            ):
                 active_context = self.dialogue_memory.active_context_entity()
                 if isinstance(active_context, dict) and active_context.get("entity"):
                     candidate.update({
