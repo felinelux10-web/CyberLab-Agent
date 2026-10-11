@@ -596,6 +596,10 @@ def _is_lexical_mention(text: str) -> bool:
     """Keep discussion about words/phrases out of operational intent routing."""
     normalized = normalize(str(text or "")).casefold()
     tokens = set(re.findall(r"[\w]+", normalized, flags=re.UNICODE))
+    bases = set(tokens)
+    for token in tokens:
+        if token.startswith("ال") and len(token) > 3:
+            bases.add(token[2:])
     mention_markers = {
         "كلمه", "الكلمه", "كلمات", "مصطلح", "المصطلح", "مصطلحات",
         "عباره", "العباره", "عبارات", "لفظ", "اللفظ", "معنى", "المعنى",
@@ -606,7 +610,7 @@ def _is_lexical_mention(text: str) -> bool:
         "ابحث", "قارن", "delete", "remove", "clean", "run", "write",
         "edit", "open", "search",
     }
-    if tokens & mention_markers:
+    if bases & mention_markers:
         first = next(iter(re.findall(r"[\w]+", normalized, flags=re.UNICODE)), "")
         return first not in explicit_action_openers
     trigger_terms = {
@@ -615,10 +619,11 @@ def _is_lexical_mention(text: str) -> bool:
         "رام", "ram", "memory", "تنظيف", "نظف", "حذف", "احذف",
         "تعديل", "تحرير", "edit", "delete", "clean", "space", "project",
     }
-    has_mentioned_trigger = bool(tokens & trigger_terms)
+    has_mentioned_trigger = bool(bases & trigger_terms)
     mentions_a_displayed_context = any(marker in normalized for marker in (
-        "في رد", "في نص", "في هذا نص", "في مثال", "في هذا مثال",
-        "في هذه جمله", "في هذه محادثه",
+        "في الرد", "في رد", "في النص", "في نص", "في هذا النص", "في هذا نص",
+        "في المثال", "في مثال", "في هذا المثال", "في هذا مثال",
+        "في هذه الجمله", "في هذه المحادثه",
     ))
     return has_mentioned_trigger and mentions_a_displayed_context and any(
         marker in normalized for marker in (
@@ -649,20 +654,28 @@ def _starts_with_normalized_phrase(text: str, phrases: tuple[str, ...]) -> bool:
     normalized_text = normalize(str(text or "")).casefold().strip()
     request_prefixes = (
         "لو سمحت", "من فضلك", "رجاء", "يرجى", "اريد ان اعرف",
-        "اريد معرفه", "اريد ان اعرف", "please",
+        "اريد معرفه", "please",
     )
     candidates = [normalized_text]
     for prefix in request_prefixes:
         normalized_prefix = normalize(prefix).casefold()
         if normalized_text.startswith(normalized_prefix + " "):
             candidates.append(normalized_text[len(normalized_prefix):].strip())
+
+    def starts_at_boundary(candidate: str, phrase: str) -> bool:
+        if candidate == phrase:
+            return True
+        if not candidate.startswith(phrase):
+            return False
+        return len(candidate) > len(phrase) and (
+            candidate[len(phrase)].isspace()
+            or candidate[len(phrase)] in "؟?!.،,;:"
+        )
+
     for candidate in candidates:
         for phrase in phrases:
             normalized_phrase = normalize(phrase).casefold().strip()
-            if normalized_phrase and (
-                candidate == normalized_phrase
-                or candidate.startswith(normalized_phrase + " ")
-            ):
+            if normalized_phrase and starts_at_boundary(candidate, normalized_phrase):
                 return True
     return False
 
