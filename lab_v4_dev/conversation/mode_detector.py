@@ -116,7 +116,7 @@ def _is_lexical_mention(text: str) -> bool:
     }
     contextual_mention = bool(bases & trigger_terms) and any(
         marker in normalized for marker in (
-            "в الرد", "في الرد", "في النص", "في المثال",
+            "في الرد", "في النص", "في هذا النص", "في المثال", "في هذا المثال",
             "في هذه الجمله", "في هذه الجملة", "في هذه المحادثه", "في هذه المحادثة",
         )
     ) and any(marker in normalized for marker in (
