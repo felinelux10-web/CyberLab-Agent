@@ -59,6 +59,7 @@ def test_explicit_operational_requests_keep_their_routes():
 def test_project_and_work_words_alone_do_not_force_project_prompt_domain():
     assert _chat_domain("لماذا تظهر كلمة المشروع في الرد؟") == "general"
     assert _chat_domain("أريد فهم معنى كلمة العمل") == "general"
+    assert _chat_domain("ما رأيك في المشروع؟") == "general"
     assert _chat_domain(
         "ما طبقات CyberLab Agent؟",
         ProjectScope.CURRENT_PROJECT,
@@ -97,8 +98,12 @@ def test_project_plus_work_verb_requires_a_real_progress_question():
     assert opinion["intent"] != Intent.PROJECT_INDEX
 
 
-def test_status_and_report_nouns_do_not_route_from_opinion_questions():
+def test_status_report_storage_and_edit_nouns_do_not_route_from_opinion_questions():
     status = parse("ما رأيك في حالة النظام؟")
     report = parse("ما رأيك في التقرير؟")
-    assert status["intent"] != Intent.STATUS
+    storage = parse("ما رأيك في مساحة الهاتف؟")
+    edit = parse("ما رأيك في تحرير الملف؟")
+    assert status["intent"] not in {Intent.STATUS, Intent.SYSTEM_STATUS}
     assert report["intent"] != Intent.REPORT
+    assert storage["intent"] != Intent.SPACE
+    assert edit["intent"] not in {Intent.MODIFY_CODE, Intent.MODIFY_FILE}
