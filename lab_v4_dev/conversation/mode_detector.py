@@ -104,13 +104,26 @@ def _is_lexical_mention(text: str) -> bool:
     tokens = _tokens(text)
     bases = _token_bases(tokens)
     normalized = normalize_text(text).casefold()
-    if not bases & {
+    has_word_marker = bool(bases & {
         "كلمه", "الكلمه", "مصطلح", "المصطلح", "عباره", "العباره",
         "لفظ", "اللفظ", "معنى", "المعنى",
-    } and not any(marker in normalized for marker in (
+    })
+    trigger_terms = {
+        "مشروع", "مشاريع", "عمل", "اعمل", "اشتغل", "اشتغال", "شغل",
+        "مساحه", "مساحة", "تخزين", "هاتف", "جهاز", "ذاكره", "رام",
+        "ram", "memory", "تنظيف", "نظف", "حذف", "احذف", "تعديل",
+        "تحرير", "edit", "delete", "clean", "space", "project",
+    }
+    contextual_mention = bool(bases & trigger_terms) and any(
+        marker in normalized for marker in (
+            "в الرد", "في الرد", "في النص", "في المثال",
+            "في هذه الجمله", "في هذه الجملة", "في هذه المحادثه", "في هذه المحادثة",
+        )
+    ) and any(marker in normalized for marker in (
         "لماذا تظهر", "لماذا يظهر", "لماذا تعرض", "لماذا يعرض",
-        "في هذه الجمله", "في هذا النص", "في هذا المثال",
-    )):
+        "لماذا ترد", "لماذا يرد",
+    ))
+    if not has_word_marker and not contextual_mention:
         return False
     first = tokens[0] if tokens else ""
     return first not in {
