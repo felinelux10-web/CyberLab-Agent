@@ -108,13 +108,33 @@ def _starts_with_phrase(text: str, phrases: tuple[str, ...] | list[str]) -> bool
         normalized_phrase = normalize(str(phrase or "")).casefold().strip()
         if not normalized_phrase:
             continue
-        if normalized_text == normalized_phrase or normalized_text.startswith(normalized_phrase + " "):
+        if (
+            normalized_text == normalized_phrase
+            or (
+                normalized_text.startswith(normalized_phrase)
+                and len(normalized_text) > len(normalized_phrase)
+                and (
+                    normalized_text[len(normalized_phrase)].isspace()
+                    or normalized_text[len(normalized_phrase)] in "؟?!.،,;:"
+                )
+            )
+        ):
             return True
         for prefix in request_prefixes:
             normalized_prefix = normalize(prefix).casefold()
             if normalized_text.startswith(normalized_prefix + " "):
                 remainder = normalized_text[len(normalized_prefix):].strip()
-                if remainder == normalized_phrase or remainder.startswith(normalized_phrase + " "):
+                if (
+                    remainder == normalized_phrase
+                    or (
+                        remainder.startswith(normalized_phrase)
+                        and len(remainder) > len(normalized_phrase)
+                        and (
+                            remainder[len(normalized_phrase)].isspace()
+                            or remainder[len(normalized_phrase)] in "؟?!.،,;:"
+                        )
+                    )
+                ):
                     return True
     return False
 
