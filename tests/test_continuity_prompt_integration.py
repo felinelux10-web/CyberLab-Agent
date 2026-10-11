@@ -212,11 +212,12 @@ def test_previous_dialogue_phrases_are_not_operational_history():
 def test_social_dialogue_is_saved_as_typed_memory_and_recalled_without_work_history(monkeypatch):
     import lab_v4_dev.conversation.conversation_manager as manager_module
 
-    monkeypatch.setattr(
-        manager_module,
-        "gateway_ask",
-        lambda *_args, **_kwargs: {"status": "success", "text": "رد حواري"},
-    )
+    def fake_gateway(prompt, **_kwargs):
+        if "ماذا كنا نقول في الردود السابقة" in prompt:
+            return {"status": "success", "text": "ملخص موجز للحوار السابق"}
+        return {"status": "success", "text": "رد حواري"}
+
+    monkeypatch.setattr(manager_module, "gateway_ask", fake_gateway)
     orchestrator = CapturingOrchestrator()
     memory = DialogueMemory(orchestrator.context)
     manager = ConversationManager(orchestrator, memory)
@@ -227,15 +228,16 @@ def test_social_dialogue_is_saved_as_typed_memory_and_recalled_without_work_hist
 
     result = manager.process("ماذا كنا نقول في الردود السابقة؟")
     assert result["source"] == "dialogue_memory"
-    assert "ماذا تقترح انت" in result["text"]
-    assert "موضوع عام عن التقنية" in result["text"]
+    assert result["dialogue_response_mode"] == "summary"
+    assert result["text"] == "ملخص موجز للحوار السابق"
+    assert "المستخدم:" not in result["text"]
+    assert "الوكيل:" not in result["text"]
     assert "آخر المهام" not in result["text"]
     assert all(
         turn.get("context_kind") in {"social", "dialogue"}
         for turn in memory.state.history
         if turn.get("role") == "user"
     )
-
 
 def test_return_to_social_dialogue_does_not_ask_for_work_or_learning_context(monkeypatch):
     import lab_v4_dev.conversation.conversation_manager as manager_module
@@ -274,14 +276,17 @@ def test_targetless_generic_suggestions_stay_on_conversation_gateway(monkeypatch
     assert orchestrator.calls == []
 
 
-def test_dialogue_recall_contains_both_roles_and_survives_prompt_window(monkeypatch):
+def test_dialogue_history_summary_is_bounded_and_survives_prompt_window(monkeypatch):
     import lab_v4_dev.conversation.conversation_manager as manager_module
 
     replies = iter(["اقتراح أول محدد", "اقتراح ثان محدد", "اقتراح ثالث محدد"])
     monkeypatch.setattr(
         manager_module,
         "gateway_ask",
-        lambda *_args, **_kwargs: {"status": "success", "text": next(replies)},
+        lambda *_args, **_kwargs: {
+            "status": "success",
+            "text": next(replies),
+        },
     )
     orchestrator = CapturingOrchestrator()
     memory = DialogueMemory(orchestrator.context)
@@ -292,11 +297,12 @@ def test_dialogue_recall_contains_both_roles_and_survives_prompt_window(monkeypa
 
     result = manager.process("ماذا كنا نقول قبل قليل في الردود السابقة؟")
     assert result["source"] == "dialogue_memory"
+    assert result["dialogue_response_mode"] == "summary"
+    assert result.get("summary_fallback") is True
     assert "اقتراح أول محدد" in result["text"]
     assert "اقتراح ثان محدد" in result["text"]
-    assert "المستخدم:" in result["text"]
-    assert "الوكيل:" in result["text"]
-
+    assert result["text"].startswith("ملخص موجز من سجل الحوار المتاح:")
+    assert not result["text"].startswith("نص الحوار المسجل:")
 
 def test_phase_continuation_stays_on_active_explanation_instead_of_session_restore():
     orchestrator = CapturingOrchestrator()

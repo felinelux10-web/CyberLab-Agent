@@ -215,10 +215,15 @@ class ConversationManager:
                 "conversation_domain": raw_signal.get("conversation_domain", "general"),
                 "conversation_act": raw_act,
                 "conversation_confidence": raw_signal.get("confidence", 0.0),
+                "response_attributes": dict(raw_signal.get("response_attributes") or {}),
                 "semantic_pattern": "DIALOGUE_SEMANTIC_OVERRIDE",
                 "source": "dialogue_semantic_override",
             })
-            if raw_act == "CONVERSATION_CONTINUATION" and self.dialogue_memory:
+            if (
+                raw_act == "CONVERSATION_CONTINUATION"
+                and raw_signal.get("conversation_domain") in {"technical", "project"}
+                and self.dialogue_memory
+            ):
                 active_context = self.dialogue_memory.active_context_entity()
                 if isinstance(active_context, dict) and active_context.get("entity"):
                     candidate.update({
@@ -801,6 +806,15 @@ class ConversationManager:
 
     def _ambiguous_resume_without_domain(self, text: str, parsed: dict) -> bool:
         normalized = str(text or "").casefold().strip()
+        # A classified conversational continuation/history request is not a
+        # work-session resume, even when the active dialogue has no named entity.
+        conversation_act = str((parsed or {}).get("conversation_act") or "").upper()
+        if conversation_act in {
+            "CONVERSATION_CONTINUATION",
+            "CONVERSATION_HISTORY_QUERY",
+            "TOPIC_RETURN",
+        }:
+            return False
         resume_intents = {Intent.RESUME, Intent.SESSION_RESTORE, "resume", "session_restore"}
         intent = getattr(parsed.get("intent"), "value", parsed.get("intent"))
         if intent not in resume_intents and not any(marker in normalized for marker in (
@@ -820,12 +834,16 @@ class ConversationManager:
 
     def _context_kind(self, text: str, parsed: dict, transition) -> str:
         normalized = str(text or "").casefold()
+        if str((parsed or {}).get("conversation_act") or "").upper() in {
+            "CONVERSATION_CONTINUATION", "CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN",
+        }:
+            return "dialogue"
         if self._ambiguous_resume_without_domain(text, parsed):
             return "unknown"
         if self._dialogue_recall_requested(text) or transition.value in CONTEXTUAL_TRANSITIONS:
             return "dialogue"
         if parsed.get("intent") in _AGENT_SELF_INTENTS:
-            return "project"
+            return "dialogue"
         if parsed.get("intent") == Intent.PERSONAL_CHAT or is_social_act(
             parsed.get("conversation_act")
         ):
@@ -905,6 +923,13 @@ class ConversationManager:
         history = getattr(state, "history", []) if state is not None else []
         exchanges = getattr(state, "exchange_archive", []) if state is not None else []
         exchanges = [item for item in (exchanges or []) if isinstance(item, dict)]
+        response_mode = str(
+            ((parsed or {}).get("response_attributes") or {}).get(
+                "dialogue_response_mode", ""
+            )
+        ).casefold()
+        if response_mode in {"summary", "last_question", "answer", "transcript"}:
+            return self._answer_dialogue_history(text, response_mode, exchanges)
         topics = []
         for turn in history or []:
             if not isinstance(turn, dict) or turn.get("role") != "user":
@@ -961,6 +986,131 @@ class ConversationManager:
             "text": text,
             "topics": topics,
             "executed": False,
+        }
+
+    def _answer_dialogue_history(
+        self,
+        text: str,
+        response_mode: str,
+        exchanges: list[dict],
+    ) -> dict:
+        """Answer a dialogue-history request without routing it as project work."""
+        relevant = [
+            item for item in exchanges
+            if item.get("context_kind") != "work"
+            and item.get("conversation_domain") != "work"
+        ][-8:]
+
+        base = {
+            "status": "success",
+            "intent": Intent.MEMORY_DUMP,
+            "source": "dialogue_memory",
+            "executed": False,
+            "dialogue_response_mode": response_mode,
+        }
+        if response_mode == "last_question":
+            question_starts = (
+                "هل ", "ما ", "ماذا ", "كيف ", "لماذا ", "من ", "أين ",
+                "اين ", "متى ", "كم ", "أي ", "اي ", "ماهو ", "ما هي ",
+            )
+            last_question = next(
+                (
+                    str(item.get("user") or "").strip()
+                    for item in reversed(relevant)
+                    if str(item.get("user") or "").strip()
+                    and (
+                        "؟" in str(item.get("user") or "")
+                        or "?" in str(item.get("user") or "")
+                        or str(item.get("user") or "").strip().casefold().startswith(question_starts)
+                    )
+                ),
+                "",
+            )
+            if not last_question:
+                return {
+                    **base,
+                    "status": "needs_clarification",
+                    "text": "لا أجد سؤالًا صريحًا في سجل الحوار القريب؛ لن أستبدله برسالة عادية.",
+                }
+            return {
+                **base,
+                "text": f"آخر سؤال طرحته عليّ كان: «{last_question}».",
+                "last_user_message": last_question,
+            }
+
+        if not relevant:
+            return {
+                **base,
+                "status": "needs_clarification",
+                "text": "لا يوجد سجل حوار كافٍ للإجابة عن هذا الطلب.",
+            }
+
+        if response_mode == "transcript":
+            return {
+                **base,
+                "text": "نص الحوار المسجل:\n"
+                + "\n".join(self._format_dialogue_exchanges(relevant)),
+                "dialogue_turns": relevant,
+            }
+
+        archive = []
+        for item in relevant:
+            archive.append(
+                "المستخدم: " + str(item.get("user") or "").strip()
+                + "\nالوكيل: " + str(item.get("assistant") or "").strip()
+            )
+        task = (
+            "أجب عن طلب المستخدم الحالي بالاعتماد حصريًا على سجل الحوار المرفق.\n"
+            "إذا كان الطلب ملخصًا، فاكتب ملخصًا دلاليًا موجزًا من 3 إلى 6 نقاط، "
+            "ولا تنسخ الحوار ولا تسرد الرسائل واحدةً واحدة. اذكر الموضوعات الرئيسية، "
+            "ما طلبه المستخدم، وأي تصحيح مهم لسلوك الوكيل. لا تضف أحداثًا غير موجودة.\n"
+            "إذا كان سؤالًا مباشرًا عن الحوار، فأجب عنه مباشرة في جملة أو جملتين.\n\n"
+            f"طلب المستخدم الحالي: {text}\n\n"
+            "سجل الحوار السابق:\n" + "\n\n".join(archive)
+        )
+        try:
+            generated = gateway_ask(
+                task,
+                system=(
+                    "أنت تسترجع حوارًا سابقًا. التزم بالسجل فقط. "
+                    "لا تحوّل السؤال إلى شرح تقني، ولا تعرض سجلًا حرفيًا عندما يطلب المستخدم ملخصًا. "
+                    "أجب مباشرة وبالعربية."
+                ),
+                max_tokens=900,
+                temperature=0.2,
+                routing_text=text,
+            )
+            answer = str((generated or {}).get("text") or "").strip()
+            if (generated or {}).get("status") == "success" and answer:
+                return {**base, "text": answer}
+        except Exception:
+            pass
+
+        # Offline/provider-failure fallback: compact and explicitly bounded,
+        # not a full transcript and not a fabricated semantic interpretation.
+        if response_mode == "summary":
+            lines = []
+            seen = set()
+            for item in relevant[-5:]:
+                user_turn = " ".join(str(item.get("user") or "").split())
+                if not user_turn or user_turn.casefold() in seen:
+                    continue
+                seen.add(user_turn.casefold())
+                assistant_turn = " ".join(str(item.get("assistant") or "").split())
+                line = f"- طلب المستخدم: {user_turn[:110]}"
+                if assistant_turn:
+                    first_sentence = assistant_turn.split("。", 1)[0].split(". ", 1)[0]
+                    line += f"؛ رد الوكيل باختصار: {first_sentence[:110]}"
+                lines.append(line)
+            return {
+                **base,
+                "text": "ملخص موجز من سجل الحوار المتاح:\n" + "\n".join(lines),
+                "summary_fallback": True,
+            }
+        return {
+            **base,
+            "status": "needs_clarification",
+            "text": "تعذر تحديد الإجابة من سجل الحوار المتاح دون تخمين.",
         }
 
     @staticmethod
@@ -1152,6 +1302,21 @@ class ConversationManager:
             )
         elif transition == ContextTransition.EXPLICIT_SWITCH:
             topic = (parsed or {}).get("target")
+        elif (
+            transition == ContextTransition.AMBIGUOUS
+            and str((parsed or {}).get("conversation_act") or "").upper()
+            == "CONVERSATION_CONTINUATION"
+        ):
+            # An explicit request to continue the dialogue authorizes recent
+            # dialogue history, but never work-session records.
+            state = getattr(self.dialogue_memory, "state", None)
+            history = getattr(state, "history", []) if state is not None else []
+            return [
+                turn for turn in (history or [])
+                if isinstance(turn, dict)
+                and turn.get("context_kind") not in {"work", "system"}
+                and turn.get("conversation_domain") != "work"
+            ][-8:]
         elif transition == ContextTransition.AMBIGUOUS and is_social_act(
             (parsed or {}).get("conversation_act")
         ):
