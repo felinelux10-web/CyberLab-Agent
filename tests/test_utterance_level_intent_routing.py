@@ -4,7 +4,8 @@ from lab_v4_dev.intent.intents import Intent
 
 def _intent(text):
     result = parse(text)
-    return getattr(result.intent, "value", result.intent)
+    intent = result.get("intent")
+    return getattr(intent, "value", intent)
 
 
 def test_context_uses_whole_tokens_not_incidental_substrings():
