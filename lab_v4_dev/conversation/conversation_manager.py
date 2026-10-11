@@ -669,6 +669,23 @@ class ConversationManager:
         #
         # Therefore -> Orchestrator.
         # ----------------------------------------------------
+        # A generic request for suggestions without a subject is not yet
+        # an executable project proposal. Let the conversational layer clarify
+        # the domain instead of treating a broad NLU label as an actionable task.
+        if (
+            intent in {Intent.PROPOSE_SOLUTION, Intent.PLAN}
+            and not explicit_target
+            and str((parsed or {}).get("conversation_domain") or "general")
+            not in {"technical", "project", "system"}
+        ):
+            return self._handle_chat(
+                text,
+                mode,
+                parsed=parsed,
+                user_question=user_question or text,
+                history=chat_history,
+            )
+
         if intent not in _NON_EXECUTABLE_INTENTS:
             result = self.orchestrator.handle(
                 text,
