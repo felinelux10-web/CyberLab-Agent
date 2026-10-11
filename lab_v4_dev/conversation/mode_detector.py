@@ -103,10 +103,14 @@ def _contains_phrase(text: str, phrase: str) -> bool:
 def _is_lexical_mention(text: str) -> bool:
     tokens = _tokens(text)
     bases = _token_bases(tokens)
+    normalized = normalize_text(text).casefold()
     if not bases & {
         "كلمه", "الكلمه", "مصطلح", "المصطلح", "عباره", "العباره",
         "لفظ", "اللفظ", "معنى", "المعنى",
-    }:
+    } and not any(marker in normalized for marker in (
+        "لماذا تظهر", "لماذا يظهر", "لماذا تعرض", "لماذا يعرض",
+        "في هذه الجمله", "في هذا النص", "في هذا المثال",
+    )):
         return False
     first = tokens[0] if tokens else ""
     return first not in {
