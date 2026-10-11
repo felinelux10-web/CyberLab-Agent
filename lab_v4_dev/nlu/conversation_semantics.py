@@ -487,7 +487,16 @@ def classify_conversation_semantics(
         _has_any(bases, {"انسخ", "نسخ", "حرفيا", "حرفي"})
         and has_dialogue_reference
     )
-    if has_dialogue_reference and summary_request and not explicit_transcript:
+    if has_dialogue_reference and explicit_transcript:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.97,
+            "response_attributes": {"dialogue_response_mode": "transcript"},
+            "conversational": True,
+        }
+
+    if has_dialogue_reference and summary_request:
         return {
             "conversation_domain": "general",
             "conversation_act": "CONVERSATION_HISTORY_QUERY",
