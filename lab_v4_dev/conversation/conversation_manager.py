@@ -827,6 +827,15 @@ class ConversationManager:
         }
         if intent_value in explicit_work_intents:
             return "work"
+        # An explicit request to continue the work in a named file is a work
+        # continuation, not merely a question about project scope. Keep this
+        # narrower than generic mentions of a file or repository.
+        work_continuation_markers = (
+            "استكمل العمل", "اكمل العمل", "أكمل العمل",
+            "متابعة العمل", "تابع العمل", "واصل العمل",
+        )
+        if any(marker in normalized for marker in work_continuation_markers):
+            return "work"
         scope = resolve_project_scope(text, intent=parsed.get("intent"))
         if scope == ProjectScope.CURRENT_PROJECT:
             return "project"
