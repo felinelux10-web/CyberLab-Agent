@@ -35,6 +35,18 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"ة(?=\s|$)", "ه", text)
     return text
 
+def _contains_phrase(text: str, phrase: str) -> bool:
+    """Match a complete token/phrase, not an arbitrary substring."""
+    normalized_text = normalize_text(text).casefold()
+    normalized_phrase = normalize_text(phrase).casefold().strip()
+    if not normalized_phrase:
+        return False
+    pattern = r"(?<!\\w)" + r"\\s+".join(
+        re.escape(part) for part in normalized_phrase.split()
+    ) + r"(?!\\w)"
+    return re.search(pattern, normalized_text, flags=re.UNICODE) is not None
+
+
 def match_pattern(text: str) -> tuple:
     """
     يبحث عن أنماط في النص.
@@ -47,7 +59,7 @@ def match_pattern(text: str) -> tuple:
 
     # 1. تحقق من الأنماط الشخصية أولاً (أعلى أولوية)
     for phrase, action in user_lang.get("custom_patterns", {}).items():
-        if normalize_text(phrase) in normalized:
+        if _contains_phrase(normalized, phrase):
             return action, "USER_CUSTOM", 1.0
 
     # 2. تحقق من الأنماط العامة
@@ -69,7 +81,7 @@ def match_pattern(text: str) -> tuple:
 
         for phrase in data.get("patterns", []):
             norm_phrase = normalize_text(phrase)
-            if norm_phrase in normalized:
+            if _contains_phrase(normalized, norm_phrase):
                 phrase_len = len(norm_phrase)
 
                 if (
