@@ -51,6 +51,7 @@ def test_explicit_operational_requests_keep_their_routes():
     assert parse("كم مساحة التخزين؟")["intent"] == Intent.SPACE
     assert parse("حلل المشروع")["intent"] == Intent.PROJECT_SCAN
     assert parse("ما هو المشروع الحالي")["intent"] == Intent.SWITCH_PROJECT
+    assert parse("ما هي المشاريع التي اشتغلت عليها فعليا")["intent"] == Intent.PROJECT_INDEX
     assert parse("نظف الهاتف")["intent"] == Intent.CLEAN_DEVICE
     assert parse("احذف الملف test.py")["intent"] == Intent.DELETE_FILE
 
@@ -67,6 +68,8 @@ def test_project_and_work_words_alone_do_not_force_project_prompt_domain():
 def test_incidental_action_word_does_not_force_task_mode():
     assert detect_mode("لماذا تظهر كلمة شغل في الجملة؟") == "QUESTION"
     assert detect_mode("ما معنى كلمة حذف؟") == "QUESTION"
+    assert detect_mode("لماذا تظهر مشكلة في الكود؟") == "QUESTION"
+    assert detect_mode("هذا الوكيل شغل النظام أمس") != "TASK"
     assert detect_mode("اكتب سكريبت يطبع مرحبا") == "TASK"
 
 
