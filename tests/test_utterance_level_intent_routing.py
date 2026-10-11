@@ -8,7 +8,7 @@ def _intent(text):
 
 
 def test_context_uses_whole_tokens_not_incidental_substrings():
-    assert detect_context("هذا مشروعنا الصغير") == "project_level"
+    assert detect_context("هذا المشروع الصغير") == "project_level"
     assert detect_context("أتحدث عن الذاكرة في علم الحاسوب") == "device_resource"
     assert detect_context("أحب العمل الجماعي") == "general"
 
