@@ -534,30 +534,43 @@ def _project_mention_without_request(user_input: str) -> bool:
 
 
 def _project_history_intent(user_input: str):
-    """Resolve project-history questions only when their grammatical request is explicit."""
+    """Resolve project-history questions only from explicit grammatical phrases."""
     text = normalize(user_input).casefold()
-    tokens = set(re.findall(r"[\w]+", text, flags=re.UNICODE))
-    project_terms = {"مشروع", "المشروع", "مشاريع", "المشاريع", "project", "projects"}
-    work_terms = {
-        "اشتغل", "اشتغلت", "اشتغلنا", "نشتغل", "تشتغل", "يشتغل", "يشتغلون",
-        "عمل", "عملت", "عملنا", "نعمل", "تعمل", "يعمل", "اشتغال", "الشغل",
-    }
-    if not (tokens & project_terms and tokens & work_terms):
-        return None
 
-    if tokens & {"مشاريع", "المشاريع", "projects"} and (
-        tokens & {
-            "قائمة", "اسماء", "اسامي", "عدد", "كم", "list", "names", "count",
-        }
-        or tokens & {"ما", "ماذا", "اين", "كيف", "where", "what", "how"}
-    ):
+    def has_phrase(phrases: tuple[str, ...]) -> bool:
+        return any(
+            _token_has_word(text, normalize(phrase).casefold())
+            for phrase in phrases
+        )
+
+    if has_phrase((
+        "ما هي المشاريع", "ما المشاريع", "ما عدد المشاريع",
+        "كم عدد المشاريع", "قائمة المشاريع", "اعرض المشاريع",
+        "ما هي المشاريع التي اشتغلت عليها", "list projects",
+    )):
         return Intent.PROJECT_INDEX
-    if tokens & {"اخر", "آخر", "السابق", "سابق"}:
+
+    if has_phrase((
+        "ما آخر مشروع", "ما اخر مشروع", "آخر مشروع كنا نشتغل عليه",
+        "اخر مشروع كنا نشتغل عليه", "ما المشروع السابق",
+        "المشروع السابق",
+    )):
         return Intent.LAST_PROJECT
-    if tokens & {"ماذا", "ما", "اين", "أين", "كيف", "where", "what", "how"} and tokens & {
-        "كنا", "نحن", "الذي", "التي", "عليه", "عليها",
-    }:
+
+    if has_phrase((
+        "ماذا كنا نشتغل على هذا المشروع",
+        "ماذا كنا نعمل على هذا المشروع",
+        "ماذا كنا نشتغل عليه",
+        "ماذا كنا نعمل عليه",
+        "ما الذي نعمل عليه",
+        "ما الذي نشتغل عليه",
+        "ما نعمل عليه",
+        "أين وصلنا في عملنا",
+        "اين وصلنا في عملنا",
+        "ما الذي نعمل عليه في المشروع",
+    )):
         return Intent.WORK_CONTEXT
+
     return None
 
 
