@@ -352,10 +352,8 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
         and str(exchange.get("context_kind") or "").casefold() != "work"
         and str(exchange.get("conversation_domain") or "").casefold() != "work"
     ]
-    if not history and not exchanges:
-        return {}
     state["history"] = history[-8:]
-    state["exchange_archive"] = exchanges[-12:]
+    state["exchange_archive"] = exchanges[-32:]
 
     index = get_session_index()
     previous = next(
