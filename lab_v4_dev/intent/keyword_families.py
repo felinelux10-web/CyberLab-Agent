@@ -138,8 +138,10 @@ def _family_request_allowed(intent: str, text: str, clean: str) -> bool:
         # Accept a specific short storage query, or an explicit request to
         # measure storage. Do not route an incidental mention of "مساحة".
         exact_storage_queries = {
-            "مساحة الهاتف", "مساحه الهاتف", "مساحة الجهاز", "مساحه الجهاز",
-            "مساحة التخزين", "مساحه التخزين", "مساحة الهاتف؟", "مساحة الجهاز؟",
+            "مساحة الهاتف", "مساحه الهاتف", "مساحه هاتف",
+            "مساحة الجهاز", "مساحه الجهاز", "مساحه جهاز",
+            "مساحة التخزين", "مساحه التخزين", "مساحه تخزين",
+            "مساحة الهاتف؟", "مساحة الجهاز؟",
         }
         if (
             clean.strip(" ؟?!.،,") in exact_storage_queries
