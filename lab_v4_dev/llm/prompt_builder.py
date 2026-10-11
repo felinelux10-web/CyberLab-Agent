@@ -337,9 +337,9 @@ def _chat_domain(user_input: str, project_scope: str | None = None):
         phrase = str(hint).casefold().strip()
         if not phrase:
             continue
-        pattern = r"(?<!\\w)" + r"\\s+".join(
+        pattern = r"(?<!\w)" + r"\s+".join(
             re.escape(part) for part in phrase.split()
-        ) + r"(?!\\w)"
+        ) + r"(?!\w)"
         if re.search(pattern, text, flags=re.UNICODE):
             return "cyber"
 
