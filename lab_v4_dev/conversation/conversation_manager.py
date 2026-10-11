@@ -1342,6 +1342,14 @@ class ConversationManager:
             return [turn for turn in (history or []) if allowed(turn)][-8:]
 
         if not topic:
+            # General conversation branches may not have a canonical entity.
+            # For an authorized continuation/return, use recent dialogue exchanges
+            # rather than dropping context solely because no entity was extracted.
+            if transition in CONTEXTUAL_TRANSITIONS:
+                selected = [item for item in (exchanges or []) if allowed(item)][-8:]
+                if selected:
+                    return self._exchange_history_turns(selected)[-8:]
+                return [turn for turn in (history or []) if allowed(turn)][-8:]
             return []
 
         selected = [
