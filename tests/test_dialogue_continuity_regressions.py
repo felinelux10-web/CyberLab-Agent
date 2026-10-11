@@ -41,7 +41,7 @@ def _manager(monkeypatch):
 def test_same_dialogue_continuation_does_not_become_work_resume_clarification(monkeypatch):
     manager, memory, orchestrator, calls = _manager(monkeypatch)
 
-    first = manager.process("دعنا نناقش موضوعًا عامًا")
+    first = manager.process("ماذا تستطيع فعله؟")
     assert first["status"] == "success"
 
     continued = manager.process("نعم نكمل في نفس سياق الموضوع")
@@ -56,7 +56,7 @@ def test_same_dialogue_continuation_does_not_become_work_resume_clarification(mo
 
 def test_dialogue_summary_request_returns_summary_not_transcript(monkeypatch):
     manager, memory, orchestrator, calls = _manager(monkeypatch)
-    manager.process("دعنا نناقش موضوعًا عامًا")
+    manager.process("ماذا تستطيع فعله؟")
     result = manager.process("اكتب ملخص حوار الجلسة")
 
     assert result["status"] == "success"
@@ -78,13 +78,13 @@ def test_short_summary_phrase_is_resolved_as_dialogue_history():
 
 def test_last_question_retrieves_last_user_message_without_dumping_history(monkeypatch):
     manager, memory, orchestrator, calls = _manager(monkeypatch)
-    manager.process("دعنا نناقش موضوعًا عامًا")
+    manager.process("ماذا تستطيع فعله؟")
     result = manager.process("ما آخر سؤال سألتك أنا؟")
 
     assert result["status"] == "success"
     assert result["source"] == "dialogue_memory"
     assert result["dialogue_response_mode"] == "last_question"
-    assert "دعنا نناقش موضوعًا عامًا" in result["text"]
+    assert "ماذا تستطيع فعله؟" in result["text"]
     assert "المستخدم:" not in result["text"]
     assert orchestrator.calls == []
 
@@ -109,7 +109,7 @@ def test_explicit_dialogue_continuation_excludes_saved_work_turns(monkeypatch):
         context_kind="work",
         conversation_domain="work",
     )
-    manager.process("دعنا نناقش موضوعًا عامًا")
+    manager.process("ماذا تستطيع فعله؟")
     result = manager.process("نعم نكمل في نفس سياق الموضوع")
 
     assert result["status"] == "success"
