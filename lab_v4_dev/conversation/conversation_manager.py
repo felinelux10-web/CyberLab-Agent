@@ -255,6 +255,27 @@ class ConversationManager:
             if confirmation_intent is not None
             else self._safe_parse(user_input)
         )
+        normalized_command = " ".join(
+            str(user_input or "").casefold()
+            .replace("أ", "ا").replace("إ", "ا")
+            .strip(" \\t\\r\\n.,،؛:!?؟")
+            .split()
+        )
+        if normalized_command in {
+            "تحقق", "تحقق اولا", "تحقق من فضلك", "تحقق اولا من فضلك",
+            "verify", "verify first",
+        } and not str(candidate.get("target") or "").strip():
+            return {
+                "status": "needs_clarification",
+                "intent": Intent.VERIFY_FIX,
+                "source": "conversation_manager",
+                "text": (
+                    "ما الذي تريدني أن أتحقق منه تحديدًا؟ "
+                    "اذكر الإصلاح أو الاختبار أو المعلومة المقصودة."
+                ),
+                "executed": False,
+            }
+
         if confirmation_intent is None and self._is_bare_confirmation(user_input):
             # A bare yes/no without a pending operation is dialogue, not a new
             # executable intent and not a reason to overwrite the active topic.
