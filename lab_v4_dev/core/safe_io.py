@@ -9,8 +9,9 @@ import shutil
 import ast
 from datetime import datetime
 from lab_v4_dev.recovery.snapshot import take as snapshot_take
+from lab_v4_dev.recovery.path_policy import canonical_path, is_within
 
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+PROJECT_ROOT = canonical_path(os.path.join(os.path.dirname(__file__), "..", ".."))
 AUDIT_LOG_PATH = os.path.join(PROJECT_ROOT, "workspace", "audit_log.jsonl")
 
 # المسارات المسموح للوكيل بالكتابة فيها (نسبية لـ PROJECT_ROOT)
@@ -20,12 +21,12 @@ ALLOWED_WRITE_PREFIXES = [
 ]
 
 def _is_allowed(path: str) -> bool:
-    """يتحقق أن المسار داخل المسارات المسموحة فقط"""
-    abs_path = os.path.abspath(path)
-    if not abs_path.startswith(PROJECT_ROOT):
+    """Check canonical containment and exact allowed path components."""
+    abs_path = canonical_path(path)
+    if not is_within(abs_path, PROJECT_ROOT) or abs_path == PROJECT_ROOT:
         return False
-    rel = os.path.relpath(abs_path, PROJECT_ROOT)
-    return any(rel.startswith(prefix) for prefix in ALLOWED_WRITE_PREFIXES)
+    rel = os.path.relpath(abs_path, PROJECT_ROOT).replace(os.sep, "/")
+    return rel.split("/", 1)[0] in ALLOWED_WRITE_PREFIXES
 
 def _log_event(event: dict):
     os.makedirs(os.path.dirname(AUDIT_LOG_PATH), exist_ok=True)
@@ -49,6 +50,7 @@ def safe_write(path: str, content: str, reason: str = "") -> dict:
     كتابة آمنة لملف: تأخذ backup + snapshot موحّد قبل التعديل، تفحص الصياغة، وتسجل العملية.
     تُرفض إذا كان المسار خارج المسارات المسموحة أو الصياغة غير صحيحة.
     """
+    path = canonical_path(path)
     if not _is_allowed(path):
         _log_event({"op": "write", "path": path, "status": "denied",
                      "reason": "path not in whitelist"})
@@ -61,23 +63,23 @@ def safe_write(path: str, content: str, reason: str = "") -> dict:
         return {"status": "denied", "message": f"خطأ صياغة: {validation['error']}"}
 
     backup_path = None
-    snapshot_path = None
     if os.path.exists(path):
         backup_path = path + ".bak"
         shutil.copy2(path, backup_path)
-        snap = snapshot_take(path)
-        if snap.get("status") == "ok":
-            snapshot_path = snap.get("snapshot")
 
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
+    from lab_v4_dev.recovery.safe_apply import safe_apply
+    applied = safe_apply(path, content)
+    if applied.get("status") != "ok":
+        reason_text = applied.get("reason", "safe_apply_failed")
+        _log_event({"op": "write", "path": path, "status": "failed", "backup": backup_path, "reason": reason_text})
+        return {"status": "failed", "message": reason_text}
 
+    snapshot_path = applied.get("snapshot")
     _log_event({
         "op": "write", "path": path, "status": "success",
         "backup": backup_path, "snapshot": snapshot_path, "reason": reason,
         "size_bytes": len(content.encode("utf-8")),
     })
-
     return {"status": "success", "path": path, "backup": backup_path, "snapshot": snapshot_path}
 
 
@@ -85,6 +87,9 @@ def safe_delete(path: str, reason: str = "") -> dict:
     """حذف آمن مع backup + snapshot + audit"""
     from lab_v4_dev.recovery.permissions import check_delete
 
+    path = canonical_path(path)
+    if not _is_allowed(path):
+        return {"status": "denied", "message": f"غير مسموح بالحذف في: {path}"}
     if not os.path.exists(path):
         return {"status": "failed", "message": "الملف غير موجود"}
 
