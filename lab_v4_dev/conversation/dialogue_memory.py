@@ -108,6 +108,9 @@ class DialogueMemory:
         for turn in (snapshot.get("history") or [])[-8:]:
             if not isinstance(turn, dict) or not turn.get("role"):
                 continue
+            turn_session_id = str(turn.get("session_id") or restored.session_id)
+            if turn_session_id != restored.session_id:
+                continue
             restored.add_turn(
                 role=turn.get("role", ""),
                 content=turn.get("content", ""),
