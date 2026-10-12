@@ -258,7 +258,7 @@ class ConversationManager:
         normalized_command = " ".join(
             str(user_input or "").casefold()
             .replace("أ", "ا").replace("إ", "ا")
-            .strip(" \\t\\r\\n.,،؛:!?؟")
+            .strip(" \t\r\n.,،؛:!?؟")
             .split()
         )
         if normalized_command in {
