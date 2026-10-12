@@ -212,10 +212,12 @@ def test_previous_dialogue_phrases_are_not_operational_history():
 def test_social_dialogue_is_saved_as_typed_memory_and_recalled_without_work_history(monkeypatch):
     import lab_v4_dev.conversation.conversation_manager as manager_module
 
-    def unexpected_gateway(*_args, **_kwargs):
-        raise AssertionError("dialogue-history recall must use the grounded local archive")
+    def fake_gateway(prompt, **_kwargs):
+        if "ماذا كنا نقول في الردود السابقة" in prompt:
+            raise AssertionError("dialogue-history recall must use the grounded local archive")
+        return {"status": "success", "text": "رد حواري"}
 
-    monkeypatch.setattr(manager_module, "gateway_ask", unexpected_gateway)
+    monkeypatch.setattr(manager_module, "gateway_ask", fake_gateway)
     orchestrator = CapturingOrchestrator()
     memory = DialogueMemory(orchestrator.context)
     manager = ConversationManager(orchestrator, memory)
