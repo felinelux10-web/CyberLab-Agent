@@ -90,6 +90,33 @@ class ConversationManager:
             "yes", "no",
         }
 
+    @staticmethod
+    def _is_explicit_stop_request(text: str) -> bool:
+        """Recognize direct conversational stop requests without invoking execution."""
+        normalized = " ".join(str(text or "").casefold().split()).strip(" .!؟?")
+        return normalized in {
+            "توقف", "توقف عن العمل", "توقف عن الشرح", "توقف عن المتابعة",
+            "كفى توقف", "stop", "stop working", "stop explaining",
+        }
+
+    @staticmethod
+    def _explicit_dialogue_topic(text: str) -> str | None:
+        """Extract the subject of an explicit 'let us discuss X' topic opening."""
+        import re
+
+        match = re.match(
+            r"^\s*(?:دعنا|خلينا|هيا|لن)\s+"
+            r"(?:نتحدث|نتكلم|نناقش|نتحاور)\s+(?:عن|حول)\s+"
+            r"(.+?)\s*[.!؟?،]*\s*$",
+            str(text or ""),
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            return None
+        subject = match.group(1).strip(" \t\r\n.,،؛:!?؟")
+        subject = re.sub(r"^(?:مفهوم|موضوع|فكرة)\s+", "", subject).strip()
+        return subject or None
+
     def _pending_confirmation_intent(self, text: str):
         """Resolve bare confirmations only against an explicit pending operation."""
         if not self._is_bare_confirmation(text):
@@ -171,6 +198,17 @@ class ConversationManager:
                 "executed": False,
             }
 
+        # A direct stop request is a conversation control, not an executable
+        # task. Do not send it through the parser fallback or Orchestrator.
+        if self._is_explicit_stop_request(user_input):
+            return {
+                "status": "success",
+                "intent": Intent.STOP,
+                "source": "conversation_manager",
+                "text": "سأتوقف عن متابعة الطلب الحالي؛ لم أرسل أمر إلغاء إلى أي مهمة تنفيذية.",
+                "executed": False,
+            }
+
         # Parse the current turn without any persistent NLU context first.
         # The transition decision below is the sole authority that may grant
         # the active DialogueMemory topic to a second canonical parse.
@@ -187,8 +225,23 @@ class ConversationManager:
                 "semantic_pattern": "PENDING_CONFIRMATION",
             }
             if confirmation_intent is not None
-        else self._safe_parse(user_input)
+            else self._safe_parse(user_input)
         )
+        if confirmation_intent is None and self._is_bare_confirmation(user_input):
+            # A bare yes/no without a pending operation is dialogue, not a new
+            # executable intent and not a reason to overwrite the active topic.
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": "",
+                "entity_type": "REFERENCE",
+                "conversation_domain": "social",
+                "conversation_act": "SOCIAL_ACKNOWLEDGEMENT",
+                "conversation_confidence": 0.90,
+                "response_attributes": {},
+                "semantic_pattern": "BARE_CONFIRMATION_NO_PENDING",
+                "source": "bare_confirmation",
+            })
         from lab_v4_dev.memory.session_state import session_selector
         selected_session = session_selector(user_input)
         if selected_session.get("kind") != "none":
@@ -206,6 +259,21 @@ class ConversationManager:
         # or continuation turn must not be hijacked by HISTORY/CONTEXT_REPORT/
         # RESUME parser fallbacks before DialogueMemory sees it.
         raw_signal = classify_conversation_semantics(user_input)
+        explicit_topic = self._explicit_dialogue_topic(user_input)
+        if explicit_topic:
+            # Explicit topic openings create a dialogue branch even if the LLM
+            # provider later fails. The old branch is not inherited as context.
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": explicit_topic,
+                "entity_type": "CONCEPT",
+                "conversation_domain": "technical",
+                "conversation_act": "SOCIAL_OPENING",
+                "conversation_confidence": 0.95,
+                "semantic_pattern": "EXPLICIT_DIALOGUE_TOPIC",
+                "source": "explicit_dialogue_topic",
+            })
         raw_act = raw_signal.get("conversation_act")
         if raw_act in {
             "CONVERSATION_HISTORY_QUERY",
@@ -226,16 +294,30 @@ class ConversationManager:
             })
             if (
                 raw_act == "CONVERSATION_CONTINUATION"
-                and raw_signal.get("conversation_domain") in {"technical", "project"}
                 and self.dialogue_memory
             ):
                 active_context = self.dialogue_memory.active_context_entity()
                 if isinstance(active_context, dict) and active_context.get("entity"):
+                    active_action = str(active_context.get("action") or "").casefold()
+                    active_type = str(active_context.get("entity_type") or "CONCEPT").upper()
+                    technical_continuation = (
+                        raw_signal.get("conversation_domain") in {"technical", "project"}
+                        or active_action in {"cyber_explain", "explain"}
+                        or active_type in {"FILE", "COMPONENT", "PROJECT"}
+                    )
                     candidate.update({
-                        "intent": Intent.CYBER_EXPLAIN,
+                        "intent": (
+                            Intent.CYBER_EXPLAIN
+                            if technical_continuation
+                            else Intent.PERSONAL_CHAT
+                        ),
                         "target": active_context["entity"],
-                        "entity_type": active_context.get("entity_type") or "CONCEPT",
-                        "conversation_domain": "technical",
+                        "entity_type": active_type,
+                        "conversation_domain": (
+                            "technical"
+                            if technical_continuation
+                            else raw_signal.get("conversation_domain", "general")
+                        ),
                     })
         generic_topic = (
             None
@@ -527,13 +609,10 @@ class ConversationManager:
 
         # ConversationManager owns dialogue-state lifecycle.
         # Agent remains only the runtime facade.
-        if (
-            self.dialogue_memory
-            and hasattr(self.dialogue_memory, "update")
-            and result.get("status") == "success"
-            and result.get("source") != "fallback"
-            and not result.get("error")
-        ):
+        if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
+            # Topic/user-turn state must survive provider failures. DialogueMemory
+            # archives only successful answers; an error response must not become
+            # a fabricated continuation checkpoint.
             self.dialogue_memory.update(
                 user_input,
                 result,
@@ -754,7 +833,14 @@ class ConversationManager:
                 continue
             target = str(turn.get("target") or "").strip()
             intent = str(getattr(turn.get("intent"), "value", turn.get("intent")) or "").casefold()
-            if target and intent in {"cyber_explain", "explain", "question"} and target not in topics:
+            if (
+                target
+                and intent in {
+                    "cyber_explain", "explain", "question", "personal_chat",
+                    "discussion", "chat",
+                }
+                and target not in topics
+            ):
                 topics.append(target)
         if not topics:
             return None
@@ -885,6 +971,24 @@ class ConversationManager:
     @staticmethod
     def _local_social_answer(text: str, parsed: dict) -> dict | None:
         normalized = str(text or "").casefold()
+        bare_confirmation = normalized.strip(" .!؟?")
+        if (
+            bare_confirmation in {"نعم", "أجل", "اجل", "بلى", "لا", "كلا", "yes", "no"}
+            and (parsed or {}).get("source") == "bare_confirmation"
+        ):
+            reply = (
+                "حسنًا."
+                if bare_confirmation in {"لا", "كلا", "no"}
+                else "حسنًا، أخبرني بما تريد متابعته."
+            )
+            return {
+                "status": "success",
+                "intent": Intent.PERSONAL_CHAT,
+                "text": reply,
+                "mode": "CHAT",
+                "source": "local_social",
+                "executed": False,
+            }
         if any(marker in normalized for marker in (
             "اكمل", "أكمل", "استكمل", "نكمل", "ارجع", "استرجع",
         )):
