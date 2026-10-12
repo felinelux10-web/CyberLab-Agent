@@ -10,9 +10,10 @@ from lab_v4_dev.planner.impact_analyzer import analyze_impact
 from lab_v4_dev.recovery.snapshot import take, list_snapshots, SNAPSHOTS_DIR
 from lab_v4_dev.recovery.rollback import rollback
 from lab_v4_dev.recovery.permissions import check_write
+from lab_v4_dev.recovery.safe_apply import safe_apply
 from lab_v4_dev.core.audit import emit_event
 
-CACHE_DIR = "lab_v4_dev/cache"
+CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cache")
 
 class SafePipeline:
 
@@ -47,8 +48,9 @@ class SafePipeline:
         }
 
         path = os.path.join(CACHE_DIR, "analysis_bundle.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(bundle, f, ensure_ascii=False, indent=2)
+        saved = safe_apply(path, json.dumps(bundle, ensure_ascii=False, indent=2))
+        if saved.get("status") != "ok":
+            raise OSError(f"analysis cache write rejected: {saved.get('reason', saved.get('status'))}")
 
         return bundle
 
@@ -64,8 +66,9 @@ class SafePipeline:
         }
 
         path = os.path.join(CACHE_DIR, "execution_plan.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(plan, f, ensure_ascii=False, indent=2)
+        saved = safe_apply(path, json.dumps(plan, ensure_ascii=False, indent=2))
+        if saved.get("status") != "ok":
+            raise OSError(f"execution plan cache write rejected: {saved.get('reason', saved.get('status'))}")
 
         return plan
 
@@ -119,31 +122,18 @@ class SafePipeline:
         for file_path, new_content in modifications.items():
             try:
                 emit_event("safe_pipeline.file_write.start", source="safe_pipeline", context={"file": file_path})
-                check_write(file_path)
-
-                tmp = file_path + ".tmp"
-                with open(tmp, "w", encoding="utf-8") as f:
-                    f.write(new_content)
-
-                # Syntax check
-                validation = self._validate_syntax(tmp)
-                if not validation["ok"]:
-                    try:
-                        os.remove(tmp)
-                    except Exception:
-                        pass
+                applied = safe_apply(file_path, new_content)
+                if applied.get("status") != "ok":
                     self._rollback_all(snapshots["snapshots"], completed)
-                    emit_event("safe_pipeline.file_write.syntax_error", source="safe_pipeline", context={"file": file_path}, details={"error": validation.get("error")})
-                    return {
-                        "status": "failed",
-                        "reason": f"syntax_error in {file_path}",
-                        "error" : validation["error"],
-                    }
+                    reason = str(applied.get("reason") or "safe_apply_failed")
+                    emit_event("safe_pipeline.file_write.failed", source="safe_pipeline", context={"file": file_path}, details={"reason": reason})
+                    if reason.startswith("syntax_error:"):
+                        return {"status": "failed", "reason": f"syntax_error in {file_path}", "error": reason.split(":", 1)[1].strip()}
+                    return {"status": "failed", "reason": reason, "rolled_back": completed}
 
-                os.replace(tmp, file_path)
                 completed.append(file_path)
                 results[file_path] = "ok"
-                emit_event("safe_pipeline.file_write.ok", source="safe_pipeline", context={"file": file_path})
+                emit_event("safe_pipeline.file_write.ok", source="safe_pipeline", context={"file": file_path}, details={"snapshot": applied.get("snapshot")})
 
             except Exception as e:
                 self._rollback_all(snapshots["snapshots"], completed)
