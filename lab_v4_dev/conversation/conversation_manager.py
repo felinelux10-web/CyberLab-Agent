@@ -1204,24 +1204,24 @@ class ConversationManager:
                 }
             return {
                 **base,
-                "text": "بحسب سجل الحوار المحفوظ:\\n"
-                + "\\n".join(self._format_dialogue_exchanges(selected)),
+                "text": "بحسب سجل الحوار المحفوظ:\n"
+                + "\n".join(self._format_dialogue_exchanges(selected)),
                 "dialogue_turns": selected,
             }
 
         if response_mode == "summary":
             return {
                 **base,
-                "text": "ملخص موثّق للحوار المسجّل:\\n"
-                + "\\n".join(self._format_dialogue_exchanges(relevant[-6:])),
+                "text": "ملخص موثّق للحوار المسجّل:\n"
+                + "\n".join(self._format_dialogue_exchanges(relevant[-6:])),
                 "dialogue_turns": relevant[-6:],
             }
 
         task = (
-            "أجب عن طلب المستخدم الحالي بالاعتماد حصريًا على سجل الحوار المرفق.\\n"
-            "لا تضف أحداثًا غير موجودة.\\n\\n"
-            f"طلب المستخدم الحالي: {text}\\n\\n"
-            "سجل الحوار السابق:\\n" + "\\n\\n".join(archive)
+            "أجب عن طلب المستخدم الحالي بالاعتماد حصريًا على سجل الحوار المرفق.\n"
+            "لا تضف أحداثًا غير موجودة.\n\n"
+            f"طلب المستخدم الحالي: {text}\n\n"
+            "سجل الحوار السابق:\n" + "\n\n".join(archive)
         )
         try:
             generated = gateway_ask(
