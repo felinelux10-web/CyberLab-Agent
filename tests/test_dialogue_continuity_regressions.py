@@ -231,6 +231,25 @@ def test_dialogue_history_recall_excludes_exchanges_from_other_session(monkeypat
     assert "جلسة أخرى" not in result["text"]
 
 
+def test_social_dialogue_never_exposes_technical_save_prompt(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    manager._dispatch = lambda *args, **kwargs: {
+        "status": "success",
+        "intent": "personal_chat",
+        "text": "رد حواري",
+        "save_prompt": "هل تحفظ هذا الشرح؟",
+        "pending_save": "موضوع تقني",
+        "pending_confirmation": {"kind": "save_kb", "topic": "موضوع تقني"},
+    }
+
+    result = manager.process("السلام عليكم")
+
+    assert result["status"] == "success"
+    assert "save_prompt" not in result
+    assert "pending_save" not in result
+    assert "pending_confirmation" not in result
+
+
 def test_restore_snapshot_drops_turns_and_exchanges_from_foreign_session():
     memory = DialogueMemory(object())
     restored = memory.restore_snapshot({
