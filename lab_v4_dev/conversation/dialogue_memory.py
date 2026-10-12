@@ -126,9 +126,8 @@ class DialogueMemory:
         if not isinstance(result, dict):
             return
 
-        if not result.get("text"):
-            return
-
+        # Record the user's branch even when a provider returns no answer.
+        # Failed replies are deliberately excluded from the assistant transcript.
         parsed = parsed or {}
         previous_context = self.active_context_entity()
 
@@ -149,7 +148,12 @@ class DialogueMemory:
         # Keep one compact user/assistant exchange for recall. This survives
         # the shorter prompt transcript without making every old turn part of
         # an LLM request. Failed/provider-error responses are not resumable.
-        if result.get("status") == "success" and result.get("text"):
+        if (
+            result.get("status") == "success"
+            and result.get("text")
+            and result.get("source") != "fallback"
+            and not result.get("error")
+        ):
             exchange = {
                 "user": str(text),
                 "assistant": str(result.get("text")),
@@ -162,6 +166,9 @@ class DialogueMemory:
             archive = list(getattr(self.state, "exchange_archive", []) or [])
             archive.append(exchange)
             self.state.exchange_archive = archive[-32:]
+        short_confirmation = str(text or "").strip().casefold() in {
+            "نعم", "أجل", "اجل", "بلى", "لا", "كلا", "yes", "no",
+        }
         preserve_active_subject = bool(
             self.state.last_topic
             and not turn_target
@@ -169,7 +176,8 @@ class DialogueMemory:
                 "ambiguous", "continue", "reference", "clarification",
             }
             and (
-                is_social_act(conversation_act)
+                short_confirmation
+                or is_social_act(conversation_act)
                 or is_style_act(conversation_act)
             )
         )
@@ -250,17 +258,23 @@ class DialogueMemory:
             context_kind=context_kind,
         )
 
-        self.state.add_turn(
-            role="assistant",
-            content=result.get("text", ""),
-            mode=self.state.last_mode,
-            intent=turn_intent,
-            target=turn_target,
-            confidence=turn_confidence,
-            conversation_domain=conversation_domain,
-            conversation_act=conversation_act,
-            context_kind=context_kind,
-        )
+        if (
+            result.get("status") in {"success", "needs_clarification"}
+            and result.get("text")
+            and result.get("source") != "fallback"
+            and not result.get("error")
+        ):
+            self.state.add_turn(
+                role="assistant",
+                content=result.get("text", ""),
+                mode=self.state.last_mode,
+                intent=turn_intent,
+                target=turn_target,
+                confidence=turn_confidence,
+                conversation_domain=conversation_domain,
+                conversation_act=conversation_act,
+                context_kind=context_kind,
+            )
 
         items = result.get("items") or result.get("files") or []
         if items:

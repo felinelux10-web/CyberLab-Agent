@@ -505,6 +505,21 @@ def classify_conversation_semantics(
             "conversational": True,
         }
 
+    # Asking whether a topic was discussed is a dialogue-memory lookup,
+    # not an unsupported "remember" operation or a request to explain it anew.
+    if (
+        _has_any(bases, {"تتذكر", "تذكر", "تذكرت", "نتذكر"})
+        and _has_any(bases, {"موضوع", "حوار", "محادثه", "نقاش", "حديث", "كلام"})
+        and _has_any(bases, {"تحدثنا", "تكلمنا", "ناقشنا", "قلنا", "تناقشنا"})
+    ):
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.96,
+            "response_attributes": {"dialogue_response_mode": "answer"},
+            "conversational": True,
+        }
+
     # A direct question about the latest user message must resolve to that
     # message, not to an unrelated project/technical intent.
     if (
