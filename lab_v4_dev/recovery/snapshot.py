@@ -7,6 +7,7 @@ import shutil
 from datetime import datetime
 from typing import List
 from lab_v4_dev.recovery.permissions import check_write
+from lab_v4_dev.recovery.path_policy import canonical_path
 from lab_v4_dev.core.audit import emit_event
 
 SNAPSHOTS_DIR = "lab_v4_dev/archives/snapshots"
@@ -20,6 +21,7 @@ def _hash_file(path: str) -> str:
 
 
 def take(file_path: str) -> dict:
+    file_path = canonical_path(file_path)
     try:
         check_write(file_path)
     except Exception as e:
@@ -35,7 +37,8 @@ def take(file_path: str) -> dict:
 
     # إذا الملف غير موجود — احفظ نسخة فارغة كمرجع
     if not os.path.exists(file_path):
-        open(snapshot_path, "w").write("")
+        with open(snapshot_path, "w", encoding="utf-8") as handle:
+            handle.write("")
         rec = {
             "status": "ok",
             "original": file_path,
@@ -62,6 +65,7 @@ def take(file_path: str) -> dict:
 
 
 def list_snapshots(file_path: str) -> List[str]:
+    file_path = canonical_path(file_path)
     if not os.path.exists(SNAPSHOTS_DIR):
         return []
     safe_name = file_path.replace("/", "_").replace(".", "_")
