@@ -1538,7 +1538,12 @@ SOURCE CODE:
                     {"kind": "save_kb", "topic": raw}
                     if result.get("status") == "success" else None
                 ),
-                "save_prompt"  : "💾 هل تحفظ هذا الشرح في الذاكرة المحلية؟ (نعم / لا / تجاوز)",
+                # Never ask to save a response that was not successfully produced.
+                "save_prompt"  : (
+                    "💾 هل تحفظ هذا الشرح في الذاكرة المحلية؟ (نعم / لا / تجاوز)"
+                    if result.get("status") == "success" and answer.strip()
+                    else None
+                ),
             }
 
         # ─── Entry Point Query (v5.2.0 Project Reader) ───
