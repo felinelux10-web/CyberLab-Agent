@@ -187,6 +187,64 @@ def test_new_session_resets_dialogue_memory_even_without_orchestrator_reset_hook
     assert memory.state.last_topic is None
     assert memory.state.exchange_archive == []
 
+
+def test_natural_language_new_dialogue_request_resets_before_pending_clarification(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    memory.state.last_topic = "CSRF"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.exchange_archive = [{
+        "user": "اشرح CSRF",
+        "assistant": "شرح قديم",
+        "context_kind": "dialogue",
+        "conversation_domain": "technical",
+        "session_id": memory.state.session_id,
+    }]
+    memory.state.pending_clarification = {"kind": "project_order", "request": "قائمة الملفات"}
+    old_session_id = memory.state.session_id
+
+    result = manager.process("أريد بدء جلسة حوار جديدة ومستقلة تمامًا عن الحوار السابق. لا تستعد سياقه ولا تخلط بينهما.")
+
+    assert result["status"] == "success"
+    assert memory.state.last_topic is None
+    assert memory.state.exchange_archive == []
+    assert memory.state.pending_clarification is None
+    assert memory.state.session_id != old_session_id
+
+
+def test_dialogue_history_recall_excludes_exchanges_from_other_session(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    memory.state.exchange_archive = [
+        {
+            "user": "اشرح CSRF",
+            "assistant": "شرح من جلسة أخرى",
+            "target": "CSRF",
+            "context_kind": "dialogue",
+            "conversation_domain": "technical",
+            "session_id": "old-session-id",
+        }
+    ]
+
+    result = manager._answer_dialogue_history("ماذا تتذكر عن حوارنا الحالي؟", "summary", memory.state.exchange_archive)
+
+    assert result["status"] == "needs_clarification"
+    assert "CSRF" not in result["text"]
+    assert "جلسة أخرى" not in result["text"]
+
+
+def test_casual_darija_opener_does_not_inherit_active_technical_topic(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    memory.state.last_topic = "CSRF"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.last_intent = "cyber_explain"
+
+    result = manager.process("بغيت نهضر معاك على شي موضوع خفيف، كيفاش داز نهارك؟")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_social"
+    assert "نهارك" in result["text"]
+    assert "CSRF" not in result["text"]
+    assert len(orchestrator.calls) == 0
+
 def test_targetless_general_continuation_uses_recent_dialogue_archive():
     from lab_v4_dev.conversation.semantic_contract import ContextTransition
 

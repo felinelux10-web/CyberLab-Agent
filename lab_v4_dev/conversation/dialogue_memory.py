@@ -7,6 +7,8 @@ Does not route, execute, call providers, or decide intent.
 
 from __future__ import annotations
 
+import uuid
+
 from lab_v4_dev.conversation.dialogue_contract import DialogueState
 from lab_v4_dev.conversation.semantic_contract import CONTEXTUAL_TRANSITIONS
 from lab_v4_dev.nlu.conversation_semantics import is_social_act, is_style_act
@@ -88,6 +90,7 @@ class DialogueMemory:
         if not isinstance(snapshot, dict):
             return False
         restored = DialogueState()
+        restored.session_id = str(snapshot.get("session_id") or uuid.uuid4().hex)
         for field in (
             "last_topic", "pending_topic", "last_mode", "last_intent",
             "last_target", "last_entity_type", "last_confidence",
@@ -96,6 +99,12 @@ class DialogueMemory:
         ):
             if field in snapshot:
                 setattr(restored, field, snapshot[field])
+        restored.exchange_archive = [
+            {**item, "session_id": str(item.get("session_id") or restored.session_id)}
+            for item in (restored.exchange_archive or [])
+            if isinstance(item, dict)
+            and str(item.get("session_id") or restored.session_id) == restored.session_id
+        ][-32:]
         for turn in (snapshot.get("history") or [])[-8:]:
             if not isinstance(turn, dict) or not turn.get("role"):
                 continue
@@ -109,6 +118,7 @@ class DialogueMemory:
                 conversation_domain=turn.get("conversation_domain", "general"),
                 conversation_act=turn.get("conversation_act", "NONE"),
                 context_kind=turn.get("context_kind", "unknown"),
+                session_id=turn.get("session_id") or restored.session_id,
             )
         self.state = restored
         return True
@@ -162,8 +172,13 @@ class DialogueMemory:
                 "conversation_domain": conversation_domain,
                 "conversation_act": conversation_act or semantic.get("conversation_act", "NONE"),
                 "context_kind": context_kind,
+                "session_id": self.state.session_id,
             }
-            archive = list(getattr(self.state, "exchange_archive", []) or [])
+            archive = [
+                item for item in (getattr(self.state, "exchange_archive", []) or [])
+                if isinstance(item, dict)
+                and str(item.get("session_id") or self.state.session_id) == self.state.session_id
+            ]
             archive.append(exchange)
             self.state.exchange_archive = archive[-32:]
         short_confirmation = str(text or "").strip().casefold() in {
@@ -256,6 +271,7 @@ class DialogueMemory:
             conversation_domain=conversation_domain,
             conversation_act=conversation_act,
             context_kind=context_kind,
+            session_id=self.state.session_id,
         )
 
         if (
@@ -274,6 +290,7 @@ class DialogueMemory:
                 conversation_domain=conversation_domain,
                 conversation_act=conversation_act,
                 context_kind=context_kind,
+                session_id=self.state.session_id,
             )
 
         items = result.get("items") or result.get("files") or []

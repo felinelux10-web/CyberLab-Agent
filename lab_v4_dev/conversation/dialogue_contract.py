@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+import uuid
 
 
 @dataclass
@@ -22,6 +23,7 @@ class DialogueTurn:
     conversation_domain: str = "general"
     conversation_act: str = "NONE"
     context_kind: str = "unknown"
+    session_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -34,6 +36,7 @@ class DialogueTurn:
             "conversation_domain": self.conversation_domain,
             "conversation_act": self.conversation_act,
             "context_kind": self.context_kind,
+            "session_id": self.session_id,
         }
 
 
@@ -48,6 +51,7 @@ class DialogueState:
         - Persistence is intentionally outside this contract.
         - Runtime/Project context are separate state domains.
     """
+    session_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     last_topic: str | None = None
     pending_topic: str | None = None
     last_mode: str | None = None
@@ -75,6 +79,7 @@ class DialogueState:
         conversation_domain: str = "general",
         conversation_act: str = "NONE",
         context_kind: str = "unknown",
+        session_id: str | None = None,
     ) -> None:
         self.turns.append(
             DialogueTurn(
@@ -87,6 +92,7 @@ class DialogueState:
                 conversation_domain=conversation_domain,
                 conversation_act=conversation_act,
                 context_kind=context_kind,
+                session_id=session_id or self.session_id,
             )
         )
         self.turns = self.turns[-8:]
@@ -97,6 +103,7 @@ class DialogueState:
 
     def snapshot(self) -> dict[str, Any]:
         return {
+            "session_id": self.session_id,
             "last_topic": self.last_topic,
             "pending_topic": self.pending_topic,
             "last_mode": self.last_mode,

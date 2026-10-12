@@ -181,7 +181,60 @@ class ConversationManager:
         if context is not None:
             context.current_file = None
 
+    @staticmethod
+    def _is_new_dialogue_session_request(text: str) -> bool:
+        """Recognize explicit natural-language requests to start an isolated dialogue."""
+        normalized = " ".join(
+            str(text or "").casefold()
+            .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+            .replace("ـ", "")
+            .strip(" \\t\\r\\n.,،؛:!?؟\\\"'()[]{}")
+            .split()
+        )
+        exact = {
+            "جلسة جديدة", "جلسه جديده", "new session", "ابدأ جلسة جديدة",
+            "ابدا جلسه جديده", "ابدأ حوارا جديدا", "ابدا حوارا جديدا",
+            "بدء جلسة جديدة", "بدء حوار جديد",
+        }
+        if normalized in exact:
+            return True
+        explicit_starts = (
+            "اريد بدء جلسة حوار جديدة",
+            "اريد بدء جلسه حوار جديده",
+            "اريد بدء جلسة جديدة ومستقلة",
+            "اريد بدء حوار جديد ومستقل",
+            "ابدأ جلسة حوار جديدة",
+            "ابدا جلسه حوار جديده",
+            "انشئ جلسة حوار جديدة",
+            "انشئ جلسه حوار جديده",
+            "ابدأ جلسة جديدة ومستقلة",
+            "ابدا جلسه جديده ومستقله",
+        )
+        return any(normalized.startswith(prefix) for prefix in explicit_starts)
+
     def process(self, user_input: str) -> dict:
+        # Session boundaries take precedence over pending clarifications and all
+        # NLU/context resolution. A new dialogue must never inherit old state.
+        if self._is_new_dialogue_session_request(user_input):
+            reset = getattr(self.orchestrator, "reset_conversation_context", None)
+            if callable(reset):
+                reset()
+            else:
+                agent = getattr(self.orchestrator, "agent", None)
+                reset = getattr(agent, "reset_conversation_context", None)
+                if callable(reset):
+                    reset()
+            memory_reset = getattr(self.dialogue_memory, "reset", None)
+            if callable(memory_reset):
+                memory_reset()
+            return {
+                "status": "success",
+                "intent": Intent.RESTART,
+                "source": "conversation_manager",
+                "text": "بدأت جلسة حوار جديدة ومستقلة. لم أستعد سياق الجلسة السابقة.",
+                "executed": False,
+            }
+
         # Consume an existing project-list ordering clarification
         # before treating "1/2/3" as a new independent request.
         if self.dialogue_memory:
@@ -204,28 +257,6 @@ class ConversationManager:
                     user_input = f"{base_request} {order}".strip()
 
         mode = detect_mode(user_input)
-        if str(user_input or "").strip().casefold() in {"جلسة جديدة", "جلسه جديده", "new session"}:
-            reset = getattr(self.orchestrator, "reset_conversation_context", None)
-            if callable(reset):
-                reset()
-            else:
-                agent = getattr(self.orchestrator, "agent", None)
-                reset = getattr(agent, "reset_conversation_context", None)
-                if callable(reset):
-                    reset()
-            # Keep the dialogue owner authoritative even when the orchestrator
-            # has no runtime reset hook or a legacy hook only resets execution state.
-            memory_reset = getattr(self.dialogue_memory, "reset", None)
-            if callable(memory_reset):
-                memory_reset()
-            return {
-                "status": "success",
-                "intent": Intent.RESTART,
-                "source": "conversation_manager",
-                "text": "بدأت جلسة جديدة. لم يتم إنشاء أو حفظ أي كود تلقائيًا.",
-                "executed": False,
-            }
-
         # A direct stop request is a conversation control, not an executable
         # task. Do not send it through the parser fallback or Orchestrator.
         if self._is_explicit_stop_request(user_input):
@@ -324,6 +355,27 @@ class ConversationManager:
                 "source": "explicit_dialogue_topic",
             })
         explicit_explanation = self._explicit_explanation_topic(user_input)
+        normalized_social_text = str(user_input or "").casefold()
+        explicit_casual_opening = any(marker in normalized_social_text for marker in (
+            "بغيت نهضر معاك", "بغيت نهضر", "موضوع خفيف", "كيفاش داز نهارك",
+            "كيف داز نهارك", "كيف كان نهارك", "كيف قضيت يومك", "خلينا نهضرو",
+            "نهدرو شوية", "نهضر معاك شوية", "حوار ودي", "حوار عادي",
+        ))
+        if explicit_casual_opening and not explicit_explanation:
+            # An explicit casual opener is independent of a previously active
+            # technical branch; do not inherit its target or prompt history.
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": "",
+                "entity_type": "REFERENCE",
+                "conversation_domain": "social",
+                "conversation_act": "CASUAL_CONVERSATION",
+                "conversation_confidence": 0.98,
+                "response_attributes": {},
+                "semantic_pattern": "EXPLICIT_CASUAL_OPENING",
+                "source": "explicit_casual_opening",
+            })
         if explicit_explanation:
             # An explicit explain request is a fresh answer request, not an
             # implicit continuation merely because the sentence contains
@@ -1060,13 +1112,20 @@ class ConversationManager:
             return None
         social_markers = (
             "كيفك", "كيف الحال", "ماهو الحال", "حوار ودي", "حوار عادي",
+            "بغيت نهضر معاك", "بغيت نهضر", "موضوع خفيف", "كيفاش داز نهارك",
+            "كيف داز نهارك", "كيف كان نهارك", "كيف قضيت يومك", "خلينا نهضرو",
+            "نهدرو شوية", "نهضر معاك شوية",
         )
         if not any(marker in normalized for marker in social_markers):
             return None
         if any(marker in normalized for marker in ("كيفك", "كيف الحال", "ماهو الحال")):
             reply = "أنا بخير، شكرًا لسؤالك. كيف حالك أنت؟"
+        elif any(marker in normalized for marker in ("كيفاش داز نهارك", "كيف داز نهارك")):
+            reply = "نهاري هادئ، وأنا هنا للدردشة معك. ونتا كيف داز نهارك؟"
+        elif "كيف كان نهارك" in normalized or "كيف قضيت يومك" in normalized:
+            reply = "كان يومي هادئًا، وأنا جاهز للدردشة. كيف كان يومك أنت؟"
         else:
-            reply = "أكيد، يمكننا متابعة حوار ودي وبسيط. ما الموضوع الذي تود الحديث عنه؟"
+            reply = "أكيد، نهضرو على شي موضوع خفيف. شنو بغيتي تحكي ليا؟"
         return {
             "status": "success",
             "intent": Intent.PERSONAL_CHAT,
@@ -1179,10 +1238,17 @@ class ConversationManager:
         exchanges: list[dict],
     ) -> dict:
         """Answer a dialogue-history request without routing it as project work."""
+        state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
+        current_session_id = str(getattr(state, "session_id", "") or "")
         relevant = [
             item for item in exchanges
             if item.get("context_kind") != "work"
             and item.get("conversation_domain") != "work"
+            and (
+                not current_session_id
+                or not item.get("session_id")
+                or str(item.get("session_id")) == current_session_id
+            )
         ][-8:]
 
         base = {
@@ -1567,12 +1633,20 @@ class ConversationManager:
         history = getattr(state, "history", []) if state is not None else []
         exchanges = getattr(state, "exchange_archive", []) if state is not None else []
 
+        current_session_id = str(getattr(state, "session_id", "") or "")
+
         def allowed(item):
             if not isinstance(item, dict):
                 return False
             kind = str(item.get("context_kind") or "").casefold()
             domain = str(item.get("conversation_domain") or "").casefold()
-            return kind not in {"work", "system"} and domain not in {"work", "system"}
+            item_session_id = str(item.get("session_id") or "")
+            same_session = not current_session_id or not item_session_id or item_session_id == current_session_id
+            return (
+                kind not in {"work", "system"}
+                and domain not in {"work", "system"}
+                and same_session
+            )
 
         topic = None
         if transition in {ContextTransition.RESTORE, ContextTransition.EXPLICIT_SWITCH}:
