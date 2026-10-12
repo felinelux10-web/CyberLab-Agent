@@ -23,9 +23,9 @@ FORBIDDEN_PREFIXES = ["/etc", "/system", "/proc", "/dev", "/sys", "/root"]
 
 
 def is_safe_project_path(path: str) -> bool:
-    """يتحقق أن المسار آمن للعمل عليه (ليس مسار نظام حساس)"""
-    abs_path = os.path.abspath(path)
-    return not any(abs_path.startswith(p) for p in FORBIDDEN_PREFIXES)
+    """يتحقق من المسار بحدود مكونات المسار، لا ببادئات نصية."""
+    from lab_v4_dev.recovery.path_policy import is_forbidden_system_path
+    return not is_forbidden_system_path(path)
 
 
 def project_index_dir(project_root: str) -> str:
