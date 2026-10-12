@@ -3,29 +3,22 @@
 
 import os
 import shutil
-import inspect
 from typing import Optional
 from lab_v4_dev.recovery.snapshot import list_snapshots, SNAPSHOTS_DIR
 from lab_v4_dev.core.audit import emit_event
 from lab_v4_dev.recovery.permissions import check_write
+from lab_v4_dev.recovery.path_policy import canonical_path, is_within
 
 
-def _detect_internal_caller() -> bool:
-    """
-    Heuristic to detect if the caller appears to be inside the lab_v4_dev package.
-    - Scans the call stack for any frame with 'lab_v4_dev' in the filename.
-    - This is a conservative, best-effort heuristic to avoid allowing external callers
-      to bypass permission checks while preserving internal trusted callers.
-    """
-    try:
-        for frame in inspect.stack()[2:]:
-            filename = frame.filename or ""
-            if "lab_v4_dev" in filename:
-                return True
-    except Exception:
-        # If stack inspection fails for any reason, default to conservative (not internal)
+def _snapshot_matches_target(file_path: str, snapshot_path: str) -> bool:
+    """Accept only archive snapshots whose filename identifies this target."""
+    archive_root = canonical_path(SNAPSHOTS_DIR)
+    candidate = canonical_path(snapshot_path)
+    if not is_within(candidate, archive_root) or candidate == archive_root:
         return False
-    return False
+    safe_name = file_path.replace("/", "_").replace(".", "_")
+    name = os.path.basename(candidate)
+    return name.startswith(safe_name + "__") and name.endswith(".snap")
 
 
 def rollback(file_path: str, snapshot_path: Optional[str] = None, trusted: Optional[bool] = None) -> dict:
@@ -44,14 +37,13 @@ def rollback(file_path: str, snapshot_path: Optional[str] = None, trusted: Optio
     from using rollback as a permission bypass.
     """
 
-    # Determine effective trust
-    effective_trusted = trusted if trusted is not None else _detect_internal_caller()
-
+    # Keep trusted for API compatibility, but never let it bypass authorization.
+    file_path = canonical_path(file_path)
     emit_event(
         "rollback.start",
         source="rollback",
         context={"file": file_path, "snapshot": snapshot_path},
-        details={"trusted_provided": trusted, "effective_trusted": effective_trusted},
+        details={"trusted_provided": trusted, "effective_trusted": False},
     )
 
     # إذا لم يُحدد snapshot — خذ الأحدث
@@ -62,17 +54,20 @@ def rollback(file_path: str, snapshot_path: Optional[str] = None, trusted: Optio
             return {"status": "failed", "reason": "no_snapshots_found"}
         snapshot_path = os.path.join(SNAPSHOTS_DIR, snaps[-1])
 
+    snapshot_path = canonical_path(snapshot_path)
     if not os.path.exists(snapshot_path):
         emit_event("rollback.failed", source="rollback", context={"file": file_path, "snapshot": snapshot_path}, details={"reason": "snapshot_not_found"})
         return {"status": "failed", "reason": "snapshot_not_found"}
 
-    # Enforce write-check when the caller is untrusted
-    if not effective_trusted:
-        try:
-            check_write(file_path)
-        except Exception as e:
-            emit_event("rollback.rejected", source="rollback", context={"file": file_path, "snapshot": snapshot_path}, details={"reason": str(e)})
-            return {"status": "failed", "reason": str(e)}
+    if not _snapshot_matches_target(file_path, snapshot_path):
+        emit_event("rollback.rejected", source="rollback", context={"file": file_path, "snapshot": snapshot_path}, details={"reason": "snapshot_target_mismatch"})
+        return {"status": "failed", "reason": "snapshot_target_mismatch"}
+
+    try:
+        check_write(file_path)
+    except Exception as e:
+        emit_event("rollback.rejected", source="rollback", context={"file": file_path, "snapshot": snapshot_path}, details={"reason": str(e)})
+        return {"status": "failed", "reason": str(e)}
 
     try:
         shutil.copy2(snapshot_path, file_path)
