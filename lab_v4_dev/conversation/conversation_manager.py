@@ -1178,22 +1178,57 @@ class ConversationManager:
                 "المستخدم: " + str(item.get("user") or "").strip()
                 + "\nالوكيل: " + str(item.get("assistant") or "").strip()
             )
+        # History recall is a provenance-sensitive operation: do not ask an
+        # unconstrained language model to reconstruct events from a transcript.
+        # Render only the exact bounded exchanges present in DialogueMemory.
+        if response_mode == "answer":
+            query = str(text or "").casefold()
+            matched = [
+                item for item in relevant
+                if any(
+                    token and len(token) > 2
+                    and token in " ".join((
+                        str(item.get("target") or ""),
+                        str(item.get("user") or ""),
+                        str(item.get("assistant") or ""),
+                    )).casefold()
+                    for token in query.split()
+                )
+            ]
+            selected = matched[-3:]
+            if not selected:
+                return {
+                    **base,
+                    "status": "needs_clarification",
+                    "text": "لا أجد في سجل الحوار المحفوظ تفاصيل موثوقة عن هذا الموضوع؛ لن أخمّن.",
+                }
+            return {
+                **base,
+                "text": "بحسب سجل الحوار المحفوظ:\\n"
+                + "\\n".join(self._format_dialogue_exchanges(selected)),
+                "dialogue_turns": selected,
+            }
+
+        if response_mode == "summary":
+            return {
+                **base,
+                "text": "ملخص موثّق للحوار المسجّل:\\n"
+                + "\\n".join(self._format_dialogue_exchanges(relevant[-6:])),
+                "dialogue_turns": relevant[-6:],
+            }
+
         task = (
-            "أجب عن طلب المستخدم الحالي بالاعتماد حصريًا على سجل الحوار المرفق.\n"
-            "إذا كان الطلب ملخصًا، فاكتب ملخصًا دلاليًا موجزًا من 3 إلى 6 نقاط، "
-            "ولا تنسخ الحوار ولا تسرد الرسائل واحدةً واحدة. اذكر الموضوعات الرئيسية، "
-            "ما طلبه المستخدم، وأي تصحيح مهم لسلوك الوكيل. لا تضف أحداثًا غير موجودة.\n"
-            "إذا كان سؤالًا مباشرًا عن الحوار، فأجب عنه مباشرة في جملة أو جملتين.\n\n"
-            f"طلب المستخدم الحالي: {text}\n\n"
-            "سجل الحوار السابق:\n" + "\n\n".join(archive)
+            "أجب عن طلب المستخدم الحالي بالاعتماد حصريًا على سجل الحوار المرفق.\\n"
+            "لا تضف أحداثًا غير موجودة.\\n\\n"
+            f"طلب المستخدم الحالي: {text}\\n\\n"
+            "سجل الحوار السابق:\\n" + "\\n\\n".join(archive)
         )
         try:
             generated = gateway_ask(
                 task,
                 system=(
                     "أنت تسترجع حوارًا سابقًا. التزم بالسجل فقط. "
-                    "لا تحوّل السؤال إلى شرح تقني، ولا تعرض سجلًا حرفيًا عندما يطلب المستخدم ملخصًا. "
-                    "أجب مباشرة وبالعربية."
+                    "لا تضف أحداثًا غير موجودة. أجب مباشرة وبالعربية."
                 ),
                 max_tokens=900,
                 temperature=0.2,
@@ -1201,15 +1236,6 @@ class ConversationManager:
             )
             answer = str((generated or {}).get("text") or "").strip()
             if (generated or {}).get("status") == "success" and answer:
-                # A direct history answer may identify the topic but omit the
-                # archived exchange that grounds the recall. Include the
-                # bounded source exchange for answer mode; summaries remain
-                # semantic and transcripts remain explicitly requested only.
-                if response_mode == "answer":
-                    exchange_text = "\\n\\nالتبادل المحفوظ ذو الصلة:\\n" + "\\n".join(
-                        self._format_dialogue_exchanges(relevant[-3:])
-                    )
-                    return {**base, "text": answer + exchange_text}
                 return {**base, "text": answer}
         except Exception:
             pass
@@ -1290,6 +1316,16 @@ class ConversationManager:
         if intent in _AGENT_SELF_INTENTS:
             return ContextTransition.NEW_INDEPENDENT
         if conversation_act == "TOPIC_RETURN":
+            # A named return must resolve that exact topic. Never fall back to
+            # whichever branch happens to be last in context_history.
+            if target and self.dialogue_memory:
+                get_topic = getattr(self.dialogue_memory, "context_for_topic", None)
+                named_context = get_topic(target) if callable(get_topic) else None
+                if named_context:
+                    return ContextTransition.RESTORE
+                if active_topic and self._same_topic(target, active_topic):
+                    return ContextTransition.CONTINUE
+                return ContextTransition.AMBIGUOUS
             get_previous = getattr(
                 self.dialogue_memory,
                 "previous_context_entity",
@@ -1306,6 +1342,18 @@ class ConversationManager:
                 if active_topic else ContextTransition.AMBIGUOUS
             )
         if conversation_act == "CONVERSATION_CONTINUATION":
+            # A named, different subject is an explicit branch switch even if
+            # a semantic marker such as "نقطة" made the utterance look like a
+            # continuation. Prefer a matching archived branch when available.
+            if target and active_topic and not self._same_topic(target, active_topic):
+                get_topic = getattr(self.dialogue_memory, "context_for_topic", None) if self.dialogue_memory else None
+                named_context = get_topic(target) if callable(get_topic) else None
+                return (
+                    ContextTransition.RESTORE
+                    if named_context else ContextTransition.EXPLICIT_SWITCH
+                )
+            if target and not active_topic:
+                return ContextTransition.NEW_INDEPENDENT
             return (
                 ContextTransition.CONTINUE
                 if active_topic else ContextTransition.AMBIGUOUS
