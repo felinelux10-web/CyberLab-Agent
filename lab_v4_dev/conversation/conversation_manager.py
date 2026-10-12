@@ -1154,9 +1154,26 @@ class ConversationManager:
         if history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"} and not any(marker in normalized for marker in markers):
             return None
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
-        history = getattr(state, "history", []) if state is not None else []
+        current_session_id = str(getattr(state, "session_id", "") or "")
+        history = [
+            turn for turn in (getattr(state, "history", []) if state is not None else [])
+            if isinstance(turn, dict)
+            and (
+                not current_session_id
+                or not turn.get("session_id")
+                or str(turn.get("session_id")) == current_session_id
+            )
+        ]
         exchanges = getattr(state, "exchange_archive", []) if state is not None else []
-        exchanges = [item for item in (exchanges or []) if isinstance(item, dict)]
+        exchanges = [
+            item for item in (exchanges or [])
+            if isinstance(item, dict)
+            and (
+                not current_session_id
+                or not item.get("session_id")
+                or str(item.get("session_id")) == current_session_id
+            )
+        ]
         response_mode = str(
             ((parsed or {}).get("response_attributes") or {}).get(
                 "dialogue_response_mode", ""
