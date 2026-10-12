@@ -243,6 +243,8 @@ def test_casual_darija_opener_does_not_inherit_active_technical_topic(monkeypatc
     assert result["source"] == "local_social"
     assert "نهارك" in result["text"]
     assert "CSRF" not in result["text"]
+    assert result["semantic_request"]["target"] is None
+    assert result["semantic_request"]["conversation_domain"] == "social"
     assert len(orchestrator.calls) == 0
 
 def test_targetless_general_continuation_uses_recent_dialogue_archive():
