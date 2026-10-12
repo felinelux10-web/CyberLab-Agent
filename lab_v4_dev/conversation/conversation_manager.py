@@ -729,8 +729,9 @@ class ConversationManager:
 
     @staticmethod
     def _is_explicit_independent_topic(text: str, parsed: dict) -> bool:
-        if not (parsed or {}).get("target"):
-            return False
+        # An explicit transition marker is authoritative even when target parsing
+        # fails; requiring a target here can leak the previous branch into the
+        # new prompt and cause the privacy gate to reject unrelated content.
         normalized = str(text or "").casefold()
         return any(marker in normalized for marker in (
             "مستقل", "موضوع جديد", "موضوعًا جديدًا", "موضوعا جديدا",
