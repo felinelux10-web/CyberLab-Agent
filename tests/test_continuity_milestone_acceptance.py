@@ -334,3 +334,74 @@ def test_bare_verify_asks_for_a_target_instead_of_becoming_unsupported(monkeypat
     assert result["intent"].value == "verify_fix"
     assert "ما الذي تريدني أن أتحقق منه" in result["text"]
     assert orchestrator.calls == []
+
+
+def test_provider_failure_does_not_offer_to_save_missing_explanation(monkeypatch):
+    from lab_v4_dev.core import orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    from lab_v4_dev.intent.intents import Intent
+
+    monkeypatch.setattr(
+        orchestrator_module,
+        "ask",
+        lambda *_args, **_kwargs: {
+            "status": "error",
+            "error": {"code": "PROVIDER_UNAVAILABLE"},
+        },
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.llm.prompt_builder.build_cybersec_prompt",
+        lambda *_args, **_kwargs: ("system", "prompt"),
+    )
+    instance = Orchestrator.__new__(Orchestrator)
+    instance.context = ContextStore()
+
+    result = instance._route(
+        Intent.CYBER_EXPLAIN,
+        "SQL Injection",
+        "general",
+        "اشرح SQL Injection",
+        response_attributes={"dialogue_response_mode": "answer"},
+        context_transition="new_independent",
+    )
+
+    assert result["status"] == "error"
+    assert result["pending_save"] is None
+    assert result["pending_confirmation"] is None
+    assert result["save_prompt"] is None
+    assert "مزود اللغة" in result["text"]
+
+
+def test_privacy_block_is_not_reported_as_provider_outage(monkeypatch):
+    from lab_v4_dev.core import orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    from lab_v4_dev.intent.intents import Intent
+
+    monkeypatch.setattr(
+        orchestrator_module,
+        "ask",
+        lambda *_args, **_kwargs: {
+            "status": "error",
+            "error": {"code": "PRIVACY_EXTERNAL_BLOCKED"},
+        },
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.llm.prompt_builder.build_cybersec_prompt",
+        lambda *_args, **_kwargs: ("system", "prompt"),
+    )
+    instance = Orchestrator.__new__(Orchestrator)
+    instance.context = ContextStore()
+
+    result = instance._route(
+        Intent.CYBER_EXPLAIN,
+        "SQL Injection",
+        "general",
+        "اشرح SQL Injection",
+        response_attributes={"dialogue_response_mode": "answer"},
+        context_transition="new_independent",
+    )
+
+    assert result["status"] == "error"
+    assert "بوابة الخصوصية" in result["text"]
+    assert "مزود اللغة" not in result["text"]
+    assert result["save_prompt"] is None
