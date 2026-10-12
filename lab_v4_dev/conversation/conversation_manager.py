@@ -188,7 +188,7 @@ class ConversationManager:
             str(text or "").casefold()
             .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
             .replace("ـ", "")
-            .strip(" \\t\\r\\n.,،؛:!?؟\\\"'()[]{}")
+            .strip(" .,،؛:!?؟'()[]{}")
             .split()
         )
         exact = {
