@@ -231,6 +231,60 @@ def test_dialogue_history_recall_excludes_exchanges_from_other_session(monkeypat
     assert "جلسة أخرى" not in result["text"]
 
 
+def test_restore_snapshot_drops_turns_and_exchanges_from_foreign_session():
+    memory = DialogueMemory(object())
+    restored = memory.restore_snapshot({
+        "session_id": "current-session",
+        "history": [
+            {"role": "user", "content": "رسالة حالية", "session_id": "current-session"},
+            {"role": "assistant", "content": "تسرب قديم", "session_id": "old-session"},
+        ],
+        "exchange_archive": [
+            {"user": "موضوع حالي", "assistant": "رد حالي", "session_id": "current-session"},
+            {"user": "CSRF قديم", "assistant": "شرح قديم", "session_id": "old-session"},
+        ],
+    })
+
+    assert restored is True
+    assert memory.state.session_id == "current-session"
+    assert [turn["content"] for turn in memory.state.history] == ["رسالة حالية"]
+    assert [item["user"] for item in memory.state.exchange_archive] == ["موضوع حالي"]
+
+
+def test_prompt_history_excludes_foreign_session_exchanges():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+
+    orchestrator = RecordingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+    memory.state.exchange_archive = [
+        {
+            "user": "حوار الجلسة الحالية",
+            "assistant": "رد حالي",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "session_id": memory.state.session_id,
+        },
+        {
+            "user": "CSRF من جلسة أخرى",
+            "assistant": "شرح قديم",
+            "context_kind": "dialogue",
+            "conversation_domain": "technical",
+            "session_id": "old-session-id",
+        },
+    ]
+
+    history = manager._history_for_transition(
+        ContextTransition.CONTINUE,
+        {"conversation_act": "CONVERSATION_CONTINUATION"},
+    )
+    text = " ".join(turn["content"] for turn in history)
+
+    assert "حوار الجلسة الحالية" in text
+    assert "CSRF" not in text
+    assert "شرح قديم" not in text
+
+
 def test_casual_darija_opener_does_not_inherit_active_technical_topic(monkeypatch):
     manager, memory, orchestrator, calls = _manager(monkeypatch)
     memory.state.last_topic = "CSRF"
