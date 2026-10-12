@@ -22,6 +22,13 @@ def _manager(monkeypatch):
     return ConversationManager(orchestrator, memory), memory, orchestrator
 
 
+def test_explicit_independent_marker_does_not_require_parsed_target():
+    assert ConversationManager._is_explicit_independent_topic(
+        "اشرح CSRF بالتفصيل، موضوع مستقل عن السابق",
+        {"target": ""},
+    )
+
+
 def test_return_without_previous_topic_is_explicit_and_safe(monkeypatch):
     manager, memory, orchestrator = _manager(monkeypatch)
     result = manager.process("ارجع للموضوع الرئيسي")
