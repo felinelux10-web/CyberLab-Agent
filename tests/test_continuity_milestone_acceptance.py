@@ -323,3 +323,14 @@ def test_topic_recall_uses_saved_exchange_without_provider(monkeypatch):
     assert result["status"] == "success"
     assert "فن النقش البارز" in result["text"]
     assert "بروز الشكل والظلال" in result["text"]
+
+
+def test_bare_verify_asks_for_a_target_instead_of_becoming_unsupported(monkeypatch):
+    manager, _memory, orchestrator = _manager(monkeypatch)
+
+    result = manager.process("تحقق")
+
+    assert result["status"] == "needs_clarification"
+    assert result["intent"].value == "verify_fix"
+    assert "ما الذي تريدني أن أتحقق منه" in result["text"]
+    assert orchestrator.calls == []
