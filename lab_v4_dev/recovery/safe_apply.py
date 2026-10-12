@@ -4,6 +4,8 @@
 
 import os
 import ast
+import tempfile
+from lab_v4_dev.recovery.path_policy import canonical_path
 from typing import Optional
 from lab_v4_dev.recovery.permissions import check_write
 from lab_v4_dev.recovery.snapshot import take
@@ -24,6 +26,7 @@ def _validate_syntax(file_path: str, content: str) -> dict:
 
 
 def safe_apply(file_path: str, new_content: str) -> dict:
+    file_path = canonical_path(file_path)
 
     # 1. تحقق من الصلاحيات
     try:
@@ -41,12 +44,24 @@ def safe_apply(file_path: str, new_content: str) -> dict:
         emit_event("safe_apply.snapshot_failed", source="safe_apply", context={"file": file_path}, details={"snapshot_status": snap.get("status")})
         return {"status": "failed", "reason": "snapshot_failed"}
 
-    # 3. اكتب في ملف مؤقت أولاً
-    tmp_path = file_path + ".tmp"
+    # 3. Write to a unique temporary file beside the target.
+    tmp_path = None
     try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
+        parent = os.path.dirname(file_path) or os.curdir
+        os.makedirs(parent, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(
+            prefix="." + os.path.basename(file_path) + ".",
+            suffix=".tmp",
+            dir=parent,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(new_content)
     except Exception as e:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
         emit_event("safe_apply.write_failed", source="safe_apply", context={"file": file_path}, details={"reason": str(e)})
         return {"status": "failed", "reason": f"write_failed: {e}"}
 
