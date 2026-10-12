@@ -702,6 +702,22 @@ class ConversationManager:
         result = dict(result)
         result["semantic_request"] = semantic.as_dict()
 
+        # Saving an explanation is only offered for an actual technical
+        # explanation response. Never leak a knowledge-save prompt into casual
+        # chat, dialogue recall, or other non-executable conversation turns.
+        if (
+            semantic.context_kind in {"social", "dialogue"}
+            or parsed.get("intent") == Intent.PERSONAL_CHAT
+        ):
+            result.pop("save_prompt", None)
+            result.pop("pending_save", None)
+            pending_confirmation = result.get("pending_confirmation")
+            if (
+                isinstance(pending_confirmation, dict)
+                and pending_confirmation.get("kind") == "save_kb"
+            ):
+                result.pop("pending_confirmation", None)
+
         # ----------------------------------------------------
         # Presentation layer only.
         # ----------------------------------------------------
