@@ -341,7 +341,7 @@ class ConversationManager:
                 ),
                 "conversation_confidence": 0.95,
             })
-        transition = self._classify_context_transition(mode, candidate)
+        transition = self._classify_context_transition(mode, candidate, text=user_input)
         # An explicit independent-topic marker overrides a parser-produced
         # compound/reference act. The old branch must not enter a new topic's
         # prompt or trigger privacy blocking because of stale content.
@@ -1284,6 +1284,8 @@ class ConversationManager:
         self,
         mode: str,
         parsed: dict,
+        *,
+        text: str = "",
     ) -> ContextTransition:
         """Classify the current semantic subject against dialogue-owned state."""
         parsed = parsed or {}
@@ -1307,6 +1309,30 @@ class ConversationManager:
         )
 
         conversation_act = parsed.get("conversation_act")
+        normalized_request = str(text or "").casefold()
+        explicit_explain_markers = (
+            "اشرح", "شرح", "وضح", "عرّف", "عرف", "ما هو", "ماهي",
+            "حدثني عن", "دعنا نتحدث عن", "let's discuss", "explain",
+        )
+        explicit_resume_markers = (
+            "اكمل", "أكمل", "استكمل", "تابع", "واصل", "من نقطة التوقف",
+            "ارجع", "نرجع", "عد إلى", "عد الى", "continue", "resume",
+        )
+        starts_explicit_explanation = (
+            target
+            and any(marker in normalized_request for marker in explicit_explain_markers)
+            and not any(marker in normalized_request for marker in explicit_resume_markers)
+        )
+        if (
+            starts_explicit_explanation
+            and active_topic
+            and self._same_topic(target, active_topic)
+            and conversation_act != "TOPIC_RETURN"
+        ):
+            # "Explain X in detail" starts a fresh answer even if a persisted
+            # session happened to leave X as the active topic. Only explicit
+            # continuation/return language may resume the old stopping point.
+            return ContextTransition.EXPLICIT_SWITCH
         if parsed.get("semantic_pattern") == "GENERIC_TOPIC_REFERENCE":
             return (
                 ContextTransition.RESTORE
