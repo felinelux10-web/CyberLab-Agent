@@ -101,20 +101,48 @@ class ConversationManager:
 
     @staticmethod
     def _explicit_dialogue_topic(text: str) -> str | None:
-        """Extract the subject of an explicit 'let us discuss X' topic opening."""
+        """Extract the subject of an explicit independent dialogue opening."""
         import re
 
+        value = str(text or "").strip()
         match = re.match(
             r"^\s*(?:دعنا|خلينا|هيا|لن)\s+"
             r"(?:نتحدث|نتكلم|نناقش|نتحاور)\s+(?:عن|حول)\s+"
             r"(.+?)\s*[.!؟?،]*\s*$",
-            str(text or ""),
+            value,
             flags=re.IGNORECASE,
         )
         if not match:
             return None
         subject = match.group(1).strip(" \t\r\n.,،؛:!?؟")
         subject = re.sub(r"^(?:مفهوم|موضوع|فكرة)\s+", "", subject).strip()
+        return subject or None
+
+    @staticmethod
+    def _explicit_explanation_topic(text: str) -> str | None:
+        """Extract an explicit explain/define request, not a resume reference."""
+        import re
+
+        value = str(text or "").strip()
+        if any(marker in value.casefold() for marker in (
+            "ارجع", "نرجع", "عد إلى", "عد الى", "اكمل", "أكمل",
+            "استكمل", "تابع", "واصل", "continue", "resume",
+        )):
+            return None
+        match = re.match(
+            r"^\s*(?:اشرح|شرح|وضح|عرّف|عرف|explain|describe)\s+"
+            r"(.+?)\s*[.!؟?،]*\s*$",
+            value,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            return None
+        subject = match.group(1).strip(" \t\r\n.,،؛:!?؟")
+        subject = re.split(
+            r"\s+(?=بالتفصيل|باختصار|ثم(?:\s|$)|وتوقف|توقف|و(?:\s|$))",
+            subject,
+            maxsplit=1,
+        )[0].strip()
         return subject or None
 
     def _pending_confirmation_intent(self, text: str):
@@ -274,12 +302,28 @@ class ConversationManager:
                 "semantic_pattern": "EXPLICIT_DIALOGUE_TOPIC",
                 "source": "explicit_dialogue_topic",
             })
+        explicit_explanation = self._explicit_explanation_topic(user_input)
+        if explicit_explanation:
+            # An explicit explain request is a fresh answer request, not an
+            # implicit continuation merely because the sentence contains
+            # "نقطة" or persisted dialogue state names the same topic.
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.CYBER_EXPLAIN,
+                "target": explicit_explanation,
+                "entity_type": "CONCEPT",
+                "conversation_domain": "technical",
+                "conversation_act": "NONE",
+                "conversation_confidence": 0.95,
+                "semantic_pattern": "EXPLICIT_EXPLANATION_START",
+                "source": "explicit_explanation_start",
+            })
         raw_act = raw_signal.get("conversation_act")
         if raw_act in {
             "CONVERSATION_HISTORY_QUERY",
             "CONVERSATION_CONTINUATION",
             "TOPIC_RETURN",
-        }:
+        } and not explicit_explanation:
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.PERSONAL_CHAT,
