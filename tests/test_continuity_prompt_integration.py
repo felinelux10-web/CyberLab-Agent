@@ -212,12 +212,10 @@ def test_previous_dialogue_phrases_are_not_operational_history():
 def test_social_dialogue_is_saved_as_typed_memory_and_recalled_without_work_history(monkeypatch):
     import lab_v4_dev.conversation.conversation_manager as manager_module
 
-    def fake_gateway(prompt, **_kwargs):
-        if "ماذا كنا نقول في الردود السابقة" in prompt:
-            return {"status": "success", "text": "ملخص موجز للحوار السابق"}
-        return {"status": "success", "text": "رد حواري"}
+    def unexpected_gateway(*_args, **_kwargs):
+        raise AssertionError("dialogue-history recall must use the grounded local archive")
 
-    monkeypatch.setattr(manager_module, "gateway_ask", fake_gateway)
+    monkeypatch.setattr(manager_module, "gateway_ask", unexpected_gateway)
     orchestrator = CapturingOrchestrator()
     memory = DialogueMemory(orchestrator.context)
     manager = ConversationManager(orchestrator, memory)
@@ -229,9 +227,9 @@ def test_social_dialogue_is_saved_as_typed_memory_and_recalled_without_work_hist
     result = manager.process("ماذا كنا نقول في الردود السابقة؟")
     assert result["source"] == "dialogue_memory"
     assert result["dialogue_response_mode"] == "summary"
-    assert result["text"] == "ملخص موجز للحوار السابق"
-    assert "المستخدم:" not in result["text"]
-    assert "الوكيل:" not in result["text"]
+    assert "ماذا تقترح انت" in result["text"]
+    assert "موضوع عام عن التقنية" in result["text"]
+    assert "رد حواري" in result["text"]
     assert "آخر المهام" not in result["text"]
     assert all(
         turn.get("context_kind") in {"social", "dialogue"}
@@ -295,14 +293,19 @@ def test_dialogue_history_summary_is_bounded_and_survives_prompt_window(monkeypa
     manager.process("ماذا أيضًا؟")
     manager.process("أعطني اقتراحات أكثر")
 
+    def unexpected_gateway(*_args, **_kwargs):
+        raise AssertionError("summary recall must not call the language provider")
+
+    monkeypatch.setattr(manager_module, "gateway_ask", unexpected_gateway)
     result = manager.process("ماذا كنا نقول قبل قليل في الردود السابقة؟")
     assert result["source"] == "dialogue_memory"
     assert result["dialogue_response_mode"] == "summary"
-    assert result.get("summary_fallback") is True
     assert "اقتراح أول محدد" in result["text"]
     assert "اقتراح ثان محدد" in result["text"]
-    assert result["text"].startswith("ملخص موجز من سجل الحوار المتاح:")
+    assert "اقتراح ثالث محدد" in result["text"]
+    assert result["text"].startswith("ملخص موثّق للحوار المسجّل:")
     assert not result["text"].startswith("نص الحوار المسجل:")
+    assert len(result["dialogue_turns"]) <= 6
 
 def test_phase_continuation_stays_on_active_explanation_instead_of_session_restore():
     orchestrator = CapturingOrchestrator()
