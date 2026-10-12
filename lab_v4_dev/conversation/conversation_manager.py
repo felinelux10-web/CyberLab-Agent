@@ -396,7 +396,7 @@ class ConversationManager:
             "CONVERSATION_HISTORY_QUERY",
             "CONVERSATION_CONTINUATION",
             "TOPIC_RETURN",
-        } and not explicit_explanation:
+        } and not explicit_explanation and not explicit_casual_opening:
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.PERSONAL_CHAT,
@@ -438,7 +438,7 @@ class ConversationManager:
                     })
         generic_topic = (
             None
-            if raw_act == "CONVERSATION_HISTORY_QUERY"
+            if raw_act == "CONVERSATION_HISTORY_QUERY" or explicit_casual_opening
             else self._resolve_generic_topic_reference(user_input)
         )
         if generic_topic:
