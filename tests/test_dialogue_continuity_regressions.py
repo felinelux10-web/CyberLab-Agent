@@ -67,8 +67,6 @@ def test_dialogue_summary_request_returns_summary_not_transcript(monkeypatch):
     assert len(result["text"]) < 700
     assert "المستخدم:" not in result["text"]
     assert "الوكيل:" not in result["text"]
-    assert "المستخدم:" not in result["text"]
-    assert "الوكيل:" not in result["text"]
     # Summary is rendered directly from the bounded local archive; history recall
     # must not invoke the provider or pass a transcript into an LLM prompt.
     assert len(calls) == 1
@@ -399,3 +397,16 @@ def test_restore_snapshot_rejects_untagged_legacy_turns_and_exchanges():
     assert restored is True
     assert [turn["content"] for turn in memory.state.history] == ["رسالة هذه الجلسة"]
     assert [item["user"] for item in memory.state.exchange_archive] == ["حوار حالي"]
+
+
+
+def test_darija_misspellings_requesting_a_topic_are_handled_as_social_chat(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+
+    for text in ("نت قتارح شي موضوع", "عن اي موضوع قتارح نتا"):
+        result = manager.process(text)
+        assert result["status"] == "success"
+        assert result["source"] == "local_social"
+        assert "شنو رأيك؟" in result["text"]
+
+    assert orchestrator.calls == []
