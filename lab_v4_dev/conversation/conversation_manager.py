@@ -139,7 +139,7 @@ class ConversationManager:
             return None
         subject = match.group(1).strip(" \t\r\n.,،؛:!?؟")
         subject = re.split(
-            r"\s+(?=بالتفصيل|باختصار|ثم(?:\s|$)|وتوقف|توقف|و(?:\s|$))",
+            r"\s+(?=بالتفصيل|باختصار|بأسلوب(?:\s|$)|بصيغة(?:\s|$)|بشكل(?:\s|$)|أكاديمي(?:\s|$)|رسمي(?:\s|$)|ثم(?:\s|$)|وتوقف|توقف|و(?:\s|$))",
             subject,
             maxsplit=1,
         )[0].strip()
