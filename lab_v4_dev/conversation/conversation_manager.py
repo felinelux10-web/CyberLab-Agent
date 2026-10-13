@@ -1794,7 +1794,9 @@ class ConversationManager:
         if transition == ContextTransition.AMBIGUOUS and str(
             (parsed or {}).get("conversation_act") or ""
         ).upper() == "CONVERSATION_CONTINUATION":
-            selected = [item for item in (exchanges or []) if allowed(item)][-8:]
+            selected = self._latest_dialogue_branch(
+                [item for item in (exchanges or []) if allowed(item)]
+            )[-8:]
             if selected:
                 return self._exchange_history_turns(selected)[-8:]
             return [turn for turn in (history or []) if allowed(turn)][-8:]
@@ -1804,7 +1806,9 @@ class ConversationManager:
             # For an authorized continuation/return, use recent dialogue exchanges
             # rather than dropping context solely because no entity was extracted.
             if transition in CONTEXTUAL_TRANSITIONS:
-                selected = [item for item in (exchanges or []) if allowed(item)][-8:]
+                selected = self._latest_dialogue_branch(
+                [item for item in (exchanges or []) if allowed(item)]
+            )[-8:]
                 if selected:
                     return self._exchange_history_turns(selected)[-8:]
                 return [turn for turn in (history or []) if allowed(turn)][-8:]
