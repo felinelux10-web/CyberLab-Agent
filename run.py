@@ -141,7 +141,7 @@ def main():
     try:
         while True:
             try:
-                user_input = input("\\033[32m\\n> \\033[0m").strip()
+                user_input = input("\033[32m\n> \033[0m").strip()
             except EOFError:
                 break
 
