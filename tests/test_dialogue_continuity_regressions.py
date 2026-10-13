@@ -554,3 +554,60 @@ def test_subjectless_independent_social_topic_clears_stale_technical_subject(mon
     assert memory.state.exchange_archive[-1]["context_transition"] == "new_independent"
     assert calls == []
     assert orchestrator.calls == []
+
+def test_interrupted_dialogue_recovery_phrase_is_classified_before_work_resume():
+    result = classify_conversation_semantics(
+        "استرجع النقاش الذي انقطع عندما انتقلنا إلى موضوع آخر، ثم واصل من آخر نقطة توقفنا عندها، دون أن أذكر اسم الموضوع أو ألخص ما قيل."
+    )
+
+    assert result["conversation_act"] == "CONVERSATION_CONTINUATION"
+    assert result["response_attributes"]["dialogue_recovery"] == "interrupted_branch"
+    assert result["conversation_domain"] == "general"
+
+
+def test_interrupted_dialogue_recovery_selects_previous_archived_branch_not_current():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+
+    orchestrator = RecordingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+    sid = memory.state.session_id
+    memory.state.exchange_archive = [
+        {
+            "session_id": sid,
+            "user": "ناقشنا الشفافية في خوارزميات التوصية",
+            "assistant": "توقفنا عند قياس أثر تغيير العوامل تدريجيًا",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid,
+            "user": "انتقلنا إلى موضوع الرسم",
+            "assistant": "بدأنا مناقشة الرسم",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "context_transition": "explicit_switch",
+        },
+        {
+            "session_id": sid,
+            "user": "تفاصيل تنفيذ سرية",
+            "assistant": "نتائج عمل سرية",
+            "context_kind": "work",
+            "conversation_domain": "work",
+            "context_transition": "continue",
+        },
+    ]
+    parsed = {
+        "conversation_act": "CONVERSATION_CONTINUATION",
+        "response_attributes": {"dialogue_recovery": "interrupted_branch"},
+    }
+
+    history = manager._history_for_transition(ContextTransition.AMBIGUOUS, parsed)
+    rendered = " ".join(turn["content"] for turn in history)
+
+    assert "الشفافية في خوارزميات التوصية" in rendered
+    assert "قياس أثر تغيير العوامل تدريجيًا" in rendered
+    assert "بدأنا مناقشة الرسم" not in rendered
+    assert "نتائج عمل سرية" not in rendered
+
