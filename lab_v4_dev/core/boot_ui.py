@@ -1,5 +1,6 @@
 """Terminal startup dashboard and clearly marked interactive prompt."""
 
+import re
 import shutil
 import textwrap
 
@@ -26,9 +27,12 @@ class BootUI:
 
     def _line(self, text=""):
         text = str(text)
-        if len(text) > self.inner:
+        visible = re.sub(r"\\033\\[[0-9;]*m", "", text)
+        if len(visible) > self.inner and visible == text:
             text = text[: self.inner - 1] + "…"
-        print("│ " + text.ljust(self.inner) + " │")
+            visible = text
+        padding = max(0, self.inner - len(visible))
+        print("│ " + text + (" " * padding) + " │")
 
     def _border(self, kind="middle", color=CYAN):
         left, right = {"top": ("┌", "┐"), "middle": ("├", "┤"), "bottom": ("└", "┘")}[kind]
