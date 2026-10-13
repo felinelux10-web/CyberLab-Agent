@@ -490,7 +490,14 @@ class ConversationManager:
         # compound/reference act. The old branch must not enter a new topic's
         # prompt or trigger privacy blocking because of stale content.
         if self._is_explicit_independent_topic(user_input, candidate):
-            transition = ContextTransition.NEW_INDEPENDENT
+            # Preserve the fact that an active dialogue branch was left, so
+            # recovery can distinguish a topic switch from an unmarked turn.
+            transition = (
+                ContextTransition.EXPLICIT_SWITCH
+                if self.dialogue_memory
+                and self.dialogue_memory.active_context_entity()
+                else ContextTransition.NEW_INDEPENDENT
+            )
             # The legacy context resolver may have already inherited the old
             # target before the transition marker was evaluated. Recover the
             # explicit subject after "اشرح/عن/حول" for the new branch.
@@ -989,11 +996,16 @@ class ConversationManager:
         # fails; requiring a target here can leak the previous branch into the
         # new prompt and cause the privacy gate to reject unrelated content.
         normalized = str(text or "").casefold()
+        normalized = normalized.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
         return any(marker in normalized for marker in (
             "مستقل", "موضوع جديد", "موضوعًا جديدًا", "موضوعا جديدا",
             "موضوع آخر", "موضوع اخر", "مجال آخر", "مجال اخر",
             "موضوع مختلف", "نقاش مختلف", "شيء آخر", "شيء اخر",
+            "لنغير الموضوع", "لنغيّر الموضوع", "نغير الموضوع", "نغيّر الموضوع",
+            "غير الموضوع", "غيّر الموضوع", "ننتقل الى موضوع", "ننتقل إلى موضوع",
+            "لننتقل الى موضوع", "لننتقل إلى موضوع", "لنغير المجال", "نغير المجال",
             "independent topic", "new topic", "another field", "different topic",
+            "let's change the subject", "change the topic",
         ))
 
     def _resolve_generic_topic_reference(self, text: str) -> str | None:
@@ -1847,27 +1859,61 @@ class ConversationManager:
             ((parsed or {}).get("response_attributes") or {}).get("dialogue_recovery", "")
         ).casefold()
         if recovery_mode == "interrupted_branch":
-            valid = [item for item in (exchanges or []) if allowed(item)]
-            boundaries = [
-                index for index, item in enumerate(valid)
-                if str(item.get("context_transition") or "").casefold()
-                in {"new_independent", "explicit_switch", "restore"}
+            def is_recovery_request(item):
+                user_text = str(item.get("user") or "").casefold()
+                return (
+                    "استرجع النقاش الذي انقطع" in user_text
+                    or "استرجع الحوار الذي انقطع" in user_text
+                    or "recover the interrupted discussion" in user_text
+                )
+
+            valid = [
+                item for item in (exchanges or [])
+                if allowed(item) and not is_recovery_request(item)
             ]
-            # The current branch is the segment after the newest boundary.
-            # An interrupted-branch recovery request explicitly asks for the
-            # branch before it; do not silently return the currently active one.
+
+            def effective_transition(item):
+                transition_value = str(
+                    item.get("context_transition") or ""
+                ).casefold()
+                if transition_value in {"new_independent", "explicit_switch", "restore"}:
+                    return transition_value
+                user_text = str(item.get("user") or "")
+                if self._is_explicit_independent_topic(user_text, {}):
+                    return "explicit_switch"
+                normalized = user_text.casefold().replace("أ", "ا").replace("إ", "ا")
+                if any(marker in normalized for marker in (
+                    "نعود إلى", "نعود الى", "نرجع إلى", "نرجع الى",
+                    "عدنا إلى", "عدنا الى", "العودة إلى", "العودة الى",
+                    "لنعد إلى", "لنعد الى", "ارجع إلى", "ارجع الى",
+                    "الرجوع إلى", "الرجوع الى", "عودة إلى", "عودة الى",
+                    "back to ", "return to ",
+                )):
+                    return "restore"
+                return transition_value
+
+            boundaries = [
+                (index, effective_transition(item))
+                for index, item in enumerate(valid)
+                if effective_transition(item) in {
+                    "new_independent", "explicit_switch", "restore"
+                }
+            ]
             if boundaries:
-                latest_boundary = boundaries[-1]
-                previous_boundary = boundaries[-2] if len(boundaries) > 1 else 0
-                selected = valid[previous_boundary:latest_boundary]
+                latest_boundary, latest_kind = boundaries[-1]
+                if latest_kind == "restore":
+                    # A later explicit return reactivates the earlier branch.
+                    # Continue from that restored branch, not the intervening one.
+                    selected = valid[latest_boundary:]
+                else:
+                    previous_boundary = boundaries[-2][0] if len(boundaries) > 1 else 0
+                    selected = valid[previous_boundary:latest_boundary]
             else:
-                selected = valid[:-1]
+                # Legacy archives may lack transition metadata. Prefer the last
+                # few dialogue exchanges, excluding work and failed recovery turns.
+                selected = valid[-4:]
             if selected:
                 return self._exchange_history_turns(selected[-4:])[-8:]
-            # A single branch has no previous branch to restore. Returning its
-            # recent exchanges is safer than mixing in work history or guessing.
-            if valid:
-                return self._exchange_history_turns(valid[-4:])[-8:]
             return []
 
         topic = None
