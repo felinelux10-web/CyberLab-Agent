@@ -1338,7 +1338,9 @@ class ConversationManager:
             transition = str(valid[index].get("context_transition") or "").casefold()
             if transition in boundaries:
                 return valid[index:]
-        return valid[-8:]
+        # Legacy exchanges lack branch metadata; fail closed to the last exchange
+        # rather than mixing several possibly unrelated topics.
+        return valid[-1:]
 
     def _answer_dialogue_history(
         self,
