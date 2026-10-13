@@ -27,7 +27,7 @@ class BootUI:
 
     def _line(self, text=""):
         text = str(text)
-        visible = re.sub(r"\\033\\[[0-9;]*m", "", text)
+        visible = re.sub(r"\x1b\[[0-9;]*m", "", text)
         if len(visible) > self.inner and visible == text:
             text = text[: self.inner - 1] + "…"
             visible = text
