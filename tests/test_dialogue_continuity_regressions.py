@@ -63,7 +63,7 @@ def test_dialogue_summary_request_returns_summary_not_transcript(monkeypatch):
     assert result["status"] == "success"
     assert result["source"] == "dialogue_memory"
     assert result["dialogue_response_mode"] == "summary"
-    assert result["text"].startswith("ملخص:")
+    assert result["text"].startswith("ملخص موثّق للحوار المسجّل:")
     assert "المستخدم:" not in result["text"]
     assert "الوكيل:" not in result["text"]
     assert "لا تنسخ الحوار" in calls[-1][0]
