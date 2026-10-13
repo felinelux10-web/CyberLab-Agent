@@ -1780,10 +1780,10 @@ class ConversationManager:
         if transition == ContextTransition.AMBIGUOUS and is_social_act(
             (parsed or {}).get("conversation_act")
         ):
-            selected = [
+            selected = self._latest_dialogue_branch([
                 item for item in (exchanges or [])
                 if allowed(item) and not item.get("target")
-            ][-8:]
+            ])[-8:]
             if selected:
                 return self._exchange_history_turns(selected)[-8:]
             return [
