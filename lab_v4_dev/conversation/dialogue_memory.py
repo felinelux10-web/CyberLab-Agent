@@ -138,6 +138,12 @@ class DialogueMemory:
 
         if not isinstance(result, dict):
             return
+        # Provider failures are not dialogue turns: recording even the user
+        # message would make a failed exchange look like valid recall context.
+        if str(result.get("status") or "").casefold() in {
+            "error", "failed", "failure", "provider_error",
+        } or result.get("error"):
+            return
 
         # Record the user's branch even when a provider returns no answer.
         # Failed replies are deliberately excluded from the assistant transcript.
@@ -162,7 +168,7 @@ class DialogueMemory:
         # the shorter prompt transcript without making every old turn part of
         # an LLM request. Failed/provider-error responses are not resumable.
         if (
-            result.get("status") == "success"
+            result.get("status") in (None, "success")
             and result.get("text")
             and result.get("source") != "fallback"
             and not result.get("error")
@@ -278,7 +284,7 @@ class DialogueMemory:
         )
 
         if (
-            result.get("status") in {"success", "needs_clarification"}
+            result.get("status") in {None, "success", "needs_clarification"}
             and result.get("text")
             and result.get("source") != "fallback"
             and not result.get("error")
