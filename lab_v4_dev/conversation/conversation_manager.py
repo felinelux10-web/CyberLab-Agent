@@ -459,6 +459,10 @@ class ConversationManager:
                 "conversation_confidence": 0.95,
             })
         transition = self._classify_context_transition(mode, candidate, text=user_input)
+        if explicit_casual_opening and not explicit_explanation:
+            # Social openings are independent turns: never attach the previous
+            # technical entity or its prompt history to the semantic request.
+            transition = ContextTransition.NEW_INDEPENDENT
         # An explicit independent-topic marker overrides a parser-produced
         # compound/reference act. The old branch must not enter a new topic's
         # prompt or trigger privacy blocking because of stale content.
@@ -543,6 +547,15 @@ class ConversationManager:
                 user_input,
                 context_entity=context_entity,
             )
+            # ELABORATION is an explicit contextual follow-up. If the resolver
+            # leaves it unchanged, make the authorized reference explicit before
+            # the second canonical parse (without doing this for ambiguous turns).
+            if (
+                resolved_input == user_input
+                and str(parsed.get("entity_type") or "").upper() == "ELABORATION"
+                and context_entity.get("entity")
+            ):
+                resolved_input = f"{context_entity['entity']} {user_input}".strip()
             if resolved_input != user_input:
                 parsed = self._safe_parse(
                     resolved_input,
@@ -1376,7 +1389,7 @@ class ConversationManager:
         if response_mode == "summary":
             return {
                 **base,
-                "text": "ملخص موثّق للحوار المسجّل:\n"
+                "text": "ملخص: ملخص موثّق للحوار المسجّل:\n"
                 + "\n".join(self._format_dialogue_exchanges(relevant[-6:])),
                 "dialogue_turns": relevant[-6:],
             }
