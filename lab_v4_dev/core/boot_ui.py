@@ -1,86 +1,62 @@
-"""Terminal startup dashboard and clearly marked interactive prompt."""
+"""Minimal terminal UI for startup status and command entry."""
 
-import re
 import shutil
+import sys
 import textwrap
 
 RESET = "\033[0m"
 GREEN = "\033[32m"
 RED = "\033[31m"
-YELLOW = "\033[33m"
-CYAN = "\033[36m"
-MAGENTA = "\033[35m"
-BOLD = "\033[1m"
 
 
 class BootUI:
-    """Render compact, color-coded startup status for narrow Termux screens."""
+    """Render restrained status text suitable for a narrow Termux terminal."""
 
     def __init__(self):
-        detected = shutil.get_terminal_size((40, 20)).columns
-        self.width = max(32, min(detected, 56))
-        self.inner = self.width - 4
-        self.color = bool(getattr(__import__("sys").stdout, "isatty", lambda: False)())
+        self.width = max(32, min(shutil.get_terminal_size((40, 20)).columns, 72))
+        self.color = bool(getattr(sys.stdout, "isatty", lambda: False)())
 
     def _paint(self, text, color):
         return f"{color}{text}{RESET}" if self.color else text
 
-    def _line(self, text=""):
-        text = str(text)
-        visible = re.sub(r"\x1b\[[0-9;]*m", "", text)
-        if len(visible) > self.inner and visible == text:
-            text = text[: self.inner - 1] + "…"
-            visible = text
-        padding = max(0, self.inner - len(visible))
-        print("│ " + text + (" " * padding) + " │")
-
-    def _border(self, kind="middle", color=CYAN):
-        left, right = {"top": ("┌", "┐"), "middle": ("├", "┤"), "bottom": ("└", "┘")}[kind]
-        print(self._paint(left + "─" * (self.width - 2) + right, color))
+    def _rule(self):
+        # Keep the separator long while respecting the actual terminal width.
+        print(self._paint("─" * max(24, self.width - 2), GREEN))
 
     def start(self):
         print()
-        self._border("top", CYAN)
-        self._line(self._paint("CYBERLAB AGENT", BOLD + CYAN))
-        self._line("STARTUP / SYSTEM CHECK")
-        self._border()
-        self._line("COMPONENT      STATUS")
-        self._border()
+        print("إقلاع الوكيل")
+        print("الحالة   المكوّن")
 
     def row(self, component, detail, state="OK"):
-        styles = {
-            "OK": ("[✓]", GREEN),
-            "WARN": ("[!]", YELLOW),
-            "FAIL": ("[X]", RED),
-            "INFO": ("[..]", CYAN),
-            "PENDING": ("[↻]", MAGENTA),
+        markers = {
+            "OK": self._paint("●", GREEN),
+            "FAIL": self._paint("●", RED),
+            "WARN": self._paint("●", RED),
+            "PENDING": self._paint("●", RED),
+            "INFO": "·",
         }
-        marker, color = styles.get(state, ("[..]", CYAN))
-        label_width = 12
-        prefix = f"{marker} {component[:label_width]:<{label_width}} "
-        available = max(8, self.inner - len(prefix))
-        chunks = textwrap.wrap(str(detail), width=available, break_long_words=True) or [""]
-        first = self._paint(prefix, color) + chunks[0]
-        self._line(first)
-        for chunk in chunks[1:]:
-            self._line(" " * len(prefix) + chunk)
+        marker = markers.get(state, "·")
+        prefix = f"{marker}  {component:<12} "
+        available = max(10, self.width - len(component) - 16)
+        lines = textwrap.wrap(str(detail), width=available, break_long_words=True) or [""]
+        print(prefix + lines[0])
+        for line in lines[1:]:
+            print(" " * (len(component) + 4) + line)
 
     def section(self, title, state="INFO"):
-        color = {"OK": GREEN, "WARN": YELLOW, "FAIL": RED, "PENDING": MAGENTA}.get(state, CYAN)
-        self._border("middle", color)
-        self._line(self._paint(title, BOLD + color))
+        # Section headings remain in the terminal's default text color.
+        print()
+        print(title)
 
     def ready(self):
-        self._border("middle", GREEN)
-        self._line(self._paint("STATUS: READY", BOLD + GREEN))
-        self._line("اكتب الأوامر بعد المؤشر الأخضر أدناه")
-        self._border("bottom", GREEN)
+        print()
+        print(f"{self._paint('●', GREEN)} الوكيل جاهز")
         print()
 
     def prompt(self):
-        """A highly visible command-entry marker shown before every input."""
+        """Show a green identity marker and separator before each command."""
         print()
-        label = self._paint(" CYBERLAB › ", BOLD + GREEN)
-        hint = self._paint(" اكتب الأمر هنا ", GREEN)
-        print(label + hint, end="", flush=True)
-        return input()
+        self._rule()
+        print(self._paint("✦ CYBERLAB", GREEN))
+        return input("> ")
