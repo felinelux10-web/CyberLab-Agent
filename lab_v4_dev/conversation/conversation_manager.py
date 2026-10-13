@@ -509,6 +509,14 @@ class ConversationManager:
                     candidate["intent"] = Intent.CYBER_EXPLAIN
                     candidate["entity_type"] = "CONCEPT"
                     candidate["conversation_domain"] = "technical"
+            else:
+                # Do not carry an inherited target into a new subjectless topic.
+                candidate = dict(candidate or {})
+                candidate["target"] = ""
+                candidate["entity_type"] = "UNKNOWN"
+                if not explicit_explanation:
+                    candidate["intent"] = Intent.PERSONAL_CHAT
+                    candidate["conversation_domain"] = "social"
         if selected_session.get("kind") != "none":
             candidate = dict(candidate or {})
             candidate.update({
