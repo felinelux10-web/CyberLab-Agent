@@ -1389,7 +1389,7 @@ class ConversationManager:
         if response_mode == "summary":
             return {
                 **base,
-                "text": "ملخص: ملخص موثّق للحوار المسجّل:\n"
+                "text": "ملخص:\n"
                 + "\n".join(self._format_dialogue_exchanges(relevant[-6:])),
                 "dialogue_turns": relevant[-6:],
             }
