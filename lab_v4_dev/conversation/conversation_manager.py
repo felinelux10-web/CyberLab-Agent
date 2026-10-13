@@ -1487,7 +1487,7 @@ class ConversationManager:
             assistant = " ".join(str(last.get("assistant") or "").split())
             if user:
                 excerpt = user[:180] + ("…" if len(user) > 180 else "")
-                summary_lines.append(f"- آخر ما طرحه المستخدم: {excerpt}")
+                summary_lines.append(f"- آخر رسالة واردة: {excerpt}")
             if assistant:
                 excerpt = assistant[:220] + ("…" if len(assistant) > 220 else "")
                 summary_lines.append(f"- نقطة التوقف: {excerpt}")
