@@ -1389,16 +1389,66 @@ class ConversationManager:
 
     @staticmethod
     def _latest_dialogue_branch(exchanges: list[dict]) -> list[dict]:
-        """Return exchanges since the latest explicit conversational branch boundary."""
+        """Select the last substantive dialogue branch, ignoring recall/save commands."""
         valid = [item for item in (exchanges or []) if isinstance(item, dict)]
-        boundaries = {"new_independent", "explicit_switch", "restore"}
-        for index in range(len(valid) - 1, -1, -1):
-            transition = str(valid[index].get("context_transition") or "").casefold()
-            if transition in boundaries:
-                return valid[index:]
-        # Legacy exchanges lack branch metadata; fail closed to the last exchange
-        # rather than mixing several possibly unrelated topics.
-        return valid[-1:]
+
+        def user_text(item: dict) -> str:
+            return str(item.get("user") or "").casefold().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+
+        def is_control_exchange(item: dict) -> bool:
+            user = " ".join(user_text(item).split())
+            transition = str(item.get("context_transition") or "").casefold()
+            kind = str(item.get("context_kind") or "").casefold()
+            domain = str(item.get("conversation_domain") or "").casefold()
+            if kind in {"work", "system", "execution"} or domain in {"work", "system", "execution"}:
+                return True
+            controls = (
+                "حفظ",
+                "استرجع النقاش الذي انقطع",
+                "استرجاع الحوار",
+                "استرجع الحوار",
+                "ماذا كنا نقول",
+                "ماذا كنا نتحدث",
+                "استكمال الحوار",
+                "استكمال النقاش",
+                "استرجاتع الجلسة السابقة",
+                "استرجاع الجلسة السابقة",
+            )
+            return any(marker in user for marker in controls)
+
+        def inferred_boundary(item: dict) -> str:
+            transition = str(item.get("context_transition") or "").casefold()
+            if transition in {"new_independent", "explicit_switch", "restore"}:
+                return transition
+            user = " ".join(user_text(item).split())
+            if any(marker in user for marker in (
+                "لنغير الموضوع", "نغير الموضوع", "غير الموضوع",
+                "لنغير المجال", "نغير المجال", "ننتقل الى موضوع",
+                "لننتقل الى موضوع", "change the topic", "change the subject",
+            )):
+                return "explicit_switch"
+            if any(marker in user for marker in (
+                "نرجع الى موضوع", "نعود الى موضوع", "العودة الى موضوع",
+                "ارجع الى موضوع", "نرجع لموضوع", "نعود لموضوع",
+                "back to", "return to",
+            )):
+                return "restore"
+            return ""
+
+        substantive = [item for item in valid if not is_control_exchange(item)]
+        if not substantive:
+            return []
+
+        # A restored topic is a new active branch even when older archives recorded
+        # its transition as ambiguous. Ignore later recall/save commands so they
+        # cannot replace that branch as the apparent "latest topic".
+        for index in range(len(substantive) - 1, -1, -1):
+            if inferred_boundary(substantive[index]):
+                return substantive[index:]
+
+        # Legacy archives without transition markers: use the most recent
+        # contiguous dialogue segment rather than claiming the whole archive.
+        return substantive[-1:]
 
     def _answer_dialogue_history(
         self,
