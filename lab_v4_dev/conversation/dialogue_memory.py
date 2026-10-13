@@ -138,15 +138,11 @@ class DialogueMemory:
 
         if not isinstance(result, dict):
             return
-        # Provider failures are not dialogue turns: recording even the user
-        # message would make a failed exchange look like valid recall context.
-        if str(result.get("status") or "").casefold() in {
-            "error", "failed", "failure", "provider_error",
-        } or result.get("error"):
-            return
-
-        # For a valid turn, preserve the user's branch even if no assistant
-        # text is available. Provider-error results were excluded above.
+        provider_failed = (
+            str(result.get("status") or "").casefold()
+            in {"error", "failed", "failure", "provider_error"}
+            or bool(result.get("error"))
+        )
         parsed = parsed or {}
         previous_context = self.active_context_entity()
 
@@ -164,6 +160,16 @@ class DialogueMemory:
         turn_confidence = parsed.get("confidence", result.get("confidence", 0.0))
         relation = getattr(context_transition, "value", context_transition)
         conversation_act = parsed.get("conversation_act")
+        # A failed response must never be stored as an assistant answer or as
+        # a resumable exchange. However, an explicit named branch switch is
+        # still a valid user state transition; preserve that topic and user
+        # turn so the next "continue" resolves to the new branch. Keep generic
+        # failed chat turns out of dialogue history entirely.
+        if provider_failed and not (
+            turn_target
+            and relation in {"explicit_switch", "new_independent", "restore"}
+        ):
+            return
         # Keep one compact user/assistant exchange for recall. This survives
         # the shorter prompt transcript without making every old turn part of
         # an LLM request. Failed/provider-error responses are not resumable.
