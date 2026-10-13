@@ -1158,6 +1158,25 @@ class ConversationManager:
             "اكمل", "أكمل", "استكمل", "نكمل", "ارجع", "استرجع",
         )):
             return None
+        suggestion_markers = (
+            "انت اعطيني اقتراحات", "أنت أعطني اقتراحات", "اعطيني اقتراحات",
+            "اعطني اقتراحات", "اقترح موضوع", "اقترح شي موضوع", "اقترح موضوعا",
+            "موضوع للنقاش", "مواضيع للنقاش", "اقترحات اخرى", "اقتراحات اخرى",
+            "اقتراحات أخرى", "موضوع الذي نتحدث فيه",
+        )
+        if any(marker in normalized for marker in suggestion_markers):
+            return {
+                "status": "success",
+                "intent": Intent.PERSONAL_CHAT,
+                "text": (
+                    "نقترح نهضرو على سؤال بسيط: واش الراحة كتجي أكثر من "
+                    "تحقيق الأهداف، ولا من الاستمتاع بالطريق لي كيوصل ليها؟ "
+                    "شنو رأيك؟"
+                ),
+                "mode": "CHAT",
+                "source": "local_social",
+                "executed": False,
+            }
         social_markers = (
             "كيفك", "كيف الحال", "ماهو الحال", "حوار ودي", "حوار عادي",
             "بغيت نهضر معاك", "بغيت نهضر", "موضوع خفيف", "كيفاش داز نهارك",
@@ -1208,8 +1227,7 @@ class ConversationManager:
             if isinstance(turn, dict)
             and (
                 not current_session_id
-                or not turn.get("session_id")
-                or str(turn.get("session_id")) == current_session_id
+                or str(turn.get("session_id") or "") == current_session_id
             )
         ]
         exchanges = getattr(state, "exchange_archive", []) if state is not None else []
@@ -1218,8 +1236,7 @@ class ConversationManager:
             if isinstance(item, dict)
             and (
                 not current_session_id
-                or not item.get("session_id")
-                or str(item.get("session_id")) == current_session_id
+                or str(item.get("session_id") or "") == current_session_id
             )
         ]
         response_mode = str(
@@ -1406,19 +1423,27 @@ class ConversationManager:
             }
 
         if response_mode == "summary":
+            # A summary request must not turn into a transcript dump. Keep only
+            # the current session's latest exchanges and compress each exchange.
             summary_lines = []
-            for item in relevant[-6:]:
-                user = str(item.get("user") or "").strip()
-                assistant = str(item.get("assistant") or "").strip()
-                if user:
-                    summary_lines.append(f"- سؤالك: {user}")
-                if assistant:
-                    summary_lines.append(f"  الرد: {assistant[:1200]}")
+            for item in relevant[-5:]:
+                user = " ".join(str(item.get("user") or "").split())
+                assistant = " ".join(str(item.get("assistant") or "").split())
+                if not user and not assistant:
+                    continue
+                user_excerpt = user[:140] + ("…" if len(user) > 140 else "")
+                assistant_excerpt = assistant[:180] + ("…" if len(assistant) > 180 else "")
+                if user and assistant:
+                    summary_lines.append(f"- {user_excerpt} — {assistant_excerpt}")
+                elif user:
+                    summary_lines.append(f"- طرح المستخدم: {user_excerpt}")
+                else:
+                    summary_lines.append(f"- رد الوكيل: {assistant_excerpt}")
             return {
                 **base,
-                "text": "ملخص موثّق للحوار المسجّل:\n"
-                + "\n".join(summary_lines),
-                "dialogue_turns": relevant[-6:],
+                "text": "ملخص الحوار الحالي:\n"
+                + ("\n".join(summary_lines) if summary_lines else "لا توجد تفاصيل كافية."),
+                "dialogue_turns": relevant[-5:],
             }
 
         task = (
@@ -1714,7 +1739,12 @@ class ConversationManager:
             kind = str(item.get("context_kind") or "").casefold()
             domain = str(item.get("conversation_domain") or "").casefold()
             item_session_id = str(item.get("session_id") or "")
-            same_session = not current_session_id or not item_session_id or item_session_id == current_session_id
+            # Fail closed when a session ID is available: untagged legacy turns
+            # cannot be proven to belong to this session.
+            same_session = (
+                not current_session_id
+                or item_session_id == current_session_id
+            )
             return (
                 kind not in {"work", "system"}
                 and domain not in {"work", "system"}
