@@ -595,6 +595,39 @@ def classify_conversation_semantics(
     if agent_signal and intent_value in _NON_EXECUTABLE_INTENTS:
         return agent_signal
 
+    # Natural-language requests to recover an interrupted discussion must be
+    # recognized before parser fallback. In particular, "استرجع النقاش الذي
+    # انقطع..." is a dialogue-memory operation, not a request to resume work.
+    interrupted_discussion = (
+        _has_any(bases, {"استرجع", "استرجاع", "استعادة", "استرد", "واصل", "تابع", "اكمل", "استكمل", "نكمل"})
+        and _has_any(bases, {"نقاش", "حوار", "محادثه", "حديث", "موضوع", "جلسه"})
+        and _has_any(bases, {"انقطع", "توقفنا", "توقف", "انتقلنا", "اخر", "آخر", "نقطه", "نقطة", "واصل", "تابع"})
+    )
+    if interrupted_discussion:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "confidence": 0.97,
+            "response_attributes": {"dialogue_recovery": "interrupted_branch"},
+            "conversational": True,
+        }
+
+    # "استرجع/ارجع إلى النقاش السابق" is a topic-return request even when
+    # the user cannot name the topic. Keep it distinct from work-session resume.
+    unnamed_topic_return = (
+        _has_any(bases, {"استرجع", "استرجاع", "استعادة", "ارجع", "نرجع", "عد", "عودة", "رجوع"})
+        and _has_any(bases, {"نقاش", "حوار", "محادثه", "حديث", "موضوع"})
+        and _has_any(bases, {"سابق", "سابقه", "انقطع", "توقف", "انتقلنا", "اخر", "آخر", "قبل"})
+    )
+    if unnamed_topic_return:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "TOPIC_RETURN",
+            "confidence": 0.96,
+            "response_attributes": {"dialogue_recovery": "interrupted_branch"},
+            "conversational": True,
+        }
+
     # A dialogue-history query is a relationship to the conversation, not a
     # HISTORY/CONTEXT_REPORT execution request. Require two semantic signals:
     # a reference to earlier dialogue and a recollection/question cue.
