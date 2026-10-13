@@ -1266,11 +1266,16 @@ class ConversationManager:
             if target not in topics:
                 topics.append(target)
         if not topics:
-            dialogue_exchanges = [
+            dialogue_exchanges = self._latest_dialogue_branch([
                 item for item in exchanges
-                if item.get("context_kind") != "work"
-                and item.get("conversation_domain") != "work"
-            ][-6:]
+                if isinstance(item, dict)
+                and item.get("context_kind") not in {"work", "system"}
+                and item.get("conversation_domain") not in {"work", "system"}
+                and (
+                    not current_session_id
+                    or str(item.get("session_id") or "") == current_session_id
+                )
+            ])[-6:]
             if dialogue_exchanges:
                 return {
                     "status": "success", "intent": Intent.MEMORY_DUMP,
