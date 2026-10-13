@@ -490,12 +490,12 @@ class ConversationManager:
         # compound/reference act. The old branch must not enter a new topic's
         # prompt or trigger privacy blocking because of stale content.
         if self._is_explicit_independent_topic(user_input, candidate):
-            # Preserve the fact that an active dialogue branch was left, so
-            # recovery can distinguish a topic switch from an unmarked turn.
+            # Independent-topic intent and explicit topic-switch wording are
+            # separate signals. An active branch alone must not turn every
+            # independent request into EXPLICIT_SWITCH.
             transition = (
                 ContextTransition.EXPLICIT_SWITCH
-                if self.dialogue_memory
-                and self.dialogue_memory.active_context_entity()
+                if self._is_explicit_topic_switch(user_input)
                 else ContextTransition.NEW_INDEPENDENT
             )
             # The legacy context resolver may have already inherited the old
@@ -991,21 +991,37 @@ class ConversationManager:
             return {}
 
     @staticmethod
-    def _is_explicit_independent_topic(text: str, parsed: dict) -> bool:
-        # An explicit transition marker is authoritative even when target parsing
-        # fails; requiring a target here can leak the previous branch into the
-        # new prompt and cause the privacy gate to reject unrelated content.
-        normalized = str(text or "").casefold()
-        normalized = normalized.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+    def _normalize_transition_text(text: str) -> str:
+        return " ".join(
+            str(text or "").casefold()
+            .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+            .replace("ـ", "")
+            .split()
+        )
+
+    @classmethod
+    def _is_explicit_topic_switch(cls, text: str) -> bool:
+        # Only direct switch/change wording qualifies; the existence of an
+        # active topic or a generic "independent" marker is not enough.
+        normalized = cls._normalize_transition_text(text)
         return any(marker in normalized for marker in (
-            "مستقل", "موضوع جديد", "موضوعًا جديدًا", "موضوعا جديدا",
-            "موضوع آخر", "موضوع اخر", "مجال آخر", "مجال اخر",
-            "موضوع مختلف", "نقاش مختلف", "شيء آخر", "شيء اخر",
-            "لنغير الموضوع", "لنغيّر الموضوع", "نغير الموضوع", "نغيّر الموضوع",
-            "غير الموضوع", "غيّر الموضوع", "ننتقل الى موضوع", "ننتقل إلى موضوع",
-            "لننتقل الى موضوع", "لننتقل إلى موضوع", "لنغير المجال", "نغير المجال",
-            "independent topic", "new topic", "another field", "different topic",
+            "لنغير الموضوع", "نغير الموضوع", "غير الموضوع",
+            "ننتقل الى موضوع", "لننتقل الى موضوع",
+            "لنغير المجال", "نغير المجال",
             "let's change the subject", "change the topic",
+        ))
+
+    @classmethod
+    def _is_explicit_independent_topic(cls, text: str, parsed: dict) -> bool:
+        # An independent-topic marker is authoritative even when target parsing
+        # fails; requiring a target can leak the previous branch into the new
+        # prompt and cause the privacy gate to reject unrelated content.
+        normalized = cls._normalize_transition_text(text)
+        return any(marker in normalized for marker in (
+            "مستقل", "موضوع جديد", "موضوع اخر", "مجال اخر",
+            "موضوع مختلف", "نقاش مختلف", "شيء اخر",
+            "موضوع اخر", "مجال اخر",
+            "independent topic", "new topic", "another field", "different topic",
         ))
 
     def _resolve_generic_topic_reference(self, text: str) -> str | None:
@@ -1879,8 +1895,10 @@ class ConversationManager:
                 if transition_value in {"new_independent", "explicit_switch", "restore"}:
                     return transition_value
                 user_text = str(item.get("user") or "")
-                if self._is_explicit_independent_topic(user_text, {}):
+                if self._is_explicit_topic_switch(user_text):
                     return "explicit_switch"
+                if self._is_explicit_independent_topic(user_text, {}):
+                    return "new_independent"
                 normalized = user_text.casefold().replace("أ", "ا").replace("إ", "ا")
                 if any(marker in normalized for marker in (
                     "نعود إلى", "نعود الى", "نرجع إلى", "نرجع الى",
