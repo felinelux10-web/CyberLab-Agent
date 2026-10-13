@@ -18,6 +18,20 @@ def test_startup_is_minimal_and_uses_default_text_for_headings(capsys):
     assert "└" not in output
 
 
+def test_status_rows_have_spacing_and_wrapped_text_is_aligned(capsys):
+    ui = BootUI()
+    ui.width = 34
+    ui.row("DATABASE", "Connection and integrity check passed successfully")
+    ui.row("HEALTH", "System checks passed")
+
+    lines = capsys.readouterr().out.splitlines()
+    first_row = next(i for i, line in enumerate(lines) if "DATABASE" in line)
+    continuation = lines[first_row + 1]
+    next_row = next(i for i, line in enumerate(lines) if "HEALTH" in line)
+    assert continuation.startswith(" " * len("●  DATABASE    "))
+    assert lines[next_row - 1] == ""
+
+
 def test_failed_component_has_red_state_marker_text(capsys):
     ui = BootUI()
     ui.row("DATABASE", "Integrity check failed", "FAIL")
