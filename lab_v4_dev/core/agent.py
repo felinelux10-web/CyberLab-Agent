@@ -5,6 +5,7 @@ from lab_v4_dev.core.project_metadata import ProjectMetadata
 from lab_v4_dev.core.config import HARD_LIMITS
 from lab_v4_dev.core.state import AgentState
 from lab_v4_dev.core.logger import log
+from lab_v4_dev.core.boot_ui import BootUI
 from lab_v4_dev.memory.db import Database
 from lab_v4_dev.memory.session import Session
 from lab_v4_dev.memory.store import MemoryStore
@@ -41,30 +42,34 @@ class Agent:
         self._pending_session = None
 
     def boot(self) -> bool:
-        log.info("=== CyberLab Agent v4.0 BOOTING ===")
+        self._boot_ui = BootUI()
+        self._boot_ui.start()
+        self._boot_ui.row("BOOT", "Initializing startup checks", "INFO")
 
         # 1. قراءة MASTER_REF
         try:
             self._meta = ProjectMetadata()
             self.ref   = self._meta.as_dict()
-            log.info(f"MASTER_REF loaded — version {self._meta.get_version()}")
+            self._boot_ui.row("CONFIG", f"MASTER_REF v{self._meta.get_version()}")
         except Exception as e:
+            self._boot_ui.row("CONFIG", f"MASTER_REF failed: {e}", "FAIL")
             log.critical(f"MASTER_REF failed: {e}")
             return False
 
         # 2. تهيئة State
         self.state = AgentState()
         self.state.load()
-        log.info(f"State: {self.state.mode}")
+        self._boot_ui.row("STATE", f"Mode: {self.state.mode}")
 
         # 3. تهيئة DB
         self.db = Database()
         self.db.connect()
         if not self.db.integrity_check():
+            self._boot_ui.row("DATABASE", "Integrity check failed", "FAIL")
             log.critical("DB integrity check failed")
             self.state.enter_frozen_mode("db_corruption")
             return False
-        log.info("DB: OK")
+        self._boot_ui.row("DATABASE", "Connection and integrity OK")
 
         # P07 — canonical Memory ownership
         self.memory = MemoryStore(self.db)
@@ -72,9 +77,10 @@ class Agent:
         # 4. health check
         health = check_health(self.state)
         if not health["healthy"]:
+            self._boot_ui.row("HEALTH", "Review warnings in startup log", "WARN")
             log.warning(f"Health issues: {health}")
         else:
-            log.info("Health: OK")
+            self._boot_ui.row("HEALTH", "System checks passed")
 
         # 5. تهيئة Session
         # P07 — MemoryStore owns the semantic Session component.
@@ -95,6 +101,7 @@ class Agent:
         self.dialogue_memory = DialogueMemory(self.context)
         self.dni.attach_dialogue_memory(self.dialogue_memory)
         self.conv_manager    = ConversationManager(self.orchestrator, self.dialogue_memory, self.dni)
+        self._boot_ui.row("CORE", "Memory, session, context and dialogue ready")
 
         # 6.1 تهيئة Runtime Session (Series 9)
         try:
@@ -107,12 +114,15 @@ class Agent:
                 phase="initialization"
             )
             self.runtime.monitor_check()
+            self._boot_ui.row("RUNTIME", "Monitoring initialized")
         except Exception as _re:
+            self._boot_ui.row("RUNTIME", "Optional monitoring unavailable", "WARN")
             log.warning(f"Runtime init skipped: {_re}")
             self.runtime = None
 
 
         # 7. Auto Context Restore (v4.8)
+        self._pending_work_sessions = []
         try:
             from lab_v4_dev.memory.session_state import (
                 load_session, recoverable_work_checkpoint, get_session_index,
@@ -137,26 +147,57 @@ class Agent:
             if not index and isinstance(s, dict) and s.get("session_id", s.get("active_goal")):
                 index = [s]
             if index:
-                print("\n[v4.8] جلسات عمل معلّقة مكتشفة:")
+                self._boot_ui.section("الجلسات المحفوظة")
+                self._boot_ui.row("الجلسات", f"{len(index)} جلسة متوقفة", "PENDING")
                 for number, item in enumerate(index[-5:], 1):
                     selected = get_session_by_id(item.get("session_id")) or item
                     report = analyze_session(selected)
                     recoverable = recoverable_work_checkpoint(selected)
-                    print(f"\n  [{number}] المعرّف: {report['session_id']}")
-                    print(f"  الموضوع: {report['topic']}")
-                    print(f"  الهدف: {report['active_goal']}")
-                    print(f"  الحالة: {report['status']} — آخر تحديث: {report['last_updated']}")
-                    print(f"  آخر إنجاز مؤكد: {report['last_completed_step']}")
-                    print(f"  نقطة التوقف: {report['current_state']}")
-                    print(f"  الخطوة التالية: {report['next_step']}")
-                    if recoverable:
-                        print("  اكتب 'استكمل الجلسة' أو استخدم معرّف الجلسة للاستعادة دون تنفيذ تلقائي")
-                    else:
-                        print("  جلسة محفوظة للمراجعة وليست قابلة للاستئناف التنفيذي حسب الأدلة الحالية")
+                    description = str(report.get("topic") or report.get("active_goal") or "جلسة بلا عنوان").strip()
+                    description = description.splitlines()[0].strip()
+                    if len(description) > 54:
+                        description = description[:51].rstrip() + "…"
+                    self._pending_work_sessions.append({
+                        "number": number,
+                        "report": report,
+                        "recoverable": bool(recoverable),
+                    })
+                    state_label = "قابلة للاستئناف" if recoverable else "للمراجعة فقط"
+                    self._boot_ui.row(f"جلسة {number}", f"{description}  — {state_label}", "OK" if recoverable else "WARN")
+                self._boot_ui.row("التفاصيل", "اكتب session 1 أو session 2 لعرض التفاصيل", "INFO")
         except Exception as exc:
             log.warning(f"Session discovery skipped: {exc}")
 
-        log.info("=== AGENT READY ===")
+        self._boot_ui.ready()
+        return True
+
+    def show_pending_session(self, command: str) -> bool:
+        """Display full details only when the user selects a saved session."""
+        import re
+
+        match = re.fullmatch(r"\s*session\s+(\d+)\s*", command, re.IGNORECASE)
+        if not match:
+            return False
+        number = int(match.group(1))
+        sessions = getattr(self, "_pending_work_sessions", [])
+        selected = next((item for item in sessions if item["number"] == number), None)
+        if selected is None:
+            print("لا توجد جلسة محفوظة بهذا الرقم.")
+            return True
+
+        report = selected["report"]
+        print()
+        print(f"تفاصيل الجلسة {number}: {report.get('topic') or report.get('active_goal') or 'جلسة بلا عنوان'}")
+        print(f"المعرّف: {report.get('session_id', 'غير متاح')}")
+        print(f"الهدف: {report.get('active_goal', 'غير محدد')}")
+        print(f"الحالة: {report.get('status', 'غير محددة')} — {report.get('last_updated', 'غير متاح')}")
+        print(f"آخر خطوة مكتملة: {report.get('last_completed_step', 'غير محدد')}")
+        print(f"نقطة التوقف: {report.get('current_state', 'غير محددة')}")
+        print(f"الخطوة التالية: {report.get('next_step', 'غير محددة')}")
+        if selected["recoverable"]:
+            print("الاستئناف يتطلب أمرًا صريحًا؛ لن يبدأ التنفيذ تلقائيًا.")
+        else:
+            print("هذه الجلسة للمراجعة فقط وليست قابلة للاستئناف التنفيذي.")
         return True
 
     def run(self, user_input: str) -> dict:
