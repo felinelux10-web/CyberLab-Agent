@@ -146,18 +146,19 @@ class Agent:
             if not index and isinstance(s, dict) and s.get("session_id", s.get("active_goal")):
                 index = [s]
             if index:
-                self._boot_ui.section("PENDING WORK SESSIONS")
+                self._boot_ui.section("PENDING WORK SESSIONS", "PENDING")
+                self._boot_ui.row("COUNT", f"{len(index)} paused session(s)", "PENDING")
                 for number, item in enumerate(index[-5:], 1):
                     selected = get_session_by_id(item.get("session_id")) or item
                     report = analyze_session(selected)
                     recoverable = recoverable_work_checkpoint(selected)
-                    self._boot_ui.section(f"SESSION {number}: {report['session_id']}")
-                    self._boot_ui.row("TOPIC", report["topic"])
-                    self._boot_ui.row("GOAL", report["active_goal"])
-                    self._boot_ui.row("STATE", f"{report['status']} — {report['last_updated']}")
-                    self._boot_ui.row("LAST DONE", report["last_completed_step"])
-                    self._boot_ui.row("STOP POINT", report["current_state"])
-                    self._boot_ui.row("NEXT STEP", report["next_step"])
+                    self._boot_ui.section(f"SESSION {number}: {report['session_id']}", "PENDING")
+                    self._boot_ui.row("TOPIC", report["topic"], "PENDING")
+                    self._boot_ui.row("GOAL", report["active_goal"], "PENDING")
+                    self._boot_ui.row("STATE", f"{report['status']} — {report['last_updated']}", "PENDING")
+                    self._boot_ui.row("LAST DONE", report["last_completed_step"], "PENDING")
+                    self._boot_ui.row("STOP POINT", report["current_state"], "PENDING")
+                    self._boot_ui.row("NEXT STEP", report["next_step"], "PENDING")
                     if recoverable:
                         self._boot_ui.row("RECOVERY", "Explicit resume required; no auto-execution", "INFO")
                     else:
