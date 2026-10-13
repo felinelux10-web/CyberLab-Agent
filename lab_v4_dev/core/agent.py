@@ -147,22 +147,21 @@ class Agent:
                 index = [s]
             if index:
                 self._boot_ui.section("PENDING WORK SESSIONS")
-                print("\n[v4.8] جلسات عمل معلّقة مكتشفة:")
                 for number, item in enumerate(index[-5:], 1):
                     selected = get_session_by_id(item.get("session_id")) or item
                     report = analyze_session(selected)
                     recoverable = recoverable_work_checkpoint(selected)
-                    print(f"\n  [{number}] المعرّف: {report['session_id']}")
-                    print(f"  الموضوع: {report['topic']}")
-                    print(f"  الهدف: {report['active_goal']}")
-                    print(f"  الحالة: {report['status']} — آخر تحديث: {report['last_updated']}")
-                    print(f"  آخر إنجاز مؤكد: {report['last_completed_step']}")
-                    print(f"  نقطة التوقف: {report['current_state']}")
-                    print(f"  الخطوة التالية: {report['next_step']}")
+                    self._boot_ui.section(f"SESSION {number}: {report['session_id']}")
+                    self._boot_ui.row("TOPIC", report["topic"])
+                    self._boot_ui.row("GOAL", report["active_goal"])
+                    self._boot_ui.row("STATE", f"{report['status']} — {report['last_updated']}")
+                    self._boot_ui.row("LAST DONE", report["last_completed_step"])
+                    self._boot_ui.row("STOP POINT", report["current_state"])
+                    self._boot_ui.row("NEXT STEP", report["next_step"])
                     if recoverable:
-                        print("  اكتب 'استكمل الجلسة' أو استخدم معرّف الجلسة للاستعادة دون تنفيذ تلقائي")
+                        self._boot_ui.row("RECOVERY", "Explicit resume required; no auto-execution", "INFO")
                     else:
-                        print("  جلسة محفوظة للمراجعة وليست قابلة للاستئناف التنفيذي حسب الأدلة الحالية")
+                        self._boot_ui.row("RECOVERY", "Review only; not executable", "WARN")
         except Exception as exc:
             log.warning(f"Session discovery skipped: {exc}")
 
