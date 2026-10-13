@@ -1322,6 +1322,17 @@ class ConversationManager:
             "executed": False,
         }
 
+    @staticmethod
+    def _latest_dialogue_branch(exchanges: list[dict]) -> list[dict]:
+        """Return exchanges since the latest explicit conversational branch boundary."""
+        valid = [item for item in (exchanges or []) if isinstance(item, dict)]
+        boundaries = {"new_independent", "explicit_switch", "restore"}
+        for index in range(len(valid) - 1, -1, -1):
+            transition = str(valid[index].get("context_transition") or "").casefold()
+            if transition in boundaries:
+                return valid[index:]
+        return valid[-8:]
+
     def _answer_dialogue_history(
         self,
         text: str,
