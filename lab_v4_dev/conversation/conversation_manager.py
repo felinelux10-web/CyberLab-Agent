@@ -193,7 +193,6 @@ class ConversationManager:
         normalized = " ".join(
             str(text or "").casefold()
             .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
-            .replace("ئ", "ي").replace("ؤ", "و")
             .replace("ـ", "")
             .strip(" .,،؛:!?؟'()[]{}")
             .split()
@@ -996,6 +995,7 @@ class ConversationManager:
         return " ".join(
             str(text or "").casefold()
             .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+            .replace("ئ", "ي").replace("ؤ", "و")
             .replace("ـ", "")
             .split()
         )
