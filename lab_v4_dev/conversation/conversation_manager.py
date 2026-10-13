@@ -1402,8 +1402,9 @@ class ConversationManager:
             domain = str(item.get("conversation_domain") or "").casefold()
             if kind in {"work", "system", "execution"} or domain in {"work", "system", "execution"}:
                 return True
+            if user == "حفظ" or user.startswith("حفظ "):
+                return True
             controls = (
-                "حفظ",
                 "استرجع النقاش الذي انقطع",
                 "استرجاع الحوار",
                 "استرجع الحوار",
