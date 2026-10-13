@@ -193,6 +193,7 @@ class ConversationManager:
         normalized = " ".join(
             str(text or "").casefold()
             .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+            .replace("ئ", "ي").replace("ؤ", "و")
             .replace("ـ", "")
             .strip(" .,،؛:!?؟'()[]{}")
             .split()
@@ -1018,9 +1019,8 @@ class ConversationManager:
         # prompt and cause the privacy gate to reject unrelated content.
         normalized = cls._normalize_transition_text(text)
         return any(marker in normalized for marker in (
-            "مستقل", "موضوع جديد", "موضوع اخر", "مجال اخر",
-            "موضوع مختلف", "نقاش مختلف", "شيء اخر",
-            "موضوع اخر", "مجال اخر",
+            "مستقل", "موضوع جديد", "موضوعا جديدا", "موضوعًا جديدًا",
+            "موضوع اخر", "مجال اخر", "موضوع مختلف", "نقاش مختلف", "شيء اخر",
             "independent topic", "new topic", "another field", "different topic",
         ))
 
