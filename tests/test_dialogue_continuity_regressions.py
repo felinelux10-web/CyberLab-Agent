@@ -611,3 +611,41 @@ def test_interrupted_dialogue_recovery_selects_previous_archived_branch_not_curr
     assert "بدأنا مناقشة الرسم" not in rendered
     assert "نتائج عمل سرية" not in rendered
 
+def test_interrupted_dialogue_recovery_routes_previous_branch_to_chat_prompt(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    sid = memory.state.session_id
+    memory.state.last_topic = "موضوع الرسم"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.last_intent = "personal_chat"
+    memory.state.exchange_archive = [
+        {
+            "session_id": sid,
+            "user": "ناقشنا الشفافية في خوارزميات التوصية",
+            "assistant": "توقفنا عند قياس أثر تغيير العوامل تدريجيًا",
+            "target": None,
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid,
+            "user": "انتقلنا إلى موضوع الرسم",
+            "assistant": "بدأنا مناقشة الرسم",
+            "target": "موضوع الرسم",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "context_transition": "explicit_switch",
+        },
+    ]
+
+    result = manager.process(
+        "استرجع النقاش الذي انقطع عندما انتقلنا إلى موضوع آخر، ثم واصل من آخر نقطة توقفنا عندها، دون أن أذكر اسم الموضوع أو ألخص ما قيل."
+    )
+
+    assert result["status"] == "success"
+    assert len(calls) == 1
+    assert "الشفافية في خوارزميات التوصية" in calls[0][0]
+    assert "قياس أثر تغيير العوامل تدريجيًا" in calls[0][0]
+    assert "بدأنا مناقشة الرسم" not in calls[0][0]
+    assert orchestrator.calls == []
+
