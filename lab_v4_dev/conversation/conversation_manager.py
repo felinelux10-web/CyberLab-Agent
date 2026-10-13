@@ -489,7 +489,10 @@ class ConversationManager:
         # An explicit independent-topic marker overrides a parser-produced
         # compound/reference act. The old branch must not enter a new topic's
         # prompt or trigger privacy blocking because of stale content.
-        if self._is_explicit_independent_topic(user_input, candidate):
+        if (
+            self._is_explicit_independent_topic(user_input, candidate)
+            or self._is_explicit_topic_switch(user_input)
+        ):
             # Independent-topic intent and explicit topic-switch wording are
             # separate signals. An active branch alone must not turn every
             # independent request into EXPLICIT_SWITCH.
