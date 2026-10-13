@@ -1442,27 +1442,31 @@ class ConversationManager:
             }
 
         if response_mode == "summary":
-            # A summary request must not turn into a transcript dump. Keep only
-            # the current session's latest exchanges and compress each exchange.
+            # Summarize only the active branch and identify its stopping point.
+            branch = self._latest_dialogue_branch(relevant)[-5:]
+            last = branch[-1] if branch else {}
+            active_topic = str(
+                getattr(state, "last_topic", None)
+                or last.get("target")
+                or ""
+            ).strip()
             summary_lines = []
-            for item in relevant[-5:]:
-                user = " ".join(str(item.get("user") or "").split())
-                assistant = " ".join(str(item.get("assistant") or "").split())
-                if not user and not assistant:
-                    continue
-                user_excerpt = user[:140] + ("…" if len(user) > 140 else "")
-                assistant_excerpt = assistant[:180] + ("…" if len(assistant) > 180 else "")
-                if user and assistant:
-                    summary_lines.append(f"- {user_excerpt} — {assistant_excerpt}")
-                elif user:
-                    summary_lines.append(f"- طرح المستخدم: {user_excerpt}")
-                else:
-                    summary_lines.append(f"- رد الوكيل: {assistant_excerpt}")
+            if active_topic:
+                summary_lines.append(f"- الموضوع النشط: {active_topic}")
+            else:
+                summary_lines.append("- الموضوع النشط: حوار عام؛ لم يُسجّل له عنوان مستقل.")
+            user = " ".join(str(last.get("user") or "").split())
+            assistant = " ".join(str(last.get("assistant") or "").split())
+            if user:
+                excerpt = user[:180] + ("…" if len(user) > 180 else "")
+                summary_lines.append(f"- آخر ما طرحه المستخدم: {excerpt}")
+            if assistant:
+                excerpt = assistant[:220] + ("…" if len(assistant) > 220 else "")
+                summary_lines.append(f"- نقطة التوقف: {excerpt}")
             return {
                 **base,
-                "text": "ملخص الحوار الحالي:\n"
-                + ("\n".join(summary_lines) if summary_lines else "لا توجد تفاصيل كافية."),
-                "dialogue_turns": relevant[-5:],
+                "text": "ملخص الحوار الحالي:\n" + "\n".join(summary_lines),
+                "dialogue_turns": branch,
             }
 
         task = (
