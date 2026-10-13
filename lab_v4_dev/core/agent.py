@@ -122,6 +122,7 @@ class Agent:
 
 
         # 7. Auto Context Restore (v4.8)
+        self._pending_work_sessions = []
         try:
             from lab_v4_dev.memory.session_state import (
                 load_session, recoverable_work_checkpoint, get_session_index,
@@ -146,27 +147,57 @@ class Agent:
             if not index and isinstance(s, dict) and s.get("session_id", s.get("active_goal")):
                 index = [s]
             if index:
-                self._boot_ui.section("PENDING WORK SESSIONS", "PENDING")
-                self._boot_ui.row("COUNT", f"{len(index)} paused session(s)", "PENDING")
+                self._boot_ui.section("الجلسات المحفوظة")
+                self._boot_ui.row("الجلسات", f"{len(index)} جلسة متوقفة", "PENDING")
                 for number, item in enumerate(index[-5:], 1):
                     selected = get_session_by_id(item.get("session_id")) or item
                     report = analyze_session(selected)
                     recoverable = recoverable_work_checkpoint(selected)
-                    self._boot_ui.section(f"SESSION {number}: {report['session_id']}", "PENDING")
-                    self._boot_ui.row("TOPIC", report["topic"], "PENDING")
-                    self._boot_ui.row("GOAL", report["active_goal"], "PENDING")
-                    self._boot_ui.row("STATE", f"{report['status']} — {report['last_updated']}", "PENDING")
-                    self._boot_ui.row("LAST DONE", report["last_completed_step"], "PENDING")
-                    self._boot_ui.row("STOP POINT", report["current_state"], "PENDING")
-                    self._boot_ui.row("NEXT STEP", report["next_step"], "PENDING")
-                    if recoverable:
-                        self._boot_ui.row("RECOVERY", "Explicit resume required; no auto-execution", "INFO")
-                    else:
-                        self._boot_ui.row("RECOVERY", "Review only; not executable", "WARN")
+                    description = str(report.get("topic") or report.get("active_goal") or "جلسة بلا عنوان").strip()
+                    description = description.splitlines()[0].strip()
+                    if len(description) > 54:
+                        description = description[:51].rstrip() + "…"
+                    self._pending_work_sessions.append({
+                        "number": number,
+                        "report": report,
+                        "recoverable": bool(recoverable),
+                    })
+                    state_label = "قابلة للاستئناف" if recoverable else "للمراجعة فقط"
+                    self._boot_ui.row(f"جلسة {number}", f"{description}  — {state_label}", "OK" if recoverable else "WARN")
+                self._boot_ui.row("التفاصيل", "اكتب session 1 أو session 2 لعرض التفاصيل", "INFO")
         except Exception as exc:
             log.warning(f"Session discovery skipped: {exc}")
 
         self._boot_ui.ready()
+        return True
+
+    def show_pending_session(self, command: str) -> bool:
+        """Display full details only when the user selects a saved session."""
+        import re
+
+        match = re.fullmatch(r"\s*session\s+(\d+)\s*", command, re.IGNORECASE)
+        if not match:
+            return False
+        number = int(match.group(1))
+        sessions = getattr(self, "_pending_work_sessions", [])
+        selected = next((item for item in sessions if item["number"] == number), None)
+        if selected is None:
+            print("لا توجد جلسة محفوظة بهذا الرقم.")
+            return True
+
+        report = selected["report"]
+        print()
+        print(f"تفاصيل الجلسة {number}: {report.get('topic') or report.get('active_goal') or 'جلسة بلا عنوان'}")
+        print(f"المعرّف: {report.get('session_id', 'غير متاح')}")
+        print(f"الهدف: {report.get('active_goal', 'غير محدد')}")
+        print(f"الحالة: {report.get('status', 'غير محددة')} — {report.get('last_updated', 'غير متاح')}")
+        print(f"آخر خطوة مكتملة: {report.get('last_completed_step', 'غير محدد')}")
+        print(f"نقطة التوقف: {report.get('current_state', 'غير محددة')}")
+        print(f"الخطوة التالية: {report.get('next_step', 'غير محددة')}")
+        if selected["recoverable"]:
+            print("الاستئناف يتطلب أمرًا صريحًا؛ لن يبدأ التنفيذ تلقائيًا.")
+        else:
+            print("هذه الجلسة للمراجعة فقط وليست قابلة للاستئناف التنفيذي.")
         return True
 
     def run(self, user_input: str) -> dict:
