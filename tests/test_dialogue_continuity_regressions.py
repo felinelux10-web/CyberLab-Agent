@@ -338,7 +338,6 @@ def test_targetless_general_continuation_uses_recent_dialogue_archive():
             "assistant": "حدثني عن تفاصيلها.",
             "context_kind": "dialogue",
             "conversation_domain": "general",
-            "context_transition": "continue",
             "context_transition": "new_independent",
         },
         {
@@ -347,6 +346,7 @@ def test_targetless_general_continuation_uses_recent_dialogue_archive():
             "assistant": "هذه الألوان تخلق تباينًا.",
             "context_kind": "dialogue",
             "conversation_domain": "general",
+            "context_transition": "continue",
         },
         {
             "session_id": memory.state.session_id,
