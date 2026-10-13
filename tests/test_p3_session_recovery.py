@@ -308,11 +308,11 @@ def test_persisted_dialogue_checkpoint_restores_into_fresh_memory(monkeypatch, t
 
     saved = session_state.save_dialogue_checkpoint(dialogue_state=original.snapshot())
     assert saved["session_type"] == "dialogue"
-    assert session_state.get_latest_session_by_type("dialogue")["session_id"] == sid
+    recovered_session = session_state.get_latest_session_by_type("dialogue")
+    assert recovered_session["dialogue_state"]["session_id"] == sid
 
     # Simulate a process restart: construct a new memory object and load the
     # checkpoint from the persisted session detail/index, not the old instance.
-    recovered_session = session_state.get_latest_session_by_type("dialogue")
     recovered = DialogueMemory(ContextStore())
     assert recovered.restore_snapshot(recovered_session["dialogue_state"]) is True
     assert recovered.state.session_id == sid
