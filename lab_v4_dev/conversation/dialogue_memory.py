@@ -145,8 +145,8 @@ class DialogueMemory:
         } or result.get("error"):
             return
 
-        # Record the user's branch even when a provider returns no answer.
-        # Failed replies are deliberately excluded from the assistant transcript.
+        # For a valid turn, preserve the user's branch even if no assistant
+        # text is available. Provider-error results were excluded above.
         parsed = parsed or {}
         previous_context = self.active_context_entity()
 
