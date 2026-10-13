@@ -99,16 +99,20 @@ class DialogueMemory:
         ):
             if field in snapshot:
                 setattr(restored, field, snapshot[field])
+        # Missing session IDs are untrusted legacy data. Never relabel them as
+        # belonging to the current session: that can import old technical turns.
         restored.exchange_archive = [
-            {**item, "session_id": str(item.get("session_id") or restored.session_id)}
+            dict(item)
             for item in (restored.exchange_archive or [])
             if isinstance(item, dict)
-            and str(item.get("session_id") or restored.session_id) == restored.session_id
+            and str(item.get("session_id") or "") == restored.session_id
         ][-32:]
         for turn in (snapshot.get("history") or [])[-8:]:
             if not isinstance(turn, dict) or not turn.get("role"):
                 continue
-            turn_session_id = str(turn.get("session_id") or restored.session_id)
+            # A turn without an explicit session ID cannot safely be attributed
+            # to this session, even when it came from an older checkpoint.
+            turn_session_id = str(turn.get("session_id") or "")
             if turn_session_id != restored.session_id:
                 continue
             restored.add_turn(
