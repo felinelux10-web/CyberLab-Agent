@@ -538,3 +538,19 @@ def test_general_continuation_uses_only_exchanges_after_latest_branch_boundary()
     assert "الفرع الثاني" in text
     assert "آخر نقطة في الفرع الثاني" in text
     assert "الفرع الأول" not in text
+
+def test_subjectless_independent_social_topic_clears_stale_technical_subject(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    memory.state.last_topic = "CSRF"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.last_intent = "cyber_explain"
+
+    result = manager.process("اريد اقتراحات اخرى في مجال اخر")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_social"
+    assert memory.state.last_topic is None
+    assert memory.state.last_entity_type is None
+    assert memory.state.exchange_archive[-1]["context_transition"] == "new_independent"
+    assert "CSRF" not in calls[-1][0] if calls else True
+    assert orchestrator.calls == []
