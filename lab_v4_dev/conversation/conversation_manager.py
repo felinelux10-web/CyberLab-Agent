@@ -1266,7 +1266,10 @@ class ConversationManager:
             if isinstance(item, dict)
             and (
                 not current_session_id
-                or not str(item.get("session_id") or "").strip()
+                or (
+                    not str(item.get("session_id") or "").strip()
+                    and item.get("context_kind") == "execution"
+                )
                 or str(item.get("session_id") or "") == current_session_id
             )
         ]
@@ -1377,7 +1380,10 @@ class ConversationManager:
             and item.get("conversation_domain") != "work"
             and (
                 not current_session_id
-                or not str(item.get("session_id") or "").strip()
+                or (
+                    not str(item.get("session_id") or "").strip()
+                    and item.get("context_kind") == "execution"
+                )
                 or str(item.get("session_id") or "") == current_session_id
             )
         ][-8:]
