@@ -552,5 +552,5 @@ def test_subjectless_independent_social_topic_clears_stale_technical_subject(mon
     assert memory.state.last_topic is None
     assert memory.state.last_entity_type is None
     assert memory.state.exchange_archive[-1]["context_transition"] == "new_independent"
-    assert "CSRF" not in calls[-1][0] if calls else True
+    assert calls == []
     assert orchestrator.calls == []
