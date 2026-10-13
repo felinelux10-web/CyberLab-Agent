@@ -979,7 +979,9 @@ class ConversationManager:
         normalized = str(text or "").casefold()
         return any(marker in normalized for marker in (
             "مستقل", "موضوع جديد", "موضوعًا جديدًا", "موضوعا جديدا",
-            "independent topic", "new topic",
+            "موضوع آخر", "موضوع اخر", "مجال آخر", "مجال اخر",
+            "موضوع مختلف", "نقاش مختلف", "شيء آخر", "شيء اخر",
+            "independent topic", "new topic", "another field", "different topic",
         ))
 
     def _resolve_generic_topic_reference(self, text: str) -> str | None:
