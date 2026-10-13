@@ -149,6 +149,8 @@ def main():
                 continue
             if user_input.lower() in ["exit","quit","خروج"]:
                 break
+            if agent.show_pending_session(user_input):
+                continue
             if is_special(user_input):
                 print(handle_special(user_input, agent))
                 continue
