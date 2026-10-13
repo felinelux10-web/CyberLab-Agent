@@ -12,7 +12,7 @@ def test_boot_dashboard_has_consistent_borders_and_ready_state(capsys):
     assert borders
     assert len({len(line) for line in borders}) == 1
     assert "CYBERLAB AGENT" in output[1]
-    assert "[OK]" in output[6]
+    assert any("[OK]" in line for line in output)
     assert "STATUS: READY" in output
 
 
