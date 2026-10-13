@@ -136,18 +136,12 @@ def main():
     if not agent.boot():
         sys.exit(1)
 
-    print()
-    print("CyberLab Agent v5.0 — جاهز")
-    print("اكتب 'مساعدة' أو 'exit'")
-    print("-" * 40)
+    # The startup dashboard already displays readiness and help commands.
 
     try:
         while True:
             try:
-                user_input = input(
-                    "\033[32m\n╭──────── USER ─────────────────────────────────\n"
-                    "│ \033[0m"
-                ).strip()
+                user_input = agent._boot_ui.prompt().strip()
             except EOFError:
                 break
 
@@ -155,6 +149,8 @@ def main():
                 continue
             if user_input.lower() in ["exit","quit","خروج"]:
                 break
+            if agent.show_pending_session(user_input):
+                continue
             if is_special(user_input):
                 print(handle_special(user_input, agent))
                 continue
