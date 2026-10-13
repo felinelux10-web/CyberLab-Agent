@@ -63,7 +63,10 @@ def test_dialogue_summary_request_returns_summary_not_transcript(monkeypatch):
     assert result["status"] == "success"
     assert result["source"] == "dialogue_memory"
     assert result["dialogue_response_mode"] == "summary"
-    assert result["text"].startswith("ملخص موثّق للحوار المسجّل:")
+    assert result["text"].startswith("ملخص الحوار الحالي:")
+    assert len(result["text"]) < 700
+    assert "المستخدم:" not in result["text"]
+    assert "الوكيل:" not in result["text"]
     assert "المستخدم:" not in result["text"]
     assert "الوكيل:" not in result["text"]
     # Summary is rendered directly from the bounded local archive; history recall
@@ -143,6 +146,7 @@ def test_topic_restore_uses_archived_exchange_after_turn_window_rolls_over():
 
     memory.state.exchange_archive = [
         {
+            "session_id": memory.state.session_id,
             "user": "استخدمت الذهب والبيج والأزرق الداكن في اللوحة",
             "assistant": "هذه الألوان تخلق تباينًا بين الدفء والبرودة.",
             "target": "اللوحة الفنية",
@@ -151,6 +155,7 @@ def test_topic_restore_uses_archived_exchange_after_turn_window_rolls_over():
             "context_kind": "dialogue",
         },
         {
+            "session_id": memory.state.session_id,
             "user": "تفاصيل عمل سرية",
             "assistant": "رد عمل سري",
             "target": "اللوحة الفنية",
@@ -330,18 +335,21 @@ def test_targetless_general_continuation_uses_recent_dialogue_archive():
     manager = ConversationManager(orchestrator, memory)
     memory.state.exchange_archive = [
         {
+            "session_id": memory.state.session_id,
             "user": "صنعت لوحة بنحت بارز",
             "assistant": "حدثني عن تفاصيلها.",
             "context_kind": "dialogue",
             "conversation_domain": "general",
         },
         {
+            "session_id": memory.state.session_id,
             "user": "ألوانها الذهبية والبيج والأزرق الداكن",
             "assistant": "هذه الألوان تخلق تباينًا.",
             "context_kind": "dialogue",
             "conversation_domain": "general",
         },
         {
+            "session_id": memory.state.session_id,
             "user": "تفاصيل عمل",
             "assistant": "محتوى عمل",
             "context_kind": "work",
@@ -358,3 +366,36 @@ def test_targetless_general_continuation_uses_recent_dialogue_archive():
     assert "نحت بارز" in text
     assert "الأزرق الداكن" in text
     assert "محتوى عمل" not in text
+
+
+
+def test_direct_request_for_discussion_topic_gets_a_topic_without_clarification(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+
+    result = manager.process("انت اعطيني اقتراحات")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_social"
+    assert "شنو رأيك؟" in result["text"]
+    assert "تحتاجها" not in result["text"]
+    assert orchestrator.calls == []
+
+
+def test_restore_snapshot_rejects_untagged_legacy_turns_and_exchanges():
+    memory = DialogueMemory(object())
+    restored = memory.restore_snapshot({
+        "session_id": "active-session",
+        "history": [
+            {"role": "user", "content": "CSRF من سجل قديم"},
+            {"role": "assistant", "content": "شرح تقني قديم"},
+            {"role": "user", "content": "رسالة هذه الجلسة", "session_id": "active-session"},
+        ],
+        "exchange_archive": [
+            {"user": "CSRF قديم", "assistant": "شرح قديم"},
+            {"user": "حوار حالي", "assistant": "رد حالي", "session_id": "active-session"},
+        ],
+    })
+
+    assert restored is True
+    assert [turn["content"] for turn in memory.state.history] == ["رسالة هذه الجلسة"]
+    assert [item["user"] for item in memory.state.exchange_archive] == ["حوار حالي"]
