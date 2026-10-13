@@ -143,6 +143,12 @@ class ConversationManager:
             subject,
             maxsplit=1,
         )[0].strip()
+        # Short elaboration phrases are contextual references, not new topics.
+        if subject.casefold().strip() in {
+            "اكثر", "أكثر", "المزيد", "تفصيل اكثر", "تفصيل أكثر",
+            "مزيد من التفاصيل", "more", "more detail", "further",
+        }:
+            return None
         return subject or None
 
     def _pending_confirmation_intent(self, text: str):
@@ -386,8 +392,21 @@ class ConversationManager:
                 "target": explicit_explanation,
                 "entity_type": "CONCEPT",
                 "conversation_domain": "technical",
-                "conversation_act": "NONE",
-                "conversation_confidence": 0.95,
+                "conversation_act": (
+                    raw_signal.get("conversation_act")
+                    if is_style_act(raw_signal.get("conversation_act"))
+                    else "NONE"
+                ),
+                "conversation_confidence": (
+                    raw_signal.get("confidence", 0.0)
+                    if is_style_act(raw_signal.get("conversation_act"))
+                    else 0.95
+                ),
+                "response_attributes": (
+                    dict(raw_signal.get("response_attributes") or {})
+                    if is_style_act(raw_signal.get("conversation_act"))
+                    else {}
+                ),
                 "semantic_pattern": "EXPLICIT_EXPLANATION_START",
                 "source": "explicit_explanation_start",
             })
@@ -1387,10 +1406,18 @@ class ConversationManager:
             }
 
         if response_mode == "summary":
+            summary_lines = []
+            for item in relevant[-6:]:
+                user = str(item.get("user") or "").strip()
+                assistant = str(item.get("assistant") or "").strip()
+                if user:
+                    summary_lines.append(f"- سؤالك: {user}")
+                if assistant:
+                    summary_lines.append(f"  الرد: {assistant[:1200]}")
             return {
                 **base,
-                "text": "ملخص:\n"
-                + "\n".join(self._format_dialogue_exchanges(relevant[-6:])),
+                "text": "ملخص موثّق للحوار المسجّل:\n"
+                + "\n".join(summary_lines),
                 "dialogue_turns": relevant[-6:],
             }
 
