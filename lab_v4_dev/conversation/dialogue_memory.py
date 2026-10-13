@@ -235,6 +235,20 @@ class DialogueMemory:
             or conversation_domain in {"general", "social", "agent_self"}
         ):
             topic = None
+
+        # An explicit independent conversational branch with no canonical entity
+        # must not leave the previous technical topic marked as active. Preserve
+        # that prior entity in history so an explicit return can still restore it.
+        if (
+            relation in {"new_independent", "explicit_switch"}
+            and not turn_target
+            and context_kind in {"dialogue", "social"}
+        ):
+            if previous_context:
+                self._remember_context(previous_context)
+            self.state.last_topic = None
+            self.state.last_entity_type = None
+
         if context_transition is None:
             # Compatibility for direct legacy callers; the main conversation
             # path always supplies its explicit transition decision.
