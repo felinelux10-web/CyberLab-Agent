@@ -1839,6 +1839,33 @@ class ConversationManager:
                 and same_session
             )
 
+        recovery_mode = str(
+            ((parsed or {}).get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold()
+        if recovery_mode == "interrupted_branch":
+            valid = [item for item in (exchanges or []) if allowed(item)]
+            boundaries = [
+                index for index, item in enumerate(valid)
+                if str(item.get("context_transition") or "").casefold()
+                in {"new_independent", "explicit_switch", "restore"}
+            ]
+            # The current branch is the segment after the newest boundary.
+            # An interrupted-branch recovery request explicitly asks for the
+            # branch before it; do not silently return the currently active one.
+            if boundaries:
+                latest_boundary = boundaries[-1]
+                previous_boundary = boundaries[-2] if len(boundaries) > 1 else 0
+                selected = valid[previous_boundary:latest_boundary]
+            else:
+                selected = valid[:-1]
+            if selected:
+                return self._exchange_history_turns(selected[-4:])[-8:]
+            # A single branch has no previous branch to restore. Returning its
+            # recent exchanges is safer than mixing in work history or guessing.
+            if valid:
+                return self._exchange_history_turns(valid[-4:])[-8:]
+            return []
+
         topic = None
         if transition in {ContextTransition.RESTORE, ContextTransition.EXPLICIT_SWITCH}:
             topic = (parsed or {}).get("target")
