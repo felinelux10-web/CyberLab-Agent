@@ -38,11 +38,14 @@ class BootUI:
         }
         marker = markers.get(state, "·")
         prefix = f"{marker}  {component:<12} "
-        available = max(10, self.width - len(component) - 16)
+        continuation_indent = " " * len(prefix)
+        available = max(10, self.width - len(prefix))
         lines = textwrap.wrap(str(detail), width=available, break_long_words=True) or [""]
         print(prefix + lines[0])
         for line in lines[1:]:
-            print(" " * (len(component) + 4) + line)
+            print(continuation_indent + line)
+        # Visually separate components without bringing back dashboard boxes.
+        print()
 
     def section(self, title, state="INFO"):
         # Section headings remain in the terminal's default text color.
