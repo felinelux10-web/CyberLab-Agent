@@ -1330,8 +1330,7 @@ class ConversationManager:
             and item.get("conversation_domain") != "work"
             and (
                 not current_session_id
-                or not item.get("session_id")
-                or str(item.get("session_id")) == current_session_id
+                or str(item.get("session_id") or "") == current_session_id
             )
         ][-8:]
 
