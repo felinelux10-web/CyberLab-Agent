@@ -431,6 +431,10 @@ class ConversationManager:
             if (
                 raw_act == "CONVERSATION_CONTINUATION"
                 and self.dialogue_memory
+                and not (
+                    (raw_signal.get("response_attributes") or {}).get("dialogue_recovery")
+                    == "interrupted_branch"
+                )
             ):
                 active_context = self.dialogue_memory.active_context_entity()
                 if isinstance(active_context, dict) and active_context.get("entity"):
