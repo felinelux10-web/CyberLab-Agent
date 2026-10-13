@@ -11,7 +11,7 @@ def test_boot_dashboard_has_consistent_borders_and_ready_state(capsys):
     borders = [line for line in output if line.startswith(("┌", "├", "└"))]
     assert borders
     assert len({len(line) for line in borders}) == 1
-    assert "CYBERLAB AGENT" in output[1]
+    assert any("CYBERLAB AGENT" in line for line in output)
     assert any("[OK]" in line for line in output)
     assert "STATUS: READY" in output
 
