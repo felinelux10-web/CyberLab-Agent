@@ -191,6 +191,7 @@ class DialogueMemory:
                 "conversation_domain": conversation_domain,
                 "conversation_act": conversation_act or semantic.get("conversation_act", "NONE"),
                 "context_kind": context_kind,
+                "context_transition": relation,
                 "session_id": self.state.session_id,
             }
             archive = [
