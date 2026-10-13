@@ -918,6 +918,23 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     # Keep them conversational so ConversationManager can resolve them from
     # DialogueMemory rather than from task/project history.
     normalized_raw = normalize(user_input).casefold()
+    # These are explicit requests to improve/simplify an existing artifact.
+    # Keep them in the analysis lane instead of letting broad social-question
+    # cues relabel them as personal chat.
+    if re.match(
+        r"^هل\s+يمكن\s+(?:تحسينه|تحسينها|تبسيطه|تبسيطها|تحسين\s+ذلك|تبسيط\s+ذلك)(?:\s|[؟?!.،]|$)",
+        normalized_raw,
+    ):
+        return {
+            "intent": Intent.ANALYZE_CODE,
+            "target": "",
+            "context": detect_context(user_input),
+            "confidence": 0.88,
+            "raw": user_input,
+            "source": "explicit_improve_simplify_request",
+            "entity_type": "UNKNOWN",
+            "semantic_pattern": "IMPROVE_SIMPLIFY_REQUEST",
+        }
     if any(marker in normalized_raw for marker in (
         "الحوار السابق", "النقاش السابق", "الحديث السابق", "محادثتنا السابقة",
     )):
