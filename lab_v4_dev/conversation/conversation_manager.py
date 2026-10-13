@@ -1801,10 +1801,10 @@ class ConversationManager:
         if transition == ContextTransition.AMBIGUOUS and is_social_act(
             (parsed or {}).get("conversation_act")
         ):
-            selected = self._latest_dialogue_branch([
-                item for item in (exchanges or [])
-                if allowed(item) and not item.get("target")
-            ])[-8:]
+            branch = self._latest_dialogue_branch([
+                item for item in (exchanges or []) if allowed(item)
+            ])
+            selected = [item for item in branch if not item.get("target")][-8:]
             if selected:
                 return self._exchange_history_turns(selected)[-8:]
             return [
@@ -1828,8 +1828,8 @@ class ConversationManager:
             # rather than dropping context solely because no entity was extracted.
             if transition in CONTEXTUAL_TRANSITIONS:
                 selected = self._latest_dialogue_branch(
-                [item for item in (exchanges or []) if allowed(item)]
-            )[-8:]
+                    [item for item in (exchanges or []) if allowed(item)]
+                )[-8:]
                 if selected:
                     return self._exchange_history_turns(selected)[-8:]
                 return [turn for turn in (history or []) if allowed(turn)][-8:]
