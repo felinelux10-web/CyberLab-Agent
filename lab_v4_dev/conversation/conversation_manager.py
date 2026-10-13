@@ -1225,6 +1225,17 @@ class ConversationManager:
         """Answer recent-dialogue questions from bounded dialogue memory only."""
         normalized = str(text or "").casefold()
         history_act = str((parsed or {}).get("conversation_act") or "").upper()
+        direct_suggestion = any(marker in normalized for marker in (
+            "اقترح انت", "اقترح أنت", "اقترح لي", "اقترح بعض", "اقترح مواضيع",
+            "اريد اقتراحات", "أريد اقتراحات", "اعطيني اقتراحات", "اعطني اقتراحات",
+            "اقتراحات اخرى", "اقتراحات أخرى", "اقترحات اخرى",
+        ))
+        historical_recall = any(marker in normalized for marker in (
+            "السابق", "سابقا", "سابقًا", "قبل", "تتذكر", "التي قدمتها",
+            "التي اقترحتها", "ماذا اقترحت", "ما اقترحت",
+        ))
+        if direct_suggestion and not historical_recall:
+            return None
         if history_act == "TOPIC_RETURN" and str((parsed or {}).get("target") or "").strip():
             return None
         if history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"} and any(marker in normalized for marker in (
