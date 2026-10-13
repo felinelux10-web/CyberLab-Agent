@@ -1266,6 +1266,7 @@ class ConversationManager:
             if isinstance(item, dict)
             and (
                 not current_session_id
+                or not str(item.get("session_id") or "").strip()
                 or str(item.get("session_id") or "") == current_session_id
             )
         ]
@@ -1376,6 +1377,7 @@ class ConversationManager:
             and item.get("conversation_domain") != "work"
             and (
                 not current_session_id
+                or not str(item.get("session_id") or "").strip()
                 or str(item.get("session_id") or "") == current_session_id
             )
         ][-8:]
@@ -1470,8 +1472,37 @@ class ConversationManager:
             }
 
         if response_mode == "summary":
-            # Summarize only the active branch and identify its stopping point.
-            branch = self._latest_dialogue_branch(relevant)[-5:]
+            # Requests explicitly asking what was said in previous replies need
+            # the recent recorded exchanges, not only the active branch. The
+            # branch-only view remains appropriate for a plain current-state
+            # summary, where mixing independent topics would be misleading.
+            normalized_query = str(text or "").casefold()
+            recall_recent_exchanges = any(marker in normalized_query for marker in (
+                "الردود السابقة", "الردود السابقه", "قبل قليل",
+                "ماذا كنا نقول", "ماذا قلنا", "ما كنا نقول",
+            ))
+            branch = (
+                relevant[-5:]
+                if recall_recent_exchanges
+                else self._latest_dialogue_branch(relevant)[-5:]
+            )
+            if recall_recent_exchanges:
+                lines = []
+                for item in branch:
+                    user = " ".join(str(item.get("user") or "").split())
+                    assistant = " ".join(str(item.get("assistant") or "").split())
+                    if not user and not assistant:
+                        continue
+                    line = f"- المستخدم: {user[:180]}"
+                    if assistant:
+                        line += f"؛ الوكيل: {assistant[:220]}"
+                    lines.append(line)
+                return {
+                    **base,
+                    "text": "ملخص موثّق للحوار المسجّل:\n" + "\n".join(lines),
+                    "dialogue_turns": branch[-6:],
+                }
+
             last = branch[-1] if branch else {}
             active_topic = str(
                 getattr(state, "last_topic", None)
