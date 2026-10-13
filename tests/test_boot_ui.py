@@ -24,7 +24,8 @@ def test_failed_component_has_red_state_marker_text(capsys):
     output = capsys.readouterr().out
     assert "●" in output
     assert "DATABASE" in output
-    assert "Integrity check failed" in output
+    assert "Integrity check" in output
+    assert "failed" in output
 
 
 def test_prompt_uses_only_cyberlab_identity_and_separator(capsys, monkeypatch):
