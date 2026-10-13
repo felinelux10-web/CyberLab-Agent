@@ -66,7 +66,9 @@ def test_dialogue_summary_request_returns_summary_not_transcript(monkeypatch):
     assert result["text"].startswith("ملخص موثّق للحوار المسجّل:")
     assert "المستخدم:" not in result["text"]
     assert "الوكيل:" not in result["text"]
-    assert "لا تنسخ الحوار" in calls[-1][0]
+    # Summary is rendered directly from the bounded local archive; history recall
+    # must not invoke the provider or pass a transcript into an LLM prompt.
+    assert len(calls) == 1
     assert orchestrator.calls == []
 
 
