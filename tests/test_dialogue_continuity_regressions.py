@@ -410,3 +410,129 @@ def test_darija_misspellings_requesting_a_topic_are_handled_as_social_chat(monke
         assert "شنو رأيك؟" in result["text"]
 
     assert orchestrator.calls == []
+
+def test_natural_suggestion_phrases_return_topics_directly(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+
+    for text in (
+        "اقترح انت بعض المواضيع المثيرة",
+        "اريد اقتراحات اخرى في مجال اخر",
+    ):
+        result = manager.process(text)
+        assert result["status"] == "success"
+        assert result["source"] == "local_social"
+        assert "التكنولوجيا" in result["text"]
+        assert "الفن" in result["text"]
+        assert "شنو رأيك؟" in result["text"]
+
+    assert orchestrator.calls == []
+
+
+def test_dialogue_summary_only_describes_latest_branch_and_stopping_point(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    sid = memory.state.session_id
+    memory.state.last_topic = "الرسم البارز"
+    memory.state.exchange_archive = [
+        {
+            "session_id": sid,
+            "user": "كنا نناقش الراحة وتحقيق الأهداف",
+            "assistant": "هل الراحة تأتي من الإنجاز أم من الطريق؟",
+            "target": None,
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid,
+            "user": "دعنا ننتقل إلى الرسم البارز",
+            "assistant": "يمكننا بحث مزج النقش بالتقنية",
+            "target": "الرسم البارز",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "context_transition": "explicit_switch",
+        },
+        {
+            "session_id": sid,
+            "user": "أحب الرسم البارز والنقش البارز",
+            "assistant": "هل تفضل تطبيقًا فنيًا أم أداة تحول الصور إلى نقش ثلاثي الأبعاد؟",
+            "target": "الرسم البارز",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "context_transition": "continue",
+        },
+    ]
+
+    result = manager._answer_dialogue_history(
+        "اكتب ملخص الحوار",
+        "summary",
+        memory.state.exchange_archive,
+    )
+
+    assert result["status"] == "success"
+    assert "الرسم البارز" in result["text"]
+    assert "نقطة التوقف" in result["text"]
+    assert "الراحة وتحقيق الأهداف" not in result["text"]
+    assert "هل تفضل تطبيقًا فنيًا" in result["text"]
+
+
+def test_dialogue_recall_rejects_untagged_exchange_when_session_is_known(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    result = manager._answer_dialogue_history(
+        "ماذا كنا نقول؟",
+        "summary",
+        [{
+            "user": "CSRF من أرشيف قديم",
+            "assistant": "شرح قديم لا يخص الجلسة الحالية",
+            "context_kind": "dialogue",
+            "conversation_domain": "technical",
+        }],
+    )
+
+    assert result["status"] == "needs_clarification"
+    assert "CSRF" not in result["text"]
+    assert "شرح قديم" not in result["text"]
+
+
+def test_general_continuation_uses_only_exchanges_after_latest_branch_boundary():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+
+    orchestrator = RecordingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+    sid = memory.state.session_id
+    memory.state.exchange_archive = [
+        {
+            "session_id": sid,
+            "user": "موضوع الفرع الأول",
+            "assistant": "رد الفرع الأول",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid,
+            "user": "بدأنا موضوعًا مختلفًا",
+            "assistant": "رد الفرع الثاني",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "context_transition": "explicit_switch",
+        },
+        {
+            "session_id": sid,
+            "user": "أكمل النقطة الأخيرة",
+            "assistant": "آخر نقطة في الفرع الثاني",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "context_transition": "continue",
+        },
+    ]
+
+    history = manager._history_for_transition(
+        ContextTransition.CONTINUE,
+        {"conversation_act": "CONVERSATION_CONTINUATION"},
+    )
+    text = " ".join(turn["content"] for turn in history)
+
+    assert "الفرع الثاني" in text
+    assert "آخر نقطة في الفرع الثاني" in text
+    assert "الفرع الأول" not in text
