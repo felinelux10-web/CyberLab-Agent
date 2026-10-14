@@ -366,6 +366,8 @@ class ConversationManager:
             "بغيت نهضر معاك", "بغيت نهضر", "موضوع خفيف", "كيفاش داز نهارك",
             "كيف داز نهارك", "كيف كان نهارك", "كيف قضيت يومك", "خلينا نهضرو",
             "نهدرو شوية", "نهضر معاك شوية", "حوار ودي", "حوار عادي",
+            "محادثة ودية", "محادثه وديه", "دردشة ودية", "دردشه وديه",
+            "نريد أن نتحدث فقط", "نريد ان نتحدث فقط", "دردشة فقط",
         ))
         if explicit_casual_opening and not explicit_explanation:
             # An explicit casual opener is independent of a previously active
@@ -681,10 +683,17 @@ class ConversationManager:
             if generic_topic
             else self._conversation_history_answer(user_input, parsed)
         )
+        recovery_mode = str(
+            (parsed.get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold()
         if (
             conversation_history_answer is None
             and self._dialogue_recall_requested(user_input, parsed)
             and not self._resolve_generic_topic_reference(user_input)
+            and not (
+                str(parsed.get("conversation_act") or "").upper() == "TOPIC_RETURN"
+                and recovery_mode == "interrupted_branch"
+            )
         ):
             conversation_history_answer = {
                 "status": "needs_clarification",
@@ -1233,6 +1242,8 @@ class ConversationManager:
             }
         social_markers = (
             "كيفك", "كيف الحال", "ماهو الحال", "حوار ودي", "حوار عادي",
+            "محادثة ودية", "محادثه وديه", "دردشة ودية", "دردشه وديه",
+            "نريد أن نتحدث فقط", "نريد ان نتحدث فقط", "دردشة فقط",
             "بغيت نهضر معاك", "بغيت نهضر", "موضوع خفيف", "كيفاش داز نهارك",
             "كيف داز نهارك", "كيف كان نهارك", "كيف قضيت يومك", "خلينا نهضرو",
             "نهدرو شوية", "نهضر معاك شوية",
@@ -1245,6 +1256,11 @@ class ConversationManager:
             reply = "نهاري هادئ، وأنا هنا للدردشة معك. ونتا كيف داز نهارك؟"
         elif "كيف كان نهارك" in normalized or "كيف قضيت يومك" in normalized:
             reply = "كان يومي هادئًا، وأنا جاهز للدردشة. كيف كان يومك أنت؟"
+        elif any(marker in normalized for marker in (
+            "محادثة ودية", "محادثه وديه", "دردشة ودية", "دردشه وديه",
+            "نريد أن نتحدث فقط", "نريد ان نتحدث فقط", "دردشة فقط",
+        )):
+            reply = "حسنًا، لنتحدث بشكل ودي بعيدًا عن العمل والمهام. ما الذي يشغل بالك؟"
         else:
             reply = "أكيد، نهضرو على شي موضوع خفيف. شنو بغيتي تحكي ليا؟"
         return {
@@ -1270,6 +1286,14 @@ class ConversationManager:
             "التي اقترحتها", "ماذا اقترحت", "ما اقترحت",
         ))
         if direct_suggestion and not historical_recall:
+            return None
+        recovery_mode = str(
+            ((parsed or {}).get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold()
+        # An unnamed return is a routing instruction, not a request to print
+        # the archive. Let the transition resolver select the interrupted
+        # branch and pass that branch to the response path.
+        if history_act == "TOPIC_RETURN" and recovery_mode == "interrupted_branch":
             return None
         if history_act == "TOPIC_RETURN" and str((parsed or {}).get("target") or "").strip():
             return None
@@ -1585,13 +1609,18 @@ class ConversationManager:
                     assistant = " ".join(str(item.get("assistant") or "").split())
                     if not user and not assistant:
                         continue
-                    line = f"- المستخدم: {user[:180]}"
+                    # Compact each exchange into its subject and recorded
+                    # takeaway; do not render a role-labelled transcript.
+                    line = f"- ناقشنا: {user[:130]}"
                     if assistant:
-                        line += f"؛ الوكيل: {assistant[:220]}"
+                        takeaway = assistant.split("。", 1)[0].split(". ", 1)[0].strip()
+                        if len(takeaway) > 160:
+                            takeaway = takeaway[:157].rstrip() + "..."
+                        line += f"؛ الخلاصة المسجلة: {takeaway}"
                     lines.append(line)
                 return {
                     **base,
-                    "text": "ملخص موثّق للحوار المسجّل:\n" + "\n".join(lines),
+                    "text": "ملخص موجز موثّق للحوار المسجّل:\n" + "\n".join(lines),
                     "dialogue_turns": branch[-6:],
                 }
 
