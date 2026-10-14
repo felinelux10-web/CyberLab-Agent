@@ -493,6 +493,23 @@ def classify_conversation_semantics(
             "conversational": True,
         }
 
+    # Interrupted-branch recovery is more specific than generic continuation.
+    # Classify it first so the recovery marker survives into routing and branch
+    # selection instead of being swallowed by the same-point continuation rule.
+    interrupted_discussion = (
+        _has_any(bases, {"استرجع", "استرجاع", "استعادة", "استرد", "واصل", "تابع", "اكمل", "استكمل", "نكمل"})
+        and _has_any(bases, {"نقاش", "حوار", "محادثه", "حديث", "موضوع", "جلسه"})
+        and _has_any(bases, {"انقطع", "توقفنا", "توقف", "انتقلنا", "اخر", "آخر", "نقطه", "نقطة", "واصل", "تابع"})
+    )
+    if interrupted_discussion:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "confidence": 0.97,
+            "response_attributes": {"dialogue_recovery": "interrupted_branch"},
+            "conversational": True,
+        }
+
     explicit_same_point_continuation = (
         _has_any(bases, {"نكمل", "اكمل", "استكمل", "تابع", "واصل", "نواصل"})
         and _has_any(bases, {"نقطه", "النقطه", "سياق"})
