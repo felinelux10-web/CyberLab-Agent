@@ -979,6 +979,24 @@ class ConversationManager:
 
         intent = parsed.get("intent") if parsed else None
         explicit_target = str((parsed or {}).get("target") or "").strip()
+
+        # An unnamed interrupted-dialogue recovery is a conversational
+        # continuation request. Keep its canonical restored intent/target for
+        # memory bookkeeping, but send the selected archived branch to the
+        # dialogue prompt instead of treating the recovery wording as a fresh
+        # executable explanation request.
+        recovery_mode = str(
+            ((parsed or {}).get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold()
+        if recovery_mode == "interrupted_branch":
+            return self._handle_chat(
+                text,
+                mode,
+                parsed=parsed,
+                user_question=user_question or text,
+                history=chat_history,
+            )
+
         if (
             intent in _NON_EXECUTABLE_INTENTS
             and context_transition in CONTEXTUAL_TRANSITIONS
