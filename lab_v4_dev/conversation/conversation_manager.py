@@ -575,11 +575,19 @@ class ConversationManager:
                     context_entity = get_active_context()
 
         style_request = is_style_act(candidate.get("conversation_act"))
+        recovery_mode = str(
+            (candidate.get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold()
+        unnamed_branch_return = (
+            str(candidate.get("conversation_act") or "").upper() == "TOPIC_RETURN"
+            and recovery_mode == "interrupted_branch"
+        )
         if (
             self.dialogue_memory
             and context_entity
             and transition.value in CONTEXTUAL_TRANSITIONS
             and not style_request
+            and not unnamed_branch_return
             and (
                 not candidate.get("target")
                 or str(candidate.get("entity_type", "")).upper()
