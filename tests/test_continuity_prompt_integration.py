@@ -239,23 +239,27 @@ def test_social_dialogue_is_saved_as_typed_memory_and_recalled_without_work_hist
         if turn.get("role") == "user"
     )
 
-def test_return_to_social_dialogue_does_not_ask_for_work_or_learning_context(monkeypatch):
+def test_return_to_social_dialogue_continues_saved_branch_without_work_context(monkeypatch):
     import lab_v4_dev.conversation.conversation_manager as manager_module
 
-    monkeypatch.setattr(
-        manager_module,
-        "gateway_ask",
-        lambda *_args, **_kwargs: {"status": "success", "text": "رد حواري"},
-    )
+    prompts = []
+
+    def fake_gateway(prompt, **_kwargs):
+        prompts.append(str(prompt))
+        return {"status": "success", "text": "رد حواري"}
+
+    monkeypatch.setattr(manager_module, "gateway_ask", fake_gateway)
     orchestrator = CapturingOrchestrator()
     memory = DialogueMemory(orchestrator.context)
     manager = ConversationManager(orchestrator, memory)
     manager.process("موضوع عام عن التقنية")
 
     result = manager.process("ارجع للنقاش السابق")
-    assert result["source"] == "dialogue_memory"
-    assert "سياق العمل" not in result["text"]
-    assert "موضوع عام عن التقنية" in result["text"]
+    assert result["status"] == "success"
+    assert "رد حواري" in result["text"]
+    assert prompts
+    assert "موضوع عام عن التقنية" in prompts[-1]
+    assert "آخر المهام" not in prompts[-1]
 
 
 def test_targetless_generic_suggestions_stay_on_conversation_gateway(monkeypatch):
