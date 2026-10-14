@@ -276,7 +276,15 @@ class DialogueMemory:
                 self._remember_context(previous_context)
             self.state.last_topic = topic
             entity_type = parsed.get("entity_type") or result.get("entity_type")
-            if not entity_type and turn_target:
+            if str(entity_type or "").upper() in {
+                "", "UNKNOWN", "REFERENCE", "ELABORATION",
+            } and turn_target:
+                restored_context = self.context_for_topic(str(turn_target))
+                if restored_context:
+                    entity_type = restored_context.get("entity_type")
+            if str(entity_type or "").upper() in {
+                "", "UNKNOWN", "REFERENCE", "ELABORATION",
+            } and turn_target:
                 try:
                     from lab_v4_dev.nlu.entity_extractor import extract
                     intent_value = getattr(turn_intent, "value", turn_intent)
