@@ -175,6 +175,19 @@ class DialogueMemory:
         )
         turn_confidence = parsed.get("confidence", result.get("confidence", 0.0))
         relation = getattr(context_transition, "value", context_transition)
+        resolved_intent_value = getattr(turn_intent, "value", turn_intent)
+        if (
+            relation == "restore"
+            and str(resolved_intent_value or "").casefold()
+            in {"personal_chat", "chat", "discussion", "question"}
+            and turn_target
+        ):
+            restored_context = self.context_for_topic(str(turn_target))
+            if isinstance(restored_context, dict) and restored_context.get("action"):
+                # A targetless return is routed as chat to avoid a fresh
+                # explanation, but state ownership must still reactivate the
+                # restored branch's original intent for the next continuation.
+                turn_intent = restored_context["action"]
         conversation_act = parsed.get("conversation_act")
         # A failed response must never be stored as an assistant answer or as
         # a resumable exchange. However, an explicit named branch switch is
