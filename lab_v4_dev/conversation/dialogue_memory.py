@@ -450,6 +450,64 @@ class DialogueMemory:
             "entity_type": entity_type,
         }
 
+    def interrupted_branch_exchanges(self) -> list[dict]:
+        """Select the archived dialogue branch immediately before the latest switch."""
+        state = self.state
+        session_id = str(getattr(state, "session_id", "") or "")
+        valid = [
+            dict(item) for item in (getattr(state, "exchange_archive", []) or [])
+            if isinstance(item, dict)
+            and str(item.get("session_id") or "") == session_id
+            and str(item.get("context_kind") or "").casefold() not in {"work", "system", "execution"}
+            and str(item.get("conversation_domain") or "").casefold() not in {"work", "system", "execution"}
+            and not any(marker in str(item.get("user") or "").casefold() for marker in (
+                "استرجع النقاش الذي انقطع", "استرجع الحوار الذي انقطع",
+                "recover the interrupted discussion",
+            ))
+        ]
+        if not valid:
+            return []
+
+        def boundary(item):
+            transition = str(item.get("context_transition") or "").casefold()
+            if transition in {"new_independent", "explicit_switch", "restore"}:
+                return transition
+            user = str(item.get("user") or "").casefold().replace("أ", "ا").replace("إ", "ا")
+            if any(marker in user for marker in (
+                "لنغير الموضوع", "نغير الموضوع", "غير الموضوع",
+                "ننتقل الى موضوع", "لننتقل الى موضوع", "change the topic",
+                "change the subject",
+            )):
+                return "explicit_switch"
+            if any(marker in user for marker in (
+                "مستقل عن الموضوع السابق", "موضوع جديد", "موضوع مختلف",
+                "independent topic", "new topic", "different topic",
+            )):
+                return "new_independent"
+            if any(marker in user for marker in (
+                "نرجع الى موضوع", "نرجع إلى موضوع", "ارجع الى موضوع",
+                "ارجع إلى موضوع", "back to ", "return to ",
+            )):
+                return "restore"
+            return ""
+
+        boundaries = [
+            (index, boundary(item)) for index, item in enumerate(valid)
+            if boundary(item) in {"new_independent", "explicit_switch", "restore"}
+        ]
+        if not boundaries:
+            return valid[-4:]
+        latest_index, latest_kind = boundaries[-1]
+        if latest_kind == "restore":
+            selected = valid[latest_index:]
+        elif len(boundaries) > 1:
+            selected = valid[boundaries[-2][0]:latest_index]
+        elif latest_index > 0:
+            selected = valid[:latest_index]
+        else:
+            selected = valid[-4:]
+        return selected[-4:]
+
     def previous_context_entity(self) -> dict | None:
         """Return the latest side-branch subject available for a topic return."""
         if not self.state.context_history:
