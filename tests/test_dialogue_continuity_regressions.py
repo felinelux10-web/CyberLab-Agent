@@ -707,7 +707,9 @@ def test_unnamed_topic_return_routes_selected_prior_branch_instead_of_dumping_ar
         },
     ]
 
-    result = manager.process("ارجع للنقاش السابق")
+    result = manager.process(
+        "استرجع النقاش الذي انقطع عندما انتقلنا إلى موضوع آخر، ثم واصل من آخر نقطة توقفنا عندها، دون أن أذكر اسم الموضوع أو ألخص ما قيل."
+    )
 
     assert result["status"] == "success"
     assert result.get("source") != "dialogue_memory"
