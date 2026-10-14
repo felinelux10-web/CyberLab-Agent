@@ -469,6 +469,49 @@ def classify_conversation_semantics(
     intent_value = str(intent_value or "").casefold()
     domain = _domain(raw, bases, str(target or ""), str(entity_type or ""))
 
+    # Resolve short dialogue-continuation and stopping-point requests before
+    # generic parser fallbacks. Bare confirmations remain acknowledgements;
+    # they become continuation only when the utterance itself says so.
+    normalized_phrase = " ".join(normalize_text(raw).split())
+    work_context_markers = {
+        "العمل", "ملف", "مهمه", "جلسه", "مشروع", "كود", "اختبار",
+        "تنفيذ", "work", "file", "task", "project", "code", "test",
+    }
+    asks_stopping_point = (
+        _has_any(bases, {"اين", "وين", "where"})
+        and _has_any(bases, {
+            "توقفنا", "توقف", "وصلنا", "وقفنا", "نقطه", "النقطه",
+        })
+        and not _has_any(bases, work_context_markers)
+    )
+    if asks_stopping_point:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.96,
+            "response_attributes": {"dialogue_response_mode": "summary"},
+            "conversational": True,
+        }
+
+    explicit_same_point_continuation = (
+        _has_any(bases, {"نكمل", "اكمل", "استكمل", "تابع", "واصل", "نواصل"})
+        and _has_any(bases, {"نقطه", "النقطه", "سياق"})
+        and _has_any(bases, {"نفس", "توقفنا", "توقف", "وصلنا"})
+        and not _has_any(bases, work_context_markers)
+    )
+    bare_dialogue_continuation = normalized_phrase in {
+        "اكمل", "كمل", "تابع", "واصل", "استكمل", "نكمل", "نواصل",
+        "اكمل الحوار", "اكمل النقاش", "تابع الحوار", "واصل الحديث",
+    }
+    if explicit_same_point_continuation or bare_dialogue_continuation:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "confidence": 0.94,
+            "response_attributes": {},
+            "conversational": True,
+        }
+
     # Resolve dialogue-history actions before broad intent fallbacks. A request
     # to summarize/refer to this conversation is not a project/session report.
     dialogue_markers = {
