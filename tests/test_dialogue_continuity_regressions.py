@@ -724,6 +724,11 @@ def test_unnamed_topic_return_routes_selected_prior_branch_instead_of_dumping_ar
     assert "توقفنا في SQL Injection عند آلية الحدوث" in prompt
     assert "بدأنا شرح CSRF من البداية" not in prompt
 
+    continued = manager.process("اكمل")
+    assert continued["status"] == "success"
+    assert "SQL Injection" in calls[-1][0]
+    assert "بدأنا شرح CSRF من البداية" not in calls[-1][0]
+
 
 def test_explicit_friendly_chat_in_arabic_does_not_inherit_technical_branch(monkeypatch):
     manager, memory, orchestrator, calls = _manager(monkeypatch)
