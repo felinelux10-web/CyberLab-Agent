@@ -557,7 +557,35 @@ class ConversationManager:
                     previous_context = archived_context
                     candidate = dict(candidate or {})
                     candidate["target"] = archived_target
-                    candidate["entity_type"] = archived_context.get("entity_type") or "CONCEPT"
+                    restored_entity_type = str(
+                        archived_context.get("entity_type") or "CONCEPT"
+                    ).upper()
+                    restored_action = str(
+                        archived_context.get("action") or ""
+                    ).casefold()
+                    candidate["entity_type"] = restored_entity_type
+
+                    # The semantic override initially labels a generic return
+                    # as personal_chat. Once interrupted-branch recovery has
+                    # resolved a concrete archived branch, restore that
+                    # branch's canonical action instead of dispatching the
+                    # recovery utterance as chat.
+                    if restored_action not in {
+                        "", "personal_chat", "chat", "discussion",
+                        "question", "unclear",
+                    }:
+                        candidate["intent"] = archived_context["action"]
+                    elif (
+                        restored_entity_type in {"CONCEPT", "COMPONENT", "FILE", "PROJECT"}
+                        and str(
+                            archived_context.get("conversation_domain") or
+                            ("technical" if restored_entity_type == "CONCEPT" else "")
+                        ).casefold() in {"technical", "project"}
+                    ):
+                        candidate["intent"] = Intent.CYBER_EXPLAIN
+
+                    if restored_entity_type in {"CONCEPT", "COMPONENT"}:
+                        candidate["conversation_domain"] = "technical"
             transition = (
                 ContextTransition.RESTORE
                 if branch_exchanges or (
