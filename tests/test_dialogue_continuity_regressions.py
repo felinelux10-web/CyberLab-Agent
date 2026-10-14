@@ -711,6 +711,7 @@ def test_unnamed_topic_return_routes_selected_prior_branch_instead_of_dumping_ar
 
     assert result["status"] == "success"
     assert result.get("source") != "dialogue_memory"
+    assert memory.state.last_topic == "SQL Injection"
     assert calls
     prompt = calls[-1][0]
     assert "SQL Injection" in prompt
