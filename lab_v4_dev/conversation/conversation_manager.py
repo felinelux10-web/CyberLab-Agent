@@ -2029,9 +2029,19 @@ class ConversationManager:
                     # A later explicit return reactivates the earlier branch.
                     # Continue from that restored branch, not the intervening one.
                     selected = valid[latest_boundary:]
-                else:
-                    previous_boundary = boundaries[-2][0] if len(boundaries) > 1 else 0
+                elif len(boundaries) > 1:
+                    previous_boundary = boundaries[-2][0]
                     selected = valid[previous_boundary:latest_boundary]
+                elif latest_boundary > 0:
+                    # A legacy archive may have one explicit boundary after
+                    # untagged earlier exchanges; those exchanges are the best
+                    # available candidate for the interrupted branch.
+                    selected = valid[:latest_boundary]
+                else:
+                    # With only one known branch there is no older branch to
+                    # distinguish. Fall back to that branch rather than return
+                    # an empty history and trigger a clarification loop.
+                    selected = valid[-4:]
             else:
                 # Legacy archives may lack transition metadata. Prefer the last
                 # few dialogue exchanges, excluding work and failed recovery turns.
