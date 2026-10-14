@@ -493,7 +493,17 @@ class ConversationManager:
             if raw_act == "TOPIC_RETURN" and self.dialogue_memory:
                 get_context = getattr(self.dialogue_memory, "context_for_topic", None)
                 restored = get_context(generic_topic) if callable(get_context) else None
-                if isinstance(restored, dict) and restored.get("action"):
+                restored_action = (
+                    str(restored.get("action") or "").casefold()
+                    if isinstance(restored, dict) else ""
+                )
+                # A saved branch can have a conversational placeholder action
+                # (personal_chat) even though the topic was introduced as a
+                # technical explanation. Never let that placeholder overwrite
+                # the canonical intent resolved from the explicit topic return.
+                if restored_action and restored_action not in {
+                    "personal_chat", "chat", "discussion", "question", "unclear",
+                }:
                     candidate["intent"] = restored["action"]
         transition = self._classify_context_transition(mode, candidate, text=user_input)
         if interrupted_recovery:
