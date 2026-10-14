@@ -413,6 +413,9 @@ class ConversationManager:
                 "source": "explicit_explanation_start",
             })
         raw_act = raw_signal.get("conversation_act")
+        interrupted_recovery = str(
+            (raw_signal.get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold() == "interrupted_branch"
         if raw_act in {
             "CONVERSATION_HISTORY_QUERY",
             "CONVERSATION_CONTINUATION",
@@ -463,7 +466,9 @@ class ConversationManager:
                     })
         generic_topic = (
             None
-            if raw_act == "CONVERSATION_HISTORY_QUERY" or explicit_casual_opening
+            if raw_act == "CONVERSATION_HISTORY_QUERY"
+            or explicit_casual_opening
+            or interrupted_recovery
             else self._resolve_generic_topic_reference(user_input)
         )
         if generic_topic:
@@ -484,6 +489,22 @@ class ConversationManager:
                 "conversation_confidence": 0.95,
             })
         transition = self._classify_context_transition(mode, candidate, text=user_input)
+        if interrupted_recovery:
+            # The wording describes a past topic switch, not a new switch now.
+            # Restore the archived side branch when its subject is known;
+            # otherwise keep the recovery request conversational and use the
+            # bounded branch-selection fallback below.
+            previous_context = (
+                self.dialogue_memory.previous_context_entity()
+                if self.dialogue_memory
+                and callable(getattr(self.dialogue_memory, "previous_context_entity", None))
+                else None
+            )
+            transition = (
+                ContextTransition.RESTORE
+                if isinstance(previous_context, dict) and previous_context.get("entity")
+                else ContextTransition.AMBIGUOUS
+            )
         if explicit_casual_opening and not explicit_explanation:
             # Social openings are independent turns: never attach the previous
             # technical entity or its prompt history to the semantic request.
@@ -491,7 +512,7 @@ class ConversationManager:
         # An explicit independent-topic marker overrides a parser-produced
         # compound/reference act. The old branch must not enter a new topic's
         # prompt or trigger privacy blocking because of stale content.
-        if (
+        if not interrupted_recovery and (
             self._is_explicit_independent_topic(user_input, candidate)
             or self._is_explicit_topic_switch(user_input)
         ):
@@ -578,10 +599,7 @@ class ConversationManager:
         recovery_mode = str(
             (candidate.get("response_attributes") or {}).get("dialogue_recovery", "")
         ).casefold()
-        unnamed_branch_return = (
-            str(candidate.get("conversation_act") or "").upper() == "TOPIC_RETURN"
-            and recovery_mode == "interrupted_branch"
-        )
+        unnamed_branch_return = recovery_mode == "interrupted_branch"
         if (
             self.dialogue_memory
             and context_entity
@@ -698,10 +716,7 @@ class ConversationManager:
             conversation_history_answer is None
             and self._dialogue_recall_requested(user_input, parsed)
             and not self._resolve_generic_topic_reference(user_input)
-            and not (
-                str(parsed.get("conversation_act") or "").upper() == "TOPIC_RETURN"
-                and recovery_mode == "interrupted_branch"
-            )
+            and recovery_mode != "interrupted_branch"
         ):
             conversation_history_answer = {
                 "status": "needs_clarification",
@@ -1301,7 +1316,7 @@ class ConversationManager:
         # An unnamed return is a routing instruction, not a request to print
         # the archive. Let the transition resolver select the interrupted
         # branch and pass that branch to the response path.
-        if history_act == "TOPIC_RETURN" and recovery_mode == "interrupted_branch":
+        if recovery_mode == "interrupted_branch":
             return None
         if history_act == "TOPIC_RETURN" and str((parsed or {}).get("target") or "").strip():
             return None
