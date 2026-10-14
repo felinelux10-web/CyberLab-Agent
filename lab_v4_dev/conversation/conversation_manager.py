@@ -1628,7 +1628,7 @@ class ConversationManager:
                     lines.append(line)
                 return {
                     **base,
-                    "text": "ملخص موجز موثّق للحوار المسجّل:\n" + "\n".join(lines),
+                    "text": "ملخص موثّق للحوار المسجّل:\n" + "\n".join(lines),
                     "dialogue_turns": branch[-6:],
                 }
 
