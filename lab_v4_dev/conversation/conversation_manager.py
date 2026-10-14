@@ -488,6 +488,13 @@ class ConversationManager:
                 ),
                 "conversation_confidence": 0.95,
             })
+            # Re-activate the restored branch's canonical action. Otherwise
+            # a prior semantic override can leave the return labelled as chat.
+            if raw_act == "TOPIC_RETURN" and self.dialogue_memory:
+                get_context = getattr(self.dialogue_memory, "context_for_topic", None)
+                restored = get_context(generic_topic) if callable(get_context) else None
+                if isinstance(restored, dict) and restored.get("action"):
+                    candidate["intent"] = restored["action"]
         transition = self._classify_context_transition(mode, candidate, text=user_input)
         if interrupted_recovery:
             # The wording describes a past topic switch, not a new switch now.
@@ -500,9 +507,52 @@ class ConversationManager:
                 and callable(getattr(self.dialogue_memory, "previous_context_entity", None))
                 else None
             )
+            branch_exchanges = (
+                self.dialogue_memory.interrupted_branch_exchanges()
+                if self.dialogue_memory
+                and callable(getattr(self.dialogue_memory, "interrupted_branch_exchanges", None))
+                else []
+            )
+            if branch_exchanges:
+                # Archive-only recovery must work even when the short visible
+                # turn window or context_history no longer contains the branch.
+                archived_target = next(
+                    (
+                        str(item.get("target") or "").strip()
+                        for item in reversed(branch_exchanges)
+                        if str(item.get("target") or "").strip()
+                    ),
+                    "",
+                )
+                if archived_target:
+                    get_context = getattr(self.dialogue_memory, "context_for_topic", None)
+                    archived_context = get_context(archived_target) if callable(get_context) else None
+                    if not isinstance(archived_context, dict):
+                        archived_exchange = next(
+                            (
+                                item for item in reversed(branch_exchanges)
+                                if str(item.get("target") or "").strip() == archived_target
+                            ),
+                            {},
+                        )
+                        archived_context = {
+                            "entity": archived_target,
+                            "action": str(archived_exchange.get("intent") or "cyber_explain"),
+                            "entity_type": (
+                                "CONCEPT"
+                                if str(archived_exchange.get("conversation_domain") or "").casefold() == "technical"
+                                else "UNKNOWN"
+                            ),
+                        }
+                    previous_context = archived_context
+                    candidate = dict(candidate or {})
+                    candidate["target"] = archived_target
+                    candidate["entity_type"] = archived_context.get("entity_type") or "CONCEPT"
             transition = (
                 ContextTransition.RESTORE
-                if isinstance(previous_context, dict) and previous_context.get("entity")
+                if branch_exchanges or (
+                    isinstance(previous_context, dict) and previous_context.get("entity")
+                )
                 else ContextTransition.AMBIGUOUS
             )
         if explicit_casual_opening and not explicit_explanation:
@@ -690,6 +740,26 @@ class ConversationManager:
             context_transition=transition,
             context_kind=self._context_kind(user_input, parsed, transition),
         )
+
+        # A generic return with no recoverable dialogue branch must fail
+        # closed instead of being treated as a successful chat response.
+        if raw_act == "TOPIC_RETURN" and not generic_topic and self.dialogue_memory:
+            state = getattr(self.dialogue_memory, "state", None)
+            has_dialogue = bool(
+                getattr(state, "history", [])
+                or getattr(state, "exchange_archive", [])
+                or getattr(state, "context_history", [])
+                or getattr(state, "last_topic", None)
+            )
+            if not has_dialogue:
+                return {
+                    "status": "needs_clarification",
+                    "intent": Intent.MEMORY_DUMP,
+                    "source": "dialogue_memory",
+                    "text": "لا يوجد موضوع سابق مسجل أستطيع الرجوع إليه في هذه الجلسة. اذكر الموضوع الذي تريد استعادته.",
+                    "executed": False,
+                    "semantic_request": semantic.as_dict(),
+                }
 
         local_social = self._local_social_answer(user_input, parsed)
         if local_social is not None:
