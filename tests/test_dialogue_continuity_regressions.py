@@ -649,3 +649,85 @@ def test_interrupted_dialogue_recovery_routes_previous_branch_to_chat_prompt(mon
     assert "بدأنا مناقشة الرسم" not in calls[0][0]
     assert orchestrator.calls == []
 
+
+
+
+def test_short_resume_and_stopping_point_phrases_are_classified_as_dialogue():
+    for text in ("اكمل", "تابع", "واصل"):
+        signal = classify_conversation_semantics(text)
+        assert signal["conversation_act"] == "CONVERSATION_CONTINUATION"
+
+    for text in (
+        "أكمل من نفس النقطة التي توقفنا فيها",
+        "نعم نكمل من نفس النقطة التي توقفنا فيها",
+    ):
+        signal = classify_conversation_semantics(text)
+        assert signal["conversation_act"] == "CONVERSATION_CONTINUATION"
+
+    for text in ("أين توقفنا", "اين وصلنا", "وين وقفنا"):
+        signal = classify_conversation_semantics(text)
+        assert signal["conversation_act"] == "CONVERSATION_HISTORY_QUERY"
+        assert signal["response_attributes"]["dialogue_response_mode"] == "summary"
+
+    # A bare confirmation is not itself a continuation instruction.
+    assert classify_conversation_semantics("نعم")["conversation_act"] != "CONVERSATION_CONTINUATION"
+
+
+def test_unnamed_topic_return_routes_selected_prior_branch_instead_of_dumping_archive(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    sid = memory.state.session_id
+    memory.state.last_topic = "CSRF"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.last_intent = "cyber_explain"
+    memory.state.context_history = [{
+        "entity": "SQL Injection",
+        "entity_type": "CONCEPT",
+        "action": "cyber_explain",
+    }]
+    memory.state.exchange_archive = [
+        {
+            "session_id": sid,
+            "user": "اشرح SQL Injection",
+            "assistant": "توقفنا في SQL Injection عند آلية الحدوث.",
+            "target": "SQL Injection",
+            "intent": "cyber_explain",
+            "conversation_domain": "technical",
+            "context_kind": "dialogue",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid,
+            "user": "اشرح CSRF",
+            "assistant": "بدأنا شرح CSRF من البداية.",
+            "target": "CSRF",
+            "intent": "cyber_explain",
+            "conversation_domain": "technical",
+            "context_kind": "dialogue",
+            "context_transition": "explicit_switch",
+        },
+    ]
+
+    result = manager.process("ارجع للنقاش السابق")
+
+    assert result["status"] == "success"
+    assert result.get("source") != "dialogue_memory"
+    assert calls
+    prompt = calls[-1][0]
+    assert "SQL Injection" in prompt
+    assert "توقفنا في SQL Injection عند آلية الحدوث" in prompt
+    assert "بدأنا شرح CSRF من البداية" not in prompt
+
+
+def test_explicit_friendly_chat_in_arabic_does_not_inherit_technical_branch(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    memory.state.last_topic = "CSRF"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.last_intent = "cyber_explain"
+
+    result = manager.process("نريد أن نتحدث فقط محادثة ودية")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_social"
+    assert "بعيدًا عن العمل والمهام" in result["text"]
+    assert "CSRF" not in result["text"]
+    assert orchestrator.calls == []
