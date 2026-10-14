@@ -167,7 +167,11 @@ class DialogueMemory:
         turn_target = (
             parsed.get("target")
             or result.get("target")
-            or semantic.get("target")
+            or (
+                semantic.get("target")
+                if getattr(context_transition, "value", context_transition) == "restore"
+                else None
+            )
         )
         turn_confidence = parsed.get("confidence", result.get("confidence", 0.0))
         relation = getattr(context_transition, "value", context_transition)
