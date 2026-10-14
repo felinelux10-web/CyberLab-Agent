@@ -160,7 +160,15 @@ class DialogueMemory:
         context_kind = semantic.get("context_kind", "unknown")
 
         turn_intent = parsed.get("intent") or result.get("intent")
-        turn_target = parsed.get("target") or result.get("target")
+        # The canonical semantic request may contain the topic authorized by a
+        # RESTORE transition even when the user did not name that topic again.
+        # Persist that resolved target rather than treating "return to the
+        # previous discussion" as a new topic or leaving the intervening branch active.
+        turn_target = (
+            parsed.get("target")
+            or result.get("target")
+            or semantic.get("target")
+        )
         turn_confidence = parsed.get("confidence", result.get("confidence", 0.0))
         relation = getattr(context_transition, "value", context_transition)
         conversation_act = parsed.get("conversation_act")
