@@ -183,6 +183,30 @@ class DialogueMemory:
             and turn_target
         ):
             restored_context = self.context_for_topic(str(turn_target))
+            if not isinstance(restored_context, dict):
+                # A compact archive may outlive context_history. Reconstruct
+                # only from a same-session exchange with the exact target.
+                session_id = str(getattr(self.state, "session_id", "") or "")
+                archived = next(
+                    (
+                        item for item in reversed(getattr(self.state, "exchange_archive", []) or [])
+                        if isinstance(item, dict)
+                        and str(item.get("session_id") or "") == session_id
+                        and str(item.get("target") or "").strip() == str(turn_target).strip()
+                        and str(item.get("intent") or "").strip()
+                    ),
+                    None,
+                )
+                if archived:
+                    restored_context = {
+                        "entity": str(turn_target),
+                        "action": str(archived.get("intent") or ""),
+                        "entity_type": (
+                            "CONCEPT"
+                            if str(archived.get("conversation_domain") or "").casefold() == "technical"
+                            else "UNKNOWN"
+                        ),
+                    }
             if isinstance(restored_context, dict) and restored_context.get("action"):
                 # A targetless return is routed as chat to avoid a fresh
                 # explanation, but state ownership must still reactivate the
