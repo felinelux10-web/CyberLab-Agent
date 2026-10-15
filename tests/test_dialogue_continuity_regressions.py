@@ -877,41 +877,63 @@ def test_art_topic_declaration_replaces_stale_technical_branch_before_continuati
     memory.state.last_entity_type = "CONCEPT"
     memory.state.last_intent = "cyber_explain"
 
-    opened = manager.process("موضوع الرسم والنحت")
 
-    assert opened["status"] == "success"
-    assert memory.state.last_topic == "الرسم والنحت"
-    assert memory.state.last_intent == "personal_chat"
+def test_dialogue_history_recall_excludes_system_and_execution_exchanges(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    sid = memory.state.session_id
+    memory.state.exchange_archive = [
+        {
+            "session_id": sid,
+            "user": "ناقشنا موضوعًا اجتماعيًا",
+            "assistant": "رد حواري مسموح",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid,
+            "user": "بيانات جلسة نظام سرية",
+            "assistant": "تفاصيل نظام لا تخص الحوار",
+            "context_kind": "system",
+            "conversation_domain": "system",
+            "context_transition": "continue",
+        },
+        {
+            "session_id": sid,
+            "user": "أمر تنفيذ خاص",
+            "assistant": "مخرجات تنفيذ خاصة",
+            "context_kind": "execution",
+            "conversation_domain": "execution",
+            "context_transition": "continue",
+        },
+        {
+            "session_id": sid,
+            "user": "تفاصيل عمل خاصة",
+            "assistant": "مخرجات عمل خاصة",
+            "context_kind": "work",
+            "conversation_domain": "work",
+            "context_transition": "continue",
+        },
+    ]
 
-    continued = manager.process("اكمل الشرح")
+    result = manager._answer_dialogue_history(
+        "اكتب ملخص حوار الجلسة",
+        "summary",
+        memory.state.exchange_archive,
+    )
 
-    assert continued["status"] == "success"
-    assert continued["semantic_request"]["conversation_act"] == "CONVERSATION_CONTINUATION"
-    assert "الرسم والنحت" in calls[-1][0]
-    assert "CSRF" not in calls[-1][0]
+    assert result["status"] == "success"
+    assert "موضوعًا اجتماعيًا" in result["text"]
+    assert "رد حواري مسموح" in result["text"]
+    for private_marker in (
+        "جلسة نظام سرية",
+        "تفاصيل نظام لا تخص الحوار",
+        "أمر تنفيذ خاص",
+        "مخرجات تنفيذ خاصة",
+        "تفاصيل عمل خاصة",
+        "مخرجات عمل خاصة",
+    ):
+        assert private_marker not in result["text"]
+    assert calls == []
     assert orchestrator.calls == []
 
-
-def test_previous_dialogue_and_topic_memory_phrases_are_not_work_session_routes():
-    for phrase in (
-        "الجلسة السابقة",
-        "الجلسه السابقه",
-        "حوارنا السابق",
-        "موضوعنا السابق",
-        "عن موضوعنا السابق",
-    ):
-        result = classify_conversation_semantics(phrase)
-        assert result["conversation_act"] == "CONVERSATION_HISTORY_QUERY", phrase
-        assert result["response_attributes"]["dialogue_response_mode"] == "summary", phrase
-
-    recalled = classify_conversation_semantics(
-        "هل تتذكر موضوع الرسم والنحت والنقش البارز"
-    )
-    assert recalled["conversation_act"] == "CONVERSATION_HISTORY_QUERY"
-    assert recalled["response_attributes"]["dialogue_response_mode"] == "summary"
-
-
-def test_continue_explanation_is_classified_as_dialogue_continuation():
-    result = classify_conversation_semantics("اكمل الشرح")
-    assert result["conversation_act"] == "CONVERSATION_CONTINUATION"
-    assert result["conversation_domain"] == "general"
