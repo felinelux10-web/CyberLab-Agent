@@ -743,3 +743,20 @@ def test_explicit_friendly_chat_in_arabic_does_not_inherit_technical_branch(monk
     assert "بعيدًا عن العمل والمهام" in result["text"]
     assert "CSRF" not in result["text"]
     assert orchestrator.calls == []
+
+def test_dialogue_recall_feature_discussion_is_not_routed_as_history_recall(monkeypatch):
+    phrases = (
+        "حاليا نحن نطور سياق الحوار",
+        "نعم تحسين طبقات الذاكرة واسترجاع الحوار بشكل صحيح وسليم",
+        "نريد تصحيح مسار الحوار واسترجاعه داخل الوكيل",
+    )
+    for phrase in phrases:
+        manager, memory, orchestrator, calls = _manager(monkeypatch)
+
+        assert not manager._dialogue_recall_requested(phrase, {})
+        result = manager.process(phrase)
+
+        assert result.get("status") != "needs_clarification", phrase
+        assert "لا أجد موضوعًا حواريًا واضحًا لاستعادته" not in result.get("text", ""), phrase
+        assert orchestrator.calls or calls, phrase
+
