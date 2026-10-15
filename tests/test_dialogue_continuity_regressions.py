@@ -255,6 +255,45 @@ def test_social_dialogue_never_exposes_technical_save_prompt(monkeypatch):
     assert "pending_confirmation" not in result
 
 
+def test_local_social_and_dialogue_recall_share_response_finalization(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+
+    class RecordingDNI:
+        def __init__(self):
+            self.analyses = []
+
+        def set_conversation_analysis(self, analysis):
+            self.analyses.append(dict(analysis))
+
+    dni = RecordingDNI()
+    manager.dni = dni
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.format_response",
+        lambda text, mode: f"FINALIZED::{text}",
+    )
+
+    social = manager.process(
+        "بغيت نهضر معاك على شي موضوع خفيف، كيفاش داز نهارك؟"
+    )
+
+    assert social["status"] == "success"
+    assert social["source"] == "local_social"
+    assert social["text"].startswith("FINALIZED::")
+    assert memory.state.history[-1]["role"] == "assistant"
+    assert memory.state.history[-1]["content"] == social["text"]
+    assert len(dni.analyses) == 1
+    assert dni.analyses[-1]["conversation_domain"] == "social"
+
+    recalled = manager.process("اكتب ملخص حوار الجلسة")
+
+    assert recalled["status"] == "success"
+    assert recalled["source"] == "dialogue_memory"
+    assert recalled["text"].startswith("FINALIZED::")
+    assert memory.state.history[-1]["content"] == recalled["text"]
+    assert len(dni.analyses) == 2
+    assert orchestrator.calls == []
+
+
 def test_restore_snapshot_drops_turns_and_exchanges_from_foreign_session():
     memory = DialogueMemory(object())
     restored = memory.restore_snapshot({
