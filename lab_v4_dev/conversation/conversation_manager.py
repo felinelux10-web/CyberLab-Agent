@@ -1255,6 +1255,22 @@ class ConversationManager:
         )):
             return False
 
+        # Meta-discussion about implementing or repairing the recall feature
+        # must never be treated as a request to recall a previous conversation.
+        discusses_feature = any(marker in normalized for marker in (
+            "نطور", "تطوير", "يطور", "تطويره", "تحسين", "نحسن",
+            "تصحيح", "نصحح", "اصلاح", "نصلح", "بناء", "نبني",
+            "تصميم", "نصمم", "فحص", "نفحص", "تحليل", "نحلل",
+            "اختبار", "نختبر", "مسار", "طبقات",
+        ))
+        feature_subject = any(marker in normalized for marker in (
+            "سياق الحوار", "سياق المحادث", "استرجاع الحوار",
+            "استرجاع المحادث", "طبقات الذاكره", "طبقات الذاكرة",
+            "مسار الحوار", "مسارات الحوار",
+        ))
+        if discusses_feature and feature_subject:
+            return False
+
         conversation_act = str(
             (parsed or {}).get("conversation_act") or ""
         ).upper()
