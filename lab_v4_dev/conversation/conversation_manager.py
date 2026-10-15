@@ -871,6 +871,9 @@ class ConversationManager:
         local_social = self._local_social_answer(user_input, parsed)
         if local_social is not None:
             local_social["semantic_request"] = semantic.as_dict()
+            local_social = self._finalize_local_dialogue_result(
+                local_social, mode, parsed, semantic
+            )
             if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
                 self.dialogue_memory.update(
                     user_input, local_social, mode=mode, parsed=parsed,
@@ -919,6 +922,9 @@ class ConversationManager:
         if conversation_history_answer is not None:
             result = conversation_history_answer
             result["semantic_request"] = semantic.as_dict()
+            result = self._finalize_local_dialogue_result(
+                result, mode, parsed, semantic
+            )
             if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
                 self.dialogue_memory.update(
                     user_input, result, mode=mode, parsed=parsed,
@@ -1017,6 +1023,45 @@ class ConversationManager:
                 context_transition=transition,
             )
 
+        return result
+
+    def _finalize_local_dialogue_result(
+        self,
+        result: dict,
+        mode: str,
+        parsed: dict,
+        semantic,
+    ) -> dict:
+        """Apply the shared presentation and analysis contract to local dialogue replies."""
+        result = dict(result)
+        if (
+            semantic.context_kind in {"social", "dialogue"}
+            or parsed.get("intent") == Intent.PERSONAL_CHAT
+        ):
+            result.pop("save_prompt", None)
+            result.pop("pending_save", None)
+            pending_confirmation = result.get("pending_confirmation")
+            if (
+                isinstance(pending_confirmation, dict)
+                and pending_confirmation.get("kind") == "save_kb"
+            ):
+                result.pop("pending_confirmation", None)
+
+        if result.get("text"):
+            result["text"] = format_response(result["text"], mode)
+
+        if self.dni:
+            self.dni.set_conversation_analysis({
+                "intent": result.get("intent"),
+                "mode": result.get("mode", mode),
+                "conversation_domain": semantic.conversation_domain,
+                "conversation_act": semantic.conversation_act,
+                "response_attributes": dict(semantic.response_attributes or {}),
+                "confidence": (
+                    parsed.get("confidence", 0.0)
+                    if parsed else 0.0
+                ),
+            })
         return result
 
     def _dispatch(
