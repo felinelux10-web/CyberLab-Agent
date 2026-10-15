@@ -519,6 +519,7 @@ def classify_conversation_semantics(
     bare_dialogue_continuation = normalized_phrase in {
         "اكمل", "كمل", "تابع", "واصل", "استكمل", "نكمل", "نواصل",
         "اكمل الحوار", "اكمل النقاش", "تابع الحوار", "واصل الحديث",
+        "اكمل الشرح", "كمل الشرح", "تابع الشرح", "واصل الشرح",
     }
     if explicit_same_point_continuation or bare_dialogue_continuation:
         return {
@@ -526,6 +527,37 @@ def classify_conversation_semantics(
             "conversation_act": "CONVERSATION_CONTINUATION",
             "confidence": 0.94,
             "response_attributes": {},
+            "conversational": True,
+        }
+
+    # Short references to the previous dialogue must not fall through to
+    # executable work-session routing. In ordinary chat, these refer to the
+    # dialogue history unless the user explicitly asks for a work/task report.
+    if normalized_phrase in {
+        "الجلسة السابقة", "الجلسه السابقه", "حوارنا السابق",
+        "موضوعنا السابق", "عن موضوعنا السابق", "الموضوع السابق",
+        "عن الموضوع السابق",
+    }:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.94,
+            "response_attributes": {"dialogue_response_mode": "summary"},
+            "conversational": True,
+        }
+
+    # A question about remembering a named discussion topic is a dialogue
+    # memory lookup even when the user does not repeat "we discussed it".
+    if (
+        _has_any(bases, {"تتذكر", "تذكر", "تذكرت", "نتذكر", "هلتتذكر"})
+        and _has_any(bases, {"موضوع", "حوار", "محادثه", "نقاش", "حديث", "كلام"})
+        and not _has_any(bases, {"العمل", "مهام", "مهمه", "ملف", "مشروع"})
+    ):
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.95,
+            "response_attributes": {"dialogue_response_mode": "summary"},
             "conversational": True,
         }
 
