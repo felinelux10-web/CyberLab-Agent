@@ -760,3 +760,72 @@ def test_dialogue_recall_feature_discussion_is_not_routed_as_history_recall(monk
         assert "لا أجد موضوعًا حواريًا واضحًا لاستعادته" not in result.get("text", ""), phrase
         assert orchestrator.calls or calls, phrase
 
+
+
+
+def test_contextual_yes_i_know_continues_dialogue_only_after_assistant_question(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    sid = memory.state.session_id
+    memory.state.exchange_archive = [{
+        "session_id": sid,
+        "user": "نحن نطور استمرارية الحوار",
+        "assistant": "وصلنا إلى فحص اختيار الفرع السابق بدل بدء موضوع جديد.",
+        "target": None,
+        "intent": "personal_chat",
+        "conversation_domain": "general",
+        "context_kind": "dialogue",
+        "context_transition": "continue",
+    }]
+    memory.state.add_turn(
+        role="assistant",
+        content="هل تريد أن نتابع فحص اختيار الفرع السابق؟",
+        context_kind="dialogue",
+        conversation_domain="general",
+        session_id=sid,
+    )
+
+    result = manager.process("نعم اعرف")
+
+    assert result["status"] == "success"
+    assert result["source"] == "llm"
+    assert result["semantic_request"]["conversation_act"] == "CONVERSATION_CONTINUATION"
+    assert "وصلنا إلى فحص اختيار الفرع السابق" in calls[-1][0]
+    assert "لا تبدأ شرحًا عامًا جديدًا" in calls[-1][1]["system"]
+    assert orchestrator.calls == []
+
+
+def test_bare_discussion_continuation_uses_selected_branch_and_continuation_prompt(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    sid = memory.state.session_id
+    memory.state.exchange_archive = [
+        {
+            "session_id": sid,
+            "user": "نحن نطور استمرارية الحوار",
+            "assistant": "آخر نقطة كانت منع استرجاع الحوار من سرقة مسار مناقشة التطوير.",
+            "target": None,
+            "intent": "personal_chat",
+            "conversation_domain": "general",
+            "context_kind": "dialogue",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid,
+            "user": "استكمل العمل في الملف secret.py",
+            "assistant": "تفاصيل عمل لا تدخل في الحوار العام.",
+            "target": "secret.py",
+            "intent": "modify_file",
+            "conversation_domain": "work",
+            "context_kind": "work",
+            "context_transition": "continue",
+        },
+    ]
+
+    result = manager.process("اكمل النقاش")
+
+    assert result["status"] == "success"
+    assert result["source"] == "llm"
+    assert result["semantic_request"]["conversation_act"] == "CONVERSATION_CONTINUATION"
+    assert "آخر نقطة كانت منع استرجاع الحوار" in calls[-1][0]
+    assert "secret.py" not in calls[-1][0]
+    assert "لا تبدأ شرحًا عامًا جديدًا" in calls[-1][1]["system"]
+    assert orchestrator.calls == []
