@@ -1248,21 +1248,43 @@ class ConversationManager:
 
     @staticmethod
     def _dialogue_recall_requested(text: str, parsed: dict | None = None) -> bool:
-        normalized = str(text or "").casefold()
+        """Recognize requests to retrieve past dialogue, not discussion of recall itself."""
+        normalized = ConversationManager._normalize_transition_text(text)
         if any(marker in normalized for marker in (
-            "سياق العمل", "آخر جلسة", "اخر جلسة", "المهام", "ملف العمل",
+            "سياق العمل", "اخر جلسه", "المهام", "ملف العمل",
         )):
             return False
-        if str((parsed or {}).get("conversation_act") or "").upper() == "CONVERSATION_HISTORY_QUERY":
+
+        conversation_act = str(
+            (parsed or {}).get("conversation_act") or ""
+        ).upper()
+        if conversation_act == "CONVERSATION_HISTORY_QUERY":
             return True
-        return any(marker in normalized for marker in (
-            "سياق الحوار", "سياق المحادث", "استرجاع الحوار", "استرجاع المحادث",
-            "ماذا كنا نقول", "قبل هذا الموضوع", "الموضوع السابق", "الحوار السابق",
-            "النقاش السابق", "الحديث السابق", "موضوعنا الاصلي", "موضوعنا الأصلي",
-            "ارجع الى الموضوع", "ارجع إلى الموضوع", "ارجع للحوار", "ارجع إلى الحوار",
-            "ارجع للنقاش", "ارجع إلى النقاش", "نكمل حوارنا",
-            "نكمل كلامنا", "استكمل الحوار", "استكمل كلامنا",
+
+        # Strong retrieval/retrospection cues are sufficient on their own.
+        # "سياق الحوار" by itself is not: users may be discussing how to improve
+        # dialogue-context handling in the agent, not asking to retrieve a chat.
+        strong_recall_markers = (
+            "استرجع الحوار", "استرجاع الحوار", "استرجع المحادث", "استرجاع المحادث",
+            "ماذا كنا نقول", "ماذا كنا نتحدث", "قبل هذا الموضوع",
+            "الموضوع السابق", "الحوار السابق", "النقاش السابق", "الحديث السابق",
+            "موضوعنا الاصلي", "ارجع الى الموضوع", "ارجع للحوار", "ارجع الى الحوار",
+            "ارجع للنقاش", "ارجع الى النقاش", "اين توقفنا", "ما اخر موضوع",
+            "ما اخر نقاش", "ما اخر حوار", "لخص الحوار", "ملخص الحوار",
+        )
+        if any(marker in normalized for marker in strong_recall_markers):
+            return True
+
+        # A generic mention of dialogue context becomes retrieval only when it
+        # is paired with an explicit memory operation or a retrospective question.
+        mentions_dialogue_context = any(marker in normalized for marker in (
+            "سياق الحوار", "سياق المحادث", "سياق النقاش",
         ))
+        asks_to_retrieve = any(marker in normalized for marker in (
+            "استرجع", "استرجاع", "استعادة", "تذكر", "ماذا كنا", "ما كنا",
+            "اين كنا", "لخص", "ملخص", "راجع ما",
+        ))
+        return mentions_dialogue_context and asks_to_retrieve
 
     def _ambiguous_resume_without_domain(self, text: str, parsed: dict) -> bool:
         normalized = str(text or "").casefold().strip()
