@@ -1787,14 +1787,12 @@ class ConversationManager:
         current_session_id = str(getattr(state, "session_id", "") or "")
         relevant = [
             item for item in exchanges
-            if item.get("context_kind") != "work"
-            and item.get("conversation_domain") != "work"
+            if str(item.get("context_kind") or "").casefold()
+            not in {"work", "system", "execution"}
+            and str(item.get("conversation_domain") or "").casefold()
+            not in {"work", "system", "execution"}
             and (
                 not current_session_id
-                or (
-                    not str(item.get("session_id") or "").strip()
-                    and item.get("context_kind") == "execution"
-                )
                 or str(item.get("session_id") or "") == current_session_id
             )
         ][-8:]
@@ -2543,47 +2541,3 @@ class ConversationManager:
                     if isinstance(result, dict)
                     else None
                 ),
-                "provider_chain": (
-                    result.get("provider_chain", [])
-                    if isinstance(result, dict)
-                    else []
-                ),
-                "model": (
-                    result.get("model")
-                    if isinstance(result, dict)
-                    else None
-                ),
-                "gateway_error": (
-                    result.get("error")
-                    if isinstance(result, dict)
-                    else None
-                ),
-                "error": str(e),
-                "executed": False,
-            }
-
-    def switch_topic(
-        self,
-        current_topic: str,
-        new_input: str,
-    ) -> dict:
-        if self.dialogue_memory:
-            self.dialogue_memory.save_pending(
-                current_topic
-            )
-
-        return self.process(new_input)
-
-    def restore_topic(self) -> dict:
-        if self.dialogue_memory:
-            topic = getattr(self.dialogue_memory, "pending_topic", None)
-            if topic:
-                result = dict(self.process(f"ارجع لشرح {topic}"))
-                result.setdefault("topic", topic)
-                return result
-
-        return {
-            "status": "success",
-            "intent": "topic_restore",
-            "text": "لا يوجد موضوع مؤجل.",
-        }
