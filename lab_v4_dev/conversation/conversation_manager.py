@@ -101,20 +101,62 @@ class ConversationManager:
 
     @staticmethod
     def _explicit_dialogue_topic(text: str) -> str | None:
-        """Extract the subject of an explicit 'let us discuss X' topic opening."""
+        """Extract the subject of an explicit independent dialogue opening."""
         import re
 
+        value = str(text or "").strip()
         match = re.match(
             r"^\s*(?:دعنا|خلينا|هيا|لن)\s+"
             r"(?:نتحدث|نتكلم|نناقش|نتحاور)\s+(?:عن|حول)\s+"
             r"(.+?)\s*[.!؟?،]*\s*$",
-            str(text or ""),
+            value,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            # A compact topic declaration ("موضوع الرسم والنحت") opens a
+            # dialogue branch; it is not merely a noun phrase to explain anew.
+            match = re.match(
+                r"^\s*(?:موضوع|فكرة)\s+(?!السابق\b|السابقه\b|الرئيسي\b|الرئيسيه\b)(.+?)\s*[.!؟?،]*\s*$",
+                value,
+                flags=re.IGNORECASE,
+            )
+        if not match:
+            return None
+        subject = match.group(1).strip(" \t\r\n.,،؛:!?؟")
+        subject = re.sub(r"^(?:مفهوم|موضوع|فكرة)\s+", "", subject).strip()
+        return subject or None
+
+    @staticmethod
+    def _explicit_explanation_topic(text: str) -> str | None:
+        """Extract an explicit explain/define request, not a resume reference."""
+        import re
+
+        value = str(text or "").strip()
+        if any(marker in value.casefold() for marker in (
+            "ارجع", "نرجع", "عد إلى", "عد الى", "اكمل", "أكمل",
+            "استكمل", "تابع", "واصل", "continue", "resume",
+        )):
+            return None
+        match = re.match(
+            r"^\s*(?:اشرح|شرح|وضح|عرّف|عرف|explain|describe)\s+"
+            r"(.+?)\s*[.!؟?،]*\s*$",
+            value,
             flags=re.IGNORECASE,
         )
         if not match:
             return None
         subject = match.group(1).strip(" \t\r\n.,،؛:!?؟")
-        subject = re.sub(r"^(?:مفهوم|موضوع|فكرة)\s+", "", subject).strip()
+        subject = re.split(
+            r"\s+(?=بالتفصيل|باختصار|بأسلوب(?:\s|$)|بصيغة(?:\s|$)|بشكل(?:\s|$)|أكاديمي(?:\s|$)|رسمي(?:\s|$)|ثم(?:\s|$)|وتوقف|توقف|و(?:\s|$))",
+            subject,
+            maxsplit=1,
+        )[0].strip()
+        # Short elaboration phrases are contextual references, not new topics.
+        if subject.casefold().strip() in {
+            "اكثر", "أكثر", "المزيد", "تفصيل اكثر", "تفصيل أكثر",
+            "مزيد من التفاصيل", "more", "more detail", "further",
+        }:
+            return None
         return subject or None
 
     def _pending_confirmation_intent(self, text: str):
@@ -153,7 +195,60 @@ class ConversationManager:
         if context is not None:
             context.current_file = None
 
+    @staticmethod
+    def _is_new_dialogue_session_request(text: str) -> bool:
+        """Recognize explicit natural-language requests to start an isolated dialogue."""
+        normalized = " ".join(
+            str(text or "").casefold()
+            .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+            .replace("ـ", "")
+            .strip(" .,،؛:!?؟'()[]{}")
+            .split()
+        )
+        exact = {
+            "جلسة جديدة", "جلسه جديده", "new session", "ابدأ جلسة جديدة",
+            "ابدا جلسه جديده", "ابدأ حوارا جديدا", "ابدا حوارا جديدا",
+            "بدء جلسة جديدة", "بدء حوار جديد",
+        }
+        if normalized in exact:
+            return True
+        explicit_starts = (
+            "اريد بدء جلسة حوار جديدة",
+            "اريد بدء جلسه حوار جديده",
+            "اريد بدء جلسة جديدة ومستقلة",
+            "اريد بدء حوار جديد ومستقل",
+            "ابدأ جلسة حوار جديدة",
+            "ابدا جلسه حوار جديده",
+            "انشئ جلسة حوار جديدة",
+            "انشئ جلسه حوار جديده",
+            "ابدأ جلسة جديدة ومستقلة",
+            "ابدا جلسه جديده ومستقله",
+        )
+        return any(normalized.startswith(prefix) for prefix in explicit_starts)
+
     def process(self, user_input: str) -> dict:
+        # Session boundaries take precedence over pending clarifications and all
+        # NLU/context resolution. A new dialogue must never inherit old state.
+        if self._is_new_dialogue_session_request(user_input):
+            reset = getattr(self.orchestrator, "reset_conversation_context", None)
+            if callable(reset):
+                reset()
+            else:
+                agent = getattr(self.orchestrator, "agent", None)
+                reset = getattr(agent, "reset_conversation_context", None)
+                if callable(reset):
+                    reset()
+            memory_reset = getattr(self.dialogue_memory, "reset", None)
+            if callable(memory_reset):
+                memory_reset()
+            return {
+                "status": "success",
+                "intent": Intent.RESTART,
+                "source": "conversation_manager",
+                "text": "بدأت جلسة حوار جديدة ومستقلة. لم أستعد سياق الجلسة السابقة.",
+                "executed": False,
+            }
+
         # Consume an existing project-list ordering clarification
         # before treating "1/2/3" as a new independent request.
         if self.dialogue_memory:
@@ -176,28 +271,6 @@ class ConversationManager:
                     user_input = f"{base_request} {order}".strip()
 
         mode = detect_mode(user_input)
-        if str(user_input or "").strip().casefold() in {"جلسة جديدة", "جلسه جديده", "new session"}:
-            reset = getattr(self.orchestrator, "reset_conversation_context", None)
-            if callable(reset):
-                reset()
-            else:
-                agent = getattr(self.orchestrator, "agent", None)
-                reset = getattr(agent, "reset_conversation_context", None)
-                if callable(reset):
-                    reset()
-            # Keep the dialogue owner authoritative even when the orchestrator
-            # has no runtime reset hook or a legacy hook only resets execution state.
-            memory_reset = getattr(self.dialogue_memory, "reset", None)
-            if callable(memory_reset):
-                memory_reset()
-            return {
-                "status": "success",
-                "intent": Intent.RESTART,
-                "source": "conversation_manager",
-                "text": "بدأت جلسة جديدة. لم يتم إنشاء أو حفظ أي كود تلقائيًا.",
-                "executed": False,
-            }
-
         # A direct stop request is a conversation control, not an executable
         # task. Do not send it through the parser fallback or Orchestrator.
         if self._is_explicit_stop_request(user_input):
@@ -227,6 +300,27 @@ class ConversationManager:
             if confirmation_intent is not None
             else self._safe_parse(user_input)
         )
+        normalized_command = " ".join(
+            str(user_input or "").casefold()
+            .replace("أ", "ا").replace("إ", "ا")
+            .strip(" \t\r\n.,،؛:!?؟")
+            .split()
+        )
+        if normalized_command in {
+            "تحقق", "تحقق اولا", "تحقق من فضلك", "تحقق اولا من فضلك",
+            "verify", "verify first",
+        } and not str(candidate.get("target") or "").strip():
+            return {
+                "status": "needs_clarification",
+                "intent": Intent.VERIFY_FIX,
+                "source": "conversation_manager",
+                "text": (
+                    "ما الذي تريدني أن أتحقق منه تحديدًا؟ "
+                    "اذكر الإصلاح أو الاختبار أو المعلومة المقصودة."
+                ),
+                "executed": False,
+            }
+
         if confirmation_intent is None and self._is_bare_confirmation(user_input):
             # A bare yes/no without a pending operation is dialogue, not a new
             # executable intent and not a reason to overwrite the active topic.
@@ -259,6 +353,67 @@ class ConversationManager:
         # or continuation turn must not be hijacked by HISTORY/CONTEXT_REPORT/
         # RESUME parser fallbacks before DialogueMemory sees it.
         raw_signal = classify_conversation_semantics(user_input)
+
+        # A contextual acknowledgement such as "نعم أعرف" is not a new
+        # executable request. Interpret it as continuation only when the latest
+        # same-session assistant turn was itself asking a dialogue question.
+        # This keeps the phrase context-sensitive instead of making it a global
+        # continuation keyword.
+        normalized_ack = self._normalize_transition_text(user_input).strip(
+            " .,،؛:!?؟"
+        )
+        if (
+            normalized_ack in {"نعم اعرف", "اي اعرف", "اعرف", "نعم اعلم", "اي اعلم"}
+            and self.dialogue_memory
+        ):
+            state = getattr(self.dialogue_memory, "state", None)
+            session_id = str(getattr(state, "session_id", "") or "")
+            recent_assistant = next(
+                (
+                    turn for turn in reversed(getattr(state, "history", []) or [])
+                    if isinstance(turn, dict)
+                    and turn.get("role") == "assistant"
+                    and (
+                        not session_id
+                        or str(turn.get("session_id") or "") == session_id
+                    )
+                    and str(turn.get("context_kind") or "").casefold()
+                    not in {"work", "system", "execution"}
+                ),
+                None,
+            )
+            prior_question = str(
+                (recent_assistant or {}).get("content") or ""
+            ).casefold()
+            is_dialogue_question = bool(recent_assistant) and any(
+                marker in prior_question
+                for marker in (
+                    "؟", "?", "هل", "تقصد", "اختر", "ما رأيك",
+                    "شنو رأيك", "أي موضوع", "اي موضوع",
+                )
+            )
+            if is_dialogue_question:
+                raw_signal = dict(raw_signal or {})
+                raw_signal.update({
+                    "conversation_domain": "general",
+                    "conversation_act": "CONVERSATION_CONTINUATION",
+                    "confidence": 0.90,
+                    "response_attributes": {},
+                    "conversational": True,
+                })
+                candidate = dict(candidate or {})
+                candidate.update({
+                    "intent": Intent.PERSONAL_CHAT,
+                    "target": "",
+                    "entity_type": "REFERENCE",
+                    "conversation_domain": "general",
+                    "conversation_act": "CONVERSATION_CONTINUATION",
+                    "conversation_confidence": 0.90,
+                    "response_attributes": {},
+                    "semantic_pattern": "CONTEXTUAL_DIALOGUE_ACKNOWLEDGEMENT",
+                    "source": "contextual_dialogue_acknowledgement",
+                })
+
         explicit_topic = self._explicit_dialogue_topic(user_input)
         if explicit_topic:
             # Explicit topic openings create a dialogue branch even if the LLM
@@ -268,18 +423,73 @@ class ConversationManager:
                 "intent": Intent.PERSONAL_CHAT,
                 "target": explicit_topic,
                 "entity_type": "CONCEPT",
-                "conversation_domain": "technical",
+                "conversation_domain": raw_signal.get("conversation_domain", "general"),
                 "conversation_act": "SOCIAL_OPENING",
                 "conversation_confidence": 0.95,
                 "semantic_pattern": "EXPLICIT_DIALOGUE_TOPIC",
                 "source": "explicit_dialogue_topic",
             })
+        explicit_explanation = self._explicit_explanation_topic(user_input)
+        normalized_social_text = str(user_input or "").casefold()
+        explicit_casual_opening = any(marker in normalized_social_text for marker in (
+            "بغيت نهضر معاك", "بغيت نهضر", "موضوع خفيف", "كيفاش داز نهارك",
+            "كيف داز نهارك", "كيف كان نهارك", "كيف قضيت يومك", "خلينا نهضرو",
+            "نهدرو شوية", "نهضر معاك شوية", "حوار ودي", "حوار عادي",
+            "محادثة ودية", "محادثه وديه", "دردشة ودية", "دردشه وديه",
+            "نريد أن نتحدث فقط", "نريد ان نتحدث فقط", "دردشة فقط",
+        ))
+        if explicit_casual_opening and not explicit_explanation:
+            # An explicit casual opener is independent of a previously active
+            # technical branch; do not inherit its target or prompt history.
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": "",
+                "entity_type": "REFERENCE",
+                "conversation_domain": "social",
+                "conversation_act": "CASUAL_CONVERSATION",
+                "conversation_confidence": 0.98,
+                "response_attributes": {},
+                "semantic_pattern": "EXPLICIT_CASUAL_OPENING",
+                "source": "explicit_casual_opening",
+            })
+        if explicit_explanation:
+            # An explicit explain request is a fresh answer request, not an
+            # implicit continuation merely because the sentence contains
+            # "نقطة" or persisted dialogue state names the same topic.
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.CYBER_EXPLAIN,
+                "target": explicit_explanation,
+                "entity_type": "CONCEPT",
+                "conversation_domain": "technical",
+                "conversation_act": (
+                    raw_signal.get("conversation_act")
+                    if is_style_act(raw_signal.get("conversation_act"))
+                    else "NONE"
+                ),
+                "conversation_confidence": (
+                    raw_signal.get("confidence", 0.0)
+                    if is_style_act(raw_signal.get("conversation_act"))
+                    else 0.95
+                ),
+                "response_attributes": (
+                    dict(raw_signal.get("response_attributes") or {})
+                    if is_style_act(raw_signal.get("conversation_act"))
+                    else {}
+                ),
+                "semantic_pattern": "EXPLICIT_EXPLANATION_START",
+                "source": "explicit_explanation_start",
+            })
         raw_act = raw_signal.get("conversation_act")
+        interrupted_recovery = str(
+            (raw_signal.get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold() == "interrupted_branch"
         if raw_act in {
             "CONVERSATION_HISTORY_QUERY",
             "CONVERSATION_CONTINUATION",
             "TOPIC_RETURN",
-        }:
+        } and not explicit_explanation and not explicit_casual_opening:
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.PERSONAL_CHAT,
@@ -295,6 +505,10 @@ class ConversationManager:
             if (
                 raw_act == "CONVERSATION_CONTINUATION"
                 and self.dialogue_memory
+                and not (
+                    (raw_signal.get("response_attributes") or {}).get("dialogue_recovery")
+                    == "interrupted_branch"
+                )
             ):
                 active_context = self.dialogue_memory.active_context_entity()
                 if isinstance(active_context, dict) and active_context.get("entity"):
@@ -322,6 +536,8 @@ class ConversationManager:
         generic_topic = (
             None
             if raw_act == "CONVERSATION_HISTORY_QUERY"
+            or explicit_casual_opening
+            or interrupted_recovery
             else self._resolve_generic_topic_reference(user_input)
         )
         if generic_topic:
@@ -341,12 +557,130 @@ class ConversationManager:
                 ),
                 "conversation_confidence": 0.95,
             })
-        transition = self._classify_context_transition(mode, candidate)
+            # Re-activate the restored branch's canonical action. Otherwise
+            # a prior semantic override can leave the return labelled as chat.
+            if raw_act == "TOPIC_RETURN" and self.dialogue_memory:
+                get_context = getattr(self.dialogue_memory, "context_for_topic", None)
+                restored = get_context(generic_topic) if callable(get_context) else None
+                restored_action = (
+                    str(restored.get("action") or "").casefold()
+                    if isinstance(restored, dict) else ""
+                )
+                # A saved branch can have a conversational placeholder action
+                # (personal_chat) even though the topic was introduced as a
+                # technical explanation. Never let that placeholder overwrite
+                # the canonical intent resolved from the explicit topic return.
+                if restored_action and restored_action not in {
+                    "personal_chat", "chat", "discussion", "question", "unclear",
+                }:
+                    candidate["intent"] = restored["action"]
+        transition = self._classify_context_transition(mode, candidate, text=user_input)
+        if interrupted_recovery:
+            # The wording describes a past topic switch, not a new switch now.
+            # Restore the archived side branch when its subject is known;
+            # otherwise keep the recovery request conversational and use the
+            # bounded branch-selection fallback below.
+            previous_context = (
+                self.dialogue_memory.previous_context_entity()
+                if self.dialogue_memory
+                and callable(getattr(self.dialogue_memory, "previous_context_entity", None))
+                else None
+            )
+            branch_exchanges = (
+                self.dialogue_memory.interrupted_branch_exchanges()
+                if self.dialogue_memory
+                and callable(getattr(self.dialogue_memory, "interrupted_branch_exchanges", None))
+                else []
+            )
+            if branch_exchanges:
+                # Archive-only recovery must work even when the short visible
+                # turn window or context_history no longer contains the branch.
+                archived_target = next(
+                    (
+                        str(item.get("target") or "").strip()
+                        for item in reversed(branch_exchanges)
+                        if str(item.get("target") or "").strip()
+                    ),
+                    "",
+                )
+                if archived_target:
+                    get_context = getattr(self.dialogue_memory, "context_for_topic", None)
+                    archived_context = get_context(archived_target) if callable(get_context) else None
+                    if not isinstance(archived_context, dict):
+                        archived_exchange = next(
+                            (
+                                item for item in reversed(branch_exchanges)
+                                if str(item.get("target") or "").strip() == archived_target
+                            ),
+                            {},
+                        )
+                        archived_context = {
+                            "entity": archived_target,
+                            "action": str(archived_exchange.get("intent") or "cyber_explain"),
+                            "entity_type": (
+                                "CONCEPT"
+                                if str(archived_exchange.get("conversation_domain") or "").casefold() == "technical"
+                                else "UNKNOWN"
+                            ),
+                        }
+                    previous_context = archived_context
+                    candidate = dict(candidate or {})
+                    candidate["target"] = archived_target
+                    restored_entity_type = str(
+                        archived_context.get("entity_type") or "CONCEPT"
+                    ).upper()
+                    restored_action = str(
+                        archived_context.get("action") or ""
+                    ).casefold()
+                    candidate["entity_type"] = restored_entity_type
+
+                    # The semantic override initially labels a generic return
+                    # as personal_chat. Once interrupted-branch recovery has
+                    # resolved a concrete archived branch, restore that
+                    # branch's canonical action instead of dispatching the
+                    # recovery utterance as chat.
+                    if restored_action not in {
+                        "", "personal_chat", "chat", "discussion",
+                        "question", "unclear",
+                    }:
+                        candidate["intent"] = archived_context["action"]
+                    elif (
+                        restored_entity_type in {"CONCEPT", "COMPONENT", "FILE", "PROJECT"}
+                        and str(
+                            archived_context.get("conversation_domain") or
+                            ("technical" if restored_entity_type == "CONCEPT" else "")
+                        ).casefold() in {"technical", "project"}
+                    ):
+                        candidate["intent"] = Intent.CYBER_EXPLAIN
+
+                    if restored_entity_type in {"CONCEPT", "COMPONENT"}:
+                        candidate["conversation_domain"] = "technical"
+            transition = (
+                ContextTransition.RESTORE
+                if branch_exchanges or (
+                    isinstance(previous_context, dict) and previous_context.get("entity")
+                )
+                else ContextTransition.AMBIGUOUS
+            )
+        if explicit_casual_opening and not explicit_explanation:
+            # Social openings are independent turns: never attach the previous
+            # technical entity or its prompt history to the semantic request.
+            transition = ContextTransition.NEW_INDEPENDENT
         # An explicit independent-topic marker overrides a parser-produced
         # compound/reference act. The old branch must not enter a new topic's
         # prompt or trigger privacy blocking because of stale content.
-        if self._is_explicit_independent_topic(user_input, candidate):
-            transition = ContextTransition.NEW_INDEPENDENT
+        if not interrupted_recovery and (
+            self._is_explicit_independent_topic(user_input, candidate)
+            or self._is_explicit_topic_switch(user_input)
+        ):
+            # Independent-topic intent and explicit topic-switch wording are
+            # separate signals. An active branch alone must not turn every
+            # independent request into EXPLICIT_SWITCH.
+            transition = (
+                ContextTransition.EXPLICIT_SWITCH
+                if self._is_explicit_topic_switch(user_input)
+                else ContextTransition.NEW_INDEPENDENT
+            )
             # The legacy context resolver may have already inherited the old
             # target before the transition marker was evaluated. Recover the
             # explicit subject after "اشرح/عن/حول" for the new branch.
@@ -369,6 +703,14 @@ class ConversationManager:
                     candidate["intent"] = Intent.CYBER_EXPLAIN
                     candidate["entity_type"] = "CONCEPT"
                     candidate["conversation_domain"] = "technical"
+            else:
+                # Do not carry an inherited target into a new subjectless topic.
+                candidate = dict(candidate or {})
+                candidate["target"] = ""
+                candidate["entity_type"] = "UNKNOWN"
+                if not explicit_explanation:
+                    candidate["intent"] = Intent.PERSONAL_CHAT
+                    candidate["conversation_domain"] = "social"
         if selected_session.get("kind") != "none":
             candidate = dict(candidate or {})
             candidate.update({
@@ -411,11 +753,16 @@ class ConversationManager:
                     context_entity = get_active_context()
 
         style_request = is_style_act(candidate.get("conversation_act"))
+        recovery_mode = str(
+            (candidate.get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold()
+        unnamed_branch_return = recovery_mode == "interrupted_branch"
         if (
             self.dialogue_memory
             and context_entity
             and transition.value in CONTEXTUAL_TRANSITIONS
             and not style_request
+            and not unnamed_branch_return
             and (
                 not candidate.get("target")
                 or str(candidate.get("entity_type", "")).upper()
@@ -426,6 +773,15 @@ class ConversationManager:
                 user_input,
                 context_entity=context_entity,
             )
+            # ELABORATION is an explicit contextual follow-up. If the resolver
+            # leaves it unchanged, make the authorized reference explicit before
+            # the second canonical parse (without doing this for ambiguous turns).
+            if (
+                resolved_input == user_input
+                and str(parsed.get("entity_type") or "").upper() == "ELABORATION"
+                and context_entity.get("entity")
+            ):
+                resolved_input = f"{context_entity['entity']} {user_input}".strip()
             if resolved_input != user_input:
                 parsed = self._safe_parse(
                     resolved_input,
@@ -492,6 +848,26 @@ class ConversationManager:
             context_kind=self._context_kind(user_input, parsed, transition),
         )
 
+        # A generic return with no recoverable dialogue branch must fail
+        # closed instead of being treated as a successful chat response.
+        if raw_act == "TOPIC_RETURN" and not generic_topic and self.dialogue_memory:
+            state = getattr(self.dialogue_memory, "state", None)
+            has_dialogue = bool(
+                getattr(state, "history", [])
+                or getattr(state, "exchange_archive", [])
+                or getattr(state, "context_history", [])
+                or getattr(state, "last_topic", None)
+            )
+            if not has_dialogue:
+                return {
+                    "status": "needs_clarification",
+                    "intent": Intent.MEMORY_DUMP,
+                    "source": "dialogue_memory",
+                    "text": "لا يوجد موضوع سابق مسجل أستطيع الرجوع إليه في هذه الجلسة. اذكر الموضوع الذي تريد استعادته.",
+                    "executed": False,
+                    "semantic_request": semantic.as_dict(),
+                }
+
         local_social = self._local_social_answer(user_input, parsed)
         if local_social is not None:
             local_social["semantic_request"] = semantic.as_dict()
@@ -510,10 +886,14 @@ class ConversationManager:
             if generic_topic
             else self._conversation_history_answer(user_input, parsed)
         )
+        recovery_mode = str(
+            (parsed.get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold()
         if (
             conversation_history_answer is None
             and self._dialogue_recall_requested(user_input, parsed)
             and not self._resolve_generic_topic_reference(user_input)
+            and recovery_mode != "interrupted_branch"
         ):
             conversation_history_answer = {
                 "status": "needs_clarification",
@@ -585,6 +965,22 @@ class ConversationManager:
         result = dict(result)
         result["semantic_request"] = semantic.as_dict()
 
+        # Saving an explanation is only offered for an actual technical
+        # explanation response. Never leak a knowledge-save prompt into casual
+        # chat, dialogue recall, or other non-executable conversation turns.
+        if (
+            semantic.context_kind in {"social", "dialogue"}
+            or parsed.get("intent") == Intent.PERSONAL_CHAT
+        ):
+            result.pop("save_prompt", None)
+            result.pop("pending_save", None)
+            pending_confirmation = result.get("pending_confirmation")
+            if (
+                isinstance(pending_confirmation, dict)
+                and pending_confirmation.get("kind") == "save_kb"
+            ):
+                result.pop("pending_confirmation", None)
+
         # ----------------------------------------------------
         # Presentation layer only.
         # ----------------------------------------------------
@@ -652,6 +1048,24 @@ class ConversationManager:
 
         intent = parsed.get("intent") if parsed else None
         explicit_target = str((parsed or {}).get("target") or "").strip()
+
+        # An unnamed interrupted-dialogue recovery is a conversational
+        # continuation request. Keep its canonical restored intent/target for
+        # memory bookkeeping, but send the selected archived branch to the
+        # dialogue prompt instead of treating the recovery wording as a fresh
+        # executable explanation request.
+        recovery_mode = str(
+            ((parsed or {}).get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold()
+        if recovery_mode == "interrupted_branch":
+            return self._handle_chat(
+                text,
+                mode,
+                parsed=parsed,
+                user_question=user_question or text,
+                history=chat_history,
+            )
+
         if (
             intent in _NON_EXECUTABLE_INTENTS
             and context_transition in CONTEXTUAL_TRANSITIONS
@@ -807,14 +1221,37 @@ class ConversationManager:
             return {}
 
     @staticmethod
-    def _is_explicit_independent_topic(text: str, parsed: dict) -> bool:
-        # An explicit transition marker is authoritative even when target parsing
-        # fails; requiring a target here can leak the previous branch into the
-        # new prompt and cause the privacy gate to reject unrelated content.
-        normalized = str(text or "").casefold()
+    def _normalize_transition_text(text: str) -> str:
+        return " ".join(
+            str(text or "").casefold()
+            .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+            .replace("ئ", "ي").replace("ؤ", "و")
+            .replace("ـ", "")
+            .split()
+        )
+
+    @classmethod
+    def _is_explicit_topic_switch(cls, text: str) -> bool:
+        # Only direct switch/change wording qualifies; the existence of an
+        # active topic or a generic "independent" marker is not enough.
+        normalized = cls._normalize_transition_text(text)
         return any(marker in normalized for marker in (
-            "مستقل", "موضوع جديد", "موضوعًا جديدًا", "موضوعا جديدا",
-            "independent topic", "new topic",
+            "لنغير الموضوع", "نغير الموضوع", "غير الموضوع",
+            "ننتقل الى موضوع", "لننتقل الى موضوع",
+            "لنغير المجال", "نغير المجال",
+            "let's change the subject", "change the topic",
+        ))
+
+    @classmethod
+    def _is_explicit_independent_topic(cls, text: str, parsed: dict) -> bool:
+        # An independent-topic marker is authoritative even when target parsing
+        # fails; requiring a target can leak the previous branch into the new
+        # prompt and cause the privacy gate to reject unrelated content.
+        normalized = cls._normalize_transition_text(text)
+        return any(marker in normalized for marker in (
+            "مستقل", "موضوع جديد", "موضوعا جديدا", "موضوعًا جديدًا",
+            "موضوع اخر", "مجال اخر", "موضوع مختلف", "نقاش مختلف", "شيء اخر",
+            "independent topic", "new topic", "another field", "different topic",
         ))
 
     def _resolve_generic_topic_reference(self, text: str) -> str | None:
@@ -880,21 +1317,59 @@ class ConversationManager:
 
     @staticmethod
     def _dialogue_recall_requested(text: str, parsed: dict | None = None) -> bool:
-        normalized = str(text or "").casefold()
+        """Recognize requests to retrieve past dialogue, not discussion of recall itself."""
+        normalized = ConversationManager._normalize_transition_text(text)
         if any(marker in normalized for marker in (
-            "سياق العمل", "آخر جلسة", "اخر جلسة", "المهام", "ملف العمل",
+            "سياق العمل", "اخر جلسه", "المهام", "ملف العمل",
         )):
             return False
-        if str((parsed or {}).get("conversation_act") or "").upper() == "CONVERSATION_HISTORY_QUERY":
-            return True
-        return any(marker in normalized for marker in (
-            "سياق الحوار", "سياق المحادث", "استرجاع الحوار", "استرجاع المحادث",
-            "ماذا كنا نقول", "قبل هذا الموضوع", "الموضوع السابق", "الحوار السابق",
-            "النقاش السابق", "الحديث السابق", "موضوعنا الاصلي", "موضوعنا الأصلي",
-            "ارجع الى الموضوع", "ارجع إلى الموضوع", "ارجع للحوار", "ارجع إلى الحوار",
-            "ارجع للنقاش", "ارجع إلى النقاش", "نكمل حوارنا",
-            "نكمل كلامنا", "استكمل الحوار", "استكمل كلامنا",
+
+        # Meta-discussion about implementing or repairing the recall feature
+        # must never be treated as a request to recall a previous conversation.
+        discusses_feature = any(marker in normalized for marker in (
+            "نطور", "تطوير", "يطور", "تطويره", "تحسين", "نحسن",
+            "تصحيح", "نصحح", "اصلاح", "نصلح", "بناء", "نبني",
+            "تصميم", "نصمم", "فحص", "نفحص", "تحليل", "نحلل",
+            "اختبار", "نختبر", "مسار", "طبقات",
         ))
+        feature_subject = any(marker in normalized for marker in (
+            "سياق الحوار", "سياق المحادث", "استرجاع الحوار",
+            "استرجاع المحادث", "طبقات الذاكره", "طبقات الذاكرة",
+            "مسار الحوار", "مسارات الحوار",
+        ))
+        if discusses_feature and feature_subject:
+            return False
+
+        conversation_act = str(
+            (parsed or {}).get("conversation_act") or ""
+        ).upper()
+        if conversation_act == "CONVERSATION_HISTORY_QUERY":
+            return True
+
+        # Strong retrieval/retrospection cues are sufficient on their own.
+        # "سياق الحوار" by itself is not: users may be discussing how to improve
+        # dialogue-context handling in the agent, not asking to retrieve a chat.
+        strong_recall_markers = (
+            "استرجع الحوار", "استرجاع الحوار", "استرجع المحادث", "استرجاع المحادث",
+            "ماذا كنا نقول", "ماذا كنا نتحدث", "قبل هذا الموضوع",
+            "الموضوع السابق", "الحوار السابق", "النقاش السابق", "الحديث السابق",
+            "موضوعنا الاصلي", "ارجع الى الموضوع", "ارجع للحوار", "ارجع الى الحوار",
+            "ارجع للنقاش", "ارجع الى النقاش", "اين توقفنا", "ما اخر موضوع",
+            "ما اخر نقاش", "ما اخر حوار", "لخص الحوار", "ملخص الحوار",
+        )
+        if any(marker in normalized for marker in strong_recall_markers):
+            return True
+
+        # A generic mention of dialogue context becomes retrieval only when it
+        # is paired with an explicit memory operation or a retrospective question.
+        mentions_dialogue_context = any(marker in normalized for marker in (
+            "سياق الحوار", "سياق المحادث", "سياق النقاش",
+        ))
+        asks_to_retrieve = any(marker in normalized for marker in (
+            "استرجع", "استرجاع", "استعادة", "تذكر", "ماذا كنا", "ما كنا",
+            "اين كنا", "لخص", "ملخص", "راجع ما",
+        ))
+        return mentions_dialogue_context and asks_to_retrieve
 
     def _ambiguous_resume_without_domain(self, text: str, parsed: dict) -> bool:
         normalized = str(text or "").casefold().strip()
@@ -993,15 +1468,57 @@ class ConversationManager:
             "اكمل", "أكمل", "استكمل", "نكمل", "ارجع", "استرجع",
         )):
             return None
+        suggestion_markers = (
+            "اقترح انت بعض المواضيع المثيرة", "اقترح أنت بعض المواضيع المثيرة",
+            "اقترح انت بعض المواضيع", "اقترح أنت بعض المواضيع",
+            "اقترح لي بعض المواضيع", "اقترح بعض المواضيع", "اقترح مواضيع",
+            "مواضيع مثيرة للنقاش", "مواضيع للنقاش", "موضوع للنقاش",
+            "انت اعطيني اقتراحات", "أنت أعطني اقتراحات", "اعطيني اقتراحات",
+            "اعطني اقتراحات", "اقترح موضوع", "اقترح شي موضوع", "اقترح موضوعا",
+            "انت اقترح شي موضوع", "نت قتارح شي موضوع", "عن اي موضوع قتارح نتا",
+            "عن اي موضوع تقترح انت", "اقترحات اخرى", "اقتراحات اخرى", "اقتراحات أخرى",
+            "اقتراحات اخرى في مجال اخر", "اقتراحات أخرى في مجال آخر",
+            "اريد اقتراحات اخرى في مجال اخر", "أريد اقتراحات أخرى في مجال آخر",
+            "موضوع الذي نتحدث فيه",
+        )
+        if any(marker in normalized for marker in suggestion_markers):
+            return {
+                "status": "success",
+                "intent": Intent.PERSONAL_CHAT,
+                "text": (
+                    "ها بعض المواضيع المثيرة للنقاش:\n"
+                    "1. واش الراحة كتجي من تحقيق الأهداف ولا من الاستمتاع بالطريق؟\n"
+                    "2. واش التكنولوجيا كتزيد إبداع الإنسان ولا كتخليه يعتمد عليها؟\n"
+                    "3. واش الفن يقدر يوصل أفكار ما تقدرش الكلمات توصلها؟ "
+                    "اختار واحد ونكملو فيه. شنو رأيك؟"
+                ),
+                "mode": "CHAT",
+                "source": "local_social",
+                "executed": False,
+            }
         social_markers = (
             "كيفك", "كيف الحال", "ماهو الحال", "حوار ودي", "حوار عادي",
+            "محادثة ودية", "محادثه وديه", "دردشة ودية", "دردشه وديه",
+            "نريد أن نتحدث فقط", "نريد ان نتحدث فقط", "دردشة فقط",
+            "بغيت نهضر معاك", "بغيت نهضر", "موضوع خفيف", "كيفاش داز نهارك",
+            "كيف داز نهارك", "كيف كان نهارك", "كيف قضيت يومك", "خلينا نهضرو",
+            "نهدرو شوية", "نهضر معاك شوية",
         )
         if not any(marker in normalized for marker in social_markers):
             return None
         if any(marker in normalized for marker in ("كيفك", "كيف الحال", "ماهو الحال")):
             reply = "أنا بخير، شكرًا لسؤالك. كيف حالك أنت؟"
+        elif any(marker in normalized for marker in ("كيفاش داز نهارك", "كيف داز نهارك")):
+            reply = "نهاري هادئ، وأنا هنا للدردشة معك. ونتا كيف داز نهارك؟"
+        elif "كيف كان نهارك" in normalized or "كيف قضيت يومك" in normalized:
+            reply = "كان يومي هادئًا، وأنا جاهز للدردشة. كيف كان يومك أنت؟"
+        elif any(marker in normalized for marker in (
+            "محادثة ودية", "محادثه وديه", "دردشة ودية", "دردشه وديه",
+            "نريد أن نتحدث فقط", "نريد ان نتحدث فقط", "دردشة فقط",
+        )):
+            reply = "حسنًا، لنتحدث بشكل ودي بعيدًا عن العمل والمهام. ما الذي يشغل بالك؟"
         else:
-            reply = "أكيد، يمكننا متابعة حوار ودي وبسيط. ما الموضوع الذي تود الحديث عنه؟"
+            reply = "أكيد، نهضرو على شي موضوع خفيف. شنو بغيتي تحكي ليا؟"
         return {
             "status": "success",
             "intent": Intent.PERSONAL_CHAT,
@@ -1015,6 +1532,25 @@ class ConversationManager:
         """Answer recent-dialogue questions from bounded dialogue memory only."""
         normalized = str(text or "").casefold()
         history_act = str((parsed or {}).get("conversation_act") or "").upper()
+        direct_suggestion = any(marker in normalized for marker in (
+            "اقترح انت", "اقترح أنت", "اقترح لي", "اقترح بعض", "اقترح مواضيع",
+            "اريد اقتراحات", "أريد اقتراحات", "اعطيني اقتراحات", "اعطني اقتراحات",
+            "اقتراحات اخرى", "اقتراحات أخرى", "اقترحات اخرى",
+        ))
+        historical_recall = any(marker in normalized for marker in (
+            "السابق", "سابقا", "سابقًا", "قبل", "تتذكر", "التي قدمتها",
+            "التي اقترحتها", "ماذا اقترحت", "ما اقترحت",
+        ))
+        if direct_suggestion and not historical_recall:
+            return None
+        recovery_mode = str(
+            ((parsed or {}).get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold()
+        # An unnamed return is a routing instruction, not a request to print
+        # the archive. Let the transition resolver select the interrupted
+        # branch and pass that branch to the response path.
+        if recovery_mode == "interrupted_branch":
+            return None
         if history_act == "TOPIC_RETURN" and str((parsed or {}).get("target") or "").strip():
             return None
         if history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"} and any(marker in normalized for marker in (
@@ -1030,9 +1566,28 @@ class ConversationManager:
         if history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"} and not any(marker in normalized for marker in markers):
             return None
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
-        history = getattr(state, "history", []) if state is not None else []
+        current_session_id = str(getattr(state, "session_id", "") or "")
+        history = [
+            turn for turn in (getattr(state, "history", []) if state is not None else [])
+            if isinstance(turn, dict)
+            and (
+                not current_session_id
+                or str(turn.get("session_id") or "") == current_session_id
+            )
+        ]
         exchanges = getattr(state, "exchange_archive", []) if state is not None else []
-        exchanges = [item for item in (exchanges or []) if isinstance(item, dict)]
+        exchanges = [
+            item for item in (exchanges or [])
+            if isinstance(item, dict)
+            and (
+                not current_session_id
+                or (
+                    not str(item.get("session_id") or "").strip()
+                    and item.get("context_kind") == "execution"
+                )
+                or str(item.get("session_id") or "") == current_session_id
+            )
+        ]
         response_mode = str(
             ((parsed or {}).get("response_attributes") or {}).get(
                 "dialogue_response_mode", ""
@@ -1051,11 +1606,16 @@ class ConversationManager:
             if target not in topics:
                 topics.append(target)
         if not topics:
-            dialogue_exchanges = [
+            dialogue_exchanges = self._latest_dialogue_branch([
                 item for item in exchanges
-                if item.get("context_kind") != "work"
-                and item.get("conversation_domain") != "work"
-            ][-6:]
+                if isinstance(item, dict)
+                and item.get("context_kind") not in {"work", "system"}
+                and item.get("conversation_domain") not in {"work", "system"}
+                and (
+                    not current_session_id
+                    or str(item.get("session_id") or "") == current_session_id
+                )
+            ])[-6:]
             if dialogue_exchanges:
                 return {
                     "status": "success", "intent": Intent.MEMORY_DUMP,
@@ -1107,6 +1667,70 @@ class ConversationManager:
             "executed": False,
         }
 
+    @staticmethod
+    def _latest_dialogue_branch(exchanges: list[dict]) -> list[dict]:
+        """Select the last substantive dialogue branch, ignoring recall/save commands."""
+        valid = [item for item in (exchanges or []) if isinstance(item, dict)]
+
+        def user_text(item: dict) -> str:
+            return str(item.get("user") or "").casefold().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+
+        def is_control_exchange(item: dict) -> bool:
+            user = " ".join(user_text(item).split())
+            transition = str(item.get("context_transition") or "").casefold()
+            kind = str(item.get("context_kind") or "").casefold()
+            domain = str(item.get("conversation_domain") or "").casefold()
+            if kind in {"work", "system", "execution"} or domain in {"work", "system", "execution"}:
+                return True
+            if user == "حفظ" or user.startswith("حفظ "):
+                return True
+            controls = (
+                "استرجع النقاش الذي انقطع",
+                "استرجاع الحوار",
+                "استرجع الحوار",
+                "ماذا كنا نقول",
+                "ماذا كنا نتحدث",
+                "استكمال الحوار",
+                "استكمال النقاش",
+                "استرجاتع الجلسة السابقة",
+                "استرجاع الجلسة السابقة",
+            )
+            return any(marker in user for marker in controls)
+
+        def inferred_boundary(item: dict) -> str:
+            transition = str(item.get("context_transition") or "").casefold()
+            if transition in {"new_independent", "explicit_switch", "restore"}:
+                return transition
+            user = " ".join(user_text(item).split())
+            if any(marker in user for marker in (
+                "لنغير الموضوع", "نغير الموضوع", "غير الموضوع",
+                "لنغير المجال", "نغير المجال", "ننتقل الى موضوع",
+                "لننتقل الى موضوع", "change the topic", "change the subject",
+            )):
+                return "explicit_switch"
+            if any(marker in user for marker in (
+                "نرجع الى موضوع", "نعود الى موضوع", "العودة الى موضوع",
+                "ارجع الى موضوع", "نرجع لموضوع", "نعود لموضوع",
+                "back to", "return to",
+            )):
+                return "restore"
+            return ""
+
+        substantive = [item for item in valid if not is_control_exchange(item)]
+        if not substantive:
+            return []
+
+        # A restored topic is a new active branch even when older archives recorded
+        # its transition as ambiguous. Ignore later recall/save commands so they
+        # cannot replace that branch as the apparent "latest topic".
+        for index in range(len(substantive) - 1, -1, -1):
+            if inferred_boundary(substantive[index]):
+                return substantive[index:]
+
+        # Legacy archives without transition markers: use the most recent
+        # contiguous dialogue segment rather than claiming the whole archive.
+        return substantive[-1:]
+
     def _answer_dialogue_history(
         self,
         text: str,
@@ -1114,10 +1738,20 @@ class ConversationManager:
         exchanges: list[dict],
     ) -> dict:
         """Answer a dialogue-history request without routing it as project work."""
+        state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
+        current_session_id = str(getattr(state, "session_id", "") or "")
         relevant = [
             item for item in exchanges
             if item.get("context_kind") != "work"
             and item.get("conversation_domain") != "work"
+            and (
+                not current_session_id
+                or (
+                    not str(item.get("session_id") or "").strip()
+                    and item.get("context_kind") == "execution"
+                )
+                or str(item.get("session_id") or "") == current_session_id
+            )
         ][-8:]
 
         base = {
@@ -1178,12 +1812,102 @@ class ConversationManager:
                 "المستخدم: " + str(item.get("user") or "").strip()
                 + "\nالوكيل: " + str(item.get("assistant") or "").strip()
             )
+        # History recall is a provenance-sensitive operation: do not ask an
+        # unconstrained language model to reconstruct events from a transcript.
+        # Render only the exact bounded exchanges present in DialogueMemory.
+        if response_mode == "answer":
+            query = str(text or "").casefold()
+            matched = [
+                item for item in relevant
+                if any(
+                    token and len(token) > 2
+                    and token in " ".join((
+                        str(item.get("target") or ""),
+                        str(item.get("user") or ""),
+                        str(item.get("assistant") or ""),
+                    )).casefold()
+                    for token in query.split()
+                )
+            ]
+            selected = matched[-3:]
+            if not selected:
+                return {
+                    **base,
+                    "status": "needs_clarification",
+                    "text": "لا أجد في سجل الحوار المحفوظ تفاصيل موثوقة عن هذا الموضوع؛ لن أخمّن.",
+                }
+            return {
+                **base,
+                "text": "بحسب سجل الحوار المحفوظ:\n"
+                + "\n".join(self._format_dialogue_exchanges(selected)),
+                "dialogue_turns": selected,
+            }
+
+        if response_mode == "summary":
+            # Requests explicitly asking what was said in previous replies need
+            # the recent recorded exchanges, not only the active branch. The
+            # branch-only view remains appropriate for a plain current-state
+            # summary, where mixing independent topics would be misleading.
+            normalized_query = str(text or "").casefold()
+            recall_recent_exchanges = any(marker in normalized_query for marker in (
+                "الردود السابقة", "الردود السابقه", "قبل قليل",
+                "ماذا كنا نقول", "ماذا قلنا", "ما كنا نقول",
+            ))
+            branch = (
+                relevant[-5:]
+                if recall_recent_exchanges
+                else self._latest_dialogue_branch(relevant)[-5:]
+            )
+            if recall_recent_exchanges:
+                lines = []
+                for item in branch:
+                    user = " ".join(str(item.get("user") or "").split())
+                    assistant = " ".join(str(item.get("assistant") or "").split())
+                    if not user and not assistant:
+                        continue
+                    # Compact each exchange into its subject and recorded
+                    # takeaway; do not render a role-labelled transcript.
+                    line = f"- ناقشنا: {user[:130]}"
+                    if assistant:
+                        takeaway = assistant.split("。", 1)[0].split(". ", 1)[0].strip()
+                        if len(takeaway) > 160:
+                            takeaway = takeaway[:157].rstrip() + "..."
+                        line += f"؛ الخلاصة المسجلة: {takeaway}"
+                    lines.append(line)
+                return {
+                    **base,
+                    "text": "ملخص موثّق للحوار المسجّل:\n" + "\n".join(lines),
+                    "dialogue_turns": branch[-6:],
+                }
+
+            last = branch[-1] if branch else {}
+            active_topic = str(
+                getattr(state, "last_topic", None)
+                or last.get("target")
+                or ""
+            ).strip()
+            summary_lines = []
+            if active_topic:
+                summary_lines.append(f"- الموضوع النشط: {active_topic}")
+            else:
+                summary_lines.append("- الموضوع النشط: حوار عام؛ لم يُسجّل له عنوان مستقل.")
+            user = " ".join(str(last.get("user") or "").split())
+            assistant = " ".join(str(last.get("assistant") or "").split())
+            if user:
+                excerpt = user[:180] + ("…" if len(user) > 180 else "")
+                summary_lines.append(f"- آخر رسالة واردة: {excerpt}")
+            if assistant:
+                excerpt = assistant[:220] + ("…" if len(assistant) > 220 else "")
+                summary_lines.append(f"- نقطة التوقف: {excerpt}")
+            return {
+                **base,
+                "text": "ملخص الحوار الحالي:\n" + "\n".join(summary_lines),
+                "dialogue_turns": branch,
+            }
+
         task = (
             "أجب عن طلب المستخدم الحالي بالاعتماد حصريًا على سجل الحوار المرفق.\n"
-            "إذا كان الطلب ملخصًا، فاكتب ملخصًا دلاليًا موجزًا من 3 إلى 6 نقاط، "
-            "ولا تنسخ الحوار ولا تسرد الرسائل واحدةً واحدة. اذكر الموضوعات الرئيسية، "
-            "ما طلبه المستخدم، وأي تصحيح مهم لسلوك الوكيل. لا تضف أحداثًا غير موجودة.\n"
-            "إذا كان سؤالًا مباشرًا عن الحوار، فأجب عنه مباشرة في جملة أو جملتين.\n\n"
+            "لا تضف أحداثًا غير موجودة.\n\n"
             f"طلب المستخدم الحالي: {text}\n\n"
             "سجل الحوار السابق:\n" + "\n\n".join(archive)
         )
@@ -1192,8 +1916,7 @@ class ConversationManager:
                 task,
                 system=(
                     "أنت تسترجع حوارًا سابقًا. التزم بالسجل فقط. "
-                    "لا تحوّل السؤال إلى شرح تقني، ولا تعرض سجلًا حرفيًا عندما يطلب المستخدم ملخصًا. "
-                    "أجب مباشرة وبالعربية."
+                    "لا تضف أحداثًا غير موجودة. أجب مباشرة وبالعربية."
                 ),
                 max_tokens=900,
                 temperature=0.2,
@@ -1201,15 +1924,6 @@ class ConversationManager:
             )
             answer = str((generated or {}).get("text") or "").strip()
             if (generated or {}).get("status") == "success" and answer:
-                # A direct history answer may identify the topic but omit the
-                # archived exchange that grounds the recall. Include the
-                # bounded source exchange for answer mode; summaries remain
-                # semantic and transcripts remain explicitly requested only.
-                if response_mode == "answer":
-                    exchange_text = "\\n\\nالتبادل المحفوظ ذو الصلة:\\n" + "\\n".join(
-                        self._format_dialogue_exchanges(relevant[-3:])
-                    )
-                    return {**base, "text": answer + exchange_text}
                 return {**base, "text": answer}
         except Exception:
             pass
@@ -1258,6 +1972,8 @@ class ConversationManager:
         self,
         mode: str,
         parsed: dict,
+        *,
+        text: str = "",
     ) -> ContextTransition:
         """Classify the current semantic subject against dialogue-owned state."""
         parsed = parsed or {}
@@ -1281,6 +1997,30 @@ class ConversationManager:
         )
 
         conversation_act = parsed.get("conversation_act")
+        normalized_request = str(text or "").casefold()
+        explicit_explain_markers = (
+            "اشرح", "شرح", "وضح", "عرّف", "عرف", "ما هو", "ماهي",
+            "حدثني عن", "دعنا نتحدث عن", "let's discuss", "explain",
+        )
+        explicit_resume_markers = (
+            "اكمل", "أكمل", "استكمل", "تابع", "واصل", "من نقطة التوقف",
+            "ارجع", "نرجع", "عد إلى", "عد الى", "continue", "resume",
+        )
+        starts_explicit_explanation = (
+            target
+            and any(marker in normalized_request for marker in explicit_explain_markers)
+            and not any(marker in normalized_request for marker in explicit_resume_markers)
+        )
+        if (
+            starts_explicit_explanation
+            and active_topic
+            and self._same_topic(target, active_topic)
+            and conversation_act != "TOPIC_RETURN"
+        ):
+            # "Explain X in detail" starts a fresh answer even if a persisted
+            # session happened to leave X as the active topic. Only explicit
+            # continuation/return language may resume the old stopping point.
+            return ContextTransition.EXPLICIT_SWITCH
         if parsed.get("semantic_pattern") == "GENERIC_TOPIC_REFERENCE":
             return (
                 ContextTransition.RESTORE
@@ -1290,6 +2030,16 @@ class ConversationManager:
         if intent in _AGENT_SELF_INTENTS:
             return ContextTransition.NEW_INDEPENDENT
         if conversation_act == "TOPIC_RETURN":
+            # A named return must resolve that exact topic. Never fall back to
+            # whichever branch happens to be last in context_history.
+            if target and self.dialogue_memory:
+                get_topic = getattr(self.dialogue_memory, "context_for_topic", None)
+                named_context = get_topic(target) if callable(get_topic) else None
+                if named_context:
+                    return ContextTransition.RESTORE
+                if active_topic and self._same_topic(target, active_topic):
+                    return ContextTransition.CONTINUE
+                return ContextTransition.AMBIGUOUS
             get_previous = getattr(
                 self.dialogue_memory,
                 "previous_context_entity",
@@ -1306,6 +2056,18 @@ class ConversationManager:
                 if active_topic else ContextTransition.AMBIGUOUS
             )
         if conversation_act == "CONVERSATION_CONTINUATION":
+            # A named, different subject is an explicit branch switch even if
+            # a semantic marker such as "نقطة" made the utterance look like a
+            # continuation. Prefer a matching archived branch when available.
+            if target and active_topic and not self._same_topic(target, active_topic):
+                get_topic = getattr(self.dialogue_memory, "context_for_topic", None) if self.dialogue_memory else None
+                named_context = get_topic(target) if callable(get_topic) else None
+                return (
+                    ContextTransition.RESTORE
+                    if named_context else ContextTransition.EXPLICIT_SWITCH
+                )
+            if target and not active_topic:
+                return ContextTransition.NEW_INDEPENDENT
             return (
                 ContextTransition.CONTINUE
                 if active_topic else ContextTransition.AMBIGUOUS
@@ -1428,12 +2190,98 @@ class ConversationManager:
         history = getattr(state, "history", []) if state is not None else []
         exchanges = getattr(state, "exchange_archive", []) if state is not None else []
 
+        current_session_id = str(getattr(state, "session_id", "") or "")
+
         def allowed(item):
             if not isinstance(item, dict):
                 return False
             kind = str(item.get("context_kind") or "").casefold()
             domain = str(item.get("conversation_domain") or "").casefold()
-            return kind not in {"work", "system"} and domain not in {"work", "system"}
+            item_session_id = str(item.get("session_id") or "")
+            # Fail closed when a session ID is available: untagged legacy turns
+            # cannot be proven to belong to this session.
+            same_session = (
+                not current_session_id
+                or item_session_id == current_session_id
+            )
+            return (
+                kind not in {"work", "system"}
+                and domain not in {"work", "system"}
+                and same_session
+            )
+
+        recovery_mode = str(
+            ((parsed or {}).get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold()
+        if recovery_mode == "interrupted_branch":
+            def is_recovery_request(item):
+                user_text = str(item.get("user") or "").casefold()
+                return (
+                    "استرجع النقاش الذي انقطع" in user_text
+                    or "استرجع الحوار الذي انقطع" in user_text
+                    or "recover the interrupted discussion" in user_text
+                )
+
+            valid = [
+                item for item in (exchanges or [])
+                if allowed(item) and not is_recovery_request(item)
+            ]
+
+            def effective_transition(item):
+                transition_value = str(
+                    item.get("context_transition") or ""
+                ).casefold()
+                if transition_value in {"new_independent", "explicit_switch", "restore"}:
+                    return transition_value
+                user_text = str(item.get("user") or "")
+                if self._is_explicit_topic_switch(user_text):
+                    return "explicit_switch"
+                if self._is_explicit_independent_topic(user_text, {}):
+                    return "new_independent"
+                normalized = user_text.casefold().replace("أ", "ا").replace("إ", "ا")
+                if any(marker in normalized for marker in (
+                    "نعود إلى", "نعود الى", "نرجع إلى", "نرجع الى",
+                    "عدنا إلى", "عدنا الى", "العودة إلى", "العودة الى",
+                    "لنعد إلى", "لنعد الى", "ارجع إلى", "ارجع الى",
+                    "الرجوع إلى", "الرجوع الى", "عودة إلى", "عودة الى",
+                    "back to ", "return to ",
+                )):
+                    return "restore"
+                return transition_value
+
+            boundaries = [
+                (index, effective_transition(item))
+                for index, item in enumerate(valid)
+                if effective_transition(item) in {
+                    "new_independent", "explicit_switch", "restore"
+                }
+            ]
+            if boundaries:
+                latest_boundary, latest_kind = boundaries[-1]
+                if latest_kind == "restore":
+                    # A later explicit return reactivates the earlier branch.
+                    # Continue from that restored branch, not the intervening one.
+                    selected = valid[latest_boundary:]
+                elif len(boundaries) > 1:
+                    previous_boundary = boundaries[-2][0]
+                    selected = valid[previous_boundary:latest_boundary]
+                elif latest_boundary > 0:
+                    # A legacy archive may have one explicit boundary after
+                    # untagged earlier exchanges; those exchanges are the best
+                    # available candidate for the interrupted branch.
+                    selected = valid[:latest_boundary]
+                else:
+                    # With only one known branch there is no older branch to
+                    # distinguish. Fall back to that branch rather than return
+                    # an empty history and trigger a clarification loop.
+                    selected = valid[-4:]
+            else:
+                # Legacy archives may lack transition metadata. Prefer the last
+                # few dialogue exchanges, excluding work and failed recovery turns.
+                selected = valid[-4:]
+            if selected:
+                return self._exchange_history_turns(selected[-4:])[-8:]
+            return []
 
         topic = None
         if transition in {ContextTransition.RESTORE, ContextTransition.EXPLICIT_SWITCH}:
@@ -1445,10 +2293,10 @@ class ConversationManager:
         if transition == ContextTransition.AMBIGUOUS and is_social_act(
             (parsed or {}).get("conversation_act")
         ):
-            selected = [
-                item for item in (exchanges or [])
-                if allowed(item) and not item.get("target")
-            ][-8:]
+            branch = self._latest_dialogue_branch([
+                item for item in (exchanges or []) if allowed(item)
+            ])
+            selected = [item for item in branch if not item.get("target")][-8:]
             if selected:
                 return self._exchange_history_turns(selected)[-8:]
             return [
@@ -1459,7 +2307,9 @@ class ConversationManager:
         if transition == ContextTransition.AMBIGUOUS and str(
             (parsed or {}).get("conversation_act") or ""
         ).upper() == "CONVERSATION_CONTINUATION":
-            selected = [item for item in (exchanges or []) if allowed(item)][-8:]
+            selected = self._latest_dialogue_branch(
+                [item for item in (exchanges or []) if allowed(item)]
+            )[-8:]
             if selected:
                 return self._exchange_history_turns(selected)[-8:]
             return [turn for turn in (history or []) if allowed(turn)][-8:]
@@ -1469,7 +2319,9 @@ class ConversationManager:
             # For an authorized continuation/return, use recent dialogue exchanges
             # rather than dropping context solely because no entity was extracted.
             if transition in CONTEXTUAL_TRANSITIONS:
-                selected = [item for item in (exchanges or []) if allowed(item)][-8:]
+                selected = self._latest_dialogue_branch(
+                    [item for item in (exchanges or []) if allowed(item)]
+                )[-8:]
                 if selected:
                     return self._exchange_history_turns(selected)[-8:]
                 return [turn for turn in (history or []) if allowed(turn)][-8:]

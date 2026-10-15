@@ -214,7 +214,7 @@ def test_social_dialogue_is_saved_as_typed_memory_and_recalled_without_work_hist
 
     def fake_gateway(prompt, **_kwargs):
         if "ماذا كنا نقول في الردود السابقة" in prompt:
-            return {"status": "success", "text": "ملخص موجز للحوار السابق"}
+            raise AssertionError("dialogue-history recall must use the grounded local archive")
         return {"status": "success", "text": "رد حواري"}
 
     monkeypatch.setattr(manager_module, "gateway_ask", fake_gateway)
@@ -229,9 +229,9 @@ def test_social_dialogue_is_saved_as_typed_memory_and_recalled_without_work_hist
     result = manager.process("ماذا كنا نقول في الردود السابقة؟")
     assert result["source"] == "dialogue_memory"
     assert result["dialogue_response_mode"] == "summary"
-    assert result["text"] == "ملخص موجز للحوار السابق"
-    assert "المستخدم:" not in result["text"]
-    assert "الوكيل:" not in result["text"]
+    assert "ماذا تقترح انت" in result["text"]
+    assert "موضوع عام عن التقنية" in result["text"]
+    assert "رد حواري" in result["text"]
     assert "آخر المهام" not in result["text"]
     assert all(
         turn.get("context_kind") in {"social", "dialogue"}
@@ -239,23 +239,27 @@ def test_social_dialogue_is_saved_as_typed_memory_and_recalled_without_work_hist
         if turn.get("role") == "user"
     )
 
-def test_return_to_social_dialogue_does_not_ask_for_work_or_learning_context(monkeypatch):
+def test_return_to_social_dialogue_continues_saved_branch_without_work_context(monkeypatch):
     import lab_v4_dev.conversation.conversation_manager as manager_module
 
-    monkeypatch.setattr(
-        manager_module,
-        "gateway_ask",
-        lambda *_args, **_kwargs: {"status": "success", "text": "رد حواري"},
-    )
+    prompts = []
+
+    def fake_gateway(prompt, **_kwargs):
+        prompts.append(str(prompt))
+        return {"status": "success", "text": "رد حواري"}
+
+    monkeypatch.setattr(manager_module, "gateway_ask", fake_gateway)
     orchestrator = CapturingOrchestrator()
     memory = DialogueMemory(orchestrator.context)
     manager = ConversationManager(orchestrator, memory)
     manager.process("موضوع عام عن التقنية")
 
     result = manager.process("ارجع للنقاش السابق")
-    assert result["source"] == "dialogue_memory"
-    assert "سياق العمل" not in result["text"]
-    assert "موضوع عام عن التقنية" in result["text"]
+    assert result["status"] == "success"
+    assert "رد حواري" in result["text"]
+    assert prompts
+    assert "موضوع عام عن التقنية" in prompts[-1]
+    assert "آخر المهام" not in prompts[-1]
 
 
 def test_targetless_generic_suggestions_stay_on_conversation_gateway(monkeypatch):
@@ -295,14 +299,19 @@ def test_dialogue_history_summary_is_bounded_and_survives_prompt_window(monkeypa
     manager.process("ماذا أيضًا؟")
     manager.process("أعطني اقتراحات أكثر")
 
+    def unexpected_gateway(*_args, **_kwargs):
+        raise AssertionError("summary recall must not call the language provider")
+
+    monkeypatch.setattr(manager_module, "gateway_ask", unexpected_gateway)
     result = manager.process("ماذا كنا نقول قبل قليل في الردود السابقة؟")
     assert result["source"] == "dialogue_memory"
     assert result["dialogue_response_mode"] == "summary"
-    assert result.get("summary_fallback") is True
     assert "اقتراح أول محدد" in result["text"]
     assert "اقتراح ثان محدد" in result["text"]
-    assert result["text"].startswith("ملخص موجز من سجل الحوار المتاح:")
+    assert "اقتراح ثالث محدد" in result["text"]
+    assert result["text"].startswith("ملخص موثّق للحوار المسجّل:")
     assert not result["text"].startswith("نص الحوار المسجل:")
+    assert len(result["dialogue_turns"]) <= 6
 
 def test_phase_continuation_stays_on_active_explanation_instead_of_session_restore():
     orchestrator = CapturingOrchestrator()

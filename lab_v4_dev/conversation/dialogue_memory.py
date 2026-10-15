@@ -7,6 +7,8 @@ Does not route, execute, call providers, or decide intent.
 
 from __future__ import annotations
 
+import uuid
+
 from lab_v4_dev.conversation.dialogue_contract import DialogueState
 from lab_v4_dev.conversation.semantic_contract import CONTEXTUAL_TRANSITIONS
 from lab_v4_dev.nlu.conversation_semantics import is_social_act, is_style_act
@@ -88,6 +90,7 @@ class DialogueMemory:
         if not isinstance(snapshot, dict):
             return False
         restored = DialogueState()
+        restored.session_id = str(snapshot.get("session_id") or uuid.uuid4().hex)
         for field in (
             "last_topic", "pending_topic", "last_mode", "last_intent",
             "last_target", "last_entity_type", "last_confidence",
@@ -96,8 +99,21 @@ class DialogueMemory:
         ):
             if field in snapshot:
                 setattr(restored, field, snapshot[field])
+        # Missing session IDs are untrusted legacy data. Never relabel them as
+        # belonging to the current session: that can import old technical turns.
+        restored.exchange_archive = [
+            dict(item)
+            for item in (restored.exchange_archive or [])
+            if isinstance(item, dict)
+            and str(item.get("session_id") or "") == restored.session_id
+        ][-32:]
         for turn in (snapshot.get("history") or [])[-8:]:
             if not isinstance(turn, dict) or not turn.get("role"):
+                continue
+            # A turn without an explicit session ID cannot safely be attributed
+            # to this session, even when it came from an older checkpoint.
+            turn_session_id = str(turn.get("session_id") or "")
+            if turn_session_id != restored.session_id:
                 continue
             restored.add_turn(
                 role=turn.get("role", ""),
@@ -109,6 +125,7 @@ class DialogueMemory:
                 conversation_domain=turn.get("conversation_domain", "general"),
                 conversation_act=turn.get("conversation_act", "NONE"),
                 context_kind=turn.get("context_kind", "unknown"),
+                session_id=turn.get("session_id") or restored.session_id,
             )
         self.state = restored
         return True
@@ -125,9 +142,11 @@ class DialogueMemory:
 
         if not isinstance(result, dict):
             return
-
-        # Record the user's branch even when a provider returns no answer.
-        # Failed replies are deliberately excluded from the assistant transcript.
+        provider_failed = (
+            str(result.get("status") or "").casefold()
+            in {"error", "failed", "failure", "provider_error"}
+            or bool(result.get("error"))
+        )
         parsed = parsed or {}
         previous_context = self.active_context_entity()
 
@@ -141,15 +160,74 @@ class DialogueMemory:
         context_kind = semantic.get("context_kind", "unknown")
 
         turn_intent = parsed.get("intent") or result.get("intent")
-        turn_target = parsed.get("target") or result.get("target")
+        # The canonical semantic request may contain the topic authorized by a
+        # RESTORE transition even when the user did not name that topic again.
+        # Persist that resolved target rather than treating "return to the
+        # previous discussion" as a new topic or leaving the intervening branch active.
+        turn_target = (
+            parsed.get("target")
+            or result.get("target")
+            or (
+                semantic.get("target")
+                if getattr(context_transition, "value", context_transition) == "restore"
+                else None
+            )
+        )
         turn_confidence = parsed.get("confidence", result.get("confidence", 0.0))
         relation = getattr(context_transition, "value", context_transition)
+        resolved_intent_value = getattr(turn_intent, "value", turn_intent)
+        if (
+            relation == "restore"
+            and str(resolved_intent_value or "").casefold()
+            in {"personal_chat", "chat", "discussion", "question"}
+            and turn_target
+        ):
+            restored_context = self.context_for_topic(str(turn_target))
+            if not isinstance(restored_context, dict):
+                # A compact archive may outlive context_history. Reconstruct
+                # only from a same-session exchange with the exact target.
+                session_id = str(getattr(self.state, "session_id", "") or "")
+                archived = next(
+                    (
+                        item for item in reversed(getattr(self.state, "exchange_archive", []) or [])
+                        if isinstance(item, dict)
+                        and str(item.get("session_id") or "") == session_id
+                        and str(item.get("target") or "").strip() == str(turn_target).strip()
+                        and str(item.get("intent") or "").strip()
+                    ),
+                    None,
+                )
+                if archived:
+                    restored_context = {
+                        "entity": str(turn_target),
+                        "action": str(archived.get("intent") or ""),
+                        "entity_type": (
+                            "CONCEPT"
+                            if str(archived.get("conversation_domain") or "").casefold() == "technical"
+                            else "UNKNOWN"
+                        ),
+                    }
+            if isinstance(restored_context, dict) and restored_context.get("action"):
+                # A targetless return is routed as chat to avoid a fresh
+                # explanation, but state ownership must still reactivate the
+                # restored branch's original intent for the next continuation.
+                turn_intent = restored_context["action"]
         conversation_act = parsed.get("conversation_act")
+        # A failed response must never be stored as an assistant answer or as
+        # a resumable exchange. However, an explicit named branch switch is
+        # still a valid user state transition; preserve that topic and user
+        # turn so the next "continue" resolves to the new branch. Keep generic
+        # failed chat turns out of dialogue history entirely.
+        if provider_failed and not (
+            turn_target
+            and relation in {"explicit_switch", "new_independent", "restore"}
+        ):
+            return
         # Keep one compact user/assistant exchange for recall. This survives
         # the shorter prompt transcript without making every old turn part of
         # an LLM request. Failed/provider-error responses are not resumable.
         if (
-            result.get("status") == "success"
+            result.get("status") in (None, "success")
             and result.get("text")
             and result.get("source") != "fallback"
             and not result.get("error")
@@ -162,8 +240,14 @@ class DialogueMemory:
                 "conversation_domain": conversation_domain,
                 "conversation_act": conversation_act or semantic.get("conversation_act", "NONE"),
                 "context_kind": context_kind,
+                "context_transition": relation,
+                "session_id": self.state.session_id,
             }
-            archive = list(getattr(self.state, "exchange_archive", []) or [])
+            archive = [
+                item for item in (getattr(self.state, "exchange_archive", []) or [])
+                if isinstance(item, dict)
+                and str(item.get("session_id") or self.state.session_id) == self.state.session_id
+            ]
             archive.append(exchange)
             self.state.exchange_archive = archive[-32:]
         short_confirmation = str(text or "").strip().casefold() in {
@@ -200,6 +284,20 @@ class DialogueMemory:
             or conversation_domain in {"general", "social", "agent_self"}
         ):
             topic = None
+
+        # An explicit independent conversational branch with no canonical entity
+        # must not leave the previous technical topic marked as active. Preserve
+        # that prior entity in history so an explicit return can still restore it.
+        if (
+            relation in {"new_independent", "explicit_switch"}
+            and not turn_target
+            and context_kind in {"dialogue", "social"}
+        ):
+            if previous_context:
+                self._remember_context(previous_context)
+            self.state.last_topic = None
+            self.state.last_entity_type = None
+
         if context_transition is None:
             # Compatibility for direct legacy callers; the main conversation
             # path always supplies its explicit transition decision.
@@ -219,7 +317,15 @@ class DialogueMemory:
                 self._remember_context(previous_context)
             self.state.last_topic = topic
             entity_type = parsed.get("entity_type") or result.get("entity_type")
-            if not entity_type and turn_target:
+            if str(entity_type or "").upper() in {
+                "", "UNKNOWN", "REFERENCE", "ELABORATION",
+            } and turn_target:
+                restored_context = self.context_for_topic(str(turn_target))
+                if restored_context:
+                    entity_type = restored_context.get("entity_type")
+            if str(entity_type or "").upper() in {
+                "", "UNKNOWN", "REFERENCE", "ELABORATION",
+            } and turn_target:
                 try:
                     from lab_v4_dev.nlu.entity_extractor import extract
                     intent_value = getattr(turn_intent, "value", turn_intent)
@@ -256,10 +362,11 @@ class DialogueMemory:
             conversation_domain=conversation_domain,
             conversation_act=conversation_act,
             context_kind=context_kind,
+            session_id=self.state.session_id,
         )
 
         if (
-            result.get("status") in {"success", "needs_clarification"}
+            result.get("status") in {None, "success", "needs_clarification"}
             and result.get("text")
             and result.get("source") != "fallback"
             and not result.get("error")
@@ -274,6 +381,7 @@ class DialogueMemory:
                 conversation_domain=conversation_domain,
                 conversation_act=conversation_act,
                 context_kind=context_kind,
+                session_id=self.state.session_id,
             )
 
         items = result.get("items") or result.get("files") or []
@@ -365,6 +473,64 @@ class DialogueMemory:
             "entity": topic,
             "entity_type": entity_type,
         }
+
+    def interrupted_branch_exchanges(self) -> list[dict]:
+        """Select the archived dialogue branch immediately before the latest switch."""
+        state = self.state
+        session_id = str(getattr(state, "session_id", "") or "")
+        valid = [
+            dict(item) for item in (getattr(state, "exchange_archive", []) or [])
+            if isinstance(item, dict)
+            and str(item.get("session_id") or "") == session_id
+            and str(item.get("context_kind") or "").casefold() not in {"work", "system", "execution"}
+            and str(item.get("conversation_domain") or "").casefold() not in {"work", "system", "execution"}
+            and not any(marker in str(item.get("user") or "").casefold() for marker in (
+                "استرجع النقاش الذي انقطع", "استرجع الحوار الذي انقطع",
+                "recover the interrupted discussion",
+            ))
+        ]
+        if not valid:
+            return []
+
+        def boundary(item):
+            transition = str(item.get("context_transition") or "").casefold()
+            if transition in {"new_independent", "explicit_switch", "restore"}:
+                return transition
+            user = str(item.get("user") or "").casefold().replace("أ", "ا").replace("إ", "ا")
+            if any(marker in user for marker in (
+                "لنغير الموضوع", "نغير الموضوع", "غير الموضوع",
+                "ننتقل الى موضوع", "لننتقل الى موضوع", "change the topic",
+                "change the subject",
+            )):
+                return "explicit_switch"
+            if any(marker in user for marker in (
+                "مستقل عن الموضوع السابق", "موضوع جديد", "موضوع مختلف",
+                "independent topic", "new topic", "different topic",
+            )):
+                return "new_independent"
+            if any(marker in user for marker in (
+                "نرجع الى موضوع", "نرجع إلى موضوع", "ارجع الى موضوع",
+                "ارجع إلى موضوع", "back to ", "return to ",
+            )):
+                return "restore"
+            return ""
+
+        boundaries = [
+            (index, boundary(item)) for index, item in enumerate(valid)
+            if boundary(item) in {"new_independent", "explicit_switch", "restore"}
+        ]
+        if not boundaries:
+            return valid[-4:]
+        latest_index, latest_kind = boundaries[-1]
+        if latest_kind == "restore":
+            selected = valid[latest_index:]
+        elif len(boundaries) > 1:
+            selected = valid[boundaries[-2][0]:latest_index]
+        elif latest_index > 0:
+            selected = valid[:latest_index]
+        else:
+            selected = valid[-4:]
+        return selected[-4:]
 
     def previous_context_entity(self) -> dict | None:
         """Return the latest side-branch subject available for a topic return."""

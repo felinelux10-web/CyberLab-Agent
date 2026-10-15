@@ -1516,15 +1516,23 @@ SOURCE CODE:
                 system=system,
                 max_tokens=2000
             )
-            answer = result.get("text","لم أتمكن من الإجابة")
-            if result.get("status") != "success":
-                # Provider/privacy diagnostics remain in the structured result;
-                # never expose prompts, redaction spans, or provider metadata
-                # through the normal conversation surface.
-                answer = (
-                    "تعذر إكمال الشرح حاليًا بسبب سياسة الخصوصية أو تعذر مزود "
-                    "اللغة. لم يتم إرسال البيانات المحمية إلى مزود خارجي."
-                )
+            answer = str(result.get("text") or "").strip()
+            if result.get("status") != "success" or not answer:
+                # Give a truthful high-level failure class without exposing
+                # prompts, redaction spans, secrets, or provider metadata.
+                error = result.get("error") or {}
+                error_code = str(
+                    error.get("code", "") if isinstance(error, dict) else error
+                ).upper()
+                if error_code.startswith("PRIVACY_") or error_code == "PRIVACY_EXTERNAL_BLOCKED":
+                    answer = (
+                        "أوقفت بوابة الخصوصية هذا الطلب قبل إرسال البيانات المحمية "
+                        "إلى مزود خارجي. يمكنك طرح السؤال بصياغة لا تتضمن تلك البيانات."
+                    )
+                elif error_code.startswith(("PROVIDER_", "LLM_", "NETWORK_")):
+                    answer = "تعذر الوصول إلى مزود اللغة. لم يُحفظ شرح جديد؛ يمكنك المحاولة لاحقًا."
+                else:
+                    answer = "تعذر إكمال الشرح بسبب خطأ داخلي. لم يُحفظ شرح جديد."
             # ─── حفظ الموضوع في السياق ───
             if result.get("status") == "success":
                 self.context.current_subject = raw
@@ -1533,12 +1541,17 @@ SOURCE CODE:
                 "intent"       : intent,
                 "source"       : get_active_provider(),
                 "text"         : answer,
-                "pending_save" : raw if result.get("status") == "success" else None,
+                "pending_save" : raw if result.get("status") == "success" and str(result.get("text") or "").strip() else None,
                 "pending_confirmation": (
                     {"kind": "save_kb", "topic": raw}
-                    if result.get("status") == "success" else None
+                    if result.get("status") == "success" and str(result.get("text") or "").strip() else None
                 ),
-                "save_prompt"  : "💾 هل تحفظ هذا الشرح في الذاكرة المحلية؟ (نعم / لا / تجاوز)",
+                # Never ask to save a response that was not successfully produced.
+                "save_prompt"  : (
+                    "💾 هل تحفظ هذا الشرح في الذاكرة المحلية؟ (نعم / لا / تجاوز)"
+                    if result.get("status") == "success" and str(result.get("text") or "").strip()
+                    else None
+                ),
             }
 
         # ─── Entry Point Query (v5.2.0 Project Reader) ───

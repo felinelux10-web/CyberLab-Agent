@@ -469,6 +469,98 @@ def classify_conversation_semantics(
     intent_value = str(intent_value or "").casefold()
     domain = _domain(raw, bases, str(target or ""), str(entity_type or ""))
 
+    # Resolve short dialogue-continuation and stopping-point requests before
+    # generic parser fallbacks. Bare confirmations remain acknowledgements;
+    # they become continuation only when the utterance itself says so.
+    normalized_phrase = " ".join(normalize_text(raw).split())
+    work_context_markers = {
+        "العمل", "ملف", "مهمه", "جلسه", "مشروع", "كود", "اختبار",
+        "تنفيذ", "work", "file", "task", "project", "code", "test",
+    }
+    asks_stopping_point = (
+        _has_any(bases, {"اين", "وين", "where"})
+        and _has_any(bases, {
+            "توقفنا", "توقف", "وصلنا", "وقفنا", "نقطه", "النقطه",
+        })
+        and not _has_any(bases, work_context_markers)
+    )
+    if asks_stopping_point:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.96,
+            "response_attributes": {"dialogue_response_mode": "summary"},
+            "conversational": True,
+        }
+
+    # Interrupted-branch recovery is more specific than generic continuation.
+    # Classify it first so the recovery marker survives into routing and branch
+    # selection instead of being swallowed by the same-point continuation rule.
+    interrupted_discussion = (
+        _has_any(bases, {"استرجع", "استرجاع", "استعادة", "استرد", "واصل", "تابع", "اكمل", "استكمل", "نكمل"})
+        and _has_any(bases, {"نقاش", "حوار", "محادثه", "حديث", "موضوع", "جلسه"})
+        and _has_any(bases, {"انقطع", "توقفنا", "توقف", "انتقلنا", "اخر", "آخر", "نقطه", "نقطة", "واصل", "تابع"})
+    )
+    if interrupted_discussion:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "confidence": 0.97,
+            "response_attributes": {"dialogue_recovery": "interrupted_branch"},
+            "conversational": True,
+        }
+
+    explicit_same_point_continuation = (
+        _has_any(bases, {"نكمل", "اكمل", "استكمل", "تابع", "واصل", "نواصل"})
+        and _has_any(bases, {"نقطه", "النقطه", "سياق"})
+        and _has_any(bases, {"نفس", "توقفنا", "توقف", "وصلنا"})
+        and not _has_any(bases, work_context_markers)
+    )
+    bare_dialogue_continuation = normalized_phrase in {
+        "اكمل", "كمل", "تابع", "واصل", "استكمل", "نكمل", "نواصل",
+        "اكمل الحوار", "اكمل النقاش", "تابع الحوار", "واصل الحديث",
+        "اكمل الشرح", "كمل الشرح", "تابع الشرح", "واصل الشرح",
+    }
+    if explicit_same_point_continuation or bare_dialogue_continuation:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "confidence": 0.94,
+            "response_attributes": {},
+            "conversational": True,
+        }
+
+    # Short references to the previous dialogue must not fall through to
+    # executable work-session routing. In ordinary chat, these refer to the
+    # dialogue history unless the user explicitly asks for a work/task report.
+    if normalized_phrase in {
+        "الجلسة السابقة", "الجلسه السابقه", "حوارنا السابق",
+        "موضوعنا السابق", "عن موضوعنا السابق", "الموضوع السابق",
+        "عن الموضوع السابق",
+    }:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.94,
+            "response_attributes": {"dialogue_response_mode": "summary"},
+            "conversational": True,
+        }
+
+    # A question about remembering a named discussion topic is a dialogue
+    # memory lookup even when the user does not repeat "we discussed it".
+    if (
+        _has_any(bases, {"تتذكر", "تذكر", "تذكرت", "نتذكر", "هلتتذكر"})
+        and _has_any(bases, {"موضوع", "حوار", "محادثه", "نقاش", "حديث", "كلام"})
+        and not _has_any(bases, {"العمل", "مهام", "مهمه", "ملف", "مشروع"})
+    ):
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.95,
+            "response_attributes": {"dialogue_response_mode": "summary"},
+            "conversational": True,
+        }
+
     # Resolve dialogue-history actions before broad intent fallbacks. A request
     # to summarize/refer to this conversation is not a project/session report.
     dialogue_markers = {
@@ -594,6 +686,39 @@ def classify_conversation_semantics(
     agent_signal = classify_agent_self_query(raw)
     if agent_signal and intent_value in _NON_EXECUTABLE_INTENTS:
         return agent_signal
+
+    # Natural-language requests to recover an interrupted discussion must be
+    # recognized before parser fallback. In particular, "استرجع النقاش الذي
+    # انقطع..." is a dialogue-memory operation, not a request to resume work.
+    interrupted_discussion = (
+        _has_any(bases, {"استرجع", "استرجاع", "استعادة", "استرد", "واصل", "تابع", "اكمل", "استكمل", "نكمل"})
+        and _has_any(bases, {"نقاش", "حوار", "محادثه", "حديث", "موضوع", "جلسه"})
+        and _has_any(bases, {"انقطع", "توقفنا", "توقف", "انتقلنا", "اخر", "آخر", "نقطه", "نقطة", "واصل", "تابع"})
+    )
+    if interrupted_discussion:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "confidence": 0.97,
+            "response_attributes": {"dialogue_recovery": "interrupted_branch"},
+            "conversational": True,
+        }
+
+    # "استرجع/ارجع إلى النقاش السابق" is a topic-return request even when
+    # the user cannot name the topic. Keep it distinct from work-session resume.
+    unnamed_topic_return = (
+        _has_any(bases, {"استرجع", "استرجاع", "استعادة", "ارجع", "نرجع", "عد", "عودة", "رجوع"})
+        and _has_any(bases, {"نقاش", "حوار", "محادثه", "حديث", "موضوع"})
+        and _has_any(bases, {"سابق", "سابقه", "انقطع", "توقف", "انتقلنا", "اخر", "آخر", "قبل"})
+    )
+    if unnamed_topic_return:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "TOPIC_RETURN",
+            "confidence": 0.96,
+            "response_attributes": {"dialogue_recovery": "interrupted_branch"},
+            "conversational": True,
+        }
 
     # A dialogue-history query is a relationship to the conversation, not a
     # HISTORY/CONTEXT_REPORT execution request. Require two semantic signals:

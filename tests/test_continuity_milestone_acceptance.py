@@ -252,3 +252,156 @@ def test_recall_question_without_saved_topic_is_honest_not_unsupported(monkeypat
     assert result["source"] == "dialogue_memory"
     assert "لا يوجد سجل حوار كافٍ" in result["text"]
     assert orchestrator.calls == []
+
+
+def test_explicit_explanation_starts_fresh_even_when_same_topic_is_stale(monkeypatch):
+    manager, memory, orchestrator = _manager(monkeypatch)
+    memory.state.last_topic = "SQL Injection"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.last_intent = "cyber_explain"
+
+    result = manager.process(
+        "اشرح SQL Injection بالتفصيل، وتوقف عند نقطة واضحة"
+    )
+
+    assert result["status"] == "success"
+    assert result["semantic_request"]["context_transition"] == "explicit_switch"
+    assert result["semantic_request"]["target"] == "SQL Injection"
+    assert orchestrator.calls[-1][1]["target"] == "SQL Injection"
+
+
+def test_dialogue_summary_is_grounded_and_does_not_call_provider(monkeypatch):
+    manager, _memory, _orchestrator = _manager(monkeypatch)
+
+    def forbidden_provider(*_args, **_kwargs):
+        raise AssertionError("history summary must not call the language provider")
+
+    monkeypatch.setattr(conversation_module, "gateway_ask", forbidden_provider)
+    exchanges = [{
+        "user": "اشرح SQL Injection",
+        "assistant": "توقفنا عند الفرق بين الاستعلام المباشر والاستعلام المعلّم.",
+        "target": "SQL Injection",
+        "intent": "cyber_explain",
+        "conversation_domain": "technical",
+        "conversation_act": "NONE",
+        "context_kind": "dialogue",
+    }]
+
+    result = manager._answer_dialogue_history(
+        "استرجع سياق الجلسة الحالية", "summary", exchanges
+    )
+
+    assert result["status"] == "success"
+    assert "SQL Injection" in result["text"]
+    assert "الاستعلام المعلّم" in result["text"]
+    assert "محاولة اختراق المشروع" not in result["text"]
+
+
+def test_topic_recall_uses_saved_exchange_without_provider(monkeypatch):
+    manager, _memory, _orchestrator = _manager(monkeypatch)
+
+    def forbidden_provider(*_args, **_kwargs):
+        raise AssertionError("topic recall must use the saved exchange")
+
+    monkeypatch.setattr(conversation_module, "gateway_ask", forbidden_provider)
+    exchanges = [{
+        "user": "تحدثنا عن فن النقش البارز في اللوحة.",
+        "assistant": "ناقشنا بروز الشكل والظلال وتباين الألوان.",
+        "target": "فن النقش البارز",
+        "intent": "personal_chat",
+        "conversation_domain": "general",
+        "conversation_act": "CASUAL_CONVERSATION",
+        "context_kind": "dialogue",
+    }]
+
+    result = manager._answer_dialogue_history(
+        "هل تتذكر موضوع فن النقش البارز الذي تحدثنا فيه",
+        "answer",
+        exchanges,
+    )
+
+    assert result["status"] == "success"
+    assert "فن النقش البارز" in result["text"]
+    assert "بروز الشكل والظلال" in result["text"]
+
+
+def test_bare_verify_asks_for_a_target_instead_of_becoming_unsupported(monkeypatch):
+    manager, _memory, orchestrator = _manager(monkeypatch)
+
+    result = manager.process("تحقق")
+
+    assert result["status"] == "needs_clarification"
+    assert getattr(result["intent"], "value", result["intent"]) == "verify_fix"
+    assert "ما الذي تريدني أن أتحقق منه" in result["text"]
+    assert orchestrator.calls == []
+
+
+def test_provider_failure_does_not_offer_to_save_missing_explanation(monkeypatch):
+    from lab_v4_dev.core import orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    from lab_v4_dev.intent.intents import Intent
+
+    monkeypatch.setattr(
+        orchestrator_module,
+        "ask",
+        lambda *_args, **_kwargs: {
+            "status": "error",
+            "error": {"code": "PROVIDER_UNAVAILABLE"},
+        },
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.llm.prompt_builder.build_cybersec_prompt",
+        lambda *_args, **_kwargs: ("system", "prompt"),
+    )
+    instance = Orchestrator.__new__(Orchestrator)
+    instance.context = ContextStore()
+
+    result = instance._route(
+        Intent.CYBER_EXPLAIN,
+        "SQL Injection",
+        "general",
+        "اشرح SQL Injection",
+        response_attributes={"dialogue_response_mode": "answer"},
+        context_transition="new_independent",
+    )
+
+    assert result["status"] == "error"
+    assert result["pending_save"] is None
+    assert result["pending_confirmation"] is None
+    assert result["save_prompt"] is None
+    assert "مزود اللغة" in result["text"]
+
+
+def test_privacy_block_is_not_reported_as_provider_outage(monkeypatch):
+    from lab_v4_dev.core import orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    from lab_v4_dev.intent.intents import Intent
+
+    monkeypatch.setattr(
+        orchestrator_module,
+        "ask",
+        lambda *_args, **_kwargs: {
+            "status": "error",
+            "error": {"code": "PRIVACY_EXTERNAL_BLOCKED"},
+        },
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.llm.prompt_builder.build_cybersec_prompt",
+        lambda *_args, **_kwargs: ("system", "prompt"),
+    )
+    instance = Orchestrator.__new__(Orchestrator)
+    instance.context = ContextStore()
+
+    result = instance._route(
+        Intent.CYBER_EXPLAIN,
+        "SQL Injection",
+        "general",
+        "اشرح SQL Injection",
+        response_attributes={"dialogue_response_mode": "answer"},
+        context_transition="new_independent",
+    )
+
+    assert result["status"] == "error"
+    assert "بوابة الخصوصية" in result["text"]
+    assert "مزود اللغة" not in result["text"]
+    assert result["save_prompt"] is None

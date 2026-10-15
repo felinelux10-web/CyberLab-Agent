@@ -255,3 +255,68 @@ def test_empty_dialogue_checkpoint_supersedes_previous_dialogue_after_reset(monk
     assert latest["session_id"] == cleared["session_id"]
     assert latest["dialogue_state"]["history"] == []
     assert latest["dialogue_state"]["exchange_archive"] == []
+
+def test_persisted_dialogue_checkpoint_restores_into_fresh_memory(monkeypatch, tmp_path):
+    from lab_v4_dev.context.context_store import ContextStore
+    from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
+    from lab_v4_dev.core import project_context
+    from lab_v4_dev.memory import session_state
+
+    data_dir = tmp_path / "persistent-data"
+    data_dir.mkdir()
+    monkeypatch.setattr(project_context, "project_data_dir", lambda: str(data_dir))
+    monkeypatch.setattr(
+        project_context,
+        "project_data_file",
+        lambda name: str(data_dir / name),
+    )
+    original = DialogueMemory(ContextStore())
+    sid = original.state.session_id
+    original.state.last_topic = "شفافية خوارزميات التوصية"
+    original.state.last_entity_type = "CONCEPT"
+    original.state.last_intent = "cyber_explain"
+    original.state.add_turn(
+        role="user",
+        content="كيف نقيس أثر تغيير عوامل التوصية تدريجيًا؟",
+        intent="cyber_explain",
+        target="شفافية خوارزميات التوصية",
+        confidence=0.9,
+        conversation_domain="technical",
+        context_kind="dialogue",
+        session_id=sid,
+    )
+    original.state.add_turn(
+        role="assistant",
+        content="توقفنا عند تغيير عامل واحد وقياس أثره قبل تغيير العامل التالي.",
+        intent="cyber_explain",
+        target="شفافية خوارزميات التوصية",
+        confidence=0.9,
+        conversation_domain="technical",
+        context_kind="dialogue",
+        session_id=sid,
+    )
+    original.state.exchange_archive = [{
+        "session_id": sid,
+        "user": "كيف نقيس أثر تغيير عوامل التوصية تدريجيًا؟",
+        "assistant": "توقفنا عند تغيير عامل واحد وقياس أثره قبل تغيير العامل التالي.",
+        "target": "شفافية خوارزميات التوصية",
+        "intent": "cyber_explain",
+        "conversation_domain": "technical",
+        "context_kind": "dialogue",
+        "context_transition": "new_independent",
+    }]
+
+    saved = session_state.save_dialogue_checkpoint(dialogue_state=original.snapshot())
+    assert saved["session_type"] == "dialogue"
+    recovered_session = session_state.get_latest_session_by_type("dialogue")
+    assert recovered_session["dialogue_state"]["session_id"] == sid
+
+    # Simulate a process restart: construct a new memory object and load the
+    # checkpoint from the persisted session detail/index, not the old instance.
+    recovered = DialogueMemory(ContextStore())
+    assert recovered.restore_snapshot(recovered_session["dialogue_state"]) is True
+    assert recovered.state.session_id == sid
+    assert recovered.state.last_topic == "شفافية خوارزميات التوصية"
+    assert recovered.state.history[-1]["content"].endswith("قبل تغيير العامل التالي.")
+    assert recovered.state.exchange_archive[-1]["session_id"] == sid
+
