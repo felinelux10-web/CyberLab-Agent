@@ -345,6 +345,67 @@ class ConversationManager:
         # or continuation turn must not be hijacked by HISTORY/CONTEXT_REPORT/
         # RESUME parser fallbacks before DialogueMemory sees it.
         raw_signal = classify_conversation_semantics(user_input)
+
+        # A contextual acknowledgement such as "نعم أعرف" is not a new
+        # executable request. Interpret it as continuation only when the latest
+        # same-session assistant turn was itself asking a dialogue question.
+        # This keeps the phrase context-sensitive instead of making it a global
+        # continuation keyword.
+        normalized_ack = self._normalize_transition_text(user_input).strip(
+            " .,،؛:!?؟"
+        )
+        if (
+            normalized_ack in {"نعم اعرف", "اي اعرف", "اعرف", "نعم اعلم", "اي اعلم"}
+            and self.dialogue_memory
+        ):
+            state = getattr(self.dialogue_memory, "state", None)
+            session_id = str(getattr(state, "session_id", "") or "")
+            recent_assistant = next(
+                (
+                    turn for turn in reversed(getattr(state, "history", []) or [])
+                    if isinstance(turn, dict)
+                    and turn.get("role") == "assistant"
+                    and (
+                        not session_id
+                        or str(turn.get("session_id") or "") == session_id
+                    )
+                    and str(turn.get("context_kind") or "").casefold()
+                    not in {"work", "system", "execution"}
+                ),
+                None,
+            )
+            prior_question = str(
+                (recent_assistant or {}).get("content") or ""
+            ).casefold()
+            is_dialogue_question = bool(recent_assistant) and any(
+                marker in prior_question
+                for marker in (
+                    "؟", "?", "هل", "تقصد", "اختر", "ما رأيك",
+                    "شنو رأيك", "أي موضوع", "اي موضوع",
+                )
+            )
+            if is_dialogue_question:
+                raw_signal = dict(raw_signal or {})
+                raw_signal.update({
+                    "conversation_domain": "general",
+                    "conversation_act": "CONVERSATION_CONTINUATION",
+                    "confidence": 0.90,
+                    "response_attributes": {},
+                    "conversational": True,
+                })
+                candidate = dict(candidate or {})
+                candidate.update({
+                    "intent": Intent.PERSONAL_CHAT,
+                    "target": "",
+                    "entity_type": "REFERENCE",
+                    "conversation_domain": "general",
+                    "conversation_act": "CONVERSATION_CONTINUATION",
+                    "conversation_confidence": 0.90,
+                    "response_attributes": {},
+                    "semantic_pattern": "CONTEXTUAL_DIALOGUE_ACKNOWLEDGEMENT",
+                    "source": "contextual_dialogue_acknowledgement",
+                })
+
         explicit_topic = self._explicit_dialogue_topic(user_input)
         if explicit_topic:
             # Explicit topic openings create a dialogue branch even if the LLM
