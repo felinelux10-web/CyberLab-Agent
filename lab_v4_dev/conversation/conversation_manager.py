@@ -113,6 +113,14 @@ class ConversationManager:
             flags=re.IGNORECASE,
         )
         if not match:
+            # A compact topic declaration ("موضوع الرسم والنحت") opens a
+            # dialogue branch; it is not merely a noun phrase to explain anew.
+            match = re.match(
+                r"^\s*(?:موضوع|فكرة)\s+(?!السابق\b|السابقه\b|الرئيسي\b|الرئيسيه\b)(.+?)\s*[.!؟?،]*\s*$",
+                value,
+                flags=re.IGNORECASE,
+            )
+        if not match:
             return None
         subject = match.group(1).strip(" \t\r\n.,،؛:!?؟")
         subject = re.sub(r"^(?:مفهوم|موضوع|فكرة)\s+", "", subject).strip()
@@ -415,7 +423,7 @@ class ConversationManager:
                 "intent": Intent.PERSONAL_CHAT,
                 "target": explicit_topic,
                 "entity_type": "CONCEPT",
-                "conversation_domain": "technical",
+                "conversation_domain": raw_signal.get("conversation_domain", "general"),
                 "conversation_act": "SOCIAL_OPENING",
                 "conversation_confidence": 0.95,
                 "semantic_pattern": "EXPLICIT_DIALOGUE_TOPIC",
