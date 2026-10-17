@@ -337,10 +337,18 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
     if not isinstance(dialogue_state, dict):
         return {}
 
-    # Keep work turns out of the dialogue archive even when legacy callers have
-    # shared one DialogueMemory instance across both domains.
+    # A dialogue snapshot without an explicit identity cannot safely own
+    # topic metadata or turns. Live DialogueState snapshots always carry one.
     state = dict(dialogue_state)
+    session_id = str(state.get("session_id") or "").strip()
+    if not session_id:
+        return {}
+
+    # Keep records from this exact dialogue session and exclude work/system
+    # state even when legacy callers shared one DialogueMemory instance.
     def is_dialogue_record(item: dict) -> bool:
+        if str(item.get("session_id") or "") != session_id:
+            return False
         kind = str(item.get("context_kind") or "").casefold()
         domain = str(item.get("conversation_domain") or "").casefold()
         if kind in {"work", "system"} or domain in {"work", "system", "execution"}:
