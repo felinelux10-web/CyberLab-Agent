@@ -359,6 +359,56 @@ def test_history_recall_keeps_relevant_execution_exchange():
     assert "شرح التنفيذ المرتبط بالموضوع" in result["text"]
 
 
+def test_dialogue_prompt_excludes_actual_execution_but_keeps_technical_explanation():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+
+    orchestrator = CapturingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    sid = memory.state.session_id
+    memory.state.exchange_archive = [
+        {
+            "session_id": sid,
+            "user": "ناقشنا موضوعًا اجتماعيًا",
+            "assistant": "رد حواري مسموح",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid,
+            "user": "اشرح SQL Injection",
+            "assistant": "شرح تقني تعليمي محفوظ",
+            "target": "SQL Injection",
+            "context_kind": "execution",
+            "conversation_domain": "technical",
+            "context_transition": "explicit_switch",
+        },
+        {
+            "session_id": sid,
+            "user": "أمر تشغيل خاص",
+            "assistant": "مخرجات تنفيذ سرية",
+            "context_kind": "execution",
+            "conversation_domain": "execution",
+            "context_transition": "continue",
+        },
+    ]
+    manager = ConversationManager(orchestrator, memory)
+
+    history = manager._history_for_transition(
+        ContextTransition.CONTINUE,
+        {"conversation_act": "CONVERSATION_CONTINUATION"},
+    )
+    rendered = " ".join(
+        str(turn.get("content") or "")
+        for turn in history
+    )
+
+    assert "رد حواري مسموح" in rendered
+    assert "شرح تقني تعليمي محفوظ" in rendered
+    assert "مخرجات تنفيذ سرية" not in rendered
+    assert orchestrator.calls == []
+
+
 def test_independent_topic_does_not_send_previous_branch_secret_to_privacy_boundary(monkeypatch):
     import lab_v4_dev.core.orchestrator as orchestrator_module
     from lab_v4_dev.dni.privacy_engine import PrivacyEngine
