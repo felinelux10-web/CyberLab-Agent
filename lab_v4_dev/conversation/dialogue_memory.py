@@ -89,8 +89,16 @@ class DialogueMemory:
         """Restore bounded dialogue state from an explicit recoverable checkpoint."""
         if not isinstance(snapshot, dict):
             return False
+        # A persisted dialogue snapshot is trusted only when it carries the
+        # same explicit session identity used by its turns and exchanges.
+        # Restoring topic metadata from a legacy snapshot without that identity
+        # would still leak stale context even if its transcript were filtered.
+        snapshot_session_id = str(snapshot.get("session_id") or "").strip()
+        if not snapshot_session_id:
+            return False
+
         restored = DialogueState()
-        restored.session_id = str(snapshot.get("session_id") or uuid.uuid4().hex)
+        restored.session_id = snapshot_session_id
         for field in (
             "last_topic", "pending_topic", "last_mode", "last_intent",
             "last_target", "last_entity_type", "last_confidence",
@@ -99,8 +107,7 @@ class DialogueMemory:
         ):
             if field in snapshot:
                 setattr(restored, field, snapshot[field])
-        # Missing session IDs are untrusted legacy data. Never relabel them as
-        # belonging to the current session: that can import old technical turns.
+        # Never relabel records without the exact checkpoint session identity.
         restored.exchange_archive = [
             dict(item)
             for item in (restored.exchange_archive or [])
