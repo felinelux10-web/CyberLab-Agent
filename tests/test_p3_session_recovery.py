@@ -180,8 +180,14 @@ def test_dialogue_checkpoint_is_persisted_separately_from_work(monkeypatch, tmp_
     assert "dialogue_state" not in load_session()
     assert dialogue["session_type"] == "dialogue"
     assert "context_state" not in dialogue
-    assert len(dialogue["dialogue_state"]["history"]) == 2
+    assert len(dialogue["dialogue_state"]["history"]) == 3
     assert len(dialogue["dialogue_state"]["exchange_archive"]) == 2
+    history_text = " ".join(
+        str(item.get("content", "")) for item in dialogue["dialogue_state"]["history"]
+    )
+    assert "اشرح آلية CSRF" in history_text
+    assert "أمر تشغيل خاص" not in history_text
+    assert "استعلام حالة النظام" not in history_text
     persisted_text = " ".join(
         str(item.get("user", "")) + " " + str(item.get("assistant", ""))
         for item in dialogue["dialogue_state"]["exchange_archive"]
