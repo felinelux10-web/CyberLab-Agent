@@ -144,30 +144,31 @@ def test_dialogue_checkpoint_is_persisted_separately_from_work(monkeypatch, tmp_
     )
     dialogue = save_dialogue_checkpoint(
         dialogue_state={
+            "session_id": "dialogue-session-test",
             "last_topic": "SQL Injection",
             "history": [
-                {"role": "user", "content": "اشرح SQL Injection", "target": "SQL Injection",
+                {"session_id": "dialogue-session-test", "role": "user", "content": "اشرح SQL Injection", "target": "SQL Injection",
                  "context_kind": "cybersecurity"},
-                {"role": "assistant", "content": "توقفنا عند آلية الحدوث.", "context_kind": "cybersecurity"},
-                {"role": "user", "content": "عدّل main.py", "context_kind": "work",
+                {"session_id": "dialogue-session-test", "role": "assistant", "content": "توقفنا عند آلية الحدوث.", "context_kind": "cybersecurity"},
+                {"session_id": "dialogue-session-test", "role": "user", "content": "عدّل main.py", "context_kind": "work",
                  "conversation_domain": "work"},
-                {"role": "user", "content": "أمر تشغيل خاص", "context_kind": "execution",
+                {"session_id": "dialogue-session-test", "role": "user", "content": "أمر تشغيل خاص", "context_kind": "execution",
                  "conversation_domain": "execution"},
-                {"role": "user", "content": "اشرح آلية CSRF", "context_kind": "execution",
+                {"session_id": "dialogue-session-test", "role": "user", "content": "اشرح آلية CSRF", "context_kind": "execution",
                  "conversation_domain": "technical"},
-                {"role": "user", "content": "استعلام حالة النظام", "context_kind": "system",
+                {"session_id": "dialogue-session-test", "role": "user", "content": "استعلام حالة النظام", "context_kind": "system",
                  "conversation_domain": "system"},
             ],
             "exchange_archive": [
-                {"user": "اشرح SQL Injection", "assistant": "توقفنا عند آلية الحدوث.",
+                {"session_id": "dialogue-session-test", "user": "اشرح SQL Injection", "assistant": "توقفنا عند آلية الحدوث.",
                  "context_kind": "cybersecurity"},
-                {"user": "عدّل main.py", "assistant": "تم التعديل",
+                {"session_id": "dialogue-session-test", "user": "عدّل main.py", "assistant": "تم التعديل",
                  "context_kind": "work", "conversation_domain": "work"},
-                {"user": "أمر تشغيل خاص", "assistant": "مخرجات سرية",
+                {"session_id": "dialogue-session-test", "user": "أمر تشغيل خاص", "assistant": "مخرجات سرية",
                  "context_kind": "execution", "conversation_domain": "execution"},
-                {"user": "اشرح آلية CSRF", "assistant": "شرح تقني تعليمي",
+                {"session_id": "dialogue-session-test", "user": "اشرح آلية CSRF", "assistant": "شرح تقني تعليمي",
                  "context_kind": "execution", "conversation_domain": "technical"},
-                {"user": "استعلام حالة النظام", "assistant": "تفاصيل نظام",
+                {"session_id": "dialogue-session-test", "user": "استعلام حالة النظام", "assistant": "تفاصيل نظام",
                  "context_kind": "system", "conversation_domain": "system"},
             ],
         },
@@ -297,15 +298,25 @@ def test_empty_dialogue_checkpoint_supersedes_previous_dialogue_after_reset(monk
 
     previous = save_dialogue_checkpoint(
         dialogue_state={
+            "session_id": "dialogue-before-reset",
             "last_topic": "موضوع قديم",
-            "history": [{"role": "user", "content": "رسالة قديمة"}],
-            "exchange_archive": [{"user": "رسالة قديمة", "assistant": "رد قديم"}],
+            "history": [{
+                "session_id": "dialogue-before-reset",
+                "role": "user",
+                "content": "رسالة قديمة",
+            }],
+            "exchange_archive": [{
+                "session_id": "dialogue-before-reset",
+                "user": "رسالة قديمة",
+                "assistant": "رد قديم",
+            }],
         },
         version="test",
         project_root=str(project_root),
     )
     cleared = save_dialogue_checkpoint(
         dialogue_state={
+            "session_id": "dialogue-after-reset",
             "last_topic": None,
             "history": [],
             "exchange_archive": [],
