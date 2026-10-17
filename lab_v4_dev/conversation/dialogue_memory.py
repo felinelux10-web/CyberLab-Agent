@@ -270,6 +270,27 @@ class DialogueMemory:
                     self.state.last_confidence = float(turn_confidence or 0.0)
                 except (TypeError, ValueError):
                     self.state.last_confidence = 0.0
+                # Retain a content-free boundary so the next continuation cannot
+                # fall back into the previous branch when the provider is offline.
+                # The failed user/assistant exchange itself is not stored.
+                archive = [
+                    item for item in (getattr(self.state, "exchange_archive", []) or [])
+                    if isinstance(item, dict)
+                    and str(item.get("session_id") or "") == self.state.session_id
+                ]
+                archive.append({
+                    "user": "",
+                    "assistant": "",
+                    "intent": getattr(turn_intent, "value", turn_intent),
+                    "target": None,
+                    "conversation_domain": conversation_domain,
+                    "conversation_act": conversation_act or "CASUAL_CONVERSATION",
+                    "context_kind": context_kind,
+                    "context_transition": "new_independent",
+                    "session_id": self.state.session_id,
+                    "state_boundary_only": True,
+                })
+                self.state.exchange_archive = archive[-32:]
             return
         # Keep one compact user/assistant exchange for recall. This survives
         # the shorter prompt transcript without making every old turn part of
