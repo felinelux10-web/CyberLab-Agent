@@ -590,6 +590,7 @@ def test_subjectless_independent_social_topic_clears_stale_technical_subject(mon
     assert result["source"] == "local_social"
     assert memory.state.last_topic is None
     assert memory.state.last_entity_type is None
+    assert memory.state.last_intent == "personal_chat"
     assert memory.state.exchange_archive[-1]["context_transition"] == "new_independent"
     assert calls == []
     assert orchestrator.calls == []
