@@ -182,6 +182,22 @@ class DialogueMemory:
         )
         turn_confidence = parsed.get("confidence", result.get("confidence", 0.0))
         relation = getattr(context_transition, "value", context_transition)
+        # Work/system turns belong to their own state owners. Do not let a
+        # session report, restore command, or executable operation overwrite
+        # the active friendly-dialogue topic or enter its durable archive.
+        # Educational technical exchanges may still use the execution owner;
+        # their technical domain keeps them eligible for dialogue continuity.
+        if (
+            str(context_kind or "").casefold() in {"work", "system"}
+            or str(conversation_domain or "").casefold()
+            in {"work", "system", "execution"}
+            or (
+                str(context_kind or "").casefold() == "execution"
+                and str(conversation_domain or "").casefold() != "technical"
+            )
+        ):
+            return
+
         resolved_intent_value = getattr(turn_intent, "value", turn_intent)
         if (
             relation == "restore"
