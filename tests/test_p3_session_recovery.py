@@ -196,11 +196,51 @@ def test_restore_session_snapshot_obeys_session_type():
     context.current_file = None
     assert agent.restore_session_snapshot({
         "session_type": "dialogue",
-        "dialogue_state": {"last_topic": "SQL Injection", "history": []},
+        "dialogue_state": {
+            "session_id": "dialogue-session-test",
+            "last_topic": "SQL Injection",
+            "history": [],
+        },
         "context_state": {"current_file": "stale-work.py"},
     }) is True
     assert agent.dialogue_memory.snapshot()["last_topic"] == "SQL Injection"
     assert context.current_file is None
+
+
+def test_legacy_dialogue_snapshot_without_session_id_is_rejected():
+    from lab_v4_dev.context.context_store import ContextStore
+    from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
+
+    memory = DialogueMemory(ContextStore())
+    assert memory.restore_snapshot({
+        "last_topic": "CSRF",
+        "last_intent": "cyber_explain",
+        "last_entity_type": "CONCEPT",
+        "context_history": [{
+            "action": "cyber_explain",
+            "entity": "SQL Injection",
+            "entity_type": "CONCEPT",
+        }],
+        "history": [{
+            "role": "user",
+            "content": "اشرح CSRF",
+            "intent": "cyber_explain",
+            "target": "CSRF",
+        }],
+        "exchange_archive": [{
+            "user": "اشرح CSRF",
+            "assistant": "شرح قديم",
+            "target": "CSRF",
+            "context_kind": "dialogue",
+        }],
+    }) is False
+
+    snapshot = memory.snapshot()
+    assert snapshot["last_topic"] is None
+    assert snapshot["last_intent"] is None
+    assert snapshot["context_history"] == []
+    assert snapshot["history"] == []
+    assert snapshot["exchange_archive"] == []
 
 
 
