@@ -664,9 +664,20 @@ def test_failed_independent_social_reply_still_clears_stale_technical_subject():
     assert memory.state.last_topic is None
     assert memory.state.last_entity_type is None
     assert memory.state.last_intent == "personal_chat"
-    assert len(memory.state.exchange_archive) == 1
+    assert len(memory.state.exchange_archive) == 2
+    boundary = memory.state.exchange_archive[-1]
+    assert boundary["state_boundary_only"] is True
+    assert boundary["context_transition"] == "new_independent"
+    assert not boundary["user"] and not boundary["assistant"]
     assert all(item.get("assistant") != "تعذر الاتصال بالمزود"
                for item in memory.state.exchange_archive)
+
+    manager = ConversationManager(RecordingOrchestrator(), memory)
+    history = manager._history_for_transition(
+        ContextTransition.AMBIGUOUS,
+        {"conversation_act": "CONVERSATION_CONTINUATION"},
+    )
+    assert "CSRF" not in " ".join(turn["content"] for turn in history)
 
 
 def test_dialogue_history_recall_is_read_only_for_active_topic_and_archive():
