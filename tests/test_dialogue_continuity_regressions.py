@@ -877,6 +877,20 @@ def test_art_topic_declaration_replaces_stale_technical_branch_before_continuati
     memory.state.last_entity_type = "CONCEPT"
     memory.state.last_intent = "cyber_explain"
 
+    opened = manager.process("موضوع الرسم والنحت")
+
+    assert opened["status"] == "success"
+    assert memory.state.last_topic == "الرسم والنحت"
+    assert memory.state.last_intent == "personal_chat"
+
+    continued = manager.process("اكمل الشرح")
+
+    assert continued["status"] == "success"
+    assert continued["semantic_request"]["conversation_act"] == "CONVERSATION_CONTINUATION"
+    assert "الرسم والنحت" in calls[-1][0]
+    assert "CSRF" not in calls[-1][0]
+    assert orchestrator.calls == []
+
 
 def test_dialogue_history_recall_excludes_system_and_execution_exchanges(monkeypatch):
     manager, memory, orchestrator, calls = _manager(monkeypatch)
@@ -937,3 +951,27 @@ def test_dialogue_history_recall_excludes_system_and_execution_exchanges(monkeyp
     assert calls == []
     assert orchestrator.calls == []
 
+
+def test_previous_dialogue_and_topic_memory_phrases_are_not_work_session_routes():
+    for phrase in (
+        "الجلسة السابقة",
+        "الجلسه السابقه",
+        "حوارنا السابق",
+        "موضوعنا السابق",
+        "عن موضوعنا السابق",
+    ):
+        result = classify_conversation_semantics(phrase)
+        assert result["conversation_act"] == "CONVERSATION_HISTORY_QUERY", phrase
+        assert result["response_attributes"]["dialogue_response_mode"] == "summary", phrase
+
+    recalled = classify_conversation_semantics(
+        "هل تتذكر موضوع الرسم والنحت والنقش البارز"
+    )
+    assert recalled["conversation_act"] == "CONVERSATION_HISTORY_QUERY"
+    assert recalled["response_attributes"]["dialogue_response_mode"] == "summary"
+
+
+def test_continue_explanation_is_classified_as_dialogue_continuation():
+    result = classify_conversation_semantics("اكمل الشرح")
+    assert result["conversation_act"] == "CONVERSATION_CONTINUATION"
+    assert result["conversation_domain"] == "general"
