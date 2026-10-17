@@ -1725,7 +1725,11 @@ class ConversationManager:
             transition = str(item.get("context_transition") or "").casefold()
             kind = str(item.get("context_kind") or "").casefold()
             domain = str(item.get("conversation_domain") or "").casefold()
-            if kind in {"work", "system", "execution"} or domain in {"work", "system", "execution"}:
+            if (
+                kind in {"work", "system"}
+                or domain in {"work", "system", "execution"}
+                or (kind == "execution" and domain != "technical")
+            ):
                 return True
             if user == "حفظ" or user.startswith("حفظ "):
                 return True
@@ -1788,7 +1792,11 @@ class ConversationManager:
         relevant = [
             item for item in exchanges
             if str(item.get("context_kind") or "").casefold()
-            not in {"work", "system", "execution"}
+            not in {"work", "system"}
+            and (
+                str(item.get("context_kind") or "").casefold() != "execution"
+                or str(item.get("conversation_domain") or "").casefold() == "technical"
+            )
             and str(item.get("conversation_domain") or "").casefold()
             not in {"work", "system", "execution"}
             and (
