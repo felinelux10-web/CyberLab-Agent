@@ -151,12 +151,24 @@ def test_dialogue_checkpoint_is_persisted_separately_from_work(monkeypatch, tmp_
                 {"role": "assistant", "content": "توقفنا عند آلية الحدوث.", "context_kind": "cybersecurity"},
                 {"role": "user", "content": "عدّل main.py", "context_kind": "work",
                  "conversation_domain": "work"},
+                {"role": "user", "content": "أمر تشغيل خاص", "context_kind": "execution",
+                 "conversation_domain": "execution"},
+                {"role": "user", "content": "اشرح آلية CSRF", "context_kind": "execution",
+                 "conversation_domain": "technical"},
+                {"role": "user", "content": "استعلام حالة النظام", "context_kind": "system",
+                 "conversation_domain": "system"},
             ],
             "exchange_archive": [
                 {"user": "اشرح SQL Injection", "assistant": "توقفنا عند آلية الحدوث.",
                  "context_kind": "cybersecurity"},
                 {"user": "عدّل main.py", "assistant": "تم التعديل",
                  "context_kind": "work", "conversation_domain": "work"},
+                {"user": "أمر تشغيل خاص", "assistant": "مخرجات سرية",
+                 "context_kind": "execution", "conversation_domain": "execution"},
+                {"user": "اشرح آلية CSRF", "assistant": "شرح تقني تعليمي",
+                 "context_kind": "execution", "conversation_domain": "technical"},
+                {"user": "استعلام حالة النظام", "assistant": "تفاصيل نظام",
+                 "context_kind": "system", "conversation_domain": "system"},
             ],
         },
         version="test",
@@ -169,7 +181,14 @@ def test_dialogue_checkpoint_is_persisted_separately_from_work(monkeypatch, tmp_
     assert dialogue["session_type"] == "dialogue"
     assert "context_state" not in dialogue
     assert len(dialogue["dialogue_state"]["history"]) == 2
-    assert len(dialogue["dialogue_state"]["exchange_archive"]) == 1
+    assert len(dialogue["dialogue_state"]["exchange_archive"]) == 2
+    persisted_text = " ".join(
+        str(item.get("user", "")) + " " + str(item.get("assistant", ""))
+        for item in dialogue["dialogue_state"]["exchange_archive"]
+    )
+    assert "شرح تقني تعليمي" in persisted_text
+    assert "مخرجات سرية" not in persisted_text
+    assert "تفاصيل نظام" not in persisted_text
     latest_dialogue = get_latest_session_by_type("dialogue")
     assert latest_dialogue["dialogue_state"]["last_topic"] == "SQL Injection"
 
