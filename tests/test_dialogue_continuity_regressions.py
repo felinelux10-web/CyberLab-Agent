@@ -640,6 +640,50 @@ def test_failed_independent_social_reply_still_clears_stale_technical_subject():
                for item in memory.state.exchange_archive)
 
 
+def test_system_session_restore_does_not_overwrite_dialogue_owned_state():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+    from lab_v4_dev.intent.intents import Intent
+
+    memory = DialogueMemory(ContextStore())
+    memory.state.last_topic = "SQL Injection"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.last_intent = "cyber_explain"
+    memory.state.exchange_archive = [{
+        "session_id": memory.state.session_id,
+        "user": "اشرح SQL Injection",
+        "assistant": "توقفنا عند آلية الحدوث",
+        "target": "SQL Injection",
+        "intent": "cyber_explain",
+        "context_kind": "dialogue",
+        "conversation_domain": "technical",
+    }]
+    before = memory.snapshot()
+
+    memory.update(
+        "استرجع الجلسة السابقة",
+        {
+            "status": "success",
+            "text": "ملخص جلسة العمل",
+            "semantic_request": {"context_kind": "system"},
+        },
+        mode="SYSTEM",
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "target": "",
+            "entity_type": "REFERENCE",
+            "conversation_domain": "system",
+            "conversation_act": "ASSISTANT_STATE_QUERY",
+        },
+        context_transition=ContextTransition.NEW_INDEPENDENT,
+    )
+
+    after = memory.snapshot()
+    assert after["last_topic"] == "SQL Injection"
+    assert after["last_intent"] == "cyber_explain"
+    assert after["exchange_archive"] == before["exchange_archive"]
+    assert after["history"] == before["history"]
+
+
 def test_interrupted_dialogue_recovery_phrase_is_classified_before_work_resume():
     result = classify_conversation_semantics(
         "استرجع النقاش الذي انقطع عندما انتقلنا إلى موضوع آخر، ثم واصل من آخر نقطة توقفنا عندها، دون أن أذكر اسم الموضوع أو ألخص ما قيل."
