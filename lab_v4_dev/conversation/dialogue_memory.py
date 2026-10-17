@@ -229,6 +229,25 @@ class DialogueMemory:
             turn_target
             and relation in {"explicit_switch", "new_independent", "restore"}
         ):
+            # Even if a provider fails, a subjectless independent social opening
+            # still closes the old branch. Do not archive the failed exchange, but
+            # do not let the next turn inherit the previous technical subject.
+            if (
+                relation == "new_independent"
+                and not turn_target
+                and context_kind in {"dialogue", "social"}
+            ):
+                if previous_context:
+                    self._remember_context(previous_context)
+                self.state.last_mode = mode or result.get("mode")
+                self.state.last_intent = turn_intent
+                self.state.last_target = None
+                self.state.last_topic = None
+                self.state.last_entity_type = None
+                try:
+                    self.state.last_confidence = float(turn_confidence or 0.0)
+                except (TypeError, ValueError):
+                    self.state.last_confidence = 0.0
             return
         # Keep one compact user/assistant exchange for recall. This survives
         # the shorter prompt transcript without making every old turn part of
