@@ -236,6 +236,12 @@ class DialogueMemory:
                 # restored branch's original intent for the next continuation.
                 turn_intent = restored_context["action"]
         conversation_act = parsed.get("conversation_act")
+        # Recall is read-only: storing the retrieval request and its summary as
+        # a new exchange would make the memory report itself as the latest topic
+        # and could replace the active intent used by the next continuation.
+        if str(conversation_act or "").upper() == "CONVERSATION_HISTORY_QUERY":
+            return
+
         # A failed response must never be stored as an assistant answer or as
         # a resumable exchange. However, an explicit named branch switch is
         # still a valid user state transition; preserve that topic and user
