@@ -340,17 +340,23 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
     # Keep work turns out of the dialogue archive even when legacy callers have
     # shared one DialogueMemory instance across both domains.
     state = dict(dialogue_state)
+    def is_dialogue_record(item: dict) -> bool:
+        kind = str(item.get("context_kind") or "").casefold()
+        domain = str(item.get("conversation_domain") or "").casefold()
+        if kind in {"work", "system"} or domain in {"work", "system", "execution"}:
+            return False
+        # Some educational explanations are handled by the execution owner but
+        # still belong to technical dialogue. Keep those; reject actual
+        # execution-domain records regardless of their context_kind label.
+        return kind != "execution" or domain == "technical"
+
     history = [
         turn for turn in (state.get("history") or [])
-        if isinstance(turn, dict)
-        and str(turn.get("context_kind") or "").casefold() != "work"
-        and str(turn.get("conversation_domain") or "").casefold() != "work"
+        if isinstance(turn, dict) and is_dialogue_record(turn)
     ]
     exchanges = [
         exchange for exchange in (state.get("exchange_archive") or [])
-        if isinstance(exchange, dict)
-        and str(exchange.get("context_kind") or "").casefold() != "work"
-        and str(exchange.get("conversation_domain") or "").casefold() != "work"
+        if isinstance(exchange, dict) and is_dialogue_record(exchange)
     ]
     state["history"] = history[-8:]
     state["exchange_archive"] = exchanges[-32:]
