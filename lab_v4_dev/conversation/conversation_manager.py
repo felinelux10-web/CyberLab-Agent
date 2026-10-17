@@ -2247,11 +2247,14 @@ class ConversationManager:
                 not current_session_id
                 or item_session_id == current_session_id
             )
-            return (
-                kind not in {"work", "system"}
-                and domain not in {"work", "system"}
-                and same_session
+            # Keep educational technical exchanges that were routed through
+            # execution, but never admit actual execution/system state into a
+            # dialogue prompt. The domain is authoritative for this distinction.
+            safe_kind = kind not in {"work", "system"} and (
+                kind != "execution" or domain == "technical"
             )
+            safe_domain = domain not in {"work", "system", "execution"}
+            return safe_kind and safe_domain and same_session
 
         recovery_mode = str(
             ((parsed or {}).get("response_attributes") or {}).get("dialogue_recovery", "")
