@@ -1153,6 +1153,8 @@ def test_previous_dialogue_and_topic_memory_phrases_are_not_work_session_routes(
         "حوارنا السابق",
         "موضوعنا السابق",
         "عن موضوعنا السابق",
+        "استرجع الجلسة السابقة",
+        "استرجاع الجلسة السابقة",
     ):
         result = classify_conversation_semantics(phrase)
         assert result["conversation_act"] == "CONVERSATION_HISTORY_QUERY", phrase
