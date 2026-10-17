@@ -595,6 +595,51 @@ def test_subjectless_independent_social_topic_clears_stale_technical_subject(mon
     assert calls == []
     assert orchestrator.calls == []
 
+def test_failed_independent_social_reply_still_clears_stale_technical_subject():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+    from lab_v4_dev.intent.intents import Intent
+
+    memory = DialogueMemory(ContextStore())
+    memory.state.last_topic = "CSRF"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.last_intent = "cyber_explain"
+    memory.state.exchange_archive = [{
+        "session_id": memory.state.session_id,
+        "user": "اشرح CSRF",
+        "assistant": "شرح سابق",
+        "target": "CSRF",
+        "intent": "cyber_explain",
+        "context_kind": "dialogue",
+        "conversation_domain": "technical",
+    }]
+
+    memory.update(
+        "اريد اقتراحات اخرى في مجال اخر",
+        {
+            "status": "error",
+            "error": "provider unavailable",
+            "text": "تعذر الاتصال بالمزود",
+            "semantic_request": {"context_kind": "social"},
+        },
+        mode="CHAT",
+        parsed={
+            "intent": Intent.PERSONAL_CHAT,
+            "target": "",
+            "entity_type": "REFERENCE",
+            "conversation_domain": "social",
+            "conversation_act": "CASUAL_CONVERSATION",
+        },
+        context_transition=ContextTransition.NEW_INDEPENDENT,
+    )
+
+    assert memory.state.last_topic is None
+    assert memory.state.last_entity_type is None
+    assert memory.state.last_intent == "personal_chat"
+    assert len(memory.state.exchange_archive) == 1
+    assert all(item.get("assistant") != "تعذر الاتصال بالمزود"
+               for item in memory.state.exchange_archive)
+
+
 def test_interrupted_dialogue_recovery_phrase_is_classified_before_work_resume():
     result = classify_conversation_semantics(
         "استرجع النقاش الذي انقطع عندما انتقلنا إلى موضوع آخر، ثم واصل من آخر نقطة توقفنا عندها، دون أن أذكر اسم الموضوع أو ألخص ما قيل."
