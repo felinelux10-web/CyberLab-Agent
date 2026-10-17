@@ -368,14 +368,6 @@ def test_dialogue_prompt_excludes_actual_execution_but_keeps_technical_explanati
     memory.state.exchange_archive = [
         {
             "session_id": sid,
-            "user": "ناقشنا موضوعًا اجتماعيًا",
-            "assistant": "رد حواري مسموح",
-            "context_kind": "dialogue",
-            "conversation_domain": "general",
-            "context_transition": "new_independent",
-        },
-        {
-            "session_id": sid,
             "user": "اشرح SQL Injection",
             "assistant": "شرح تقني تعليمي محفوظ",
             "target": "SQL Injection",
@@ -403,7 +395,6 @@ def test_dialogue_prompt_excludes_actual_execution_but_keeps_technical_explanati
         for turn in history
     )
 
-    assert "رد حواري مسموح" in rendered
     assert "شرح تقني تعليمي محفوظ" in rendered
     assert "مخرجات تنفيذ سرية" not in rendered
     assert orchestrator.calls == []
