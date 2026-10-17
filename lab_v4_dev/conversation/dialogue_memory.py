@@ -489,8 +489,13 @@ class DialogueMemory:
             dict(item) for item in (getattr(state, "exchange_archive", []) or [])
             if isinstance(item, dict)
             and str(item.get("session_id") or "") == session_id
-            and str(item.get("context_kind") or "").casefold() not in {"work", "system", "execution"}
-            and str(item.get("conversation_domain") or "").casefold() not in {"work", "system", "execution"}
+            and str(item.get("context_kind") or "").casefold() not in {"work", "system"}
+            and (
+                str(item.get("context_kind") or "").casefold() != "execution"
+                or str(item.get("conversation_domain") or "").casefold() == "technical"
+            )
+            and str(item.get("conversation_domain") or "").casefold()
+            not in {"work", "system", "execution"}
             and not any(marker in str(item.get("user") or "").casefold() for marker in (
                 "استرجع النقاش الذي انقطع", "استرجع الحوار الذي انقطع",
                 "recover the interrupted discussion",
