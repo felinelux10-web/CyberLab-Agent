@@ -200,6 +200,24 @@ def test_dialogue_checkpoint_is_persisted_separately_from_work(monkeypatch, tmp_
     assert latest_dialogue["dialogue_state"]["last_topic"] == "SQL Injection"
 
 
+def test_unscoped_dialogue_snapshot_is_not_persisted(monkeypatch, tmp_path):
+    _isolate_project_data(monkeypatch, tmp_path)
+    from lab_v4_dev.memory.session_state import (
+        get_latest_session_by_type,
+        save_dialogue_checkpoint,
+    )
+
+    saved = save_dialogue_checkpoint(dialogue_state={
+        "last_topic": "CSRF",
+        "last_intent": "cyber_explain",
+        "history": [],
+        "exchange_archive": [],
+    })
+
+    assert saved == {}
+    assert get_latest_session_by_type("dialogue") == {}
+
+
 def test_restore_session_snapshot_obeys_session_type():
     from lab_v4_dev.context.context_store import ContextStore
     from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
