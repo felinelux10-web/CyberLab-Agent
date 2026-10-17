@@ -1118,6 +1118,34 @@ def test_dialogue_history_recall_excludes_system_and_execution_exchanges(monkeyp
     assert orchestrator.calls == []
 
 
+def test_previous_session_phrase_recalls_dialogue_instead_of_work_checkpoint(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    sid = memory.state.session_id
+    memory.state.last_topic = "الشفافية في خوارزميات التوصية"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.last_intent = "personal_chat"
+    memory.state.exchange_archive = [{
+        "session_id": sid,
+        "user": "ناقشنا الشفافية في خوارزميات التوصية",
+        "assistant": "توقفنا عند قياس أثر تغيير العوامل تدريجيًا",
+        "target": "الشفافية في خوارزميات التوصية",
+        "intent": "personal_chat",
+        "context_kind": "dialogue",
+        "conversation_domain": "general",
+        "context_transition": "new_independent",
+    }]
+
+    result = manager.process("استرجع الجلسة السابقة")
+
+    assert result["source"] == "dialogue_memory"
+    assert "الشفافية في خوارزميات التوصية" in result["text"]
+    assert "قياس أثر تغيير العوامل تدريجيًا" in result["text"]
+    assert orchestrator.calls == []
+    assert calls == []
+    assert memory.state.last_topic == "الشفافية في خوارزميات التوصية"
+    assert memory.state.last_intent == "personal_chat"
+
+
 def test_previous_dialogue_and_topic_memory_phrases_are_not_work_session_routes():
     for phrase in (
         "الجلسة السابقة",
