@@ -338,12 +338,14 @@ def test_previous_message_question_is_dialogue_history_not_agent_flow():
 def test_history_recall_keeps_relevant_execution_exchange():
     orchestrator = CapturingOrchestrator()
     memory = DialogueMemory(orchestrator.context)
+    sid = memory.state.session_id
     memory.state.add_turn(
         role="user", content="اشرح SQL Injection", target="SQL Injection",
         intent="cyber_explain",
     )
     memory.state.exchange_archive = [
         {
+            "session_id": sid,
             "user": "اشرح SQL Injection",
             "assistant": "شرح التنفيذ المرتبط بالموضوع",
             "target": "SQL Injection",
