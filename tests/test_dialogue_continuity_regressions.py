@@ -640,6 +640,53 @@ def test_failed_independent_social_reply_still_clears_stale_technical_subject():
                for item in memory.state.exchange_archive)
 
 
+def test_dialogue_history_recall_is_read_only_for_active_topic_and_archive():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+    from lab_v4_dev.intent.intents import Intent
+
+    memory = DialogueMemory(ContextStore())
+    sid = memory.state.session_id
+    memory.state.last_topic = "SQL Injection"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.last_intent = "cyber_explain"
+    memory.state.exchange_archive = [{
+        "session_id": sid,
+        "user": "اشرح SQL Injection",
+        "assistant": "توقفنا عند آلية الحدوث",
+        "target": "SQL Injection",
+        "intent": "cyber_explain",
+        "context_kind": "dialogue",
+        "conversation_domain": "technical",
+        "context_transition": "new_independent",
+    }]
+    before = memory.snapshot()
+
+    memory.update(
+        "ما الموضوع الذي كنا نشرحه في رسالتي السابقة؟",
+        {
+            "status": "success",
+            "text": "بحسب سجل الحوار المحفوظ: SQL Injection",
+            "source": "dialogue_memory",
+            "semantic_request": {"context_kind": "dialogue"},
+        },
+        mode="CHAT",
+        parsed={
+            "intent": Intent.PERSONAL_CHAT,
+            "target": "",
+            "entity_type": "REFERENCE",
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+        },
+        context_transition=ContextTransition.REFERENCE,
+    )
+
+    after = memory.snapshot()
+    assert after["last_topic"] == before["last_topic"] == "SQL Injection"
+    assert after["last_intent"] == before["last_intent"] == "cyber_explain"
+    assert after["exchange_archive"] == before["exchange_archive"]
+    assert after["history"] == before["history"]
+
+
 def test_system_session_restore_does_not_overwrite_dialogue_owned_state():
     from lab_v4_dev.conversation.semantic_contract import ContextTransition
     from lab_v4_dev.intent.intents import Intent
