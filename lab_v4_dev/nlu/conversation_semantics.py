@@ -720,6 +720,23 @@ def classify_conversation_semantics(
             "conversational": True,
         }
 
+    # "Retrieve the previous session" refers to the prior dialogue by
+    # default. Work-session recovery must be explicit (for example, "جلسة العمل").
+    previous_dialogue_session_recall = (
+        _has_any(bases, {"استرجع", "استرجاع", "استعادة", "تذكر", "لخص", "ملخص"})
+        and _has_any(bases, {"جلسه"})
+        and _has_any(bases, {"سابق", "سابقه", "قبل", "اخر", "آخر"})
+        and not _has_any(bases, {"العمل", "مهام", "مهمه", "ملف", "مشروع"})
+    )
+    if previous_dialogue_session_recall:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.96,
+            "response_attributes": {"dialogue_response_mode": "summary"},
+            "conversational": True,
+        }
+
     # A dialogue-history query is a relationship to the conversation, not a
     # HISTORY/CONTEXT_REPORT execution request. Require two semantic signals:
     # a reference to earlier dialogue and a recollection/question cue.
