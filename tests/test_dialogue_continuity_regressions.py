@@ -578,6 +578,35 @@ def test_general_continuation_uses_only_exchanges_after_latest_branch_boundary()
     assert "آخر نقطة في الفرع الثاني" in text
     assert "الفرع الأول" not in text
 
+def test_named_independent_dialogue_topic_clears_unrelated_current_file():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+    from lab_v4_dev.intent.intents import Intent
+
+    orchestrator = RecordingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+    orchestrator.context.current_file = "old_project/main.py"
+
+    manager._clear_unrelated_execution_file(
+        ContextTransition.NEW_INDEPENDENT,
+        {
+            "intent": Intent.PERSONAL_CHAT,
+            "target": "الرسم والنحت",
+        },
+    )
+    assert orchestrator.context.current_file is None
+
+    orchestrator.context.current_file = "main.py"
+    manager._clear_unrelated_execution_file(
+        ContextTransition.NEW_INDEPENDENT,
+        {
+            "intent": Intent.MODIFY_FILE,
+            "target": "main.py",
+        },
+    )
+    assert orchestrator.context.current_file == "main.py"
+
+
 def test_subjectless_independent_social_topic_clears_stale_technical_subject(monkeypatch):
     manager, memory, orchestrator, calls = _manager(monkeypatch)
     memory.state.last_topic = "CSRF"
