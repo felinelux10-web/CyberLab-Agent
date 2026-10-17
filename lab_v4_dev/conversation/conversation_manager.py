@@ -183,7 +183,7 @@ class ConversationManager:
 
     def _clear_unrelated_execution_file(self, transition, parsed):
         """Do not let an old execution file become a new generic question target."""
-        if transition != ContextTransition.NEW_INDEPENDENT or (parsed or {}).get("target"):
+        if transition != ContextTransition.NEW_INDEPENDENT:
             return
         if (parsed or {}).get("intent") in {
             Intent.MODIFY_CODE,
