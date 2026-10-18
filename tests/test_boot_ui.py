@@ -90,8 +90,18 @@ def test_multiline_terminal_paste_is_one_logical_message(monkeypatch):
     import lab_v4_dev.core.boot_ui as boot_ui_module
 
     ui = BootUI()
-    stream = io.StringIO("2. سؤال تقني\\n\\n3. تصحيح افتراض\\n")
-    monkeypatch.setattr(stream, "isatty", lambda: True)
+
+    class FakeTTY:
+        def __init__(self):
+            self.lines = iter(["2. سؤال تقني\\n", "\\n", "3. تصحيح افتراض\\n"])
+
+        def isatty(self):
+            return True
+
+        def readline(self):
+            return next(self.lines, "")
+
+    stream = FakeTTY()
     monkeypatch.setattr(boot_ui_module.sys, "stdin", stream)
     readiness = iter([
         ([stream], [], []),
