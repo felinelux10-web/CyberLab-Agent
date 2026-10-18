@@ -41,12 +41,12 @@ def _manager(monkeypatch):
 def test_enumerated_compound_prompt_is_not_hijacked_by_agent_self_intent(monkeypatch):
     manager, memory, orchestrator, calls = _manager(monkeypatch)
     prompt = (
-        "اختبر قدرتك بالإجابة عن كل جزء:\\n"
-        "1. لنتحدث وديًا عن تطور الذكاء الاصطناعي.\\n"
-        "2. ما الفرق بين list و dict؟\\n"
-        "3. أظن أن dict لا يقبل إلا مفتاحًا واحدًا.\\n"
-        "4. نعود إلى الحديث الودي عن التعلم.\\n"
-        "5. ماذا أيضًا عن استخدام الذكاء الاصطناعي؟\\n"
+        "اختبر قدرتك بالإجابة عن كل جزء:\n"
+        "1. لنتحدث وديًا عن تطور الذكاء الاصطناعي.\n"
+        "2. ما الفرق بين list و dict؟\n"
+        "3. أظن أن dict لا يقبل إلا مفتاحًا واحدًا.\n"
+        "4. نعود إلى الحديث الودي عن التعلم.\n"
+        "5. ماذا أيضًا عن استخدام الذكاء الاصطناعي؟\n"
     )
     result = manager.process(prompt)
 
