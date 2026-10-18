@@ -359,17 +359,16 @@ class ConversationManager:
         compound_request = self._is_compound_multi_part_request(user_input)
         if compound_request:
             candidate = dict(candidate or {})
-            if candidate.get("intent") in _AGENT_SELF_INTENTS:
-                candidate.update({
-                    "intent": Intent.PERSONAL_CHAT,
-                    "target": "",
-                    "entity_type": "UNKNOWN",
-                    "conversation_domain": "general",
-                    "conversation_act": "NONE",
-                    "response_attributes": {"compound_request": True},
-                    "semantic_pattern": "COMPOUND_DIALOGUE_REQUEST",
-                    "source": "compound_dialogue_request",
-                })
+            candidate.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": "",
+                "entity_type": "UNKNOWN",
+                "conversation_domain": "general",
+                "conversation_act": "NONE",
+                "response_attributes": {"compound_request": True},
+                "semantic_pattern": "COMPOUND_DIALOGUE_REQUEST",
+                "source": "compound_dialogue_request",
+            })
             raw_signal = {
                 "conversation_domain": "general",
                 "conversation_act": "NONE",
@@ -1373,19 +1372,22 @@ class ConversationManager:
             return {}
 
     @staticmethod
+    @staticmethod
     def _is_compound_multi_part_request(text: str) -> bool:
-        """Detect a deliberately enumerated multi-part prompt by its structure."""
+        """Detect an enumerated multi-part prompt explicitly framed as an assistant test."""
         import re
 
         value = str(text or "")
-        # Accept Western/Arabic digits and common list punctuation. Three or
-        # more numbered sections are strong structural evidence, unlike a
-        # keyword such as "test", "ability", or "question" in ordinary chat.
         numbered = re.findall(
-            r"(?<!\\S)(?:[0-9٠-٩]{1,2})\\s*[.)、:-]\\s+",
+            r"(?<!\S)(?:[0-9٠-٩]{1,2})\s*[.)、:-]\s+",
             value,
         )
-        return len(numbered) >= 3
+        normalized = ConversationManager._normalize_transition_text(value)
+        test_frame = any(marker in normalized for marker in (
+            "اختبر قدرتك", "اختبر الوكيل", "اختبار مركب",
+            "test your ability", "compound test",
+        ))
+        return len(numbered) >= 3 and test_frame
 
     @staticmethod
     def _normalize_transition_text(text: str) -> str:
@@ -2036,9 +2038,11 @@ class ConversationManager:
             recall_recent_exchanges = any(marker in normalized_query for marker in (
                 "الردود السابقة", "الردود السابقه", "قبل قليل",
                 "ماذا كنا نقول", "ماذا قلنا", "ما كنا نقول",
+                "الاختبار المركب", "اختبارنا", "لخص الاختبار",
+                "ملخص الاختبار", "الذي اجريناه", "الذي أجريناه",
             ))
             branch = (
-                relevant[-5:]
+                relevant[-12:]
                 if recall_recent_exchanges
                 else self._latest_dialogue_branch(relevant)[-5:]
             )
