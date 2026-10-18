@@ -55,6 +55,9 @@ def test_enumerated_compound_prompt_is_not_hijacked_by_agent_self_intent(monkeyp
     assert result["source"] == "llm"
     assert "تعليمات للطلب المركب" in calls[0][1]["system"]
     assert "لا تسقط أي بند" in calls[0][1]["system"]
+    assert "أنت مساعد عربي للمحادثة الطبيعية" in calls[0][1]["system"]
+    assert "أنت خبير أمن سيبراني" not in calls[0][1]["system"]
+    assert "حقائق self-knowledge الموثقة" not in calls[0][1]["system"]
     assert orchestrator.calls == []
 
 
