@@ -38,6 +38,32 @@ def _manager(monkeypatch):
     return ConversationManager(orchestrator, memory), memory, orchestrator, calls
 
 
+def test_enumerated_compound_prompt_is_not_hijacked_by_agent_self_intent(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    prompt = (
+        "اختبر قدرتك بالإجابة عن كل جزء:\\n"
+        "1. لنتحدث وديًا عن تطور الذكاء الاصطناعي.\\n"
+        "2. ما الفرق بين list و dict؟\\n"
+        "3. أظن أن dict لا يقبل إلا مفتاحًا واحدًا.\\n"
+        "4. نعود إلى الحديث الودي عن التعلم.\\n"
+        "5. ماذا أيضًا عن استخدام الذكاء الاصطناعي؟\\n"
+    )
+    result = manager.process(prompt)
+
+    assert result["status"] == "success"
+    assert result["intent"] == "personal_chat" or getattr(result["intent"], "value", None) == "personal_chat"
+    assert result["source"] == "llm"
+    assert "تعليمات للطلب المركب" in calls[0][1]["system"]
+    assert "لا تسقط أي بند" in calls[0][1]["system"]
+    assert orchestrator.calls == []
+
+
+def test_compound_test_recall_is_classified_as_dialogue_history():
+    result = classify_conversation_semantics("لخص الاختبار المركب الذي أجريناه قبل قليل")
+    assert result["conversation_act"] == "CONVERSATION_HISTORY_QUERY"
+    assert result["response_attributes"]["dialogue_response_mode"] == "summary"
+
+
 def test_same_dialogue_continuation_does_not_become_work_resume_clarification(monkeypatch):
     manager, memory, orchestrator, calls = _manager(monkeypatch)
 
