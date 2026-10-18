@@ -353,6 +353,30 @@ class ConversationManager:
         # or continuation turn must not be hijacked by HISTORY/CONTEXT_REPORT/
         # RESUME parser fallbacks before DialogueMemory sees it.
         raw_signal = classify_conversation_semantics(user_input)
+        # A structurally enumerated multi-part message is one compound dialogue
+        # request, not an agent-self/capability query merely because its framing
+        # mentions testing the assistant. Preserve the whole request for one answer.
+        compound_request = self._is_compound_multi_part_request(user_input)
+        if compound_request:
+            candidate = dict(candidate or {})
+            if candidate.get("intent") in _AGENT_SELF_INTENTS:
+                candidate.update({
+                    "intent": Intent.PERSONAL_CHAT,
+                    "target": "",
+                    "entity_type": "UNKNOWN",
+                    "conversation_domain": "general",
+                    "conversation_act": "NONE",
+                    "response_attributes": {"compound_request": True},
+                    "semantic_pattern": "COMPOUND_DIALOGUE_REQUEST",
+                    "source": "compound_dialogue_request",
+                })
+            raw_signal = {
+                "conversation_domain": "general",
+                "conversation_act": "NONE",
+                "confidence": 0.95,
+                "response_attributes": {"compound_request": True},
+                "conversational": True,
+            }
 
         # A contextual acknowledgement such as "نعم أعرف" is not a new
         # executable request. Interpret it as continuation only when the latest
@@ -1349,6 +1373,21 @@ class ConversationManager:
             return {}
 
     @staticmethod
+    def _is_compound_multi_part_request(text: str) -> bool:
+        """Detect a deliberately enumerated multi-part prompt by its structure."""
+        import re
+
+        value = str(text or "")
+        # Accept Western/Arabic digits and common list punctuation. Three or
+        # more numbered sections are strong structural evidence, unlike a
+        # keyword such as "test", "ability", or "question" in ordinary chat.
+        numbered = re.findall(
+            r"(?<!\\S)(?:[0-9٠-٩]{1,2})\\s*[.)、:-]\\s+",
+            value,
+        )
+        return len(numbered) >= 3
+
+    @staticmethod
     def _normalize_transition_text(text: str) -> str:
         return " ".join(
             str(text or "").casefold()
@@ -2142,6 +2181,8 @@ class ConversationManager:
         )
 
         conversation_act = parsed.get("conversation_act")
+        if parsed.get("semantic_pattern") == "COMPOUND_DIALOGUE_REQUEST":
+            return ContextTransition.NEW_INDEPENDENT
         normalized_request = str(text or "").casefold()
         explicit_explain_markers = (
             "اشرح", "شرح", "وضح", "عرّف", "عرف", "ما هو", "ماهي",
@@ -2593,6 +2634,14 @@ class ConversationManager:
                     ),
                 },
             )
+            if (parsed or {}).get("response_attributes", {}).get("compound_request"):
+                system = str(system or "") + (
+                    "\\n\\nتعليمات للطلب المركب: أجب عن كل بند مرقّم بالترتيب نفسه، "
+                    "ولا تسقط أي بند حتى لو تكرر سياقه. ميّز بوضوح بين الحديث الودي "
+                    "والسؤال التقني وتصحيح الافتراض الخاطئ. صحّح الافتراضات الخاطئة "
+                    "بشرح موجز، ولا تستبدل الإجابة المطلوبة بشرح عن بنية الوكيل أو "
+                    "قدراته إلا إذا كان ذلك بندًا صريحًا في السؤال."
+                )
 
             result = gateway_ask(
                 prompt,
