@@ -2076,7 +2076,7 @@ class ConversationManager:
                 not current_session_id
                 or str(item.get("session_id") or "") == current_session_id
             )
-        ][-12:]
+        ][-32:]
 
         base = {
             "status": "success",
@@ -2185,9 +2185,13 @@ class ConversationManager:
                 "ملخص الاختبار", "الذي اجريناه", "الذي أجريناه",
             ))
             branch = (
-                relevant[-12:]
-                if recall_recent_exchanges
-                else self._latest_dialogue_branch(relevant)[-5:]
+                relevant
+                if whole_dialogue_summary
+                else (
+                    relevant[-12:]
+                    if recall_recent_exchanges
+                    else self._latest_dialogue_branch(relevant)[-5:]
+                )
             )
             if recall_recent_exchanges:
                 lines = []
