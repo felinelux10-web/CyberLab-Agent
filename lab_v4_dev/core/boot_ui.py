@@ -1,5 +1,6 @@
 """Minimal terminal UI for startup status and command entry."""
 
+import select
 import shutil
 import sys
 import textwrap
@@ -57,9 +58,42 @@ class BootUI:
         print(f"{self._paint('●', GREEN)} الوكيل جاهز")
         print()
 
+    @staticmethod
+    def _combine_pasted_lines(first_line, continuation_lines):
+        """Combine a terminal paste into one logical user message."""
+        lines = [str(first_line or "").rstrip("\\r\\n")]
+        lines.extend(str(line or "").rstrip("\\r\\n") for line in continuation_lines)
+        return "\\n".join(lines).strip()
+
+    def _read_pasted_continuation(self, first_line, *, idle_timeout=0.12):
+        """Collect lines already queued by a multiline terminal paste.
+
+        A normal interactive line still returns after a short idle window.
+        This prevents each line of a pasted numbered prompt becoming a separate
+        request while preserving the existing one-line CLI workflow.
+        """
+        if not getattr(sys.stdin, "isatty", lambda: False)():
+            return str(first_line or "").strip()
+
+        continuation = []
+        while True:
+            try:
+                ready, _, _ = select.select([sys.stdin], [], [], idle_timeout)
+            except (OSError, ValueError, TypeError):
+                break
+            if not ready:
+                break
+            line = sys.stdin.readline()
+            if line == "":
+                break
+            continuation.append(line)
+
+        return self._combine_pasted_lines(first_line, continuation)
+
     def prompt(self):
-        """Show a green identity marker and separator before each command."""
+        """Show the prompt and preserve multiline terminal pastes as one message."""
         print()
         self._rule()
         print(self._paint("✦ CYBERLAB", GREEN))
-        return input("> ")
+        first_line = input("> ")
+        return self._read_pasted_continuation(first_line)
