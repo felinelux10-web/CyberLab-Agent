@@ -674,6 +674,23 @@ def classify_conversation_semantics(
             "conversational": True,
         }
 
+    # A request to summarize a just-performed compound test belongs to
+    # dialogue recall even if it contains words that resemble an agent-capability
+    # query. Require both test-specific reference and a recall/summarization cue.
+    test_recall = (
+        _has_any(bases, {"اختبار", "الاختبار", "اختبارنا"})
+        and _has_any(bases, {"مركب", "مركب", "اجريناه", "اجرينا", "قمنا", "قبل", "سابق"})
+        and _has_any(bases, {"لخص", "تلخيص", "ملخص", "استرجع", "تذكر", "ماذا", "كيف"})
+    )
+    if test_recall:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.96,
+            "response_attributes": {"dialogue_response_mode": "summary"},
+            "conversational": True,
+        }
+
     if intent_value in _AGENT_QUERY_INTENTS:
         return {
             "conversation_domain": "agent_self",
