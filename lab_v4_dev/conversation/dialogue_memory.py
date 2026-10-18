@@ -267,6 +267,30 @@ class DialogueMemory:
         # still a valid user state transition; preserve that topic and user
         # turn so the next "continue" resolves to the new branch. Keep generic
         # failed chat turns out of dialogue history entirely.
+        if provider_failed and parsed.get("semantic_pattern") == "COMPOUND_DIALOGUE_REQUEST":
+            # Preserve the user's compound prompt for later factual recall when
+            # the provider fails, but never archive the fallback/error as an answer
+            # or treat the failed exchange as resumable prompt context.
+            archive = [
+                item for item in (getattr(self.state, "exchange_archive", []) or [])
+                if isinstance(item, dict)
+                and str(item.get("session_id") or "") == self.state.session_id
+            ]
+            archive.append({
+                "user": str(text),
+                "assistant": "",
+                "intent": getattr(turn_intent, "value", turn_intent),
+                "target": None,
+                "conversation_domain": conversation_domain,
+                "conversation_act": conversation_act or "NONE",
+                "context_kind": context_kind if context_kind in {"dialogue", "social"} else "dialogue",
+                "context_transition": relation,
+                "session_id": self.state.session_id,
+                "recall_only": True,
+                "response_failed": True,
+            })
+            self.state.exchange_archive = archive[-32:]
+
         if provider_failed and not (
             turn_target
             and relation in {"explicit_switch", "new_independent", "restore"}
