@@ -73,7 +73,10 @@ def test_failed_compound_prompt_remains_available_for_recall(monkeypatch):
 
     failed = manager.process(prompt)
     assert failed["status"] == "error"
-    saved = memory.state.exchange_archive[-1]
+    saved = next(
+        item for item in reversed(memory.state.exchange_archive)
+        if item.get("recall_only")
+    )
     assert saved["user"] == prompt
     assert saved["assistant"] == ""
     assert saved["recall_only"] is True
