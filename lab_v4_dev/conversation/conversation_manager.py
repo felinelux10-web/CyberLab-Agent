@@ -804,6 +804,23 @@ class ConversationManager:
                 "conversation_act": "ASSISTANT_STATE_QUERY",
                 "source": "session_selector",
             })
+        # Reassert compound-test ownership after every legacy override above;
+        # an incidental friendly phrase or session keyword inside one numbered
+        # item must not steal the whole message's route.
+        if compound_request:
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": "",
+                "entity_type": "UNKNOWN",
+                "conversation_domain": "general",
+                "conversation_act": "NONE",
+                "response_attributes": {"compound_request": True},
+                "semantic_pattern": "COMPOUND_DIALOGUE_REQUEST",
+                "source": "compound_dialogue_request",
+            })
+            transition = ContextTransition.NEW_INDEPENDENT
+
         self._clear_unrelated_execution_file(transition, candidate)
         resolved_input = user_input
         parsed = candidate
