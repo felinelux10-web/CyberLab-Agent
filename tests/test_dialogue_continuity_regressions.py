@@ -284,12 +284,17 @@ def test_local_social_and_dialogue_recall_share_response_finalization(monkeypatc
     assert len(dni.analyses) == 1
     assert dni.analyses[-1]["conversation_domain"] == "social"
 
+    history_before_recall = list(memory.state.history)
+    archive_before_recall = list(memory.state.exchange_archive)
     recalled = manager.process("اكتب ملخص حوار الجلسة")
 
     assert recalled["status"] == "success"
     assert recalled["source"] == "dialogue_memory"
     assert recalled["text"].startswith("FINALIZED::")
-    assert memory.state.history[-1]["content"] == recalled["text"]
+    # Recall shares response finalization and semantic analysis, but remains
+    # read-only: the retrieval request/summary must not become a new topic turn.
+    assert memory.state.history == history_before_recall
+    assert memory.state.exchange_archive == archive_before_recall
     assert len(dni.analyses) == 2
     assert orchestrator.calls == []
 
