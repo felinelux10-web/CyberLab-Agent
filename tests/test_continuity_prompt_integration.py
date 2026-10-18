@@ -645,3 +645,54 @@ def test_ordinal_return_resolves_targetless_social_branch_before_technical_branc
     assert social_opener in rendered
     assert "ابدأ بتجربة أداة ذكاء اصطناعي واحدة" in rendered
     assert "القائمة والقاموس في Python" not in rendered
+
+
+def test_process_returns_to_first_social_topic_without_reusing_python_context(monkeypatch):
+    import lab_v4_dev.conversation.conversation_manager as manager_module
+
+    prompts = []
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda prompt, **_kwargs: prompts.append(str(prompt)) or {
+            "status": "success",
+            "text": "نعود إلى حديثنا عن تعلم أدوات الذكاء الاصطناعي.",
+            "provider_used": "test",
+        },
+    )
+    orchestrator = CapturingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    sid = memory.state.session_id
+    social_opener = "أشعر أن الذكاء الاصطناعي يتطور بسرعة ولا أعرف ماذا أتعلم."
+    memory.state.exchange_archive = [
+        {
+            "session_id": sid,
+            "user": social_opener,
+            "assistant": "ابدأ بتجربة أداة ذكاء اصطناعي واحدة على مهمة يومية.",
+            "target": None,
+            "intent": "personal_chat",
+            "context_kind": "dialogue",
+            "conversation_domain": "social",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid,
+            "user": "ما الفرق بين القائمة والقاموس في Python؟",
+            "assistant": "القائمة تحفظ عناصر والقاموس يربط المفاتيح بالقيم.",
+            "target": "list و dict في Python",
+            "intent": "cyber_explain",
+            "context_kind": "execution",
+            "conversation_domain": "technical",
+            "context_transition": "new_independent",
+        },
+    ]
+    manager = ConversationManager(orchestrator, memory)
+
+    result = manager.process("نرجع لموضوعنا الأول")
+
+    assert result["status"] == "success"
+    assert result["semantic_request"]["context_transition"] == "restore"
+    assert prompts
+    assert social_opener in prompts[-1]
+    assert "القائمة والقاموس في Python" not in prompts[-1]
+    assert orchestrator.calls == []
