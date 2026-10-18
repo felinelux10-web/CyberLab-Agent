@@ -567,36 +567,61 @@ class ConversationManager:
             candidate = dict(candidate or {})
             is_ordinal_return = any(marker in str(user_input or "").casefold() for marker in (
                 "الأول", "الاول", "الثاني", "الثانى", "first", "second",
-                "ارجع", "عد إلى", "عد الى",
+                "ارجع", "عد إلى", "عد الى", "نرجع",
             ))
+            state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
+            archive = getattr(state, "exchange_archive", []) if state is not None else []
+            normalized_topic = self._normalize_transition_text(generic_topic)
+            restored_exchange = next(
+                (
+                    item for item in reversed(archive or [])
+                    if isinstance(item, dict)
+                    and not item.get("recall_only")
+                    and (
+                        self._normalize_transition_text(item.get("target") or "") == normalized_topic
+                        or self._normalize_transition_text(item.get("user") or "") == normalized_topic
+                    )
+                ),
+                None,
+            )
+            restored_domain = str(
+                (restored_exchange or {}).get("conversation_domain") or "general"
+            ).casefold()
+            restored_kind = str(
+                (restored_exchange or {}).get("context_kind") or "dialogue"
+            ).casefold()
+            restored_intent = str(
+                (restored_exchange or {}).get("intent") or ""
+            ).casefold()
+            restored_social = (
+                not str((restored_exchange or {}).get("target") or "").strip()
+                and restored_domain not in {"technical", "project", "work", "system", "execution"}
+                and restored_kind in {"dialogue", "social", "unknown"}
+            )
             candidate.update({
-                "intent": Intent.CYBER_EXPLAIN,
+                "intent": (
+                    Intent.PERSONAL_CHAT
+                    if restored_social
+                    else (
+                        restored_intent
+                        if restored_intent and restored_intent not in {
+                            "personal_chat", "chat", "discussion", "question", "unclear",
+                        }
+                        else Intent.CYBER_EXPLAIN
+                    )
+                ),
                 "target": generic_topic,
-                "entity_type": "CONCEPT",
+                "entity_type": "REFERENCE" if restored_social else "CONCEPT",
                 "semantic_pattern": "GENERIC_TOPIC_REFERENCE",
-                "conversation_domain": "technical",
+                "conversation_domain": restored_domain if restored_social else (
+                    "technical" if restored_domain == "general" else restored_domain
+                ),
                 "conversation_act": (
-                    "TOPIC_RETURN" if is_ordinal_return else "COMPOUND_REFERENCE"
+                    "TOPIC_RETURN" if is_ordinal_return or raw_act == "TOPIC_RETURN"
+                    else "COMPOUND_REFERENCE"
                 ),
                 "conversation_confidence": 0.95,
             })
-            # Re-activate the restored branch's canonical action. Otherwise
-            # a prior semantic override can leave the return labelled as chat.
-            if raw_act == "TOPIC_RETURN" and self.dialogue_memory:
-                get_context = getattr(self.dialogue_memory, "context_for_topic", None)
-                restored = get_context(generic_topic) if callable(get_context) else None
-                restored_action = (
-                    str(restored.get("action") or "").casefold()
-                    if isinstance(restored, dict) else ""
-                )
-                # A saved branch can have a conversational placeholder action
-                # (personal_chat) even though the topic was introduced as a
-                # technical explanation. Never let that placeholder overwrite
-                # the canonical intent resolved from the explicit topic return.
-                if restored_action and restored_action not in {
-                    "personal_chat", "chat", "discussion", "question", "unclear",
-                }:
-                    candidate["intent"] = restored["action"]
         # A short additive follow-up belongs to the immediately preceding
         # dialogue exchange, not to a fresh social topic. Apply this only when
         # the latest archived exchange is dialogue-safe; never borrow work,
@@ -1441,30 +1466,90 @@ class ConversationManager:
         ))
 
     def _resolve_generic_topic_reference(self, text: str) -> str | None:
-        """Resolve ordinal/previous topic references without task-history fallback."""
-        normalized = str(text or "").casefold()
+        """Resolve ordinal topic references from chronological dialogue branches."""
+        normalized = self._normalize_transition_text(text)
         if not any(marker in normalized for marker in (
-            "موضوع", "topic", "ارجع", "عد إلى", "عد الى", "حوار", "محادث",
-            "نقاش", "حديث", "نرجع", "قبل هذا الموضوع",
+            "موضوع", "topic", "ارجع", "عد الى", "عد إلى", "حوار", "محادث",
+            "نقاش", "حديث", "قبل هذا الموضوع",
         )):
             return None
+
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
-        history = getattr(state, "history", []) if state is not None else []
-        topics = []
-        for turn in history or []:
-            if not isinstance(turn, dict) or turn.get("role") != "user":
+        session_id = str(getattr(state, "session_id", "") or "")
+        archive = getattr(state, "exchange_archive", []) if state is not None else []
+        valid = []
+        for item in archive or []:
+            if not isinstance(item, dict):
                 continue
-            target = str(turn.get("target") or "").strip()
-            intent = str(getattr(turn.get("intent"), "value", turn.get("intent")) or "").casefold()
+            if session_id and str(item.get("session_id") or "") != session_id:
+                continue
+            if item.get("recall_only") or item.get("state_boundary_only"):
+                continue
+            kind = str(item.get("context_kind") or "").casefold()
+            domain = str(item.get("conversation_domain") or "").casefold()
             if (
-                target
-                and intent in {
-                    "cyber_explain", "explain", "question", "personal_chat",
-                    "discussion", "chat",
-                }
-                and target not in topics
+                kind in {"work", "system"}
+                or domain in {"work", "system", "execution"}
+                or (kind == "execution" and domain != "technical")
             ):
-                topics.append(target)
+                continue
+            user = self._normalize_transition_text(item.get("user") or "")
+            if not user:
+                continue
+            if any(marker in user for marker in (
+                "استرجع النقاش", "استرجاع الحوار", "استرجع الحوار",
+                "ماذا كنا نقول", "ماذا كنا نتحدث", "لخص الحوار",
+                "ملخص الحوار", "حفظ الجلسة", "استرجاع الجلسة",
+            )):
+                continue
+            valid.append(item)
+
+        # Split only on explicit independent-branch boundaries. A restore is
+        # a pointer to an earlier branch, not a new topic to insert in the list.
+        branches = []
+        current = []
+        for item in valid:
+            transition = str(item.get("context_transition") or "").casefold()
+            user = self._normalize_transition_text(item.get("user") or "")
+            inferred_switch = any(marker in user for marker in (
+                "لنغير الموضوع", "نغير الموضوع", "غير الموضوع",
+                "لنغير المجال", "نغير المجال", "موضوع جديد", "موضوعا جديدا",
+                "موضوع مختلف", "ننتقل الى موضوع", "change the topic",
+                "change the subject",
+            ))
+            if transition in {"new_independent", "explicit_switch"} or inferred_switch:
+                if current:
+                    branches.append(current)
+                current = [item]
+            elif transition == "restore":
+                # The restore request itself is not a distinct historical topic.
+                continue
+            else:
+                current.append(item)
+        if current:
+            branches.append(current)
+
+        topics = []
+        for branch in branches:
+            first = branch[0]
+            label = str(first.get("target") or "").strip()
+            if not label:
+                label = str(first.get("user") or "").strip()
+            if label and label.casefold() not in {topic.casefold() for topic in topics}:
+                topics.append(label)
+
+        # Older checkpoints may not have an exchange archive. Keep a safe
+        # compatibility fallback, but include only same-session dialogue turns.
+        if not topics and state is not None:
+            for turn in getattr(state, "history", []) or []:
+                if not isinstance(turn, dict) or turn.get("role") != "user":
+                    continue
+                if session_id and str(turn.get("session_id") or "") != session_id:
+                    continue
+                target = str(turn.get("target") or "").strip()
+                if target and target.casefold() not in {topic.casefold() for topic in topics}:
+                    topics.append(target)
+
         if not topics:
             return None
         if any(marker in normalized for marker in ("الأول", "الاول", "first")):
@@ -1472,33 +1557,17 @@ class ConversationManager:
         if any(marker in normalized for marker in ("الثاني", "الثانى", "second")) and len(topics) > 1:
             return topics[1]
         if any(marker in normalized for marker in (
-            "السابق", "السابقه", "السابقَ", "previous", "الاصلي", "الأصلي",
-            "الرئيسي", "الرئيسيه", "موضوعنا", "حوارنا", "نقاشنا",
-        )) or any(marker in normalized for marker in ("ارجع", "نرجع", "عد إلى", "عد الى")):
-            state = getattr(self.dialogue_memory, "state", None)
-            last_turn = next(
-                (
-                    item for item in reversed(getattr(state, "history", []) or [])
-                    if isinstance(item, dict) and item.get("role") == "user"
-                ),
-                {},
-            ) if state is not None else {}
-            last_content = str(last_turn.get("content", "")).casefold() if isinstance(last_turn, dict) else ""
-            if (
-                isinstance(last_turn, dict)
-                and (
-                    last_turn.get("conversation_act") == "TOPIC_RETURN"
-                    or any(marker in last_content for marker in ("ارجع", "نرجع", "عد إلى", "عد الى"))
-                )
-            ):
-                previous = self.dialogue_memory.active_context_entity()
-            else:
-                get_previous = getattr(self.dialogue_memory, "previous_context_entity", None)
-                previous = get_previous() if callable(get_previous) else None
-            if isinstance(previous, dict) and previous.get("entity"):
-                return str(previous["entity"]).strip()
-            active = getattr(self.dialogue_memory, "last_topic", None)
-            return str(active).strip() if active else topics[-1]
+            "السابق", "السابقه", "السابقَ", "previous",
+        )):
+            return topics[-2] if len(topics) > 1 else topics[0]
+        if any(marker in normalized for marker in (
+            "الرئيسي", "الرئيسيه", "الاصلي", "الأصلي",
+        )):
+            return topics[0]
+        if any(marker in normalized for marker in (
+            "موضوعنا", "حوارنا", "نقاشنا", "ارجع", "نرجع", "عد الى", "عد إلى",
+        )):
+            return topics[0] if len(topics) == 1 else topics[-2]
         return None
 
     @staticmethod
