@@ -1927,36 +1927,40 @@ class ConversationManager:
             # intervening branch to the restored topic's history.
             restored_target = str(substantive[latest_index].get("target") or "").strip()
             if restored_target:
-                matching = [
-                    item for item in substantive[:latest_index]
+                normalized_target = restored_target.casefold()
+                matching_indices = [
+                    index for index, item in enumerate(substantive[:latest_index])
                     if str(item.get("target") or "").strip().casefold()
-                    == restored_target.casefold()
+                    == normalized_target
                 ]
-                if matching:
-                    first_match = next(
-                        index for index, item in enumerate(substantive[:latest_index])
-                        if str(item.get("target") or "").strip().casefold()
-                        == restored_target.casefold()
-                    )
-                    # Keep only the contiguous restored branch segment, stopping
-                    # at the next independent boundary before the return.
-                    later_boundaries = [
-                        index for index, kind in boundaries
-                        if first_match < index < latest_index
-                        and kind in {"new_independent", "explicit_switch"}
+                if matching_indices:
+                    # Locate the most recent start of this exact topic before
+                    # the return, then stop at the next independent branch.
+                    matching_starts = [
+                        index for index in matching_indices
+                        if boundary(substantive[index]) in {"new_independent", "explicit_switch"}
                     ]
-                    segment_start = (
-                        later_boundaries[-1] + 1 if later_boundaries else first_match
+                    segment_start = matching_starts[-1] if matching_starts else matching_indices[0]
+                    segment_end = next(
+                        (
+                            index for index, kind in boundaries
+                            if index > segment_start and index < latest_index
+                            and kind in {"new_independent", "explicit_switch"}
+                        ),
+                        latest_index,
                     )
                     selected = [
-                        item for item in substantive[segment_start:latest_index]
+                        item for item in substantive[segment_start:segment_end]
                         if (
-                            not str(item.get("target") or "").strip()
-                            or str(item.get("target") or "").strip().casefold()
-                            == restored_target.casefold()
+                            str(item.get("target") or "").strip().casefold()
+                            == normalized_target
+                            or (
+                                not str(item.get("target") or "").strip()
+                                and boundary(item) not in {"new_independent", "explicit_switch"}
+                            )
                         )
                     ]
-                    return selected or matching[-1:]
+                    return selected or [substantive[matching_indices[-1]]]
             # Targetless social branches are restored by matching the branch
             # opener text; the caller's explicit transition remains authoritative.
             restored_user = normalized_user(substantive[latest_index])
