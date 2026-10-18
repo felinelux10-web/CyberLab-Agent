@@ -556,6 +556,7 @@ class ConversationManager:
                             else raw_signal.get("conversation_domain", "general")
                         ),
                     })
+        generic_social_topic_return = False
         generic_topic = (
             None
             if raw_act == "CONVERSATION_HISTORY_QUERY"
@@ -598,6 +599,7 @@ class ConversationManager:
                 and restored_domain not in {"technical", "project", "work", "system", "execution"}
                 and restored_kind in {"dialogue", "social", "unknown"}
             )
+            generic_social_topic_return = bool(restored_social)
             candidate.update({
                 "intent": (
                     Intent.PERSONAL_CHAT
@@ -859,7 +861,7 @@ class ConversationManager:
                 )
                 if callable(get_context):
                     context_entity = get_context(candidate.get("target"))
-                if context_entity is None:
+                if context_entity is None and not generic_social_topic_return:
                     get_previous = getattr(
                         self.dialogue_memory,
                         "previous_context_entity",
@@ -884,6 +886,7 @@ class ConversationManager:
         if (
             self.dialogue_memory
             and context_entity
+            and not generic_social_topic_return
             and transition.value in CONTEXTUAL_TRANSITIONS
             and not style_request
             and not unnamed_branch_return
