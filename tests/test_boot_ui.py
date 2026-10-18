@@ -46,10 +46,12 @@ def test_failed_component_has_red_state_marker_text(capsys):
 
 def test_prompt_uses_only_cyberlab_identity_and_separator(capsys, monkeypatch):
     ui = BootUI()
-    monkeypatch.setattr("builtins.input", lambda prompt="": prompt)
+    seen_prompts = []
+    monkeypatch.setattr("builtins.input", lambda prompt="": seen_prompts.append(prompt) or "")
     result = ui.prompt()
     output = capsys.readouterr().out
-    assert result == "> "
+    assert result == ""
+    assert seen_prompts == ["> "]
     assert "CYBERLAB" in output
     assert "✦" in output
     assert "─" * 20 in output
