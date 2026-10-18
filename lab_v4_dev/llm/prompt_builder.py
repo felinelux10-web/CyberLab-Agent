@@ -389,8 +389,18 @@ def build_chat_prompt(
     
     project_knowledge: optional retrieved knowledge dict from knowledge_retriever
     """
-    scope = project_scope or resolve_project_scope(user_input)
-    domain = _chat_domain(user_input, scope)
+    semantic = conversation_semantics or {}
+    response_attributes = semantic.get("response_attributes") or {}
+    compound_request = bool(response_attributes.get("compound_request"))
+    # The message-level semantic contract outranks lexical domain hints.
+    # A compound question may mention Python/security/project words without
+    # asking for a cyber or project workflow.
+    scope = (
+        "general"
+        if compound_request
+        else project_scope or resolve_project_scope(user_input)
+    )
+    domain = "general" if compound_request else _chat_domain(user_input, scope)
     authorized_project_knowledge = (
         scope == ProjectScope.CURRENT_PROJECT
         and isinstance(project_knowledge, dict)
@@ -477,7 +487,6 @@ def build_chat_prompt(
 - لا تتعامل مع كل رسالة كأنها طلب مستقل.
 """
 
-    semantic = conversation_semantics or {}
     act = str(semantic.get("conversation_act") or "NONE")
     if act != "NONE":
         system += (
