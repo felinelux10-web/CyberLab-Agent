@@ -595,3 +595,53 @@ def test_gateway_error_does_not_guess_that_connectivity_is_the_cause(monkeypatch
     assert result["gateway_error"]["code"] == "NO_PROVIDER_AVAILABLE"
     assert "لا يوجد حاليًا مزود" in result["text"]
     assert "تحقق من الاتصال" not in result["text"]
+
+
+def test_ordinal_return_resolves_targetless_social_branch_before_technical_branch():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+
+    orchestrator = CapturingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    sid = memory.state.session_id
+    social_opener = (
+        "أشعر أن الذكاء الاصطناعي يتطور بسرعة ولا أعرف ماذا أتعلم."
+    )
+    memory.state.exchange_archive = [
+        {
+            "session_id": sid,
+            "user": social_opener,
+            "assistant": "ابدأ بتجربة أداة ذكاء اصطناعي واحدة على مهمة يومية.",
+            "target": None,
+            "intent": "personal_chat",
+            "context_kind": "dialogue",
+            "conversation_domain": "social",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid,
+            "user": "ما الفرق بين القائمة والقاموس في Python؟",
+            "assistant": "القائمة تحفظ عناصر والقاموس يربط المفاتيح بالقيم.",
+            "target": "list و dict في Python",
+            "intent": "cyber_explain",
+            "context_kind": "execution",
+            "conversation_domain": "technical",
+            "context_transition": "new_independent",
+        },
+    ]
+    manager = ConversationManager(orchestrator, memory)
+
+    topic = manager._resolve_generic_topic_reference("نرجع لموضوعنا الأول")
+    assert topic == social_opener
+
+    history = manager._history_for_transition(
+        ContextTransition.RESTORE,
+        {
+            "target": topic,
+            "entity_type": "REFERENCE",
+            "conversation_act": "TOPIC_RETURN",
+        },
+    )
+    rendered = " ".join(item.get("content", "") for item in history)
+    assert social_opener in rendered
+    assert "ابدأ بتجربة أداة ذكاء اصطناعي واحدة" in rendered
+    assert "القائمة والقاموس في Python" not in rendered
