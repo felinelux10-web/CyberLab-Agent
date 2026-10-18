@@ -1938,7 +1938,7 @@ class ConversationManager:
                 not current_session_id
                 or str(item.get("session_id") or "") == current_session_id
             )
-        ][-8:]
+        ][-12:]
 
         base = {
             "status": "success",
