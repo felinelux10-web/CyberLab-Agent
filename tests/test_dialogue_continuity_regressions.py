@@ -58,6 +58,34 @@ def test_enumerated_compound_prompt_is_not_hijacked_by_agent_self_intent(monkeyp
     assert orchestrator.calls == []
 
 
+def test_failed_compound_prompt_remains_available_for_recall(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    prompt = (
+        "اختبر قدرتك بالإجابة عن كل جزء:\\n"
+        "1. حديث ودي عن تطور الذكاء الاصطناعي.\\n"
+        "2. ما الفرق بين list و dict؟\\n"
+        "3. أظن أن dict لا يقبل إلا مفتاحًا واحدًا.\\n"
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        lambda *_args, **_kwargs: {"status": "error", "message": "provider offline"},
+    )
+
+    failed = manager.process(prompt)
+    assert failed["status"] == "error"
+    saved = memory.state.exchange_archive[-1]
+    assert saved["user"] == prompt
+    assert saved["assistant"] == ""
+    assert saved["recall_only"] is True
+    assert saved["response_failed"] is True
+
+    recalled = manager.process("لخص الاختبار المركب الذي أجريناه قبل قليل")
+    assert recalled["status"] == "success"
+    assert recalled["source"] == "dialogue_memory"
+    assert "حديث ودي عن تطور الذكاء الاصطناعي" in recalled["text"]
+    assert orchestrator.calls == []
+
+
 def test_compound_test_recall_is_classified_as_dialogue_history():
     result = classify_conversation_semantics("لخص الاختبار المركب الذي أجريناه قبل قليل")
     assert result["conversation_act"] == "CONVERSATION_HISTORY_QUERY"
