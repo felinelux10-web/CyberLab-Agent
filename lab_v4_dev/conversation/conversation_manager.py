@@ -581,6 +581,14 @@ class ConversationManager:
         normalized_follow_up = self._normalize_transition_text(user_input).strip(
             " .,،؛:!?؟"
         )
+        # Arabic diacritics (e.g. tanween in "أيضًا") are orthographic,
+        # not semantic; remove them for exact short-follow-up matching.
+        normalized_follow_up = "".join(
+            char for char in normalized_follow_up
+            if not "\u064b" <= char <= "\u065f"
+            and char != "\u0670"
+            and not "\u06d6" <= char <= "\u06ed"
+        )
         additive_follow_ups = {
             "ماذا ايضا", "ما ايضا", "وايضا", "وايش ايضا",
             "وماذا ايضا", "وماذا بعد", "ماذا بعد", "ما بعد",
