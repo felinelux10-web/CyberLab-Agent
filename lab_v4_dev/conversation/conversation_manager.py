@@ -2033,20 +2033,43 @@ class ConversationManager:
                         )
                     ]
                     return selected or [substantive[matching_indices[-1]]]
-            # Targetless social branches are restored by matching the branch
-            # opener text; the caller's explicit transition remains authoritative.
-            restored_user = normalized_user(substantive[latest_index])
-            for index, item in enumerate(substantive[:latest_index]):
-                if normalized_user(item) == restored_user and restored_user:
-                    next_boundary = next(
-                        (
-                            boundary_index for boundary_index, kind in boundaries
-                            if boundary_index > index
-                            and kind in {"new_independent", "explicit_switch"}
-                        ),
-                        latest_index,
-                    )
-                    return substantive[index:next_boundary]
+            # Targetless social returns use ordinal/relational wording rather
+            # than a canonical entity target. Resolve that wording against the
+            # chronological branch starts, including an initial branch whose
+            # legacy transition was ambiguous.
+            restore_request = normalized_user(substantive[latest_index])
+            branch_starts = [0]
+            branch_starts.extend(
+                index for index, kind in boundaries
+                if index > 0 and kind in {"new_independent", "explicit_switch"}
+            )
+            branch_starts = sorted(set(
+                index for index in branch_starts if index < latest_index
+            ))
+            if branch_starts:
+                if any(marker in restore_request for marker in (
+                    "الاول", "الأول", "الرئيسي", "الرئيسيه", "الاصلي", "الأصلي", "first",
+                )):
+                    segment_start = branch_starts[0]
+                elif any(marker in restore_request for marker in (
+                    "الثاني", "الثانى", "second",
+                )) and len(branch_starts) > 1:
+                    segment_start = branch_starts[1]
+                elif any(marker in restore_request for marker in (
+                    "السابق", "السابقه", "previous",
+                )) and len(branch_starts) > 1:
+                    segment_start = branch_starts[-2]
+                else:
+                    segment_start = branch_starts[-2] if len(branch_starts) > 1 else branch_starts[-1]
+                segment_end = next(
+                    (
+                        index for index, kind in boundaries
+                        if index > segment_start and index < latest_index
+                        and kind in {"new_independent", "explicit_switch"}
+                    ),
+                    latest_index,
+                )
+                return substantive[segment_start:segment_end]
             return substantive[latest_index:]
 
         # The newest independent/switch boundary starts the active branch.
