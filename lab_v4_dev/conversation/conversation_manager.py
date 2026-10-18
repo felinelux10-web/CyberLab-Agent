@@ -819,6 +819,30 @@ class ConversationManager:
         parsed.setdefault("conversation_confidence", 0.0)
         parsed.setdefault("response_attributes", {})
 
+        # Generic targetless proposals are dialogue, even when the fallback parser
+        # labels their domain as execution. Preserve execution ownership only when
+        # the user actually asks to run/execute/deploy something or names a target.
+        proposal_intent = str(
+            getattr(parsed.get("intent"), "value", parsed.get("intent")) or ""
+        ).casefold()
+        proposal_domain = str(parsed.get("conversation_domain") or "general").casefold()
+        proposal_target = str(parsed.get("target") or "").strip()
+        normalized_proposal_text = self._normalize_transition_text(user_input)
+        explicit_execution_markers = (
+            "نفذ", "نفذ الامر", "ابدأ التنفيذ", "ابدا التنفيذ",
+            "شغل", "تشغيل", "انشر", "تنفيذ", "execute", "run", "deploy",
+        )
+        if (
+            proposal_intent in {"propose_solution", "plan"}
+            and not proposal_target
+            and proposal_domain == "execution"
+            and not any(
+                marker in normalized_proposal_text
+                for marker in explicit_execution_markers
+            )
+        ):
+            parsed["conversation_domain"] = "general"
+
         # Canonical semantic request follows the context-authorized parse and
         # is established before selecting the execution owner.
         semantic = build_semantic_request(
