@@ -158,6 +158,12 @@ class DialogueMemory:
         previous_context = self.active_context_entity()
 
         semantic = result.get("semantic_request") or {}
+        result_intent = getattr(result.get("intent"), "value", result.get("intent"))
+        local_social_result = (
+            str(result.get("source") or "").casefold() == "local_social"
+            and str(result_intent or "").casefold() in {"personal_chat", "chat"}
+            and not str(result.get("target") or parsed.get("target") or "").strip()
+        )
         conversation_domain = parsed.get(
             "conversation_domain", semantic.get("conversation_domain", "general")
         )
@@ -165,8 +171,18 @@ class DialogueMemory:
             "conversation_act", semantic.get("conversation_act", "NONE")
         )
         context_kind = semantic.get("context_kind", "unknown")
+        # A locally handled social response has an unambiguous dialogue owner.
+        # Do not let a conflicting fallback/parser domain (for example,
+        # "execution") silently discard it from the dialogue archive.
+        if local_social_result:
+            conversation_domain = "social"
+            context_kind = "social"
 
-        turn_intent = parsed.get("intent") or result.get("intent")
+        turn_intent = (
+            result.get("intent")
+            if local_social_result
+            else parsed.get("intent") or result.get("intent")
+        )
         # The canonical semantic request may contain the topic authorized by a
         # RESTORE transition even when the user did not name that topic again.
         # Persist that resolved target rather than treating "return to the
@@ -236,6 +252,8 @@ class DialogueMemory:
                 # restored branch's original intent for the next continuation.
                 turn_intent = restored_context["action"]
         conversation_act = parsed.get("conversation_act")
+        if local_social_result and str(conversation_act or "NONE").upper() == "NONE":
+            conversation_act = "CASUAL_CONVERSATION"
         # Recall is read-only: storing the retrieval request and its summary as
         # a new exchange would make the memory report itself as the latest topic
         # and could replace the active intent used by the next continuation.
