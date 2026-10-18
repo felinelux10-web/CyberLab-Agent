@@ -61,10 +61,10 @@ def test_enumerated_compound_prompt_is_not_hijacked_by_agent_self_intent(monkeyp
 def test_failed_compound_prompt_remains_available_for_recall(monkeypatch):
     manager, memory, orchestrator, calls = _manager(monkeypatch)
     prompt = (
-        "اختبر قدرتك بالإجابة عن كل جزء:\\n"
-        "1. حديث ودي عن تطور الذكاء الاصطناعي.\\n"
-        "2. ما الفرق بين list و dict؟\\n"
-        "3. أظن أن dict لا يقبل إلا مفتاحًا واحدًا.\\n"
+        "اختبر قدرتك بالإجابة عن كل جزء:\n"
+        "1. حديث ودي عن تطور الذكاء الاصطناعي.\n"
+        "2. ما الفرق بين list و dict؟\n"
+        "3. أظن أن dict لا يقبل إلا مفتاحًا واحدًا.\n"
     )
     monkeypatch.setattr(
         "lab_v4_dev.conversation.conversation_manager.gateway_ask",
