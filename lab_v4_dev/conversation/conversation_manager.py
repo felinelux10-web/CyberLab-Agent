@@ -2668,6 +2668,32 @@ class ConversationManager:
         if selected:
             return self._exchange_history_turns(selected)[-8:]
 
+        # A friendly/social branch often has no canonical entity target. Its
+        # chronological opener is therefore the branch label used by ordinal
+        # recall; recover the bounded segment from that opener to the next
+        # independent-topic boundary instead of falling back to an empty history.
+        if transition == ContextTransition.RESTORE and topic:
+            normalized_topic = self._normalize_transition_text(topic)
+            matching_index = next(
+                (
+                    index for index, item in enumerate(exchanges or [])
+                    if allowed(item)
+                    and self._normalize_transition_text(item.get("user") or "") == normalized_topic
+                ),
+                None,
+            )
+            if matching_index is not None:
+                segment = []
+                for item in (exchanges or [])[matching_index:]:
+                    if not allowed(item):
+                        continue
+                    relation = str(item.get("context_transition") or "").casefold()
+                    if segment and relation in {"new_independent", "explicit_switch", "restore"}:
+                        break
+                    segment.append(item)
+                if segment:
+                    return self._exchange_history_turns(segment)[-8:]
+
         # Compatibility with checkpoints created before exchange archives.
         return [
             turn for turn in (history or [])
