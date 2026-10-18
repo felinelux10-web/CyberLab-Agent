@@ -2761,10 +2761,42 @@ class ConversationManager:
             }
 
         except Exception as e:
-            fallback = (
-                "تعذر الوصول إلى نموذج الذكاء الاصطناعي حالياً. "
-                "تحقق من الاتصال أو إعدادات المزود ثم أعد المحاولة."
+            gateway_error = (
+                result.get("error")
+                if isinstance(result, dict)
+                else None
             )
+            error_code = (
+                str(gateway_error.get("code") or "").strip()
+                if isinstance(gateway_error, dict)
+                else ""
+            )
+            if error_code == "PRIVACY_EXTERNAL_BLOCKED":
+                fallback = (
+                    "حُجب إرسال هذا الطلب إلى مزود خارجي وفق فحص الخصوصية. "
+                    "لم يُنفَّذ أي إجراء، ولم يُسجَّل رد مختلق."
+                )
+            elif error_code == "NO_PROVIDER_AVAILABLE":
+                fallback = (
+                    "لا يوجد حاليًا مزود ذكاء اصطناعي مهيأ ومتاح لإنتاج الرد. "
+                    "لم أتمكن من متابعة الحوار في هذه المحاولة."
+                )
+            elif error_code == "TIMEOUT":
+                fallback = (
+                    "انتهت مهلة انتظار مزود الذكاء الاصطناعي قبل وصول رد صالح. "
+                    "لم أتمكن من متابعة الحوار في هذه المحاولة."
+                )
+            elif error_code:
+                fallback = (
+                    "تعذر إنتاج رد صالح من مزود الذكاء الاصطناعي "
+                    f"(رمز الخطأ: {error_code}). لم أعتبر رسالة الخطأ إجابة "
+                    "ولم أضفها إلى سجل الحوار كأنها رد ناجح."
+                )
+            else:
+                fallback = (
+                    "تعذر إنتاج رد صالح في هذه المحاولة. لا تتوفر أدلة كافية "
+                    "للجزم بأن السبب هو الاتصال أو إعدادات المزود."
+                )
 
             return {
                 "status": "error",
@@ -2787,12 +2819,8 @@ class ConversationManager:
                     if isinstance(result, dict)
                     else None
                 ),
-                "gateway_error": (
-                    result.get("error")
-                    if isinstance(result, dict)
-                    else None
-                ),
-                "error": str(e),
+                "gateway_error": gateway_error,
+                "error": error_code or str(e) or type(e).__name__,
                 "executed": False,
             }
 
