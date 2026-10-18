@@ -93,7 +93,7 @@ def test_multiline_terminal_paste_is_one_logical_message(monkeypatch):
 
     class FakeTTY:
         def __init__(self):
-            self.lines = iter(["2. سؤال تقني\\n", "\\n", "3. تصحيح افتراض\\n"])
+            self.lines = iter(["2. سؤال تقني\n", "\n", "3. تصحيح افتراض\n"])
 
         def isatty(self):
             return True
@@ -117,7 +117,7 @@ def test_multiline_terminal_paste_is_one_logical_message(monkeypatch):
 
     result = ui._read_pasted_continuation("1. بداية الحوار")
 
-    assert result == "1. بداية الحوار\\n2. سؤال تقني\\n\\n3. تصحيح افتراض"
+    assert result == "1. بداية الحوار\n2. سؤال تقني\n\n3. تصحيح افتراض"
 
 
 def test_single_line_prompt_remains_single_line_when_stdin_is_not_tty(monkeypatch):
