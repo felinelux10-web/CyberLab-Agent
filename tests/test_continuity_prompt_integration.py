@@ -462,3 +462,136 @@ def test_return_to_main_topic_without_history_is_classified_and_safe():
 
     assert result["status"] == "needs_clarification"
     assert orchestrator.calls == []
+
+
+def test_restoring_named_topic_does_not_merge_the_intervening_branch():
+    sid = "dialogue-branch-regression"
+    exchanges = [
+        {
+            "session_id": sid, "user": "اشرح SQL Injection",
+            "assistant": "شرح SQL Injection", "target": "SQL Injection",
+            "context_kind": "dialogue", "conversation_domain": "technical",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid, "user": "كيف تحدث؟",
+            "assistant": "تفصيل SQL Injection", "target": "SQL Injection",
+            "context_kind": "dialogue", "conversation_domain": "technical",
+            "context_transition": "continue",
+        },
+        {
+            "session_id": sid, "user": "اشرح CSRF",
+            "assistant": "شرح CSRF", "target": "CSRF",
+            "context_kind": "dialogue", "conversation_domain": "technical",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid, "user": "كيف تعمل؟",
+            "assistant": "تفصيل CSRF", "target": "CSRF",
+            "context_kind": "dialogue", "conversation_domain": "technical",
+            "context_transition": "continue",
+        },
+        {
+            "session_id": sid, "user": "ارجع إلى SQL Injection",
+            "assistant": "عدنا إلى SQL Injection", "target": "SQL Injection",
+            "context_kind": "dialogue", "conversation_domain": "technical",
+            "context_transition": "restore",
+        },
+    ]
+
+    branch = ConversationManager._latest_dialogue_branch(exchanges)
+
+    assert [item["user"] for item in branch] == [
+        "اشرح SQL Injection",
+        "كيف تحدث؟",
+    ]
+    assert all("CSRF" not in item["user"] for item in branch)
+    assert all("CSRF" not in item["assistant"] for item in branch)
+
+
+def test_summary_since_beginning_includes_distinct_topics_in_chronological_order():
+    orchestrator = CapturingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    sid = memory.state.session_id
+    memory.state.exchange_archive = [
+        {
+            "session_id": sid,
+            "user": "أشعر أن الذكاء الاصطناعي يتطور بسرعة ولا أعرف ماذا أتعلم.",
+            "assistant": "ابدأ بتجربة أداة ذكاء اصطناعي واحدة على مهمة يومية.",
+            "target": None,
+            "context_kind": "dialogue",
+            "conversation_domain": "social",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid,
+            "user": "ما الفرق بين القائمة والقاموس في Python؟",
+            "assistant": "القائمة تحفظ عناصر متسلسلة والقاموس يربط المفاتيح بالقيم.",
+            "target": "list و dict في Python",
+            "context_kind": "execution",
+            "conversation_domain": "technical",
+            "context_transition": "new_independent",
+        },
+        {
+            "session_id": sid,
+            "user": "نرجع لموضوع تعلم استخدام أدوات الذكاء الاصطناعي.",
+            "assistant": "ابدأ بتجربة أداة واحدة على مهمة حقيقية.",
+            "target": None,
+            "context_kind": "dialogue",
+            "conversation_domain": "social",
+            "context_transition": "restore",
+        },
+    ]
+    manager = ConversationManager(orchestrator, memory)
+
+    result = manager._answer_dialogue_history(
+        "لخص الحوار منذ البداية واذكر الموضوعين اللذين ناقشناهما بالترتيب",
+        "summary",
+        memory.state.exchange_archive,
+    )
+
+    assert result["status"] == "success"
+    assert "الذكاء الاصطناعي يتطور بسرعة" in result["text"]
+    assert "القائمة والقاموس في Python" in result["text"]
+    assert result["text"].index("الذكاء الاصطناعي يتطور بسرعة") < result["text"].index(
+        "القائمة والقاموس في Python"
+    )
+
+
+def test_gateway_error_does_not_guess_that_connectivity_is_the_cause(monkeypatch):
+    import lab_v4_dev.conversation.conversation_manager as manager_module
+
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda *_args, **_kwargs: {
+            "status": "error",
+            "text": "",
+            "error": {
+                "code": "NO_PROVIDER_AVAILABLE",
+                "message": "No configured provider is available",
+            },
+            "provider_chain": [],
+        },
+    )
+    orchestrator = CapturingOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+
+    result = manager._handle_chat(
+        "أكمل من حيث توقفنا في موضوع تعلم استخدام أدوات الذكاء الاصطناعي.",
+        "CHAT",
+        parsed={
+            "intent": Intent.PERSONAL_CHAT,
+            "target": "",
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "response_attributes": {},
+        },
+        user_question="أكمل من حيث توقفنا في موضوع تعلم استخدام أدوات الذكاء الاصطناعي.",
+        history=[],
+    )
+
+    assert result["status"] == "error"
+    assert result["gateway_error"]["code"] == "NO_PROVIDER_AVAILABLE"
+    assert "لا يوجد حاليًا مزود" in result["text"]
+    assert "تحقق من الاتصال" not in result["text"]
