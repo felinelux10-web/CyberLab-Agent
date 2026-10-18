@@ -1866,43 +1866,39 @@ class ConversationManager:
 
     @staticmethod
     def _latest_dialogue_branch(exchanges: list[dict]) -> list[dict]:
-        """Select the last substantive dialogue branch, ignoring recall/save commands."""
+        """Select one active dialogue branch without crossing a later topic boundary."""
         valid = [item for item in (exchanges or []) if isinstance(item, dict)]
 
-        def user_text(item: dict) -> str:
-            return str(item.get("user") or "").casefold().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        def normalized_user(item: dict) -> str:
+            return " ".join(
+                str(item.get("user") or "").casefold()
+                .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+                .split()
+            )
 
-        def is_control_exchange(item: dict) -> bool:
-            user = " ".join(user_text(item).split())
-            transition = str(item.get("context_transition") or "").casefold()
+        def excluded(item: dict) -> bool:
             kind = str(item.get("context_kind") or "").casefold()
             domain = str(item.get("conversation_domain") or "").casefold()
             if (
                 kind in {"work", "system"}
                 or domain in {"work", "system", "execution"}
                 or (kind == "execution" and domain != "technical")
+                or item.get("recall_only")
+                or item.get("state_boundary_only")
             ):
                 return True
-            if user == "حفظ" or user.startswith("حفظ "):
-                return True
-            controls = (
-                "استرجع النقاش الذي انقطع",
-                "استرجاع الحوار",
-                "استرجع الحوار",
-                "ماذا كنا نقول",
-                "ماذا كنا نتحدث",
-                "استكمال الحوار",
-                "استكمال النقاش",
-                "استرجاتع الجلسة السابقة",
-                "استرجاع الجلسة السابقة",
-            )
-            return any(marker in user for marker in controls)
+            user = normalized_user(item)
+            return user == "حفظ" or user.startswith("حفظ ")
 
-        def inferred_boundary(item: dict) -> str:
+        substantive = [item for item in valid if not excluded(item)]
+        if not substantive:
+            return []
+
+        def boundary(item: dict) -> str:
             transition = str(item.get("context_transition") or "").casefold()
             if transition in {"new_independent", "explicit_switch", "restore"}:
                 return transition
-            user = " ".join(user_text(item).split())
+            user = normalized_user(item)
             if any(marker in user for marker in (
                 "لنغير الموضوع", "نغير الموضوع", "غير الموضوع",
                 "لنغير المجال", "نغير المجال", "ننتقل الى موضوع",
@@ -1917,21 +1913,70 @@ class ConversationManager:
                 return "restore"
             return ""
 
-        substantive = [item for item in valid if not is_control_exchange(item)]
-        if not substantive:
-            return []
+        boundaries = [
+            (index, boundary(item))
+            for index, item in enumerate(substantive)
+            if boundary(item)
+        ]
+        if not boundaries:
+            return substantive[-1:]
 
-        # A restored topic is a new active branch even when older archives recorded
-        # its transition as ambiguous. Ignore later recall/save commands so they
-        # cannot replace that branch as the apparent "latest topic".
-        for index in range(len(substantive) - 1, -1, -1):
-            if inferred_boundary(substantive[index]):
-                return substantive[index:]
+        latest_index, latest_kind = boundaries[-1]
+        if latest_kind == "restore":
+            # A return points back to a prior branch. Do not append the
+            # intervening branch to the restored topic's history.
+            restored_target = str(substantive[latest_index].get("target") or "").strip()
+            if restored_target:
+                matching = [
+                    item for item in substantive[:latest_index]
+                    if str(item.get("target") or "").strip().casefold()
+                    == restored_target.casefold()
+                ]
+                if matching:
+                    first_match = next(
+                        index for index, item in enumerate(substantive[:latest_index])
+                        if str(item.get("target") or "").strip().casefold()
+                        == restored_target.casefold()
+                    )
+                    # Keep only the contiguous restored branch segment, stopping
+                    # at the next independent boundary before the return.
+                    later_boundaries = [
+                        index for index, kind in boundaries
+                        if first_match < index < latest_index
+                        and kind in {"new_independent", "explicit_switch"}
+                    ]
+                    segment_start = (
+                        later_boundaries[-1] + 1 if later_boundaries else first_match
+                    )
+                    selected = [
+                        item for item in substantive[segment_start:latest_index]
+                        if (
+                            not str(item.get("target") or "").strip()
+                            or str(item.get("target") or "").strip().casefold()
+                            == restored_target.casefold()
+                        )
+                    ]
+                    return selected or matching[-1:]
+            # Targetless social branches are restored by matching the branch
+            # opener text; the caller's explicit transition remains authoritative.
+            restored_user = normalized_user(substantive[latest_index])
+            for index, item in enumerate(substantive[:latest_index]):
+                if normalized_user(item) == restored_user and restored_user:
+                    next_boundary = next(
+                        (
+                            boundary_index for boundary_index, kind in boundaries
+                            if boundary_index > index
+                            and kind in {"new_independent", "explicit_switch"}
+                        ),
+                        latest_index,
+                    )
+                    return substantive[index:next_boundary]
+            return substantive[latest_index:]
 
-        # Legacy archives without transition markers: use the most recent
-        # contiguous dialogue segment rather than claiming the whole archive.
-        return substantive[-1:]
-
+        # The newest independent/switch boundary starts the active branch.
+        # Crucially, a later RESTORE is handled above rather than concatenating
+        # the restored branch with the branch that was left.
+        return substantive[latest_index:]
     def _answer_dialogue_history(
         self,
         text: str,
@@ -2052,7 +2097,12 @@ class ConversationManager:
             # branch-only view remains appropriate for a plain current-state
             # summary, where mixing independent topics would be misleading.
             normalized_query = str(text or "").casefold()
-            recall_recent_exchanges = any(marker in normalized_query for marker in (
+            whole_dialogue_summary = any(marker in normalized_query for marker in (
+                "منذ البداية", "منذ بدايه", "من بداية الحوار", "من بداية النقاش",
+                "من اول الحوار", "من أول الحوار", "منذ أول الحوار",
+                "الموضوعين", "موضوعين", "بالترتيب", "من البداية حتى الآن",
+            ))
+            recall_recent_exchanges = whole_dialogue_summary or any(marker in normalized_query for marker in (
                 "الردود السابقة", "الردود السابقه", "قبل قليل",
                 "ماذا كنا نقول", "ماذا قلنا", "ما كنا نقول",
                 "الاختبار المركب", "اختبارنا", "لخص الاختبار",
