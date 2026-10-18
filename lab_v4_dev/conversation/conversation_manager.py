@@ -2599,21 +2599,28 @@ class ConversationManager:
         result = {}
         try:
             intent = (parsed or {}).get("intent")
+            response_attributes = (parsed or {}).get("response_attributes") or {}
+            compound_request = bool(response_attributes.get("compound_request"))
+            # One compound message belongs to the ordinary conversational responder.
+            # Do not inject agent-self or project knowledge because individual items
+            # mention the agent, Python, or project-adjacent vocabulary.
             self_knowledge = (
                 build_agent_self_knowledge(intent)
-                if intent in _AGENT_SELF_INTENTS
+                if intent in _AGENT_SELF_INTENTS and not compound_request
                 else None
             )
-            project_scope = resolve_project_scope(
-                user_question or text,
-                intent=intent,
+            project_scope = (
+                "general"
+                if compound_request
+                else resolve_project_scope(user_question or text, intent=intent)
             )
             
             # Retrieve project knowledge for the question if applicable
             project_knowledge = None
             knowledge_type = QuestionClassifier.classify(user_question or text)
             if (
-                user_question
+                not compound_request
+                and user_question
                 and (
                     intent in _AGENT_SELF_INTENTS
                     or knowledge_type in {"component", "relationship", "execution", "file"}
