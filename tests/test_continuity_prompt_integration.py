@@ -696,3 +696,39 @@ def test_process_returns_to_first_social_topic_without_reusing_python_context(mo
     assert social_opener in prompts[-1]
     assert "القائمة والقاموس في Python" not in prompts[-1]
     assert orchestrator.calls == []
+
+
+def test_current_topic_summary_after_targetless_return_uses_the_restored_branch():
+    exchanges = [
+        {
+            "user": "أشعر أن الذكاء الاصطناعي يتطور بسرعة.",
+            "assistant": "ابدأ بتجربة أداة واحدة.",
+            "target": None,
+            "context_kind": "dialogue",
+            "conversation_domain": "social",
+            "context_transition": "new_independent",
+        },
+        {
+            "user": "ما الفرق بين القائمة والقاموس في Python؟",
+            "assistant": "القائمة تحفظ عناصر والقاموس يربط المفاتيح بالقيم.",
+            "target": "list و dict في Python",
+            "context_kind": "execution",
+            "conversation_domain": "technical",
+            "context_transition": "new_independent",
+        },
+        {
+            "user": "نرجع لموضوعنا الأول",
+            "assistant": "نعود إلى تعلم استخدام أدوات الذكاء الاصطناعي.",
+            "target": None,
+            "context_kind": "dialogue",
+            "conversation_domain": "social",
+            "context_transition": "restore",
+        },
+    ]
+
+    branch = ConversationManager._latest_dialogue_branch(exchanges)
+
+    assert [item["user"] for item in branch] == [
+        "أشعر أن الذكاء الاصطناعي يتطور بسرعة."
+    ]
+    assert all("Python" not in item["user"] for item in branch)
