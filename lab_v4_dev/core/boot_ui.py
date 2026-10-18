@@ -61,9 +61,9 @@ class BootUI:
     @staticmethod
     def _combine_pasted_lines(first_line, continuation_lines):
         """Combine a terminal paste into one logical user message."""
-        lines = [str(first_line or "").rstrip("\\r\\n")]
-        lines.extend(str(line or "").rstrip("\\r\\n") for line in continuation_lines)
-        return "\\n".join(lines).strip()
+        lines = [str(first_line or "").rstrip("\r\n")]
+        lines.extend(str(line or "").rstrip("\r\n") for line in continuation_lines)
+        return "\n".join(lines).strip()
 
     def _read_pasted_continuation(self, first_line, *, idle_timeout=0.12):
         """Collect lines already queued by a multiline terminal paste.
