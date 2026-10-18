@@ -299,6 +299,16 @@ def test_dialogue_history_summary_is_bounded_and_survives_prompt_window(monkeypa
     manager.process("ماذا أيضًا؟")
     manager.process("أعطني اقتراحات أكثر")
 
+    # Each successful targetless suggestion is dialogue, not an executable
+    # project proposal; all three exchanges must survive before recall starts.
+    assert [
+        item.get("assistant") for item in memory.state.exchange_archive
+    ] == ["اقتراح أول محدد", "اقتراح ثان محدد", "اقتراح ثالث محدد"]
+    assert all(
+        item.get("context_kind") == "dialogue"
+        for item in memory.state.exchange_archive
+    )
+
     def unexpected_gateway(*_args, **_kwargs):
         raise AssertionError("summary recall must not call the language provider")
 
