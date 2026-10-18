@@ -574,6 +574,57 @@ class ConversationManager:
                     "personal_chat", "chat", "discussion", "question", "unclear",
                 }:
                     candidate["intent"] = restored["action"]
+        # A short additive follow-up belongs to the immediately preceding
+        # dialogue exchange, not to a fresh social topic. Apply this only when
+        # the latest archived exchange is dialogue-safe; never borrow work,
+        # system, or execution context.
+        normalized_follow_up = self._normalize_transition_text(user_input).strip(
+            " .,،؛:!?؟"
+        )
+        additive_follow_ups = {
+            "ماذا ايضا", "ما ايضا", "وايضا", "وايش ايضا",
+            "وماذا ايضا", "وماذا بعد", "ماذا بعد", "ما بعد",
+            "شيء اخر", "شيئا اخر", "شي اخر", "شيئا اضافيا",
+            "anything else", "what else", "and what else", "more",
+        }
+        if normalized_follow_up in additive_follow_ups and self.dialogue_memory:
+            archived = getattr(
+                getattr(self.dialogue_memory, "state", None),
+                "exchange_archive",
+                [],
+            ) or []
+            previous_exchange = next(
+                (
+                    item for item in reversed(archived)
+                    if isinstance(item, dict)
+                    and str(item.get("assistant") or "").strip()
+                ),
+                None,
+            )
+            previous_kind = str(
+                (previous_exchange or {}).get("context_kind") or ""
+            ).casefold()
+            previous_domain = str(
+                (previous_exchange or {}).get("conversation_domain") or ""
+            ).casefold()
+            if (
+                previous_exchange
+                and previous_kind in {"dialogue", "social"}
+                and previous_domain not in {"work", "system", "execution"}
+            ):
+                candidate = dict(candidate or {})
+                candidate.update({
+                    "intent": Intent.PERSONAL_CHAT,
+                    "target": "",
+                    "entity_type": "REFERENCE",
+                    "conversation_domain": "general",
+                    "conversation_act": "CONVERSATION_CONTINUATION",
+                    "conversation_confidence": 0.90,
+                    "response_attributes": {},
+                    "semantic_pattern": "CONTEXTUAL_ADDITIVE_FOLLOW_UP",
+                    "source": "contextual_additive_follow_up",
+                })
+
         transition = self._classify_context_transition(mode, candidate, text=user_input)
         if interrupted_recovery:
             # The wording describes a past topic switch, not a new switch now.
