@@ -1483,6 +1483,17 @@ class ConversationManager:
         )
         if any(marker in normalized for marker in work_continuation_markers):
             return "work"
+        # Generic, targetless proposals are conversational requests even when
+        # the intent parser labels them PROPOSE_SOLUTION/PLAN. Classifying them
+        # from project scope can assign execution ownership and make
+        # DialogueMemory.update discard otherwise successful dialogue replies.
+        if (
+            intent_value in {"propose_solution", "plan"}
+            and not str(parsed.get("target") or "").strip()
+            and str(parsed.get("conversation_domain") or "general").casefold()
+            not in {"technical", "project", "system", "work", "execution"}
+        ):
+            return "dialogue"
         scope = resolve_project_scope(text, intent=parsed.get("intent"))
         if scope == ProjectScope.CURRENT_PROJECT:
             return "project"
