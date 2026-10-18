@@ -175,8 +175,10 @@ class DialogueMemory:
         # Do not let a conflicting fallback/parser domain (for example,
         # "execution") silently discard it from the dialogue archive.
         if local_social_result:
+            # These replies are handled locally, but they still belong to the
+            # durable dialogue lifecycle and must use its canonical context kind.
             conversation_domain = "social"
-            context_kind = "social"
+            context_kind = "dialogue"
 
         turn_intent = (
             result.get("intent")
