@@ -1,3 +1,5 @@
+import io
+
 from lab_v4_dev.core.boot_ui import BootUI
 from lab_v4_dev.core.agent import Agent
 
@@ -83,3 +85,36 @@ def test_non_session_command_is_not_consumed():
     agent = Agent.__new__(Agent)
     agent._pending_work_sessions = []
     assert agent.show_pending_session("مرحبا") is False
+
+def test_multiline_terminal_paste_is_one_logical_message(monkeypatch):
+    import lab_v4_dev.core.boot_ui as boot_ui_module
+
+    ui = BootUI()
+    stream = io.StringIO("2. سؤال تقني\\n\\n3. تصحيح افتراض\\n")
+    monkeypatch.setattr(stream, "isatty", lambda: True)
+    monkeypatch.setattr(boot_ui_module.sys, "stdin", stream)
+    readiness = iter([
+        ([stream], [], []),
+        ([stream], [], []),
+        ([stream], [], []),
+        ([], [], []),
+    ])
+    monkeypatch.setattr(
+        boot_ui_module.select,
+        "select",
+        lambda *args, **kwargs: next(readiness),
+    )
+
+    result = ui._read_pasted_continuation("1. بداية الحوار")
+
+    assert result == "1. بداية الحوار\\n2. سؤال تقني\\n\\n3. تصحيح افتراض"
+
+
+def test_single_line_prompt_remains_single_line_when_stdin_is_not_tty(monkeypatch):
+    import io
+    import lab_v4_dev.core.boot_ui as boot_ui_module
+
+    monkeypatch.setattr(boot_ui_module.sys, "stdin", io.StringIO("ignored"))
+    ui = BootUI()
+    assert ui._read_pasted_continuation("مرحبا") == "مرحبا"
+
