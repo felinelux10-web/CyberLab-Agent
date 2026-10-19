@@ -571,7 +571,7 @@ class ConversationManager:
                 and not explicit_topic_return
             )
             or explicit_casual_opening
-            or interrupted_recovery
+            or (interrupted_recovery and not explicit_topic_return)
             else self._resolve_generic_topic_reference(user_input)
         )
         if generic_topic:
@@ -634,6 +634,10 @@ class ConversationManager:
                 ),
                 "conversation_confidence": 0.95,
             })
+            if explicit_topic_return:
+                response_attributes = dict(candidate.get("response_attributes") or {})
+                response_attributes.pop("dialogue_recovery", None)
+                candidate["response_attributes"] = response_attributes
         # A short additive follow-up belongs to the immediately preceding
         # dialogue exchange, not to a fresh social topic. Apply this only when
         # the latest archived exchange is dialogue-safe; never borrow work,
@@ -2586,6 +2590,23 @@ class ConversationManager:
             )
             safe_domain = domain not in {"work", "system", "execution"}
             return safe_kind and safe_domain and same_session
+
+        # A state boundary ends the implicit continuation branch. Keep older
+        # exchanges available only for an explicit restore/recovery request;
+        # otherwise they must not leak into a new independent dialogue path.
+        if transition not in {
+            ContextTransition.RESTORE,
+            ContextTransition.EXPLICIT_SWITCH,
+        }:
+            latest_boundary = max(
+                (
+                    index for index, item in enumerate(exchanges or [])
+                    if isinstance(item, dict) and item.get("state_boundary_only")
+                ),
+                default=-1,
+            )
+            if latest_boundary >= 0:
+                exchanges = list(exchanges or [])[latest_boundary + 1:]
 
         recovery_mode = str(
             ((parsed or {}).get("response_attributes") or {}).get("dialogue_recovery", "")
