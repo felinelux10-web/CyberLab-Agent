@@ -2563,7 +2563,11 @@ class ConversationManager:
         current_session_id = str(getattr(state, "session_id", "") or "")
 
         def allowed(item):
-            if not isinstance(item, dict) or item.get("recall_only"):
+            if (
+                not isinstance(item, dict)
+                or item.get("recall_only")
+                or item.get("state_boundary_only")
+            ):
                 return False
             kind = str(item.get("context_kind") or "").casefold()
             domain = str(item.get("conversation_domain") or "").casefold()
