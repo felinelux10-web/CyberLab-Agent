@@ -557,9 +557,19 @@ class ConversationManager:
                         ),
                     })
         generic_social_topic_return = False
+        normalized_return_request = self._normalize_transition_text(user_input)
+        explicit_topic_return = any(marker in normalized_return_request for marker in (
+            "ارجع الى الموضوع", "ارجع لموضوع", "نرجع الى الموضوع",
+            "نرجع لموضوع", "عد الى الموضوع", "عد لموضوع",
+            "الموضوع السابق", "الموضوع الاول", "الموضوع الثاني",
+            "previous topic", "return to the topic", "back to the topic",
+        ))
         generic_topic = (
             None
-            if raw_act == "CONVERSATION_HISTORY_QUERY"
+            if (
+                raw_act == "CONVERSATION_HISTORY_QUERY"
+                and not explicit_topic_return
+            )
             or explicit_casual_opening
             or interrupted_recovery
             else self._resolve_generic_topic_reference(user_input)
