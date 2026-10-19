@@ -174,10 +174,21 @@ class DialogueMemory:
         # A locally handled social response has an unambiguous dialogue owner.
         # Do not let a conflicting fallback/parser domain (for example,
         # "execution") silently discard it from the dialogue archive.
-        if local_social_result:
-            # These replies are handled locally, but they still belong to the
-            # durable dialogue lifecycle and must use its canonical context kind.
-            conversation_domain = "social"
+        targetless_chat_dialogue = (
+            str(mode or "").upper() == "CHAT"
+            and str(getattr(parsed.get("intent"), "value", parsed.get("intent")) or "").casefold()
+            in {"personal_chat", "chat", "discussion"}
+            and not str(parsed.get("target") or result.get("target") or "").strip()
+            and str(conversation_domain or "").casefold()
+            not in {"work", "system", "execution"}
+            and str(context_kind or "").casefold() not in {"work", "system", "execution"}
+        )
+        if local_social_result or targetless_chat_dialogue:
+            # Targetless friendly chat belongs to the dialogue lifecycle whether
+            # the reply was produced locally or by the configured language model.
+            # Parser fallback labels must not silently classify it as execution.
+            if str(conversation_domain or "").casefold() not in {"technical", "project"}:
+                conversation_domain = "social"
             context_kind = "dialogue"
 
         turn_intent = (
