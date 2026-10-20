@@ -942,6 +942,22 @@ class ConversationManager:
             parsed["entity_type"] = context_entity.get("entity_type")
             parsed["conversation_domain"] = "project"
 
+        # Normalize generic reference words after, not before, the memory
+        # owner has supplied the authorized subject. With no subject, erase
+        # the parser's lexical placeholder so the executor cannot receive it
+        # as a real target.
+        normalized_target = self._normalize_transition_text(parsed.get("target"))
+        if normalized_target in {
+            "هذا", "هذه", "ذلك", "تلك", "هذا الامر", "ذلك الامر",
+            "الامر", "الفكرة", "الموضوع", "الشرح", "النقطة",
+        }:
+            parsed = dict(parsed or {})
+            if context_entity and context_entity.get("entity"):
+                parsed["target"] = context_entity["entity"]
+                parsed["entity_type"] = context_entity.get("entity_type", "REFERENCE")
+            else:
+                parsed["target"] = ""
+
         chat_history = self._history_for_transition(transition, parsed)
 
         parsed = dict(parsed or {})
@@ -2371,6 +2387,25 @@ class ConversationManager:
         conversation_act = parsed.get("conversation_act")
         if parsed.get("semantic_pattern") == "COMPOUND_DIALOGUE_REQUEST":
             return ContextTransition.NEW_INDEPENDENT
+        # Reference-only wording belongs to the dialogue-memory owner. Do not
+        # let the generic explanation parser turn "وضّح الفكرة" or "اشرح هذا
+        # الأمر" into a new executable topic; without an active topic, keep it
+        # unresolved so no stale/global index can supply one implicitly.
+        generic_reference_target = self._normalize_transition_text(target) in {
+            "هذا", "هذه", "ذلك", "تلك", "هذا الامر", "ذلك الامر",
+            "الامر", "الفكرة", "الموضوع", "الشرح", "النقطة",
+        }
+        if (
+            (not target and entity_type == "REFERENCE")
+            or generic_reference_target
+        ) and conversation_act not in {
+            "TOPIC_RETURN", "CONVERSATION_HISTORY_QUERY", "SOCIAL_ACKNOWLEDGEMENT",
+        }:
+            return (
+                ContextTransition.REFERENCE
+                if active_topic
+                else ContextTransition.AMBIGUOUS
+            )
         normalized_request = str(text or "").casefold()
         explicit_explain_markers = (
             "اشرح", "شرح", "وضح", "عرّف", "عرف", "ما هو", "ماهي",
