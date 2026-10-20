@@ -197,6 +197,19 @@ def session_selector(raw: str) -> dict:
     id_match = re.search(r"(?:معرّف|معرف|id)\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9_.-]{5,})", raw_text, flags=re.IGNORECASE)
     if id_match and any(token in text for token in ("جلسة", "استعد", "استرجع", "ابحث")):
         return {"kind": "id", "session_id": id_match.group(1), "report_mode": report_mode}
+    number_match = re.search(
+        r"(?:جلسة|الجلسة|جلسه|الجلسه|session)\s*(?:رقم\s*)?#?\s*(\d+)\b",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+    if number_match and any(token in text for token in (
+        "استرجع", "استعد", "استكمل", "استكمال", "اعرض", "ملخص", "restore", "resume",
+    )):
+        return {
+            "kind": "number",
+            "number": int(number_match.group(1)),
+            "report_mode": report_mode,
+        }
     if any(token in text for token in ("الجلسات المعلقة", "جلسات معلقة", "المهام المعلقة")):
         return {"kind": "status", "status": "paused", "report_mode": report_mode}
     if "قارن" in text and any(token in text for token in ("الجلسات", "جلستين", "جلسة")):
@@ -208,6 +221,11 @@ def session_selector(raw: str) -> dict:
         query = search_marker.group(1).strip() if search_marker else raw_text
         query = re.sub(r"^(?:جلسة|الجلسة|جلسه|الجلسه)\s+", "", query, flags=re.IGNORECASE).strip()
         return {"kind": "search", "query": query, "report_mode": report_mode}
+    if (
+        any(token in text for token in ("استرجع", "استعد", "استكمل"))
+        and any(token in text for token in ("جلسة محفوظة", "الجلسة المحفوظة"))
+    ):
+        return {"kind": "list", "report_mode": report_mode}
     if any(token in text for token in (
         "لخص ما فعلناه", "ملخص الجلسة", "ملخص جلسة", "استكمل الجلسة",
         "استرجع الجلسة", "استعد الجلسة", "استكمال الجلسة", "أين توقفنا",

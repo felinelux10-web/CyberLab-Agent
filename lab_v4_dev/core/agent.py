@@ -44,32 +44,32 @@ class Agent:
     def boot(self) -> bool:
         self._boot_ui = BootUI()
         self._boot_ui.start()
-        self._boot_ui.row("الإقلاع", "بدء فحوصات التشغيل الأساسية", "INFO")
+        self._boot_ui.row("BOOT", "Initializing startup checks", "INFO")
 
         # 1. قراءة MASTER_REF
         try:
             self._meta = ProjectMetadata()
             self.ref   = self._meta.as_dict()
-            self._boot_ui.row("الإعدادات", f"مرجع النظام MASTER_REF — الإصدار {self._meta.get_version()}")
+            self._boot_ui.row("CONFIG", f"MASTER_REF v{self._meta.get_version()}")
         except Exception as e:
-            self._boot_ui.row("الإعدادات", f"تعذر قراءة مرجع النظام MASTER_REF: {e}", "FAIL")
+            self._boot_ui.row("CONFIG", f"MASTER_REF failed: {e}", "FAIL")
             log.critical(f"MASTER_REF failed: {e}")
             return False
 
         # 2. تهيئة State
         self.state = AgentState()
         self.state.load()
-        self._boot_ui.row("الحالة", f"الوضع الحالي: {self.state.mode}")
+        self._boot_ui.row("STATE", f"Mode: {self.state.mode}")
 
         # 3. تهيئة DB
         self.db = Database()
         self.db.connect()
         if not self.db.integrity_check():
-            self._boot_ui.row("قاعدة البيانات", "فشل الاتصال أو فحص سلامة البيانات", "FAIL")
+            self._boot_ui.row("DATABASE", "Integrity check failed", "FAIL")
             log.critical("DB integrity check failed")
             self.state.enter_frozen_mode("db_corruption")
             return False
-        self._boot_ui.row("قاعدة البيانات", "الاتصال وفحص السلامة ناجحان")
+        self._boot_ui.row("DATABASE", "Connection and integrity OK")
 
         # P07 — canonical Memory ownership
         self.memory = MemoryStore(self.db)
@@ -77,10 +77,10 @@ class Agent:
         # 4. health check
         health = check_health(self.state)
         if not health["healthy"]:
-            self._boot_ui.row("الصحة", "اكتملت الفحوصات مع وجود تحذيرات في السجل", "WARN")
+            self._boot_ui.row("HEALTH", "Review warnings in startup log", "WARN")
             log.warning(f"Health issues: {health}")
         else:
-            self._boot_ui.row("الصحة", "فحوصات النظام ناجحة")
+            self._boot_ui.row("HEALTH", "System checks passed")
 
         # 5. تهيئة Session
         # P07 — MemoryStore owns the semantic Session component.
@@ -101,7 +101,7 @@ class Agent:
         self.dialogue_memory = DialogueMemory(self.context)
         self.dni.attach_dialogue_memory(self.dialogue_memory)
         self.conv_manager    = ConversationManager(self.orchestrator, self.dialogue_memory, self.dni)
-        self._boot_ui.row("النواة", "الذاكرة والجلسة والسياق وطبقة الحوار جاهزة")
+        self._boot_ui.row("CORE", "Memory, session, context and dialogue ready")
 
         # 6.1 تهيئة Runtime Session (Series 9)
         try:
@@ -114,9 +114,9 @@ class Agent:
                 phase="initialization"
             )
             self.runtime.monitor_check()
-            self._boot_ui.row("التشغيل", "تم تفعيل المراقبة")
+            self._boot_ui.row("RUNTIME", "Monitoring initialized")
         except Exception as _re:
-            self._boot_ui.row("التشغيل", "المراقبة الاختيارية غير متاحة", "WARN")
+            self._boot_ui.row("RUNTIME", "Optional monitoring unavailable", "WARN")
             log.warning(f"Runtime init skipped: {_re}")
             self.runtime = None
 
@@ -126,30 +126,24 @@ class Agent:
         try:
             from lab_v4_dev.memory.session_state import (
                 load_session, recoverable_work_checkpoint, get_session_index,
-                get_session_by_id, get_latest_session_by_type, analyze_session,
+                get_session_by_id, analyze_session,
             )
             from lab_v4_dev.data.project_timeline import init_timeline
             init_timeline()
             s = load_session()
             self._pending_session = s if isinstance(s, dict) else None
 
-            # Restore dialogue history independently of the work checkpoint.
-            # This does not restore ContextStore execution fields or resume work.
-            dialogue_session = get_latest_session_by_type("dialogue")
-            if dialogue_session and isinstance(dialogue_session.get("dialogue_state"), dict):
-                self.dialogue_memory.restore_snapshot(dialogue_session["dialogue_state"])
-
-            index = [
-                item for item in get_session_index()
-                if item.get("status") == "paused"
-                and str(item.get("session_type") or "work").casefold() != "dialogue"
-            ]
+            # A new process starts a new live dialogue. A saved dialogue is
+            # never injected implicitly; it must be selected explicitly so
+            # "this session" and "a saved session" cannot be mixed.
+            index = get_session_index()[-10:]
             if not index and isinstance(s, dict) and s.get("session_id", s.get("active_goal")):
                 index = [s]
             if index:
                 self._boot_ui.section("الجلسات المحفوظة")
-                self._boot_ui.row("الجلسات", f"{len(index)} جلسة متوقفة", "PENDING")
-                for number, item in enumerate(index[-5:], 1):
+                self._boot_ui.row("الجلسات", f"{len(index)} جلسة محفوظة", "PENDING")
+                self._pending_work_sessions = []
+                for number, item in enumerate(index, 1):
                     selected = get_session_by_id(item.get("session_id")) or item
                     report = analyze_session(selected)
                     recoverable = recoverable_work_checkpoint(selected)
@@ -161,9 +155,17 @@ class Agent:
                         "number": number,
                         "report": report,
                         "recoverable": bool(recoverable),
+                        "session_id": selected.get("session_id") or item.get("session_id"),
+                        "session_type": str(selected.get("session_type") or item.get("session_type") or "work").casefold(),
                     })
-                    state_label = "قابلة للاستئناف" if recoverable else "للمراجعة فقط"
-                    self._boot_ui.row(f"جلسة {number}", f"{description}  — {state_label}", "OK" if recoverable else "WARN")
+                    session_type = self._pending_work_sessions[-1]["session_type"]
+                    state_label = (
+                        "حوار محفوظ" if session_type == "dialogue"
+                        else "قابلة للاستئناف" if recoverable
+                        else "للمراجعة فقط"
+                    )
+                    marker_state = "OK" if session_type == "dialogue" or recoverable else "WARN"
+                    self._boot_ui.row(f"Session {number}", f"{description}  — {state_label}", marker_state)
                 self._boot_ui.row("التفاصيل", "اكتب session 1 أو session 2 لعرض التفاصيل", "INFO")
         except Exception as exc:
             log.warning(f"Session discovery skipped: {exc}")

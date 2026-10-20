@@ -176,6 +176,7 @@ def normalize_text(text: str) -> str:
         "المحفوض": "المحفوظ",
         "النحث": "النحت",
         "استرجعل": "استرجع",
+        "فبل": "قبل",
     }.items():
         normalized = normalized.replace(misspelling, correction)
     return normalized

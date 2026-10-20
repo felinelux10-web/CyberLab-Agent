@@ -28,7 +28,7 @@ class BootUI:
         print()
         self._rule()
         print(self._paint("  CYBERLAB AGENT  ", GREEN))
-        print("  نظام الوكيل الذكي وإدارة الحوار والسياق")
+        print("  STARTUP STATUS")
         self._rule()
         print("إقلاع الوكيل")
         print("الحالة   المكوّن")

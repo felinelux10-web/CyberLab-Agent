@@ -1754,6 +1754,29 @@ SOURCE CODE:
                         lines.append(f"{index}. {item.get('title') or item.get('active_goal') or 'جلسة بلا عنوان'} [{item.get('session_id', '?')}] — الخطوة: {item.get('next_step') or 'غير محددة'}")
                 lines.append("اكتب طلبًا يذكر موضوع الجلسة للعودة إليها.")
                 return {"status": "success", "intent": intent, "text": "\n".join(lines), "sessions": candidates}
+            if selector.get("kind") == "list":
+                candidates = get_session_index()[-10:]
+                if not candidates:
+                    return {"status": "success", "intent": intent,
+                            "text": "لا توجد جلسات محفوظة حاليًا."}
+                lines = ["=== الجلسات المحفوظة ==="]
+                for number, item in enumerate(candidates, 1):
+                    report = analyze_session(get_session_by_id(item.get("session_id")) or item)
+                    session_type = str(item.get("session_type") or "work").casefold()
+                    label = "حوار" if session_type == "dialogue" else "عمل"
+                    lines.append(
+                        f"{number}. [{label}] {report['topic']} — الحالة: {report['status']}"
+                    )
+                lines.append("للاسترجاع اكتب: استرجع الجلسة رقم 1 (أو أي رقم ظاهر).")
+                return {"status": "success", "intent": intent,
+                        "text": "\n".join(lines), "sessions": candidates}
+            if selector.get("kind") == "number":
+                candidates = get_session_index()[-10:]
+                number = int(selector.get("number") or 0)
+                if number < 1 or number > len(candidates):
+                    return {"status": "needs_clarification", "intent": intent,
+                            "text": f"لا توجد جلسة محفوظة بالرقم {number}. اختر رقمًا من 1 إلى {len(candidates)}."}
+                selected_id = candidates[number - 1].get("session_id")
             if selector.get("kind") == "latest":
                 index = get_session_index()
                 if index:

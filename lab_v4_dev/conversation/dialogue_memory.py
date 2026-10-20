@@ -387,6 +387,10 @@ class DialogueMemory:
                 short_confirmation
                 or is_social_act(conversation_act)
                 or is_style_act(conversation_act)
+                or str(conversation_act or "").upper() in {
+                    "TOPIC_CONTINUATION_QUERY",
+                    "CONVERSATION_CONTINUATION",
+                }
             )
         )
 
