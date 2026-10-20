@@ -82,3 +82,30 @@ def test_saved_dialogue_is_not_loaded_implicitly_by_a_new_dialogue_memory():
     memory = DialogueMemory(ContextStore())
     assert memory.state.last_topic is None
     assert memory.state.exchange_archive == []
+
+
+def test_named_social_switch_and_correction_stay_in_dialogue_route(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        lambda prompt, **kwargs: {"status": "success", "text": "رد حواري", "provider_used": "test"},
+    )
+    orchestrator = SimpleNamespace(
+        context=ContextStore(),
+        handle=lambda *args, **kwargs: calls.append(kwargs.get("parsed")) or {
+            "status": "success", "text": "ORCHESTRATOR"
+        },
+    )
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+
+    manager.process("دعنا نتحدث عن الكتب")
+    switched = manager.process("حسنا دعنا ننتقل لكتب علم النفس")
+    corrected = manager.process("لا قلت موضوع الكتب الذي كنا نناقشه")
+    continued = manager.process("اجل اكمل")
+
+    assert getattr(switched["intent"], "value", switched["intent"]) == "personal_chat"
+    assert corrected["source"] != "dialogue_memory"
+    assert continued["source"] != "dialogue_memory"
+    assert not calls
+    assert memory.state.last_topic == "الكتب"

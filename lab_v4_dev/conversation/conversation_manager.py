@@ -27,8 +27,10 @@ LLM
 Important:
 FOLLOW_UP is a conversational MODE, not an automatic LLM route.
 If IntentParser resolves a FOLLOW_UP to an executable Intent
-(e.g. CYBER_EXPLAIN), that Intent goes to Orchestrator.
+    (e.g. CYBER_EXPLAIN), that Intent goes to Orchestrator.
 """
+
+import re
 
 from lab_v4_dev.conversation.mode_detector import detect_mode
 from lab_v4_dev.conversation.assistant_style import format_response, single_question
@@ -141,6 +143,16 @@ class ConversationManager:
                 marker in normalized for marker in ("اشرح", "وضح", "نفذ", "شغل", "؟", "?")
             ):
                 return value.strip(" \t\r\n.,،؛:!?؟")
+        if not match:
+            # Topic changes are often phrased as "let's move to X", not as
+            # "let's talk about X". Treat the subject as dialogue unless a
+            # later operational cue explicitly claims it.
+            match = re.match(
+                r"^\s*(?:حسنا\s+)?(?:دعنا|خلينا)?\s*(?:لننتقل|ننتقل|انتقل)\s+"
+                r"(?:(?:الى|إلى)\s+|ل)(?:موضوع\s+)?(.+?)\s*[.!؟?،]*\s*$",
+                value,
+                flags=re.IGNORECASE,
+            )
         if not match:
             return None
         subject = match.group(1).strip(" \t\r\n.,،؛:!?؟")
@@ -449,7 +461,10 @@ class ConversationManager:
             " .,،؛:!?؟"
         )
         if (
-            normalized_ack in {"نعم اعرف", "اي اعرف", "اعرف", "نعم اعلم", "اي اعلم"}
+            normalized_ack in {
+                "نعم اعرف", "اي اعرف", "اعرف", "نعم اعلم", "اي اعلم",
+                "نعم", "اجل", "اي", "ايه", "نعم اكمل", "اجل اكمل",
+            }
             and self.dialogue_memory
         ):
             state = getattr(self.dialogue_memory, "state", None)
@@ -567,6 +582,31 @@ class ConversationManager:
                 "semantic_pattern": "EXPLICIT_EXPLANATION_START",
                 "source": "explicit_explanation_start",
             })
+        # A correction such as "لا، قلت موضوع الكتب" names the branch to
+        # restore. It must not fall through to a generic current-dialogue
+        # summary, which can otherwise point at a greeting or the last reply.
+        normalized_correction = self._normalize_transition_text(user_input)
+        named_return = re.search(
+            r"(?:قلت|اقصد|المقصود)\s+(?:موضوع\s+)?(الكتب|كتب|الفن|الرسم|النحت)",
+            normalized_correction,
+        )
+        if named_return and any(marker in normalized_correction for marker in (
+            "لا", "قلت", "اقصد", "المقصود", "كنا نناقش", "كنا نتحدث",
+        )):
+            named_topic = named_return.group(1)
+            if named_topic == "كتب":
+                named_topic = "الكتب"
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": named_topic,
+                "entity_type": "REFERENCE",
+                "conversation_domain": "general",
+                "conversation_act": "TOPIC_RETURN",
+                "response_attributes": {"dialogue_recovery": "named_topic_return"},
+                "semantic_pattern": "NAMED_DIALOGUE_TOPIC_RETURN",
+                "source": "named_dialogue_topic_return",
+            })
         raw_act = raw_signal.get("conversation_act")
         interrupted_recovery = str(
             (raw_signal.get("response_attributes") or {}).get("dialogue_recovery", "")
@@ -575,7 +615,7 @@ class ConversationManager:
             "CONVERSATION_HISTORY_QUERY",
             "CONVERSATION_CONTINUATION",
             "TOPIC_RETURN",
-        } and not explicit_explanation and not explicit_casual_opening:
+        } and not explicit_explanation and not explicit_casual_opening and not named_return:
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.PERSONAL_CHAT,
@@ -725,8 +765,7 @@ class ConversationManager:
                 (restored_exchange or {}).get("intent") or ""
             ).casefold()
             restored_social = (
-                not str((restored_exchange or {}).get("target") or "").strip()
-                and restored_domain not in {"technical", "project", "work", "system", "execution"}
+                restored_domain not in {"technical", "project", "work", "system", "execution"}
                 and restored_kind in {"dialogue", "social", "unknown"}
             )
             history_reference = (
@@ -823,7 +862,7 @@ class ConversationManager:
 
         transition = self._classify_context_transition(mode, candidate, text=user_input)
         interrupted_anchor = ""
-        if interrupted_recovery:
+        if interrupted_recovery and not generic_topic:
             # The wording describes a past topic switch, not a new switch now.
             # Restore the archived side branch when its subject is known;
             # otherwise keep the recovery request conversational and use the
@@ -945,10 +984,10 @@ class ConversationManager:
             )
             # The legacy context resolver may have already inherited the old
             # target before the transition marker was evaluated. Recover the
-            # explicit subject after "اشرح/عن/حول" for the new branch.
+            # explicit subject after an explanation or dialogue-switch phrase.
             import re as _re
             independent_subject = _re.search(
-                r"(?:اشرح|عن|حول|explain)\s+([^،,.؟?]+)",
+                r"(?:اشرح|عن|حول|explain|ننتقل|انتقل)\s+(?:(?:الى|إلى)\s+|ل)?([^،,.؟?]+)",
                 user_input,
                 flags=_re.IGNORECASE,
             )
@@ -962,9 +1001,13 @@ class ConversationManager:
                 if subject:
                     candidate = dict(candidate or {})
                     candidate["target"] = subject
-                    candidate["intent"] = Intent.CYBER_EXPLAIN
+                    candidate["intent"] = (
+                        Intent.PERSONAL_CHAT if explicit_topic else Intent.CYBER_EXPLAIN
+                    )
                     candidate["entity_type"] = "CONCEPT"
-                    candidate["conversation_domain"] = "technical"
+                    candidate["conversation_domain"] = (
+                        "general" if explicit_topic else "technical"
+                    )
             else:
                 # Do not carry an inherited target into a new subjectless topic.
                 candidate = dict(candidate or {})
@@ -1242,7 +1285,13 @@ class ConversationManager:
             and self._dialogue_recall_requested(user_input, parsed)
             and not self._resolve_generic_topic_reference(user_input)
             and not self._ordinal_dialogue_exchange(user_input)
-            and recovery_mode != "interrupted_branch"
+            and not re.search(
+                r"(?:قلت|اقصد|المقصود)\s+(?:موضوع\s+)?(?:الكتب|كتب|الفن|الرسم|النحت)",
+                self._normalize_transition_text(user_input),
+            )
+            and recovery_mode not in {
+                "interrupted_branch", "named_topic_return", "ordinal_topic_return",
+            }
         ):
             conversation_history_answer = {
                 "status": "needs_clarification",
@@ -1655,9 +1704,15 @@ class ConversationManager:
         # Only direct switch/change wording qualifies; the existence of an
         # active topic or a generic "independent" marker is not enough.
         normalized = cls._normalize_transition_text(text)
+        if any(marker in normalized for marker in (
+            "الموضوع السابق", "الموضوع الاول", "الموضوع الثاني",
+            "السابق", "الاول", "الثاني", "previous", "first", "second",
+        )):
+            return False
         return any(marker in normalized for marker in (
             "لنغير الموضوع", "نغير الموضوع", "غير الموضوع",
             "ننتقل الى موضوع", "لننتقل الى موضوع",
+            "ننتقل الى", "ننتقل ل", "لننتقل الى", "لننتقل ل",
             "لنغير المجال", "نغير المجال",
             "let's change the subject", "change the topic",
         ))
@@ -2039,6 +2094,11 @@ class ConversationManager:
         """Answer recent-dialogue questions from bounded dialogue memory only."""
         normalized = str(text or "").casefold()
         history_act = str((parsed or {}).get("conversation_act") or "").upper()
+        if re.search(
+            r"(?:قلت|اقصد|المقصود)\s+(?:موضوع\s+)?(?:الكتب|كتب|الفن|الرسم|النحت)",
+            self._normalize_transition_text(text),
+        ):
+            return None
         direct_suggestion = any(marker in normalized for marker in (
             "اقترح انت", "اقترح أنت", "اقترح لي", "اقترح بعض", "اقترح مواضيع",
             "اريد اقتراحات", "أريد اقتراحات", "اعطيني اقتراحات", "اعطني اقتراحات",

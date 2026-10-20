@@ -410,6 +410,7 @@ class DialogueMemory:
         if not turn_target and (
             context_kind in {"dialogue", "social"}
             or conversation_domain in {"general", "social", "agent_self"}
+            or is_social_act(conversation_act)
         ):
             topic = None
 
