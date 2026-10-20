@@ -245,7 +245,7 @@ class ConversationManager:
                 "status": "success",
                 "intent": Intent.RESTART,
                 "source": "conversation_manager",
-                "text": "بدأت جلسة حوار جديدة ومستقلة. لم أستعد سياق الجلسة السابقة.",
+                "text": "بدأت جلسة حوار جديدة ومستقلة. لم يتم إنشاء أو تنفيذ أي مهمة، ولم أستعد سياق الجلسة السابقة.",
                 "executed": False,
             }
 
@@ -1882,7 +1882,7 @@ class ConversationManager:
                 not current_session_id
                 or (
                     not str(item.get("session_id") or "").strip()
-                    and item.get("context_kind") == "execution"
+                    and item.get("context_kind") not in {"work", "system", "execution"}
                 )
                 or str(item.get("session_id") or "") == current_session_id
             )
@@ -1905,7 +1905,7 @@ class ConversationManager:
             if target not in topics:
                 topics.append(target)
         if not topics:
-            dialogue_exchanges = self._latest_dialogue_branch([
+            dialogue_candidates = [
                 item for item in exchanges
                 if isinstance(item, dict)
                 and item.get("context_kind") not in {"work", "system"}
@@ -1913,8 +1913,14 @@ class ConversationManager:
                 and (
                     not current_session_id
                     or str(item.get("session_id") or "") == current_session_id
+                    or not str(item.get("session_id") or "").strip()
                 )
-            ])[-6:]
+            ]
+            dialogue_exchanges = (
+                dialogue_candidates[-6:]
+                if history_act == "CONVERSATION_HISTORY_QUERY"
+                else self._latest_dialogue_branch(dialogue_candidates)[-6:]
+            )
             if dialogue_exchanges:
                 return {
                     "status": "success", "intent": Intent.MEMORY_DUMP,
