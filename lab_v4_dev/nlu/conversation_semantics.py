@@ -530,6 +530,22 @@ def classify_conversation_semantics(
             "conversational": True,
         }
 
+    # Short explanatory follow-ups are continuation requests when a dialogue
+    # owner later supplies the active subject. Without this signal, generic
+    # parser fallbacks classify them as casual chat or an unresolved reference.
+    compact_explanation_followup = normalized_phrase in {
+        "كيف يعمل", "ما دوره", "اعطني مثالا", "اعطني مثال",
+        "أعطني مثالا", "أعطني مثال", "اعطني مثالا عليه",
+    }
+    if compact_explanation_followup:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "TOPIC_CONTINUATION_QUERY",
+            "confidence": 0.91,
+            "response_attributes": {},
+            "conversational": True,
+        }
+
     # Short references to the previous dialogue must not fall through to
     # executable work-session routing. In ordinary chat, these refer to the
     # dialogue history unless the user explicitly asks for a work/task report.
@@ -553,11 +569,16 @@ def classify_conversation_semantics(
         and _has_any(bases, {"موضوع", "حوار", "محادثه", "نقاش", "حديث", "كلام"})
         and not _has_any(bases, {"العمل", "مهام", "مهمه", "ملف", "مشروع"})
     ):
+        response_mode = (
+            "answer"
+            if _has_any(bases, {"تحدثنا", "تكلمنا", "ناقشنا", "قلنا", "تناقشنا"})
+            else "summary"
+        )
         return {
             "conversation_domain": "general",
             "conversation_act": "CONVERSATION_HISTORY_QUERY",
             "confidence": 0.95,
-            "response_attributes": {"dialogue_response_mode": "summary"},
+            "response_attributes": {"dialogue_response_mode": response_mode},
             "conversational": True,
         }
 

@@ -857,6 +857,49 @@ def _nlu_route_has_explicit_shape(text: str, intent: str) -> bool:
 
 
 def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
+    # High-confidence operational questions must not be relabeled as casual
+    # chat by the broad conversational override.
+    normalized_request = normalize(user_input).casefold().strip().rstrip("؟?!.")
+    explicit_operational = {
+        "مساحة الهاتف": Intent.SPACE,
+        "مساحه الهاتف": Intent.SPACE,
+        "مساحة الجهاز": Intent.SPACE,
+        "مساحه الجهاز": Intent.SPACE,
+        "مساحة التخزين": Intent.SPACE,
+        "هل النظام يعمل": Intent.HEALTH,
+        "ما حالة الوكيل": Intent.STATUS,
+        "ما حاله الوكيل": Intent.STATUS,
+        "الرام": Intent.UNSUPPORTED,
+    }
+    if normalized_request in explicit_operational:
+        return {
+            "intent": explicit_operational[normalized_request],
+            "target": "",
+            "context": detect_context(user_input),
+            "confidence": 0.98,
+            "raw": user_input,
+            "source": "explicit_operational_question",
+            "entity_type": "UNKNOWN",
+            "semantic_pattern": (
+                "DEVICE_MEMORY_UNSUPPORTED"
+                if explicit_operational[normalized_request] == Intent.UNSUPPORTED
+                else ""
+            ),
+        }
+    if normalized_request == "افحص ملفات المشروع" or (
+        normalized_request.startswith("اقرا ")
+        or normalized_request.startswith("اقرأ ")
+    ):
+        return {
+            "intent": Intent.ANALYZE_CODE if normalized_request.startswith("افحص") else Intent.READ_FILE,
+            "target": _extract_target(user_input),
+            "context": detect_context(user_input),
+            "confidence": 0.96,
+            "raw": user_input,
+            "source": "explicit_file_operation",
+            "entity_type": "FILE",
+        }
+
     # Semantic guards must run before broad NLU/family/cache fallbacks.
     if _is_lexical_mention(user_input):
         return _lexical_mention_result(user_input)

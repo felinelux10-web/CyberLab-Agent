@@ -137,6 +137,12 @@ class ConversationManager:
             "استكمل", "تابع", "واصل", "continue", "resume",
         )):
             return None
+        normalized_value = value.casefold()
+        if any(marker in normalized_value for marker in (
+            "عرف عن نفسك", "عرّف عن نفسك", "اشرح معمارية المشروع",
+            "اشرح بنية المشروع", "اشرح بنية النظام",
+        )):
+            return None
         match = re.match(
             r"^\s*(?:اشرح|شرح|وضح|عرّف|عرف|explain|describe)\s+"
             r"(.+?)\s*[.!؟?،]*\s*$",
@@ -156,6 +162,16 @@ class ConversationManager:
             "اكثر", "أكثر", "المزيد", "تفصيل اكثر", "تفصيل أكثر",
             "مزيد من التفاصيل", "more", "more detail", "further",
         }:
+            return None
+        normalized_subject = ConversationManager._normalize_transition_text(subject)
+        if normalized_subject in {
+            "هذا", "هذه", "ذلك", "تلك", "هذا الامر", "ذلك الامر",
+            "لي هذا", "لي هذه", "عن هذا", "عن هذه",
+        }:
+            return None
+        if any(marker in normalized_subject for marker in (
+            "المشروع", "معماريه المشروع", "بنيه المشروع", "بنيه النظام",
+        )):
             return None
         return subject or None
 
@@ -609,11 +625,15 @@ class ConversationManager:
                 and restored_domain not in {"technical", "project", "work", "system", "execution"}
                 and restored_kind in {"dialogue", "social", "unknown"}
             )
+            history_reference = (
+                raw_act == "CONVERSATION_HISTORY_QUERY"
+                and bool((candidate.get("response_attributes") or {}).get("dialogue_response_mode"))
+            )
             generic_social_topic_return = bool(restored_social)
             candidate.update({
                 "intent": (
                     Intent.PERSONAL_CHAT
-                    if restored_social
+                    if restored_social or history_reference
                     else (
                         restored_intent
                         if restored_intent and restored_intent not in {
@@ -625,9 +645,9 @@ class ConversationManager:
                 "target": generic_topic,
                 "entity_type": "REFERENCE" if restored_social else "CONCEPT",
                 "semantic_pattern": "GENERIC_TOPIC_REFERENCE",
-                "conversation_domain": restored_domain if restored_social else (
+                "conversation_domain": "general" if history_reference else (restored_domain if restored_social else (
                     "technical" if restored_domain == "general" else restored_domain
-                ),
+                )),
                 "conversation_act": (
                     "TOPIC_RETURN" if is_ordinal_return or raw_act == "TOPIC_RETURN"
                     else "COMPOUND_REFERENCE"
@@ -908,6 +928,12 @@ class ConversationManager:
                 not candidate.get("target")
                 or str(candidate.get("entity_type", "")).upper()
                 in {"REFERENCE", "ELABORATION"}
+                or (
+                    str(candidate.get("conversation_act") or "").upper()
+                    in {"CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY"}
+                    and str(context_entity.get("action") or "").casefold()
+                    in {"cyber_explain", "explain"}
+                )
             )
         ):
             resolved_input = self.dialogue_memory.resolve_references(
@@ -941,6 +967,20 @@ class ConversationManager:
             parsed["target"] = context_entity.get("entity")
             parsed["entity_type"] = context_entity.get("entity_type")
             parsed["conversation_domain"] = "project"
+
+        if (
+            context_entity
+            and transition == ContextTransition.CONTINUE
+            and not style_request
+            and str(context_entity.get("action") or "").casefold()
+            in {"cyber_explain", "explain"}
+            and parsed.get("intent") in _NON_EXECUTABLE_INTENTS
+        ):
+            parsed = dict(parsed or {})
+            parsed["intent"] = Intent.CYBER_EXPLAIN
+            parsed["target"] = context_entity.get("entity")
+            parsed["entity_type"] = context_entity.get("entity_type", "CONCEPT")
+            parsed["conversation_domain"] = "technical"
 
         # Normalize generic reference words after, not before, the memory
         # owner has supplied the authorized subject. With no subject, erase
@@ -2121,6 +2161,13 @@ class ConversationManager:
         """Answer a dialogue-history request without routing it as project work."""
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
         current_session_id = str(getattr(state, "session_id", "") or "")
+        normalized_history_query = str(text or "").casefold()
+        allow_untagged_legacy = response_mode == "answer" or (
+            response_mode == "summary"
+            and not any(marker in normalized_history_query for marker in (
+                "ماذا كنا نقول", "ماذا قلنا", "ما كنا نقول", "ما كنا نتحدث",
+            ))
+        )
         relevant = [
             item for item in exchanges
             if str(item.get("context_kind") or "").casefold()
@@ -2134,6 +2181,11 @@ class ConversationManager:
             and (
                 not current_session_id
                 or str(item.get("session_id") or "") == current_session_id
+                or (allow_untagged_legacy and (
+                    not str(item.get("session_id") or "").strip()
+                    and str(item.get("context_kind") or "").casefold()
+                    not in {"work", "system", "execution"}
+                ))
             )
         ][-32:]
 
@@ -2412,6 +2464,13 @@ class ConversationManager:
                 if active_topic
                 else ContextTransition.AMBIGUOUS
             )
+        if active_topic and (
+            entity_type == "ELABORATION"
+            or conversation_act in {
+                "TOPIC_CONTINUATION_QUERY", "SIMPLIFICATION_REQUEST",
+            }
+        ):
+            return ContextTransition.CONTINUE
         normalized_request = str(text or "").casefold()
         explicit_explain_markers = (
             "اشرح", "شرح", "وضح", "عرّف", "عرف", "ما هو", "ماهي",
