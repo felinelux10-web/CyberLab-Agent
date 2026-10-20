@@ -369,6 +369,32 @@ class ConversationManager:
         # or continuation turn must not be hijacked by HISTORY/CONTEXT_REPORT/
         # RESUME parser fallbacks before DialogueMemory sees it.
         raw_signal = classify_conversation_semantics(user_input)
+        if (
+            selected_session.get("kind") == "none"
+            and raw_signal.get("conversation_act") == "SAVED_SESSION_RESTORE_REQUEST"
+        ):
+            pending = getattr(self, "_pending_work_sessions", []) or []
+            choices = "، ".join(
+                f"{item.get('number')} ({str((item.get('report') or {}).get('topic') or 'جلسة بلا عنوان')[:45]})"
+                for item in pending
+                if item.get("number") is not None
+            )
+            detail = (
+                f"الجلسات المتاحة: {choices}."
+                if choices
+                else "لا توجد جلسات عمل محفوظة قابلة للاختيار حاليًا."
+            )
+            return {
+                "status": "needs_clarification",
+                "intent": Intent.SESSION_RESTORE,
+                "source": "session_selector",
+                "text": "اذكر رقم الجلسة التي تريد استرجاعها. " + detail,
+                "executed": False,
+                "semantic_request": {
+                    "conversation_act": "SAVED_SESSION_RESTORE_REQUEST",
+                    "response_attributes": {"saved_session_request": True},
+                },
+            }
         # A structurally enumerated multi-part message is one compound dialogue
         # request, not an agent-self/capability query merely because its framing
         # mentions testing the assistant. Preserve the whole request for one answer.
@@ -572,6 +598,50 @@ class ConversationManager:
                             else raw_signal.get("conversation_domain", "general")
                         ),
                     })
+                elif raw_act == "CONVERSATION_CONTINUATION":
+                    # Social turns can intentionally clear active_context. For
+                    # a bare "اكمل", recover only the latest explicitly named
+                    # dialogue topic; never invent a topic from free-form text.
+                    archive = getattr(
+                        getattr(self.dialogue_memory, "state", None),
+                        "exchange_archive",
+                        [],
+                    ) or []
+                    archived_topic = next(
+                        (
+                            item for item in reversed(archive)
+                            if isinstance(item, dict)
+                            and str(item.get("target") or "").strip()
+                            and item.get("context_kind") not in {"work", "system", "execution"}
+                        ),
+                        None,
+                    )
+                    if archived_topic:
+                        candidate.update({
+                            "target": str(archived_topic.get("target") or "").strip(),
+                            "entity_type": "CONCEPT",
+                            "conversation_domain": "general",
+                        })
+        # Preserve an explicitly named creative branch even when the sentence
+        # is phrased as a negated correction ("لا أريد أن نعود إلى...").
+        # Without this extraction the semantic layer sees only CONTINUATION
+        # and the active branch remains the unrelated social conversation.
+        normalized_topic_request = self._normalize_transition_text(user_input)
+        if (
+            raw_act == "CONVERSATION_CONTINUATION"
+            and any(marker in normalized_topic_request for marker in ("فن", "رسم", "نحت", "نقش"))
+        ):
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": "الفن والرسم والنحت والنقش",
+                "entity_type": "CONCEPT",
+                "conversation_domain": "general",
+                "conversation_act": "TOPIC_RETURN",
+                "response_attributes": {"dialogue_recovery": "named_topic_return"},
+                "semantic_pattern": "NAMED_DIALOGUE_TOPIC_RETURN",
+                "source": "named_dialogue_topic_return",
+            })
         generic_social_topic_return = False
         normalized_return_request = self._normalize_transition_text(user_input)
         explicit_topic_return = any(marker in normalized_return_request for marker in (
@@ -718,6 +788,7 @@ class ConversationManager:
                 })
 
         transition = self._classify_context_transition(mode, candidate, text=user_input)
+        interrupted_anchor = ""
         if interrupted_recovery:
             # The wording describes a past topic switch, not a new switch now.
             # Restore the archived side branch when its subject is known;
@@ -736,6 +807,20 @@ class ConversationManager:
                 else []
             )
             if branch_exchanges:
+                anchor_item = next(
+                    (
+                        item for item in branch_exchanges
+                        if str(item.get("target") or item.get("user") or "").strip()
+                    ),
+                    {},
+                )
+                interrupted_anchor = " ".join(
+                    part for part in (
+                        str(anchor_item.get("target") or "").strip(),
+                        str(anchor_item.get("user") or "").strip(),
+                        str(anchor_item.get("assistant") or "").strip(),
+                    ) if part
+                )
                 # Archive-only recovery must work even when the short visible
                 # turn window or context_history no longer contains the branch.
                 archived_target = next(
@@ -883,7 +968,11 @@ class ConversationManager:
             transition = ContextTransition.NEW_INDEPENDENT
 
         self._clear_unrelated_execution_file(transition, candidate)
-        resolved_input = user_input
+        resolved_input = (
+            f"{interrupted_anchor} {user_input}".strip()
+            if interrupted_recovery and interrupted_anchor
+            else user_input
+        )
         parsed = candidate
         context_entity = None
         if self.dialogue_memory:
@@ -1152,6 +1241,16 @@ class ConversationManager:
                     context_transition=transition,
                 )
             return result
+
+        # An interrupted-branch recovery is a grounded dialogue request. Even
+        # when the archived branch was technical, do not execute the recovery
+        # sentence as a fresh technical command; let the chat owner continue
+        # from the archived evidence.
+        if recovery_mode in {"interrupted_branch", "named_topic_return"}:
+            parsed = dict(parsed or {})
+            parsed["intent"] = Intent.PERSONAL_CHAT
+            parsed["conversation_domain"] = "general"
+            mode = "CHAT"
 
         # ----------------------------------------------------
         # ONE execution owner.
@@ -2288,6 +2387,7 @@ class ConversationManager:
                 "منذ البداية", "منذ بدايه", "من بداية الحوار", "من بداية النقاش",
                 "من اول الحوار", "من أول الحوار", "منذ أول الحوار",
                 "الموضوعين", "موضوعين", "بالترتيب", "من البداية حتى الآن",
+                "هذا الحوار", "لهذا الحوار", "الحوار الحالي بالكامل",
             ))
             recall_recent_exchanges = whole_dialogue_summary or any(marker in normalized_query for marker in (
                 "الردود السابقة", "الردود السابقه", "قبل قليل",
@@ -2296,7 +2396,7 @@ class ConversationManager:
                 "ملخص الاختبار", "الذي اجريناه", "الذي أجريناه",
             ))
             branch = (
-                relevant
+                relevant[-12:]
                 if whole_dialogue_summary
                 else (
                     relevant[-12:]

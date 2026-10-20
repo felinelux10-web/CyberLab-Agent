@@ -11,7 +11,7 @@ RED = "\033[31m"
 
 
 class BootUI:
-    """Render restrained status text suitable for a narrow Termux terminal."""
+    """Render a compact, professional startup screen for Termux and terminals."""
 
     def __init__(self):
         self.width = max(32, min(shutil.get_terminal_size((40, 20)).columns, 72))
@@ -26,6 +26,10 @@ class BootUI:
 
     def start(self):
         print()
+        self._rule()
+        print(self._paint("  CYBERLAB AGENT  ", GREEN))
+        print("  نظام الوكيل الذكي وإدارة الحوار والسياق")
+        self._rule()
         print("إقلاع الوكيل")
         print("الحالة   المكوّن")
 
@@ -55,7 +59,8 @@ class BootUI:
 
     def ready(self):
         print()
-        print(f"{self._paint('●', GREEN)} الوكيل جاهز")
+        self._rule()
+        print(f"{self._paint('●', GREEN)} الوكيل جاهز للعمل")
         print()
 
     @staticmethod

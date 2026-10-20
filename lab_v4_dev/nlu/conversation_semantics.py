@@ -163,7 +163,22 @@ def normalize_text(text: str) -> str:
         if char == "ـ" or category.startswith("M") or category == "Cf":
             continue
         chars.append(" " if category.startswith("P") else char)
-    return re.sub(r"\s+", " ", "".join(chars)).strip()
+    normalized = re.sub(r"\s+", " ", "".join(chars)).strip()
+    # Common conversational typos observed in terminal/mobile input. Keep
+    # these substitutions deliberately narrow; they repair intent words
+    # without changing user content stored in the dialogue archive.
+    for misspelling, correction in {
+        "اختثر": "اختصر",
+        "امثر": "اكثر",
+        "الخوار": "الحوار",
+        "السابة": "السابقة",
+        "المحفوضة": "المحفوظة",
+        "المحفوض": "المحفوظ",
+        "النحث": "النحت",
+        "استرجعل": "استرجع",
+    }.items():
+        normalized = normalized.replace(misspelling, correction)
+    return normalized
 
 
 def _tokens(text: str) -> list[str]:
@@ -543,6 +558,20 @@ def classify_conversation_semantics(
             "conversation_act": "TOPIC_CONTINUATION_QUERY",
             "confidence": 0.91,
             "response_attributes": {},
+            "conversational": True,
+        }
+
+    saved_session_request = (
+        _has_any(bases, {"استرجع", "استرجاع", "استعادة", "استرد"})
+        and _has_any(bases, {"جلسه", "جلسة"})
+        and _has_any(bases, {"محفوظ", "محفوظه", "سياق", "رقم", "جلسات"})
+    )
+    if saved_session_request:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "SAVED_SESSION_RESTORE_REQUEST",
+            "confidence": 0.98,
+            "response_attributes": {"saved_session_request": True},
             "conversational": True,
         }
 
