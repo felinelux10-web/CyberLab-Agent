@@ -113,6 +113,10 @@ def test_named_social_switch_and_correction_stay_in_dialogue_route(monkeypatch):
 def test_previous_saved_dialogue_selector_is_distinct_from_latest_work_session():
     selected = session_selector("حسنا ماذا كنا نقول في الجلسة السابقة")
     assert selected == {"kind": "previous_dialogue", "report_mode": "standard"}
+    saved_dialogue = session_selector("هل تستطيع استرجاع حوار الجلسة السابقة المحفوظة")
+    assert saved_dialogue == {"kind": "previous_dialogue", "report_mode": "standard"}
+    # Generic continuity remains owned by the current dialogue layer.
+    assert session_selector("استرجع الجلسة السابقة")["kind"] == "latest"
 
 
 def test_previous_dialogue_restore_skips_live_dialogue_and_work_checkpoint(monkeypatch):
