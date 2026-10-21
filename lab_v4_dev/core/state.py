@@ -5,7 +5,8 @@ import json
 import os
 from datetime import datetime
 
-STATE_FILE = "lab_v4_dev/cache/state.json"
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+STATE_FILE = os.path.join(ROOT_DIR, "lab_v4_dev", "cache", "state.json")
 
 VALID_STATES = ["normal", "safe", "frozen"]
 
