@@ -4,20 +4,21 @@ from lab_v4_dev.core.boot_ui import BootUI
 from lab_v4_dev.core.agent import Agent
 
 
-def test_startup_is_minimal_and_uses_default_text_for_headings(capsys):
+def test_startup_uses_default_language_and_bordered_status_table(capsys):
     ui = BootUI()
     ui.start()
     ui.row("DATABASE", "Connection and integrity OK")
     ui.ready()
 
     output = capsys.readouterr().out
-    assert "إقلاع الوكيل" in output
-    assert "الحالة   المكوّن" in output
+    assert "CYBERLAB AGENT" in output
+    assert "STARTUP STATUS" in output
+    assert "STATUS" in output
+    assert "COMPONENT" in output
+    assert "DETAILS" in output
     assert "STATUS: READY" not in output
-    assert "الوكيل جاهز" in output
-    assert "┌" not in output
-    assert "├" not in output
-    assert "└" not in output
+    assert "AGENT READY" in output
+    assert "╔" in output or "║" in output
 
 
 def test_status_rows_have_spacing_and_wrapped_text_is_aligned(capsys):
@@ -30,8 +31,9 @@ def test_status_rows_have_spacing_and_wrapped_text_is_aligned(capsys):
     first_row = next(i for i, line in enumerate(lines) if "DATABASE" in line)
     continuation = lines[first_row + 1]
     next_row = next(i for i, line in enumerate(lines) if "HEALTH" in line)
-    assert continuation.startswith(" " * len("●  DATABASE    "))
-    assert lines[next_row - 1] == ""
+    assert continuation.startswith("║")
+    assert "│" in continuation
+    assert "╠" in lines[next_row - 1]
 
 
 def test_failed_component_has_red_state_marker_text(capsys):
@@ -81,6 +83,22 @@ def test_saved_sessions_show_short_title_and_expand_on_selection(capsys):
     assert "تفاصيل الجلسة 1" in output
     assert "توقفت قبل كتابة الاختبارات" in output
     assert "للمراجعة فقط" in output
+    assert "╔" in output
+
+
+def test_session_cards_keep_each_summary_in_a_separate_frame(capsys):
+    ui = BootUI()
+    ui.section("SAVED SESSIONS")
+    ui.session_card(1, "موضوع الكتب — REVIEW ONLY", "WARN")
+    ui.session_card(2, "موضوع الفن — DIALOGUE SAVED", "OK")
+    ui.close_section()
+
+    output = capsys.readouterr().out
+    assert "SESSION 1" in output
+    assert "SESSION 2" in output
+    assert "موضوع الكتب" in output
+    assert "موضوع الفن" in output
+    assert output.count("╠") >= 3
 
 
 def test_non_session_command_is_not_consumed():
@@ -129,4 +147,3 @@ def test_single_line_prompt_remains_single_line_when_stdin_is_not_tty(monkeypatc
     monkeypatch.setattr(boot_ui_module.sys, "stdin", io.StringIO("ignored"))
     ui = BootUI()
     assert ui._read_pasted_continuation("مرحبا") == "مرحبا"
-

@@ -1,4 +1,4 @@
-"""Minimal terminal UI for startup status and command entry."""
+"""Professional terminal UI for startup status and command entry."""
 
 import select
 import shutil
@@ -11,56 +11,114 @@ RED = "\033[31m"
 
 
 class BootUI:
-    """Render a compact, professional startup screen for Termux and terminals."""
+    """Render a compact, bordered startup dashboard for Termux and terminals."""
 
     def __init__(self):
-        self.width = max(32, min(shutil.get_terminal_size((40, 20)).columns, 72))
+        self.width = max(40, min(shutil.get_terminal_size((56, 20)).columns, 78))
         self.color = bool(getattr(sys.stdout, "isatty", lambda: False)())
 
     def _paint(self, text, color):
         return f"{color}{text}{RESET}" if self.color else text
 
-    def _rule(self):
-        # Keep the separator long while respecting the actual terminal width.
-        print(self._paint("─" * max(24, self.width - 2), GREEN))
+    @property
+    def _inner_width(self):
+        return max(34, self.width - 2)
 
-    def start(self):
-        print()
-        self._rule()
-        print(self._paint("  CYBERLAB AGENT  ", GREEN))
-        print("  STARTUP STATUS")
-        self._rule()
-        print("إقلاع الوكيل")
-        print("الحالة   المكوّن")
+    def _rule(self, char="─"):
+        print(self._paint(char * self._inner_width, GREEN))
 
-    def row(self, component, detail, state="OK"):
+    def _box_line(self, left="│", right="│", fill=" "):
+        return f"{left}{fill * self._inner_width}{right}"
+
+    def _table_border(self, left, junction, right):
+        return self._paint(
+            f"{left}{'─' * self._inner_width}{right}", GREEN
+        )
+
+    def _status_marker(self, state):
         markers = {
             "OK": self._paint("●", GREEN),
             "FAIL": self._paint("●", RED),
             "WARN": self._paint("●", RED),
             "PENDING": self._paint("●", RED),
-            "INFO": "·",
+            "INFO": self._paint("·", GREEN),
         }
-        marker = markers.get(state, "·")
-        prefix = f"{marker}  {component:<12} "
-        continuation_indent = " " * len(prefix)
-        available = max(10, self.width - len(prefix))
-        lines = textwrap.wrap(str(detail), width=available, break_long_words=True) or [""]
-        print(prefix + lines[0])
-        for line in lines[1:]:
-            print(continuation_indent + line)
-        # Visually separate components without bringing back dashboard boxes.
+        return markers.get(state, self._paint("·", GREEN))
+
+    def start(self):
         print()
+        self._rule("═")
+        print(self._box_line("║", "║", " "))
+        print(f"║  {self._paint('CYBERLAB AGENT', GREEN):<{self._inner_width - 2}}║")
+        print(f"║  {'STARTUP STATUS':<{self._inner_width - 2}}║")
+        print(self._box_line("║", "║", " "))
+        print(self._table_border("╠", "╬", "╣"))
+        print(f"║  {'STATUS':<9} │ {'COMPONENT':<13} │ {'DETAILS':<{max(8, self._inner_width - 31)}}║")
+        print(self._table_border("╠", "╬", "╣"))
+
+    def row(self, component, detail, state="OK"):
+        """Print one wrapped row in the startup status table."""
+        marker = self._status_marker(state)
+        component_text = str(component)
+        detail_lines = textwrap.wrap(
+            str(detail),
+            width=max(8, self._inner_width - 31),
+            break_long_words=True,
+        ) or [""]
+        status = f"{marker} {state:<5}"
+        for index, line in enumerate(detail_lines):
+            status_cell = status if index == 0 else " " * 7
+            component_cell = component_text if index == 0 else ""
+            print(
+                f"║  {status_cell:<9} │ {component_cell:<13} │ "
+                f"{line:<{max(8, self._inner_width - 31)}}║"
+            )
+        print(self._table_border("╠", "╬", "╣"))
 
     def section(self, title, state="INFO"):
-        # Section headings remain in the terminal's default text color.
+        """Start a titled section while keeping headings in default text."""
         print()
-        print(title)
+        print(self._table_border("╔", "═", "╗"))
+        title_text = str(title).upper()
+        print(f"║  {title_text:<{self._inner_width - 2}}║")
+        print(self._table_border("╠", "═", "╣"))
+
+    def session_card(self, number, summary, state="INFO"):
+        """Render one saved-session summary in its own bordered card."""
+        marker = self._status_marker(state)
+        title = f"{marker} SESSION {number}"
+        summary_lines = textwrap.wrap(
+            str(summary),
+            width=max(12, self._inner_width - 6),
+            break_long_words=True,
+        ) or [""]
+        print(f"║  {title:<{self._inner_width - 2}}║")
+        for line in summary_lines:
+            print(f"║  {line:<{self._inner_width - 2}}║")
+        print(self._table_border("╠", "═", "╣"))
+
+    def close_section(self):
+        print(self._table_border("╚", "═", "╝"))
+
+    def detail_card(self, title, lines):
+        """Render localized saved-session details in one separate card."""
+        print()
+        print(self._table_border("╔", "═", "╗"))
+        print(f"║  {str(title):<{self._inner_width - 2}}║")
+        print(self._table_border("╠", "═", "╣"))
+        for label, value in lines:
+            text = f"{label}: {value}"
+            wrapped = textwrap.wrap(
+                text, width=max(12, self._inner_width - 4), break_long_words=True
+            ) or [""]
+            for line in wrapped:
+                print(f"║  {line:<{self._inner_width - 2}}║")
+        print(self._table_border("╚", "═", "╝"))
 
     def ready(self):
         print()
-        self._rule()
-        print(f"{self._paint('●', GREEN)} الوكيل جاهز للعمل")
+        self._rule("═")
+        print(f"{self._paint('●', GREEN)} AGENT READY")
         print()
 
     @staticmethod
@@ -71,12 +129,7 @@ class BootUI:
         return "\n".join(lines).strip()
 
     def _read_pasted_continuation(self, first_line, *, idle_timeout=0.12):
-        """Collect lines already queued by a multiline terminal paste.
-
-        A normal interactive line still returns after a short idle window.
-        This prevents each line of a pasted numbered prompt becoming a separate
-        request while preserving the existing one-line CLI workflow.
-        """
+        """Collect lines already queued by a multiline terminal paste."""
         if not getattr(sys.stdin, "isatty", lambda: False)():
             return str(first_line or "").strip()
 
@@ -98,7 +151,7 @@ class BootUI:
     def prompt(self):
         """Show the prompt and preserve multiline terminal pastes as one message."""
         print()
-        self._rule()
+        self._rule("─")
         print(self._paint("✦ CYBERLAB", GREEN))
         first_line = input("> ")
         return self._read_pasted_continuation(first_line)

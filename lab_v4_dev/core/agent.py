@@ -136,12 +136,14 @@ class Agent:
             # A new process starts a new live dialogue. A saved dialogue is
             # never injected implicitly; it must be selected explicitly so
             # "this session" and "a saved session" cannot be mixed.
-            index = get_session_index()[-10:]
+            # Keep startup readable: show only the three most recently saved
+            # sessions. Full details remain available through `session N`.
+            index = get_session_index()[-3:]
             if not index and isinstance(s, dict) and s.get("session_id", s.get("active_goal")):
                 index = [s]
             if index:
-                self._boot_ui.section("الجلسات المحفوظة")
-                self._boot_ui.row("الجلسات", f"{len(index)} جلسة محفوظة", "PENDING")
+                self._boot_ui.section("SAVED SESSIONS")
+                self._boot_ui.row("SESSIONS", f"{len(index)} saved session(s)", "INFO")
                 self._pending_work_sessions = []
                 for number, item in enumerate(index, 1):
                     selected = get_session_by_id(item.get("session_id")) or item
@@ -160,13 +162,19 @@ class Agent:
                     })
                     session_type = self._pending_work_sessions[-1]["session_type"]
                     state_label = (
-                        "حوار محفوظ" if session_type == "dialogue"
-                        else "قابلة للاستئناف" if recoverable
-                        else "للمراجعة فقط"
+                        "DIALOGUE SAVED" if session_type == "dialogue"
+                        else "RESUMABLE" if recoverable
+                        else "REVIEW ONLY"
                     )
                     marker_state = "OK" if session_type == "dialogue" or recoverable else "WARN"
-                    self._boot_ui.row(f"Session {number}", f"{description}  — {state_label}", marker_state)
-                self._boot_ui.row("التفاصيل", "اكتب session 1 أو session 2 لعرض التفاصيل", "INFO")
+                    # The summary text itself remains Arabic/localized, while
+                    # the surrounding startup labels stay in the default UI
+                    # language and every session gets its own visual card.
+                    self._boot_ui.session_card(
+                        number, f"{description}  — {state_label}", marker_state
+                    )
+                self._boot_ui.row("DETAILS", "Type session 1, session 2 or session 3 for details", "INFO")
+                self._boot_ui.close_section()
         except Exception as exc:
             log.warning(f"Session discovery skipped: {exc}")
 
@@ -188,14 +196,18 @@ class Agent:
             return True
 
         report = selected["report"]
-        print()
-        print(f"تفاصيل الجلسة {number}: {report.get('topic') or report.get('active_goal') or 'جلسة بلا عنوان'}")
-        print(f"المعرّف: {report.get('session_id', 'غير متاح')}")
-        print(f"الهدف: {report.get('active_goal', 'غير محدد')}")
-        print(f"الحالة: {report.get('status', 'غير محددة')} — {report.get('last_updated', 'غير متاح')}")
-        print(f"آخر خطوة مكتملة: {report.get('last_completed_step', 'غير محدد')}")
-        print(f"نقطة التوقف: {report.get('current_state', 'غير محددة')}")
-        print(f"الخطوة التالية: {report.get('next_step', 'غير محددة')}")
+        detail_ui = BootUI()
+        detail_ui.detail_card(
+            f"تفاصيل الجلسة {number}: {report.get('topic') or report.get('active_goal') or 'جلسة بلا عنوان'}",
+            [
+                ("المعرّف", report.get("session_id", "غير متاح")),
+                ("الهدف", report.get("active_goal", "غير محدد")),
+                ("الحالة", f"{report.get('status', 'غير محددة')} — {report.get('last_updated', 'غير متاح')}"),
+                ("آخر خطوة مكتملة", report.get("last_completed_step", "غير محدد")),
+                ("نقطة التوقف", report.get("current_state", "غير محددة")),
+                ("الخطوة التالية", report.get("next_step", "غير محدد")),
+            ],
+        )
         if selected["recoverable"]:
             print("الاستئناف يتطلب أمرًا صريحًا؛ لن يبدأ التنفيذ تلقائيًا.")
         else:
