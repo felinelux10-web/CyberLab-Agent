@@ -1763,7 +1763,7 @@ SOURCE CODE:
                 lines.append("اكتب طلبًا يذكر موضوع الجلسة للعودة إليها.")
                 return {"status": "success", "intent": intent, "text": "\n".join(lines), "sessions": candidates}
             if selector.get("kind") == "list":
-                candidates = get_session_index()[-10:]
+                candidates = get_session_index()
                 if not candidates:
                     return {"status": "success", "intent": intent,
                             "text": "لا توجد جلسات محفوظة حاليًا."}
@@ -1779,7 +1779,7 @@ SOURCE CODE:
                 return {"status": "success", "intent": intent,
                         "text": "\n".join(lines), "sessions": candidates}
             if selector.get("kind") == "number":
-                candidates = get_session_index()[-10:]
+                candidates = get_session_index()
                 number = int(selector.get("number") or 0)
                 if number < 1 or number > len(candidates):
                     return {"status": "needs_clarification", "intent": intent,
