@@ -214,6 +214,18 @@ def session_selector(raw: str) -> dict:
         return {"kind": "status", "status": "paused", "report_mode": report_mode}
     if "قارن" in text and any(token in text for token in ("الجلسات", "جلستين", "جلسة")):
         return {"kind": "compare", "report_mode": "full"}
+    # Distinguish a prior saved dialogue from the generic latest session/work report.
+    # This is intentionally checked before broad "استرجع الجلسة" -> latest matching.
+    previous_dialogue_markers = (
+        "الجلسة السابقة", "الجلسه السابقه", "حوار الجلسة السابقة",
+        "حوارنا السابق", "الحوار السابق", "الدردشة السابقة",
+        "ماذا كنا نقول", "ماذا كنا نتحدث", "ما كنا نتحدث",
+        "موضوع الجلسة السابقة", "موضوعنا السابق",
+    )
+    if any(token in text for token in previous_dialogue_markers) and any(
+        token in text for token in ("حوار", "الحوار", "كنا", "موضوع", "نقاش", "نتحدث", "نقول", "استرجع", "استرجاع", "تذكر", "تتذكر", "ملخص")
+    ):
+        return {"kind": "previous_dialogue", "report_mode": report_mode}
     if any(token in text for token in ("آخر جلسة", "اخر جلسة", "الجلسة الأخيرة", "الجلسه الاخيره")):
         return {"kind": "latest", "report_mode": report_mode}
     search_marker = re.search(r"(?:عن|حول)\s+(.*?)(?:،|,|\s+واعرض|\s+ثم|\s+فقط|$)", raw_text, flags=re.IGNORECASE)
