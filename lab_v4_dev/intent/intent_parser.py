@@ -905,6 +905,24 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     if _is_lexical_mention(user_input):
         return _lexical_mention_result(user_input)
 
+    # Explicit discussion of AI agents in general must not be hijacked by
+    # agent-self capability keywords in the dictionary/NLU fallback layers.
+    # This guard belongs before _agent_self_result and all broad matchers.
+    if is_general_ai_discussion(user_input):
+        return {
+            "intent": Intent.PERSONAL_CHAT,
+            "target": "",
+            "context": "general",
+            "confidence": 0.92,
+            "raw": user_input,
+            "source": "general_ai_discussion",
+            "entity_type": "CONVERSATION",
+            "semantic_pattern": "GENERAL_AI_DISCUSSION",
+            "conversation_domain": "general",
+            "conversation_act": "CASUAL_DISCUSSION",
+            "conversation_confidence": 0.92,
+        }
+
     memory_request = _device_memory_request_kind(user_input)
     if memory_request == "knowledge":
         return {
