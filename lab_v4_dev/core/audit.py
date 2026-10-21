@@ -11,7 +11,8 @@ from typing import Any, Dict, Optional
 
 from lab_v4_dev.core.logger import log
 
-AUDIT_FILE = "execution_audit.json"
+CYBERLAB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+AUDIT_FILE = os.path.join(CYBERLAB_ROOT, "execution_audit.json")
 
 
 @dataclass
@@ -108,7 +109,7 @@ def emit_event(event: str, source: str = "system", context: Optional[Dict[str, A
         pass
 
     if persist:
-        path = os.path.join(os.getcwd(), AUDIT_FILE)
+        path = AUDIT_FILE
         entries = _load_audit_file(path)
         entries.append(rec.to_dict())
         _write_audit_file(path, entries)
