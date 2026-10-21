@@ -4,9 +4,10 @@
 import logging
 import os
 from lab_v4_dev.core.config import LOG_FILES
+from lab_v4_dev.core.project_context import CYBERLAB_ROOT
 
 def setup_logger(name: str = "cyberlab") -> logging.Logger:
-    os.makedirs("lab_v4_dev/logs", exist_ok=True)
+    os.makedirs(os.path.join(CYBERLAB_ROOT, "lab_v4_dev", "logs"), exist_ok=True)
 
     logger = logging.getLogger(name)
 
@@ -21,17 +22,17 @@ def setup_logger(name: str = "cyberlab") -> logging.Logger:
     )
 
     # DEBUG
-    dh = logging.FileHandler(LOG_FILES["debug"])
+    dh = logging.FileHandler(os.path.join(CYBERLAB_ROOT, LOG_FILES["debug"]))
     dh.setLevel(logging.DEBUG)
     dh.setFormatter(fmt)
 
     # INFO + WARNING
-    ah = logging.FileHandler(LOG_FILES["agent"])
+    ah = logging.FileHandler(os.path.join(CYBERLAB_ROOT, LOG_FILES["agent"]))
     ah.setLevel(logging.INFO)
     ah.setFormatter(fmt)
 
     # ERROR + CRITICAL
-    eh = logging.FileHandler(LOG_FILES["errors"])
+    eh = logging.FileHandler(os.path.join(CYBERLAB_ROOT, LOG_FILES["errors"]))
     eh.setLevel(logging.ERROR)
     eh.setFormatter(fmt)
 
