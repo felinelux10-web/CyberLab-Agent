@@ -387,6 +387,20 @@ def _has_explicit_second_person(tokens: list[str], bases: set[str]) -> bool:
     return bool(bases & pronouns)
 
 
+def is_general_ai_discussion(text: str) -> bool:
+    """Return whether the utterance explicitly discusses AI agents generally."""
+    normalized_raw = normalize_text(str(text or "").strip())
+    general_scope = any(marker in normalized_raw for marker in (
+        "بصفه عامه", "بشكل عام", "بصوره عامه", "عموما", "عموميا",
+        "وكلاء الذكاء الصناعي", "وكلاء الذكاء الاصطناعي",
+    ))
+    explicit_project_self_question = any(marker in normalized_raw for marker in (
+        "ما هو وكيل cyberlab", "ماهو وكيل cyberlab",
+        "كيف يعمل cyberlab", "بنيه cyberlab", "بنية cyberlab",
+    ))
+    return general_scope and not explicit_project_self_question
+
+
 def classify_agent_self_query(text: str) -> dict | None:
     """Classify agent-self requests from meaning, not punctuation or syntax.
 
@@ -401,17 +415,7 @@ def classify_agent_self_query(text: str) -> dict | None:
         return None
     bases = _bases(tokens) | _agent_bases(tokens)
     normalized_raw = normalize_text(raw)
-    general_ai_discussion = any(marker in normalized_raw for marker in (
-        "بصفه عامه", "بشكل عام", "بصوره عامه", "عموما", "عموميا",
-        "وكلاء الذكاء الصناعي", "وكلاء الذكاء الاصطناعي",
-    ))
-    explicit_project_self_question = any(marker in normalized_raw for marker in (
-        "ما هو وكيل cyberlab", "ماهو وكيل cyberlab",
-        "كيف يعمل cyberlab", "بنيه cyberlab", "بنية cyberlab",
-    ))
-    # A user may mention CyberLab while explicitly correcting the scope to
-    # general AI. That correction must win over project/agent vocabulary.
-    if general_ai_discussion and not explicit_project_self_question:
+    if is_general_ai_discussion(raw):
         return None
     if _has_file_operation_target(raw, bases):
         return None
