@@ -1778,6 +1778,47 @@ SOURCE CODE:
                 lines.append("للاسترجاع اكتب: استرجع الجلسة رقم 1 (أو أي رقم ظاهر).")
                 return {"status": "success", "intent": intent,
                         "text": "\n".join(lines), "sessions": candidates}
+            if selector.get("kind") == "previous_dialogue":
+                # A previous-dialogue request must select a persisted dialogue,
+                # not the canonical work checkpoint or the active live dialogue.
+                memory = getattr(self.agent, "dialogue_memory", None)
+                state = getattr(memory, "state", None)
+                current_dialogue_id = str(getattr(state, "session_id", "") or "").strip()
+                selected_dialogue = None
+                for item in reversed(get_session_index()):
+                    if not isinstance(item, dict):
+                        continue
+                    outer_id = str(item.get("session_id") or "").strip()
+                    if not outer_id or outer_id == current_dialogue_id:
+                        continue
+                    saved = get_session_by_id(outer_id) or item
+                    if not isinstance(saved, dict):
+                        continue
+                    session_type = str(saved.get("session_type") or item.get("session_type") or "").casefold()
+                    dialogue_state = saved.get("dialogue_state")
+                    context_state = saved.get("context_state")
+                    # Accept the unambiguous legacy dialogue shape only. Mixed
+                    # work/dialogue snapshots must never leak execution context.
+                    is_dialogue = (
+                        session_type == "dialogue"
+                        or (not session_type and isinstance(dialogue_state, dict) and not context_state)
+                    )
+                    if not is_dialogue or not isinstance(dialogue_state, dict):
+                        continue
+                    saved_dialogue_id = str(dialogue_state.get("session_id") or "").strip()
+                    if current_dialogue_id and saved_dialogue_id == current_dialogue_id:
+                        continue
+                    selected_dialogue = saved
+                    selected_id = outer_id
+                    break
+                if selected_dialogue is None:
+                    return {
+                        "status": "needs_clarification",
+                        "intent": intent,
+                        "source": "saved_dialogue_restore",
+                        "text": "لم أجد حوارًا سابقًا محفوظًا مستقلًا عن الحوار الحالي. اعرض الجلسات المحفوظة لاختيار حوار محدد.",
+                        "executed": False,
+                    }
             if selector.get("kind") == "number":
                 candidates = get_session_index()
                 number = int(selector.get("number") or 0)
