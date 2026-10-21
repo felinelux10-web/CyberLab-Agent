@@ -22,8 +22,6 @@ SHORTCUTS = {
     "schedule": "schedule",
 }
 
-NOTES_FILE    = "lab_v4_dev/cache/notes.json"
-TODOS_FILE    = "lab_v4_dev/cache/todos.json"
 ROOT_DIR = Path(__file__).resolve().parents[2]
 CACHE_DIR = ROOT_DIR / "lab_v4_dev" / "cache"
 NOTES_FILE = str(CACHE_DIR / "notes.json")
