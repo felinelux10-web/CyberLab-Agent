@@ -109,3 +109,82 @@ def test_named_social_switch_and_correction_stay_in_dialogue_route(monkeypatch):
     assert continued["source"] != "dialogue_memory"
     assert not calls
     assert memory.state.last_topic == "الكتب"
+
+def test_previous_saved_dialogue_selector_is_distinct_from_latest_work_session():
+    selected = session_selector("حسنا ماذا كنا نقول في الجلسة السابقة")
+    assert selected == {"kind": "previous_dialogue", "report_mode": "standard"}
+
+
+def test_previous_dialogue_restore_skips_live_dialogue_and_work_checkpoint(monkeypatch):
+    from lab_v4_dev.memory.session_state import session_selector
+
+    sessions = [
+        {
+            "session_id": "prior-dialogue-record",
+            "session_type": "dialogue",
+            "status": "completed",
+            "active_goal": "النحت البارز",
+            "dialogue_state": {
+                "session_id": "prior-dialogue-state",
+                "last_topic": "النحت البارز",
+                "history": [{"role": "user", "content": "كنا نتحدث عن النحت البارز"}],
+                "exchange_archive": [],
+            },
+        },
+        {
+            "session_id": "live-dialogue-record",
+            "session_type": "dialogue",
+            "status": "active",
+            "active_goal": "التحية",
+            "dialogue_state": {
+                "session_id": "live-dialogue-state",
+                "last_topic": "التحية",
+                "history": [],
+                "exchange_archive": [],
+            },
+        },
+        {
+            "session_id": "latest-work-record",
+            "session_type": "work",
+            "status": "paused",
+            "active_goal": "إصلاح الكود",
+            "context_state": {"current_file": "agent.py"},
+        },
+    ]
+    restored = []
+    agent = SimpleNamespace(
+        dialogue_memory=SimpleNamespace(
+            state=SimpleNamespace(session_id="live-dialogue-state")
+        ),
+        restore_session_snapshot=lambda data: restored.append(data) or True,
+        restore_session_context=lambda: False,
+        runtime=None,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    orchestrator = Orchestrator(agent)
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_index", lambda: sessions)
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_by_id",
+        lambda session_id: next(
+            (item for item in sessions if item["session_id"] == session_id), {}
+        ),
+    )
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.load_session", lambda: sessions[-1])
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.recoverable_work_checkpoint", lambda data: None)
+
+    result = orchestrator.handle(
+        "حسنا ماذا كنا نقول في الجلسة السابقة",
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "target": "",
+            "context": "general",
+            "session_selector": session_selector("حسنا ماذا كنا نقول في الجلسة السابقة"),
+        },
+    )
+
+    assert result["status"] == "success"
+    assert result["context_restored"] is True
+    assert restored and restored[0]["session_id"] == "prior-dialogue-record"
+    assert "النحت البارز" in result["text"]
+    assert "agent.py" not in result["text"]
+
