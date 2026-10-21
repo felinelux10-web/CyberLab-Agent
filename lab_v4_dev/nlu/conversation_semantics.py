@@ -390,14 +390,24 @@ def _has_explicit_second_person(tokens: list[str], bases: set[str]) -> bool:
 def is_general_ai_discussion(text: str) -> bool:
     """Return whether the utterance explicitly discusses AI agents generally."""
     normalized_raw = normalize_text(str(text or "").strip())
-    general_scope = any(marker in normalized_raw for marker in (
-        "بصفه عامه", "بشكل عام", "بصوره عامه", "عموما", "عموميا",
-        "وكلاء الذكاء الصناعي", "وكلاء الذكاء الاصطناعي",
-    ))
-    explicit_project_self_question = any(marker in normalized_raw for marker in (
-        "ما هو وكيل cyberlab", "ماهو وكيل cyberlab",
-        "كيف يعمل cyberlab", "بنيه cyberlab", "بنية cyberlab",
-    ))
+    # Normalize the markers with the same Arabic character map as the input.
+    # In particular, normalize_text removes standalone hamza (ء), so matching
+    # raw marker literals such as "وكلاء" against normalized input can silently
+    # fail even when the phrase is visibly present.
+    general_scope = any(
+        normalize_text(marker) in normalized_raw
+        for marker in (
+            "بصفه عامه", "بشكل عام", "بصوره عامه", "عموما", "عموميا",
+            "وكلاء الذكاء الصناعي", "وكلاء الذكاء الاصطناعي",
+        )
+    )
+    explicit_project_self_question = any(
+        normalize_text(marker) in normalized_raw
+        for marker in (
+            "ما هو وكيل cyberlab", "ماهو وكيل cyberlab",
+            "كيف يعمل cyberlab", "بنيه cyberlab", "بنية cyberlab",
+        )
+    )
     return general_scope and not explicit_project_self_question
 
 
