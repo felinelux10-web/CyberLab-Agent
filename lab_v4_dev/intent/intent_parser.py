@@ -12,6 +12,7 @@ from lab_v4_dev.conversation.mode_detector import detect_mode
 from lab_v4_dev.nlu.conversation_semantics import (
     classify_agent_self_query,
     classify_conversation_semantics,
+    is_general_ai_discussion,
     should_override_with_personal_chat,
 )
 
@@ -1517,6 +1518,19 @@ def parse(user_input, *, context_entity: dict | None = None):
         )
 
     legacy = dict(legacy)
+    # General AI-agent discussion must outrank legacy/self-capability labels.
+    # The semantic adapter can otherwise preserve an agent-self intent chosen
+    # by an earlier parser path even when the utterance is about the field.
+    if is_general_ai_discussion(user_input) and legacy.get("intent") in {
+        Intent.AGENT_IDENTITY,
+        Intent.AGENT_CAPABILITIES,
+        Intent.AGENT_ARCHITECTURE,
+        Intent.AGENT_EXECUTION_FLOW,
+        Intent.AGENT_LIMITS,
+    }:
+        legacy["intent"] = Intent.PERSONAL_CHAT
+        legacy["target"] = ""
+        legacy["semantic_pattern"] = "GENERAL_AI_DISCUSSION"
     signal = classify_conversation_semantics(
         user_input,
         intent=legacy.get("intent"),
