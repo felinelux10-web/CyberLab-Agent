@@ -26,7 +26,7 @@ LEGACY_PATHS = (
         status="legacy_compatibility",
         callers=(),
         replacement="lab_v4_dev/",
-        notes="Kept for compatibility; no runtime imports were found in the active tree.",
+        notes="Deprecated: do not add new imports; candidate for archival after dependency audit. Kept for compatibility until callers and migration are proven.",
     ),
     LegacyPath(
         path="lab_v4/llm/groq_client.py",
