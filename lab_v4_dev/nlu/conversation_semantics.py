@@ -555,6 +555,25 @@ def classify_conversation_semantics(
             "conversational": True,
         }
 
+    # Explicit retrospective questions about prior responses must win before
+    # topic-reference and agent-flow fallbacks. "قبل قليل" can otherwise
+    # make the same request miss the later generic history-query rule.
+    recent_response_history_query = (
+        _has_any(bases, {"ماذا", "ما"})
+        and _has_any(bases, {"كنا", "نقول", "قلنا"})
+        and _has_any(bases, {"رد", "ردود", "رساله", "رسائل"})
+        and _has_any(bases, {"سابق", "سابقه", "قبل", "قليل"})
+        and not _has_any(bases, {"العمل", "مهام", "مهمه", "ملف", "مشروع"})
+    )
+    if recent_response_history_query:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.97,
+            "response_attributes": {"dialogue_response_mode": "summary"},
+            "conversational": True,
+        }
+
     # "What does this have to do with what we were saying?" asks the current
     # dialogue owner for a contextual reply; it is not a request to dump the
     # archive or produce a fixed summary.
