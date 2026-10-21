@@ -37,8 +37,13 @@ def safe_apply(file_path: str, new_content: str) -> dict:
 
     emit_event("safe_apply.start", source="safe_apply", context={"file": file_path})
 
-    # 2. خذ snapshot
-    snap = take(file_path)
+    # 2. Take a snapshot. Snapshot failures are returned through the same
+    # result contract as later write failures rather than escaping this layer.
+    try:
+        snap = take(file_path)
+    except Exception as e:
+        emit_event("safe_apply.snapshot_failed", source="safe_apply", context={"file": file_path}, details={"reason": str(e)})
+        return {"status": "failed", "reason": f"snapshot_failed: {e}"}
     emit_event("safe_apply.snapshot", source="safe_apply", context={"file": file_path}, details={"snapshot": snap.get("snapshot"), "status": snap.get("status")})
     if snap["status"] not in ["ok", "skipped"]:
         emit_event("safe_apply.snapshot_failed", source="safe_apply", context={"file": file_path}, details={"snapshot_status": snap.get("status")})
@@ -77,6 +82,11 @@ def safe_apply(file_path: str, new_content: str) -> dict:
             emit_event("safe_apply.verify_failed", source="safe_apply", context={"file": file_path})
             return {"status": "failed", "reason": "verify_failed"}
     except Exception as e:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
         emit_event("safe_apply.verify_error", source="safe_apply", context={"file": file_path}, details={"error": str(e)})
         return {"status": "failed", "reason": f"verify_error: {e}"}
 
@@ -101,9 +111,15 @@ def safe_apply(file_path: str, new_content: str) -> dict:
                 pass
         # Attempt rollback to previous snapshot
         try:
-            rollback(file_path, snap.get("snapshot"))
+            rollback_result = rollback(file_path, snap.get("snapshot"))
+            if not isinstance(rollback_result, dict) or rollback_result.get("status") != "ok":
+                emit_event(
+                    "safe_apply.rollback_failed",
+                    source="safe_apply",
+                    context={"file": file_path},
+                    details={"result": rollback_result},
+                )
         except Exception as e2:
-            # Surface rollback failure for observability but do not break caller
             emit_event("safe_apply.rollback_failed", source="safe_apply", context={"file": file_path}, details={"error": str(e2)})
         emit_event("safe_apply.replace_failed", source="safe_apply", context={"file": file_path}, details={"reason": str(e)})
         return {"status": "failed", "reason": f"replace_failed: {e}"}

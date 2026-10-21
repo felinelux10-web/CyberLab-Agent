@@ -88,6 +88,10 @@ class SafePipeline:
                     emit_event("safe_pipeline.snapshot_ok", source="safe_pipeline", context={"file": file_path}, details={"snapshot": result.get("snapshot")})
                 else:
                     snapshots[file_path] = None
+                    failed.append({
+                        "file": file_path,
+                        "error": f"snapshot_not_restorable:{result.get('status')}",
+                    })
                     emit_event("safe_pipeline.snapshot_skipped", source="safe_pipeline", context={"file": file_path}, details={"status": result.get("status")})
             except Exception as e:
                 failed.append({"file": file_path, "error": str(e)})
@@ -124,24 +128,30 @@ class SafePipeline:
                 emit_event("safe_pipeline.file_write.start", source="safe_pipeline", context={"file": file_path})
                 applied = safe_apply(file_path, new_content)
                 if applied.get("status") != "ok":
-                    self._rollback_all(snapshots["snapshots"], completed)
+                    rollback_report = self._rollback_all(snapshots["snapshots"], completed)
                     reason = str(applied.get("reason") or "safe_apply_failed")
                     emit_event("safe_pipeline.file_write.failed", source="safe_pipeline", context={"file": file_path}, details={"reason": reason})
                     if reason.startswith("syntax_error:"):
                         return {"status": "failed", "reason": f"syntax_error in {file_path}", "error": reason.split(":", 1)[1].strip()}
-                    return {"status": "failed", "reason": reason, "rolled_back": completed}
+                    return {
+                        "status": "failed",
+                        "reason": reason,
+                        "rolled_back": rollback_report["restored"],
+                        "rollback_failures": rollback_report["failed"],
+                    }
 
                 completed.append(file_path)
                 results[file_path] = "ok"
                 emit_event("safe_pipeline.file_write.ok", source="safe_pipeline", context={"file": file_path}, details={"snapshot": applied.get("snapshot")})
 
             except Exception as e:
-                self._rollback_all(snapshots["snapshots"], completed)
-                emit_event("safe_pipeline.execute.failed", source="safe_pipeline", context={"task": plan.get("task")}, details={"error": str(e), "rolled_back": completed})
+                rollback_report = self._rollback_all(snapshots["snapshots"], completed)
+                emit_event("safe_pipeline.execute.failed", source="safe_pipeline", context={"task": plan.get("task")}, details={"error": str(e), **rollback_report})
                 return {
                     "status": "failed",
                     "reason": str(e),
-                    "rolled_back": completed,
+                    "rolled_back": rollback_report["restored"],
+                    "rollback_failures": rollback_report["failed"],
                 }
 
         # تحديث project memory
@@ -190,7 +200,23 @@ class SafePipeline:
     # ─────────────────────────────────────
     def _rollback_all(self, snapshots: dict, files: list):
         emit_event("safe_pipeline.rollback_all", source="safe_pipeline", context={"files": files})
-        for f in files:
-            snap = snapshots.get(f)
-            if snap:
-                rollback(f, snap)
+        restored = []
+        failed = []
+        for file_path in reversed(files):
+            snap = snapshots.get(file_path)
+            if not snap:
+                failed.append({"file": file_path, "reason": "snapshot_missing"})
+                continue
+            try:
+                result = rollback(file_path, snap)
+                if isinstance(result, dict) and result.get("status") == "ok":
+                    restored.append(file_path)
+                else:
+                    failed.append({
+                        "file": file_path,
+                        "reason": (result or {}).get("reason", "rollback_failed")
+                        if isinstance(result, dict) else "invalid_rollback_result",
+                    })
+            except Exception as exc:
+                failed.append({"file": file_path, "reason": str(exc)})
+        return {"restored": restored, "failed": failed}
