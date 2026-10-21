@@ -2548,6 +2548,8 @@ class ConversationManager:
                 "الاختبار المركب", "اختبارنا", "لخص الاختبار",
                 "ملخص الاختبار", "الذي اجريناه", "الذي أجريناه",
             ))
+            if normalized_query.strip() in {"اكتب ملخص", "اكتب ملخصا", "لخص", "ملخص"}:
+                recall_recent_exchanges = True
             branch = (
                 relevant[-12:]
                 if whole_dialogue_summary
