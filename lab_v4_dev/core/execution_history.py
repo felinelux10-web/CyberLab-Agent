@@ -5,7 +5,8 @@ import json
 import os
 from datetime import datetime
 
-HISTORY_FILE = "workspace/run_history"
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+HISTORY_FILE = os.path.join(ROOT_DIR, "workspace", "run_history")
 
 def save_run(script, status, duration, exit_code=0, error=""):
     os.makedirs(HISTORY_FILE, exist_ok=True)
