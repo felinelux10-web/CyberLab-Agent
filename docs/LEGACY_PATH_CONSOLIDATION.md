@@ -10,7 +10,7 @@ The supported entry point is `run.py -> lab_v4_dev.core.agent.Agent`. New code a
 - Added `lab_v4/DEPRECATED.md` with the migration rule and an explicit no-delete-yet statement.
 - Strengthened `tests/test_p8_legacy_manifest.py` to verify the deprecation metadata.
 - Added `tests/test_legacy_runtime_boundary.py` to reject direct Python imports from `lab_v4` in `run.py` and `lab_v4_dev/`.
-- A repository scan of the 79 Python test files found no direct `import lab_v4` or `from lab_v4...` statements. This is a source scan, not a test execution.
+- Source scans found no direct `import lab_v4` or `from lab_v4...` statements in the 230 Python files under `lab_v4_dev/`, the `run.py` entry point, or the 79 Python test files. These scans do not cover dynamic imports, every non-Python path reference, external callers, or test execution.
 
 ## Archive gate — not yet cleared
 
