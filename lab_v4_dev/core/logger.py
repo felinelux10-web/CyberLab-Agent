@@ -4,7 +4,7 @@
 import logging
 import os
 from lab_v4_dev.core.config import LOG_FILES
-from lab_v4_dev.core.project_context import CYBERLAB_ROOT
+CYBERLAB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 def setup_logger(name: str = "cyberlab") -> logging.Logger:
     os.makedirs(os.path.join(CYBERLAB_ROOT, "lab_v4_dev", "logs"), exist_ok=True)
