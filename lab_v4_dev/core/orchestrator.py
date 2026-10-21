@@ -23,6 +23,9 @@ import shutil
 import uuid
 import inspect
 
+CYBERLAB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+WORKSPACE_DIR = os.path.join(CYBERLAB_ROOT, "workspace")
+
 class Orchestrator:
 
     def __init__(self, agent, context=None):
@@ -544,10 +547,11 @@ class Orchestrator:
             from lab_v4_dev.core.project_metadata import ProjectMetadata
             _meta = ProjectMetadata()
             tasks = self.agent.memory.recent_tasks(10)
+            releases_dir = os.path.join(CYBERLAB_ROOT, "releases")
             releases = sorted([
-                d for d in os.listdir("releases")
-                if os.path.isdir(f"releases/{d}")
-            ]) if os.path.exists("releases") else []
+                d for d in os.listdir(releases_dir)
+                if os.path.isdir(os.path.join(releases_dir, d))
+            ]) if os.path.exists(releases_dir) else []
             _cur_phase = _meta.get_current_phase()
             return {
                 "status"  : "success",
@@ -1653,13 +1657,17 @@ SOURCE CODE:
             stop = ["ما","تاثير","تعديل","ماذا","يحدث","لو","عدلت","على","في"]
             words = [w for w in raw.split() if w not in stop and len(w) > 2]
             q = words[-1] if words else target or raw
-            from lab_v4_dev.core.project_context import get_active_project, CYBERLAB_ROOT
+            from lab_v4_dev.core.project_context import get_active_project, project_index_dir, CYBERLAB_ROOT
             _active = get_active_project()
-            _is_external = not _active.root.startswith(CYBERLAB_ROOT)
+            _active_root = os.path.abspath(_active.root)
+            _base_root = os.path.abspath(CYBERLAB_ROOT)
+            _is_external = os.path.commonpath([_active_root, _base_root]) != _base_root
             if _is_external:
                 import json as _j
                 try:
-                    _g = _j.load(open("workspace/external_index/dependency_graph.json", encoding="utf-8"))
+                    _graph_path = os.path.join(project_index_dir(_active.root), "dependency_graph.json")
+                    with open(_graph_path, encoding="utf-8") as _graph_file:
+                        _g = _j.load(_graph_file)
                     _imp = _g.get("imports", {})
                     _rev = _g.get("reverse_imports", {})
                     _matches = [k for k in list(_imp.keys()) + list(_rev.keys()) if q in k]
@@ -2056,7 +2064,7 @@ SOURCE CODE:
 
             scripts = []
             for folder in ["scripts","modified","analysis"]:
-                path = os.path.join("workspace", folder)
+                path = os.path.join(WORKSPACE_DIR, folder)
                 if os.path.exists(path):
                     for f in os.listdir(path):
                         scripts.append(f"{folder}/{f}")
@@ -2071,14 +2079,19 @@ SOURCE CODE:
             from lab_v4_dev.core.sandbox_executor import run_code
 
             # استخرج اسم الملف
-            scripts = sorted([f for f in os.listdir("workspace/scripts") if f.endswith(".py")], key=lambda x: os.path.getmtime(f"workspace/scripts/{x}"), reverse=True) if os.path.exists("workspace/scripts") else []
+            scripts_dir = os.path.join(WORKSPACE_DIR, "scripts")
+            scripts = sorted(
+                [f for f in os.listdir(scripts_dir) if f.endswith(".py")],
+                key=lambda x: os.path.getmtime(os.path.join(scripts_dir, x)),
+                reverse=True
+            ) if os.path.exists(scripts_dir) else []
             if not scripts:
                 return {"status":"failed","intent":intent,"text":"لا توجد سكريبتات محفوظة"}
             # إذا ذكر اسم محدد استخدمه
             target_script = None
             for s in scripts:
                 if s in raw:
-                    target_script = f"workspace/scripts/{s}"
+                    target_script = os.path.join(WORKSPACE_DIR, "scripts", s)
                     break
             # استخدم آخر سكريبت تم كتابته في هذه الجلسة
             if not target_script and self.context.last_result:
@@ -2087,7 +2100,7 @@ SOURCE CODE:
                     target_script = saved
             # آخر ملف في المجلد
             if not target_script:
-                target_script = f"workspace/scripts/{scripts[0]}"
+                target_script = os.path.join(WORKSPACE_DIR, "scripts", scripts[0])
             r = run_code(target_script, timeout=10)
             if r["status"] == "success":
                 meta = f"⏱ {r.get('duration','?')}s | exit: {r.get('exit_code',0)}"
@@ -2118,14 +2131,15 @@ SOURCE CODE:
         elif intent == Intent.DRY_RUN:
             from lab_v4_dev.core.sandbox_executor import dry_run
 
+            scripts_dir = os.path.join(WORKSPACE_DIR, "scripts")
             scripts = sorted(
-                [f for f in os.listdir("workspace/scripts") if f.endswith(".py")],
-                key=lambda x: os.path.getmtime(f"workspace/scripts/{x}"),
+                [f for f in os.listdir(scripts_dir) if f.endswith(".py")],
+                key=lambda x: os.path.getmtime(os.path.join(scripts_dir, x)),
                 reverse=True
-            ) if os.path.exists("workspace/scripts") else []
+            ) if os.path.exists(scripts_dir) else []
             if not scripts:
                 return {"status":"failed","intent":intent,"text":"لا توجد سكريبتات"}
-            last = f"workspace/scripts/{scripts[0]}"
+            last = os.path.join(WORKSPACE_DIR, "scripts", scripts[0])
             r    = dry_run(last)
             return {"status":"success","intent":intent,
                     "text":f"فحص: {last}\n{r['message'] if r['status']=='ok' else r['error']}"}
@@ -2254,14 +2268,12 @@ SOURCE CODE:
                 has_ts = _os.path.exists(_os.path.join(proj_root, "package.json"))
                 if has_ts and not has_py:
                     import sys as _sys
-                    _sys.path.insert(0, _os.path.expanduser(
-                        "~/cyberlab_agent/lab_v4_dev/awareness"))
+                    _sys.path.insert(0, os.path.join(CYBERLAB_ROOT, "lab_v4_dev", "awareness"))
                     from ts_reader import scan_project as _scan_ts
                     snapshot = _scan_ts(proj_root)
                     # نسخ مخرجات ts_reader إلى مجلد الفهرس الصحيح لهذا المشروع
                     import shutil as _shutil, json as _json
-                    src_dir = _os.path.expanduser(
-                        "~/cyberlab_agent/workspace/external_index")
+                    src_dir = os.path.join(WORKSPACE_DIR, "external_index")
                     for fname in ["project_index.json","dependency_graph.json",
                                   "project_snapshot.json"]:
                         sp = _os.path.join(src_dir, fname)
