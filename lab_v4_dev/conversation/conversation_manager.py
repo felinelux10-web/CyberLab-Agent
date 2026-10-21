@@ -55,6 +55,7 @@ from lab_v4_dev.nlu.conversation_semantics import (
     classify_conversation_semantics,
     is_social_act,
     is_style_act,
+    normalize_text,
 )
 
 
@@ -608,6 +609,19 @@ class ConversationManager:
                 "source": "named_dialogue_topic_return",
             })
         raw_act = raw_signal.get("conversation_act")
+        if raw_act == "CORRECTION":
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": "",
+                "entity_type": "REFERENCE",
+                "conversation_domain": "general",
+                "conversation_act": "CORRECTION",
+                "conversation_confidence": raw_signal.get("confidence", 0.0),
+                "response_attributes": dict(raw_signal.get("response_attributes") or {}),
+                "semantic_pattern": "DIALOGUE_CORRECTION_OVERRIDE",
+                "source": "dialogue_correction_override",
+            })
         interrupted_recovery = str(
             (raw_signal.get("response_attributes") or {}).get("dialogue_recovery", "")
         ).casefold() == "interrupted_branch"
@@ -615,7 +629,10 @@ class ConversationManager:
             "CONVERSATION_HISTORY_QUERY",
             "CONVERSATION_CONTINUATION",
             "TOPIC_RETURN",
-        } and not explicit_explanation and not explicit_casual_opening and not named_return:
+        } and not explicit_explanation and (
+            not explicit_casual_opening
+            or raw_act == "CONVERSATION_CONTINUATION"
+        ) and not named_return:
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.PERSONAL_CHAT,
@@ -963,7 +980,11 @@ class ConversationManager:
                 )
                 else ContextTransition.AMBIGUOUS
             )
-        if explicit_casual_opening and not explicit_explanation:
+        if (
+            explicit_casual_opening
+            and not explicit_explanation
+            and raw_act != "CONVERSATION_CONTINUATION"
+        ):
             # Social openings are independent turns: never attach the previous
             # technical entity or its prompt history to the semantic request.
             transition = ContextTransition.NEW_INDEPENDENT
@@ -2513,7 +2534,7 @@ class ConversationManager:
             # the recent recorded exchanges, not only the active branch. The
             # branch-only view remains appropriate for a plain current-state
             # summary, where mixing independent topics would be misleading.
-            normalized_query = str(text or "").casefold()
+            normalized_query = normalize_text(text)
             whole_dialogue_summary = any(marker in normalized_query for marker in (
                 "منذ البداية", "منذ بدايه", "من بداية الحوار", "من بداية النقاش",
                 "من اول الحوار", "من أول الحوار", "منذ أول الحوار",
@@ -2523,6 +2544,7 @@ class ConversationManager:
             recall_recent_exchanges = whole_dialogue_summary or any(marker in normalized_query for marker in (
                 "الردود السابقة", "الردود السابقه", "قبل قليل",
                 "ماذا كنا نقول", "ماذا قلنا", "ما كنا نقول",
+                "بما كنا", "كنا نناقش", "كنا نتحدث",
                 "الاختبار المركب", "اختبارنا", "لخص الاختبار",
                 "ملخص الاختبار", "الذي اجريناه", "الذي أجريناه",
             ))
@@ -2689,6 +2711,7 @@ class ConversationManager:
             or generic_reference_target
         ) and conversation_act not in {
             "TOPIC_RETURN", "CONVERSATION_HISTORY_QUERY", "SOCIAL_ACKNOWLEDGEMENT",
+            "CORRECTION",
         }:
             return (
                 ContextTransition.REFERENCE
@@ -3146,17 +3169,30 @@ class ConversationManager:
             intent = (parsed or {}).get("intent")
             response_attributes = (parsed or {}).get("response_attributes") or {}
             compound_request = bool(response_attributes.get("compound_request"))
+            normalized_question = self._normalize_transition_text(user_question or text)
+            general_scope_markers = (
+                "بصفة عامة", "بشكل عام", "بصورة عامة", "عموما",
+                "محادثة ودية", "محادثه وديه", "دردشة ودية", "دردشه وديه",
+                "خارج بنية المشروع", "خارج نبية المشروع",
+                "لا نتحدث عن مشروع", "لا نتحدث عن مشروع cyberlab",
+                "ليس عن مشروع", "بلا علاقة بالمشروع",
+            )
+            explicitly_general_scope = any(
+                marker in normalized_question for marker in general_scope_markers
+            )
             # One compound message belongs to the ordinary conversational responder.
             # Do not inject agent-self or project knowledge because individual items
             # mention the agent, Python, or project-adjacent vocabulary.
             self_knowledge = (
                 build_agent_self_knowledge(intent)
-                if intent in _AGENT_SELF_INTENTS and not compound_request
+                if intent in _AGENT_SELF_INTENTS
+                and not compound_request
+                and not explicitly_general_scope
                 else None
             )
             project_scope = (
                 "general"
-                if compound_request
+                if compound_request or explicitly_general_scope
                 else resolve_project_scope(user_question or text, intent=intent)
             )
             
@@ -3165,6 +3201,7 @@ class ConversationManager:
             knowledge_type = QuestionClassifier.classify(user_question or text)
             if (
                 not compound_request
+                and not explicitly_general_scope
                 and user_question
                 and (
                     intent in _AGENT_SELF_INTENTS

@@ -170,6 +170,9 @@ def normalize_text(text: str) -> str:
     for misspelling, correction in {
         "اختثر": "اختصر",
         "امثر": "اكثر",
+        "ناذا": "ماذا",
+        "ملهص": "ملخص",
+        "ملخصا": "ملخصا",
         "الخوار": "الحوار",
         "السابة": "السابقة",
         "المحفوضة": "المحفوظة",
@@ -177,6 +180,14 @@ def normalize_text(text: str) -> str:
         "النحث": "النحت",
         "استرجعل": "استرجع",
         "فبل": "قبل",
+        "التخدث": "التحدث",
+        "التكنلوجيا": "التكنولوجيا",
+        "مخادثة": "محادثة",
+        "نخن": "نحن",
+        "نبية": "بنية",
+        "وية": "ودية",
+        "قنا": "قلنا",
+        "لكنمل": "لكن نكمل",
     }.items():
         normalized = normalized.replace(misspelling, correction)
     return normalized
@@ -389,6 +400,19 @@ def classify_agent_self_query(text: str) -> dict | None:
     if not tokens:
         return None
     bases = _bases(tokens) | _agent_bases(tokens)
+    normalized_raw = normalize_text(raw)
+    general_ai_discussion = any(marker in normalized_raw for marker in (
+        "بصفه عامه", "بشكل عام", "بصوره عامه", "عموما", "عموميا",
+        "وكلاء الذكاء الصناعي", "وكلاء الذكاء الاصطناعي",
+    ))
+    explicit_project_self_question = any(marker in normalized_raw for marker in (
+        "ما هو وكيل cyberlab", "ماهو وكيل cyberlab",
+        "كيف يعمل cyberlab", "بنيه cyberlab", "بنية cyberlab",
+    ))
+    # A user may mention CyberLab while explicitly correcting the scope to
+    # general AI. That correction must win over project/agent vocabulary.
+    if general_ai_discussion and not explicit_project_self_question:
+        return None
     if _has_file_operation_target(raw, bases):
         return None
     project_subject = _has_agent_any(bases, _AGENT_PROJECT_SUBJECT_MARKERS)
@@ -423,7 +447,18 @@ def classify_agent_self_query(text: str) -> dict | None:
         or limits
         or (flow and _has_agent_any(bases, _WORKING_MARKERS))
     )
-    if not (direct_address or message_frame or named_agent_property):
+    # A second-person suffix in a phrase such as "ما هو ردك؟" is not enough to
+    # make the turn an agent-architecture query. Flow questions need either a
+    # message-processing frame or an explicit agent reference; capability and
+    # identity questions may still use direct address alone.
+    self_property = (
+        identity
+        or capability
+        or limits
+        or architecture
+        or bool(tokens and tokens[0] in {"من", "مين"})
+    )
+    if not (message_frame or named_agent_property or (direct_address and self_property)):
         return None
 
     if limits or (grounding and (direct_address or message_frame)) or negated_capability:
@@ -493,6 +528,53 @@ def classify_conversation_semantics(
         "العمل", "ملف", "مهمه", "جلسه", "مشروع", "كود", "اختبار",
         "تنفيذ", "work", "file", "task", "project", "code", "test",
     }
+    correction_scope = (
+        _has_any(bases, _CORRECTION_MARKERS | {"اطلب", "طلبت", "اقصد", "المقصود"})
+        and _has_any(bases, _CORRECTION_NEGATIONS | {"بل", "لم"})
+    )
+    if correction_scope and intent_value in _NON_EXECUTABLE_INTENTS:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CORRECTION",
+            "confidence": 0.98,
+            "response_attributes": {},
+            "conversational": True,
+        }
+
+    # "What does this have to do with what we were saying?" asks the current
+    # dialogue owner for a contextual reply; it is not a request to dump the
+    # archive or produce a fixed summary.
+    relation_to_dialogue = (
+        _has_any(bases, {"علاقه", "علاقة", "صلة"})
+        and _has_any(bases, {"هذا", "ذلك", "كنا", "نقول", "نتحدث", "نتكلم", "نناقش"})
+        and not _has_any(bases, work_context_markers)
+    )
+    if relation_to_dialogue:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "confidence": 0.97,
+            "response_attributes": {},
+            "conversational": True,
+        }
+
+    standalone_summary_request = (
+        _has_any(bases, {"ملخص", "تلخيص", "لخص"})
+        and not _has_any(bases, work_context_markers)
+        and not _has_any(bases, {"مشروع", "ملف", "كود", "مهمه", "مهمة"})
+        and (
+            _has_any(bases, {"اكتب", "اعطني", "أعطني", "اكتبلي"})
+            or normalized_phrase in {"ملخص", "لخص"}
+        )
+    )
+    if standalone_summary_request:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.98,
+            "response_attributes": {"dialogue_response_mode": "summary"},
+            "conversational": True,
+        }
     asks_stopping_point = (
         _has_any(bases, {"اين", "وين", "where"})
         and _has_any(bases, {
@@ -698,7 +780,10 @@ def classify_conversation_semantics(
     # resuming an executable work session. Explicit work nouns keep their
     # existing work/session authority.
     if (
-        _has_any(bases, {"نكمل", "استكمل", "استكمال", "نواصل", "تابع", "اكمل"})
+        _has_any(bases, {
+            "نكمل", "سنكمل", "استكمل", "استكمال", "نواصل", "سنواصل",
+            "تابع", "نتابع", "سنتابع", "اكمل", "سنستكمل",
+        })
         and _has_any(bases, {"حوار", "محادثه", "حديث", "كلام", "موضوع", "سياق"})
         and not _has_any(bases, {"العمل", "ملف", "مهمه", "جلسه", "مشروع", "كود", "اختبار", "تنفيذ"})
     ):
