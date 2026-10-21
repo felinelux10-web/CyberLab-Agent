@@ -217,7 +217,8 @@ def session_selector(raw: str) -> dict:
     # Distinguish a prior saved dialogue from the generic latest session/work report.
     # This is intentionally checked before broad "استرجع الجلسة" -> latest matching.
     previous_dialogue_markers = (
-        "الجلسة السابقة", "الجلسه السابقه", "حوار الجلسة السابقة",
+        "حوار الجلسة السابقة", "حوار الجلسه السابقه",
+        "الجلسة السابقة المحفوظة", "الجلسه السابقه المحفوظه",
         "حوارنا السابق", "الحوار السابق", "الدردشة السابقة",
         "ماذا كنا نقول", "ماذا كنا نتحدث", "ما كنا نتحدث",
         "موضوع الجلسة السابقة", "موضوعنا السابق",
