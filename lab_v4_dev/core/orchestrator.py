@@ -2454,12 +2454,20 @@ SOURCE CODE:
 
                 result = safe_delete(target_path, "user request")
 
+                succeeded = result.get("status") == "success"
+                if succeeded:
+                    text = f"تم حذف {target_path}"
+                    if result.get("audit_warning"):
+                        text += "، لكن تعذرت كتابة سجل التدقيق"
+                else:
+                    text = result.get("message") or f"لم يتم حذف {target_path}"
                 return {
                     "status": result.get("status"),
                     "intent": intent,
-                    "text": f"تم حذف {target_path}",
+                    "text": text,
                     "backup": result.get("backup"),
                     "snapshot": result.get("snapshot"),
+                    "audit_warning": result.get("audit_warning"),
                 }
 
             except Exception as e:

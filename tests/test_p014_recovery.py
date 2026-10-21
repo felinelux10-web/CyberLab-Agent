@@ -9,7 +9,10 @@ def test_snapshot_and_safe_apply_and_rollback(tmp_path, monkeypatch):
     import lab_v4_dev.recovery.snapshot as snapshot_module
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(snapshot_module, "SNAPSHOTS_DIR", str(tmp_path / "archives" / "snapshots"))
+    archive_dir = str(tmp_path / "archives" / "snapshots")
+    import lab_v4_dev.recovery.rollback as rollback_module
+    monkeypatch.setattr(snapshot_module, "SNAPSHOTS_DIR", archive_dir)
+    monkeypatch.setattr(rollback_module, "SNAPSHOTS_DIR", archive_dir)
     monkeypatch.setattr(audit, "AUDIT_FILE", str(tmp_path / "execution_audit.json"))
 
     # prepare file

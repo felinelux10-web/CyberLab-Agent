@@ -39,7 +39,10 @@ def test_snapshot_cannot_restore_a_different_target(tmp_path, monkeypatch):
     from lab_v4_dev.recovery.rollback import rollback
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(snapshot_module, "SNAPSHOTS_DIR", str(tmp_path / "archives" / "snapshots"))
+    archive_dir = str(tmp_path / "archives" / "snapshots")
+    import lab_v4_dev.recovery.rollback as rollback_module
+    monkeypatch.setattr(snapshot_module, "SNAPSHOTS_DIR", archive_dir)
+    monkeypatch.setattr(rollback_module, "SNAPSHOTS_DIR", archive_dir)
     monkeypatch.setattr(audit, "AUDIT_FILE", str(tmp_path / "execution_audit.json"))
     first = tmp_path / "project" / "first.txt"
     second = tmp_path / "project" / "second.txt"
