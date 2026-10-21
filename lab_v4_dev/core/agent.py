@@ -138,14 +138,16 @@ class Agent:
             # "this session" and "a saved session" cannot be mixed.
             # Keep startup readable: show only the three most recently saved
             # sessions. Full details remain available through `session N`.
-            index = get_session_index()[-3:]
+            all_sessions = get_session_index()
+            index = all_sessions[-3:]
             if not index and isinstance(s, dict) and s.get("session_id", s.get("active_goal")):
                 index = [s]
+            start_number = max(1, len(all_sessions) - len(index) + 1) if index else 1
             if index:
                 self._boot_ui.section("SAVED SESSIONS")
                 self._boot_ui.row("SESSIONS", f"{len(index)} saved session(s)", "INFO")
                 self._pending_work_sessions = []
-                for number, item in enumerate(index, 1):
+                for number, item in enumerate(index, start_number):
                     selected = get_session_by_id(item.get("session_id")) or item
                     report = analyze_session(selected)
                     recoverable = recoverable_work_checkpoint(selected)
@@ -173,7 +175,8 @@ class Agent:
                     self._boot_ui.session_card(
                         number, f"{description}  — {state_label}", marker_state
                     )
-                self._boot_ui.row("DETAILS", "Type session 1, session 2 or session 3 for details", "INFO")
+                visible_numbers = ", ".join(f"session {number}" for number in range(start_number, start_number + len(index)))
+                self._boot_ui.row("DETAILS", f"Type {visible_numbers} for details", "INFO")
                 self._boot_ui.close_section()
         except Exception as exc:
             log.warning(f"Session discovery skipped: {exc}")
