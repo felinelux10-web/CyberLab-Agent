@@ -127,7 +127,7 @@ class ConversationManager:
             # simply "عن X". Exclude retrospective references so they remain
             # owned by the history/restore path.
             match = re.match(
-                r"^\s*(?:عن|حول)\s+(?:موضوع\s+)?(.+?)\s*[.!؟?،]*\s*$",
+                r"^\s*(?:مثلا\s+)?(?:عن|حول)\s+(?:موضوع\s+)?(.+?)\s*[.!؟?،]*\s*$",
                 value,
                 flags=re.IGNORECASE,
             )
@@ -1151,11 +1151,27 @@ class ConversationManager:
                 and context_entity.get("entity")
             ):
                 resolved_input = f"{context_entity['entity']} {user_input}".strip()
-            if resolved_input != user_input:
+            context_action = str(context_entity.get("action") or "").casefold()
+            social_active_context = (
+                context_action not in {"cyber_explain", "explain"}
+                and str(context_entity.get("entity_type") or "").upper()
+                not in {"FILE", "COMPONENT", "PROJECT"}
+            )
+            if resolved_input != user_input and not social_active_context:
                 parsed = self._safe_parse(
                     resolved_input,
                     context_entity=context_entity,
                 )
+            elif social_active_context and transition == ContextTransition.CONTINUE:
+                # The active social branch owns this follow-up. Re-parsing a
+                # synthetic string such as "الفن ... اكمل" lets legacy
+                # explanation rules seize it as cyber_explain.
+                parsed = dict(parsed or {})
+                parsed["intent"] = Intent.PERSONAL_CHAT
+                parsed["target"] = context_entity.get("entity")
+                parsed["entity_type"] = context_entity.get("entity_type", "CONCEPT")
+                parsed["conversation_domain"] = "general"
+                parsed["conversation_act"] = "CONVERSATION_CONTINUATION"
 
         if (
             context_entity

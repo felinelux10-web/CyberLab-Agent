@@ -1508,6 +1508,30 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     }
 
 
+def _is_general_cultural_request(text: str) -> bool:
+    """Recognize a non-project cultural topic before legacy explain fallbacks.
+
+    This is a domain boundary, not a synonym expansion: only a clearly
+    cultural subject combined with the absence of project/technical evidence
+    can downgrade a legacy explanatory label.
+    """
+    normalized = normalize(str(text or "")).casefold()
+    cultural_markers = (
+        "فيلم", "افلام", "أفلام", "مسلسل", "سلسله", "سلسلة",
+        "سينما", "فن", "رسم", "نحت", "نقش", "كتاب", "موسيقى",
+        "رياضة", "رياضه", "سفر", "طبخ",
+    )
+    technical_markers = (
+        "ملف", "مجلد", "مشروع", "كود", "دالة", "كلاس", "اختبار",
+        "تنفيذ", "شغل", "تشغيل", "برمج", "cyber", "sql", "csrf",
+        "python", "javascript", "orchestrator", "intentparser",
+    )
+    return (
+        any(marker in normalized for marker in cultural_markers)
+        and not any(marker in normalized for marker in technical_markers)
+    )
+
+
 def parse(user_input, *, context_entity: dict | None = None):
     """
     Canonical public intent entrypoint.
@@ -1549,6 +1573,23 @@ def parse(user_input, *, context_entity: dict | None = None):
         legacy["intent"] = Intent.PERSONAL_CHAT
         legacy["target"] = ""
         legacy["semantic_pattern"] = "GENERAL_AI_DISCUSSION"
+    # Legacy explain/component rules are intentionally broad and can mistake
+    # a cultural question such as "ما أحدث أفلام هذه السلسلة؟" for project
+    # knowledge.  Close that domain boundary before ConversationManager sees
+    # the result; technical/project evidence remains authoritative.
+    if (
+        _is_general_cultural_request(user_input)
+        and legacy.get("intent") in {
+            Intent.CYBER_EXPLAIN,
+            Intent.ARCHITECTURE,
+            Intent.SEARCH,
+            Intent.SEARCH_CODE,
+        }
+    ):
+        legacy["intent"] = Intent.PERSONAL_CHAT
+        legacy["target"] = ""
+        legacy["entity_type"] = "CONVERSATION"
+        legacy["semantic_pattern"] = "GENERAL_CULTURAL_DIALOGUE"
     signal = classify_conversation_semantics(
         user_input,
         intent=legacy.get("intent"),

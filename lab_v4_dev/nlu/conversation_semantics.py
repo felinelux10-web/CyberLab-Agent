@@ -624,6 +624,29 @@ def classify_conversation_semantics(
             "conversational": True,
         }
 
+    # Acknowledgement plus a continuation verb is a continuation of the
+    # current dialogue when no work/session noun is present.  Do not require
+    # the user to repeat the word "dialogue" after the preceding turn already
+    # established a conversational branch.
+    affirmed_continuation = (
+        _has_any(bases, {"نعم", "اجل", "أجل", "اي", "بلى", "yes"})
+        and _has_any(bases, {"نكمل", "اكمل", "استكمل", "تابع", "واصل"})
+        and not _has_any(bases, work_context_markers)
+    )
+    current_dialogue_reference = (
+        _has_any(bases, {"الحوار", "النقاش", "المحادثه", "المحادثة", "حديث"})
+        and _has_any(bases, {"الحالي", "الحاليه", "الحالية"})
+        and not _has_any(bases, work_context_markers)
+    )
+    if affirmed_continuation or current_dialogue_reference:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "confidence": 0.96,
+            "response_attributes": {},
+            "conversational": True,
+        }
+
     # Interrupted-branch recovery is more specific than generic continuation.
     # Classify it first so the recovery marker survives into routing and branch
     # selection instead of being swallowed by the same-point continuation rule.
@@ -643,8 +666,13 @@ def classify_conversation_semantics(
 
     explicit_same_point_continuation = (
         _has_any(bases, {"نكمل", "اكمل", "استكمل", "تابع", "واصل", "نواصل"})
-        and _has_any(bases, {"نقطه", "النقطه", "سياق"})
-        and _has_any(bases, {"نفس", "توقفنا", "توقف", "وصلنا"})
+        and (
+            (
+                _has_any(bases, {"نقطه", "النقطه", "سياق"})
+                and _has_any(bases, {"نفس", "توقفنا", "توقف", "وصلنا"})
+            )
+            or _has_any(bases, {"شرح", "الشرح", "النقاش", "الحوار", "الموضوع"})
+        )
         and not _has_any(bases, work_context_markers)
     )
     bare_dialogue_continuation = normalized_phrase in {
