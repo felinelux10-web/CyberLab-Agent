@@ -101,6 +101,22 @@ class ConversationManager:
             "كفى توقف", "stop", "stop working", "stop explaining",
         }
 
+    @classmethod
+    def _is_explicit_diagnostic_request(cls, text: str) -> bool:
+        """Allow diagnostics only for a direct, unambiguous system request."""
+        normalized = cls._normalize_transition_text(text).strip(" .!؟?")
+        direct = (
+            "شغل التشخيص", "تشغيل التشخيص", "شخص النظام", "شخّص النظام",
+            "شخص صحة النظام", "شخّص صحة النظام", "افحص صحة النظام",
+            "فحص صحة النظام", "تحقق من صحة النظام", "اختبر صحة النظام",
+            "health check",
+        )
+        direct_question = {
+            "هل النظام سليم", "هل النظام يعمل", "هل النظام يعمل بشكل سليم",
+            "ما حالة النظام",
+        }
+        return normalized in direct_question or any(marker in normalized for marker in direct)
+
     @staticmethod
     def _explicit_dialogue_topic(text: str) -> str | None:
         """Extract the subject of an explicit independent dialogue opening."""
@@ -275,7 +291,7 @@ class ConversationManager:
         )
         return any(normalized.startswith(prefix) for prefix in explicit_starts)
 
-    def process(self, user_input: str) -> dict:
+    def process(self, user_input: str, *, _restore_context: dict | None = None) -> dict:
         # Session boundaries take precedence over pending clarifications and all
         # NLU/context resolution. A new dialogue must never inherit old state.
         if self._is_new_dialogue_session_request(user_input):
@@ -349,6 +365,21 @@ class ConversationManager:
             if confirmation_intent is not None
             else self._safe_parse(user_input)
         )
+        if _restore_context:
+            candidate = {
+                "intent": Intent.PERSONAL_CHAT,
+                "target": str(_restore_context.get("entity") or "").strip(),
+                "context": "general",
+                "confidence": 1.0,
+                "raw": user_input,
+                "source": "authorized_dialogue_restore",
+                "entity_type": _restore_context.get("entity_type", "CONCEPT"),
+                "conversation_domain": _restore_context.get("conversation_domain", "general"),
+                "conversation_act": "TOPIC_RETURN",
+                "conversation_confidence": 1.0,
+                "response_attributes": {"dialogue_recovery": "named_topic_return"},
+                "semantic_pattern": "AUTHORIZED_DIALOGUE_RESTORE",
+            }
         normalized_command = " ".join(
             str(user_input or "").casefold()
             .replace("أ", "ا").replace("إ", "ا")
@@ -400,7 +431,7 @@ class ConversationManager:
             and selected_session.get("kind") != "none"
         ):
             selected_session = {"kind": "none", "report_mode": "standard"}
-        if selected_session.get("kind") != "none":
+        if selected_session.get("kind") != "none" and not _restore_context:
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.SESSION_RESTORE,
@@ -758,6 +789,8 @@ class ConversationManager:
         generic_topic = (
             None
             if (
+                _restore_context
+                or
                 raw_act == "CONVERSATION_HISTORY_QUERY"
                 and not explicit_topic_return
             )
@@ -1051,7 +1084,7 @@ class ConversationManager:
                 if not explicit_explanation:
                     candidate["intent"] = Intent.PERSONAL_CHAT
                     candidate["conversation_domain"] = "social"
-        if selected_session.get("kind") != "none":
+        if selected_session.get("kind") != "none" and not _restore_context:
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.SESSION_RESTORE,
@@ -1112,6 +1145,107 @@ class ConversationManager:
                 )
                 if callable(get_active_context):
                     context_entity = get_active_context()
+
+        active_branch = context_entity
+        get_branch = getattr(self.dialogue_memory, "active_dialogue_branch", None) if self.dialogue_memory else None
+        if callable(get_branch):
+            active_branch = get_branch() or context_entity
+        branch_domain = str((active_branch or {}).get("conversation_domain") or "general").casefold()
+        branch_action = str((active_branch or {}).get("action") or "").casefold()
+        branch_is_dialogue = bool(active_branch) and (
+            branch_domain not in {"technical", "project", "work", "system", "execution"}
+            or branch_action in {"personal_chat", "chat", "discussion"}
+        )
+        parsed_intent_value = str(
+            getattr(parsed.get("intent"), "value", parsed.get("intent")) or ""
+        ).casefold()
+        diagnostic_intents = {"health", "self_diagnose", "full_diagnose", "run_diagnostics"}
+        if (
+            branch_is_dialogue
+            and not str(parsed.get("target") or "").strip()
+            and str(parsed.get("conversation_act") or "").upper()
+            in {"CASUAL_CONVERSATION", "GENERAL_CHAT", "SOCIAL_FOLLOW_UP"}
+            and not self._is_explicit_topic_switch(user_input)
+        ):
+            parsed = dict(parsed or {})
+            parsed.update({
+                "target": active_branch.get("entity") or "",
+                "entity_type": active_branch.get("entity_type", "REFERENCE"),
+                "conversation_act": "CONVERSATION_CONTINUATION",
+                "semantic_pattern": "DIALOGUE_OWNER_SOCIAL_CONTINUATION_GUARD",
+            })
+            transition = ContextTransition.CONTINUE
+        if (
+            branch_is_dialogue
+            and parsed_intent_value in diagnostic_intents
+            and not self._is_explicit_diagnostic_request(user_input)
+        ):
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": active_branch.get("entity") or "",
+                "entity_type": active_branch.get("entity_type", "REFERENCE"),
+                "conversation_domain": "general",
+                "conversation_act": "CONVERSATION_CONTINUATION",
+                "semantic_pattern": "DIALOGUE_OWNER_DIAGNOSTIC_GUARD",
+            })
+            transition = ContextTransition.CONTINUE
+            parsed_intent_value = "personal_chat"
+
+        normalized_turn = self._normalize_transition_text(user_input)
+        if (
+            branch_is_dialogue
+            and parsed_intent_value in {
+                getattr(item, "value", item).casefold() for item in _AGENT_SELF_INTENTS
+            }
+            and "هل تستطيع" in normalized_turn
+            and any(marker in normalized_turn for marker in ("تشخيص", "فحص", "تحليل"))
+        ):
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": active_branch.get("entity") or "",
+                "entity_type": active_branch.get("entity_type", "REFERENCE"),
+                "conversation_domain": "general",
+                "conversation_act": "CONVERSATION_CONTINUATION",
+                "semantic_pattern": "DIALOGUE_OWNER_CAPABILITY_GUARD",
+            })
+            transition = ContextTransition.CONTINUE
+            parsed_intent_value = "personal_chat"
+
+        if (
+            branch_is_dialogue
+            and transition in {ContextTransition.CONTINUE, ContextTransition.REFERENCE}
+            and parsed_intent_value in {"cyber_explain", "plan", "propose_solution", "lab_plan"}
+            and not self._explicit_explanation_topic(user_input)
+            and not self._is_explicit_topic_switch(user_input)
+        ):
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": active_branch.get("entity") or "",
+                "entity_type": active_branch.get("entity_type", "REFERENCE"),
+                "conversation_domain": "general",
+                "conversation_act": "CONVERSATION_CONTINUATION",
+                "semantic_pattern": "DIALOGUE_OWNER_CONTINUATION_GUARD",
+            })
+            parsed_intent_value = "personal_chat"
+
+        normalized_reference = self._normalize_transition_text(user_input)
+        if active_branch and normalized_reference in {
+            "هذا", "هذه", "ذلك", "تلك", "ماذا يعني هذا", "ما معنى هذا",
+            "اشرح لي هذا", "وضح هذا",
+        }:
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": active_branch.get("entity") or "",
+                "entity_type": active_branch.get("entity_type", "REFERENCE"),
+                "conversation_domain": branch_domain if branch_domain in {"social", "general"} else "general",
+                "conversation_act": "CONVERSATION_CONTINUATION",
+                "semantic_pattern": "DIALOGUE_REFERENCE_RESOLUTION",
+            })
+            transition = ContextTransition.CONTINUE
 
         style_request = is_style_act(candidate.get("conversation_act"))
         recovery_mode = str(
@@ -1289,7 +1423,7 @@ class ConversationManager:
 
         # A generic return with no recoverable dialogue branch must fail
         # closed instead of being treated as a successful chat response.
-        if raw_act == "TOPIC_RETURN" and not generic_topic and self.dialogue_memory:
+        if raw_act == "TOPIC_RETURN" and not generic_topic and not _restore_context and self.dialogue_memory:
             state = getattr(self.dialogue_memory, "state", None)
             has_dialogue = bool(
                 getattr(state, "history", [])
@@ -1361,7 +1495,7 @@ class ConversationManager:
         # المشروع أو مزود النموذج.
         conversation_history_answer = (
             None
-            if generic_topic
+            if generic_topic or _restore_context
             else self._conversation_history_answer(user_input, parsed)
         )
         recovery_mode = str(
@@ -1369,6 +1503,7 @@ class ConversationManager:
         ).casefold()
         if (
             conversation_history_answer is None
+            and not _restore_context
             and self._dialogue_recall_requested(user_input, parsed)
             and not self._resolve_generic_topic_reference(user_input)
             and not self._ordinal_dialogue_exchange(user_input)
@@ -3385,6 +3520,28 @@ class ConversationManager:
                 if isinstance(result, dict)
                 else None
             )
+            continuation = str((parsed or {}).get("conversation_act") or "").upper() in {
+                "CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY",
+            }
+            branch = None
+            if self.dialogue_memory:
+                get_branch = getattr(self.dialogue_memory, "active_dialogue_branch", None)
+                branch = get_branch() if callable(get_branch) else None
+            if continuation and branch:
+                last_point = str(branch.get("reference_text") or "").strip()
+                return {
+                    "status": "error",
+                    "intent": (parsed or {}).get("intent", mode.lower()),
+                    "text": (
+                        "تعذر إنتاج متابعة جديدة من المزود، ولم أغيّر الفرع النشط. "
+                        + (f"آخر نقطة محفوظة: {last_point}" if last_point else "يمكنك إعادة المحاولة من آخر نقطة محفوظة.")
+                    ),
+                    "mode": mode,
+                    "source": "fallback",
+                    "gateway_error": gateway_error,
+                    "error": "CONTINUATION_PROVIDER_FAILURE",
+                    "executed": False,
+                }
             error_code = (
                 str(gateway_error.get("code") or "").strip()
                 if isinstance(gateway_error, dict)
@@ -3459,7 +3616,24 @@ class ConversationManager:
         if self.dialogue_memory:
             topic = getattr(self.dialogue_memory, "pending_topic", None)
             if topic:
-                result = dict(self.process(f"ارجع لشرح {topic}"))
+                context = getattr(self.dialogue_memory.state, "pending_context", None)
+                if not isinstance(context, dict) or not context.get("entity"):
+                    context = self.dialogue_memory.context_for_topic(topic)
+                if not context:
+                    return {
+                        "status": "needs_clarification",
+                        "intent": Intent.MEMORY_DUMP,
+                        "source": "dialogue_memory",
+                        "text": "لا أجد فرعًا محفوظًا موثوقًا لهذا الموضوع؛ لم أغيّر الموضوع النشط.",
+                        "executed": False,
+                    }
+                result = dict(
+                    self.process(
+                        "استعادة الفرع الحواري المحفوظ",
+                        _restore_context=context,
+                    )
+                )
+                self.dialogue_memory.restore_pending()
                 result.setdefault("topic", topic)
                 return result
 

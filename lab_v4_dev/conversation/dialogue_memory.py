@@ -100,7 +100,7 @@ class DialogueMemory:
         restored = DialogueState()
         restored.session_id = snapshot_session_id
         for field in (
-            "last_topic", "pending_topic", "last_mode", "last_intent",
+            "last_topic", "pending_topic", "pending_context", "last_mode", "last_intent",
             "last_target", "last_entity_type", "last_confidence",
             "pending_clarification", "last_items", "context_history",
             "exchange_archive",
@@ -392,6 +392,11 @@ class DialogueMemory:
                     "CONVERSATION_CONTINUATION",
                 }
             )
+            or (
+                previous_context
+                and str(result_intent or "").casefold()
+                in {"health", "self_diagnose", "full_diagnose", "run_diagnostics"}
+            )
         )
 
         self.state.last_mode = mode or result.get("mode")
@@ -448,13 +453,20 @@ class DialogueMemory:
             entity_type = parsed.get("entity_type") or result.get("entity_type")
             if str(entity_type or "").upper() in {
                 "", "UNKNOWN", "REFERENCE", "ELABORATION",
-            } and turn_target:
+            } and turn_target and str(parsed.get("entity_type") or "").upper() not in {
+                "UNKNOWN", "REFERENCE", "ELABORATION",
+            }:
                 restored_context = self.context_for_topic(str(turn_target))
                 if restored_context:
                     entity_type = restored_context.get("entity_type")
-            if str(entity_type or "").upper() in {
+            if (
+                str(entity_type or "").upper() in {
                 "", "UNKNOWN", "REFERENCE", "ELABORATION",
-            } and turn_target:
+                }
+                and turn_target
+                and str(parsed.get("entity_type") or "").upper()
+                not in {"UNKNOWN", "REFERENCE", "ELABORATION"}
+            ):
                 try:
                     from lab_v4_dev.nlu.entity_extractor import extract
                     intent_value = getattr(turn_intent, "value", turn_intent)
@@ -574,18 +586,81 @@ class DialogueMemory:
                 and entity_type not in {"", "UNKNOWN", "REFERENCE", "ELABORATION"}
             ):
                 return dict(item)
+        # The exchange archive is authoritative when a compact/legacy
+        # snapshot did not rebuild context_history.
+        session_id = str(getattr(self.state, "session_id", "") or "")
+        for item in reversed(self.state.exchange_archive or []):
+            if not isinstance(item, dict) or item.get("recall_only"):
+                continue
+            if session_id and str(item.get("session_id") or "") != session_id:
+                continue
+            if not self._same_topic(item.get("target"), topic):
+                continue
+            domain = str(item.get("conversation_domain") or "general").casefold()
+            kind = str(item.get("context_kind") or "dialogue").casefold()
+            if domain in {"work", "system", "execution"} or kind in {"work", "system"}:
+                continue
+            return {
+                "action": item.get("intent") or "personal_chat",
+                "entity": str(item.get("target") or topic),
+                "entity_type": item.get("entity_type") or "CONCEPT",
+                "conversation_domain": domain,
+                "context_kind": kind,
+            }
         return None
 
     def save_pending(self, topic: str):
         self.state.pending_topic = topic
         active = self.active_context_entity()
+        self.state.pending_context = dict(active) if active else None
         if active and self._same_topic(active.get("entity"), topic):
             self._remember_context(active)
 
     def restore_pending(self) -> str | None:
         topic = self.state.pending_topic
         self.state.pending_topic = None
+        self.state.pending_context = None
         return topic
+
+    def active_dialogue_branch(self) -> dict | None:
+        """Return the latest same-session dialogue branch with owner metadata."""
+        state = self.state
+        session_id = str(getattr(state, "session_id", "") or "")
+        active = self.active_context_entity()
+        for item in reversed(state.exchange_archive or []):
+            if not isinstance(item, dict) or item.get("recall_only"):
+                continue
+            if session_id and str(item.get("session_id") or "") != session_id:
+                continue
+            domain = str(item.get("conversation_domain") or "general").casefold()
+            kind = str(item.get("context_kind") or "dialogue").casefold()
+            if domain in {"work", "system", "execution"} or kind in {"work", "system"}:
+                continue
+            target = str(item.get("target") or "").strip()
+            if not target and any(
+                isinstance(previous, dict)
+                and str(previous.get("target") or "").strip()
+                and str(previous.get("session_id") or "") == session_id
+                for previous in (state.exchange_archive or [])
+            ):
+                # Style/acknowledgement turns are not a new branch. Preserve
+                # the latest named branch for the next reference or follow-up.
+                continue
+            if active and target and self._same_topic(target, active.get("entity")):
+                branch = dict(active)
+            else:
+                branch = {
+                    "action": item.get("intent") or "personal_chat",
+                    "entity": target or None,
+                    "entity_type": item.get("entity_type") or ("CONCEPT" if target else "REFERENCE"),
+                }
+            branch.update({
+                "conversation_domain": domain,
+                "context_kind": kind,
+                "reference_text": item.get("assistant") or item.get("user") or "",
+            })
+            return branch
+        return None
 
     def active_context_entity(self) -> dict | None:
         """Return the active dialogue subject for an already-approved transition."""

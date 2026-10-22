@@ -54,6 +54,7 @@ class DialogueState:
     session_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     last_topic: str | None = None
     pending_topic: str | None = None
+    pending_context: dict[str, Any] | None = None
     last_mode: str | None = None
     last_intent: str | None = None
     last_target: str | None = None
@@ -106,6 +107,7 @@ class DialogueState:
             "session_id": self.session_id,
             "last_topic": self.last_topic,
             "pending_topic": self.pending_topic,
+            "pending_context": dict(self.pending_context or {}) if self.pending_context else None,
             "last_mode": self.last_mode,
             "last_intent": self.last_intent,
             "last_target": self.last_target,
