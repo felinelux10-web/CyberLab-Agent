@@ -52,7 +52,6 @@ from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.nlu.context_resolver import is_incomplete
 from lab_v4_dev.nlu.conversation_semantics import (
-    classify_conversation_semantics,
     is_social_act,
     is_style_act,
     normalize_text,
@@ -386,8 +385,21 @@ class ConversationManager:
                 "semantic_pattern": "BARE_CONFIRMATION_NO_PENDING",
                 "source": "bare_confirmation",
             })
+        # `parse()` is the single semantic interpretation boundary for this
+        # turn.  Do not classify the same text again here: a second semantic
+        # pass can disagree with the canonical parse and let a later branch
+        # steal ownership of the response.
+        raw_signal = self._semantic_signal_from_parsed(candidate)
         from lab_v4_dev.memory.session_state import session_selector
         selected_session = session_selector(user_input)
+        # A natural-language request about what was said is dialogue history,
+        # not restoration of a work checkpoint. Session selection may inspect
+        # overlapping words, but it cannot override the canonical history act.
+        if (
+            raw_signal.get("conversation_act") == "CONVERSATION_HISTORY_QUERY"
+            and selected_session.get("kind") != "none"
+        ):
+            selected_session = {"kind": "none", "report_mode": "standard"}
         if selected_session.get("kind") != "none":
             candidate = dict(candidate or {})
             candidate.update({
@@ -399,10 +411,6 @@ class ConversationManager:
                 "conversation_act": "ASSISTANT_STATE_QUERY",
                 "source": "session_selector",
             })
-        # The raw semantic signal is an authority boundary: a dialogue-history
-        # or continuation turn must not be hijacked by HISTORY/CONTEXT_REPORT/
-        # RESUME parser fallbacks before DialogueMemory sees it.
-        raw_signal = classify_conversation_semantics(user_input)
         if (
             selected_session.get("kind") == "none"
             and raw_signal.get("conversation_act") == "SAVED_SESSION_RESTORE_REQUEST"
@@ -1277,6 +1285,42 @@ class ConversationManager:
                     "semantic_request": semantic.as_dict(),
                 }
 
+        # Ownership is decided before any generic/local responder. A history
+        # query must never fall through to clarification, social chat, generic
+        # topic resolution, or the LLM merely because the memory renderer has
+        # no matching branch. An empty/insufficient archive is still a memory
+        # answer with a memory-owned source.
+        explicit_topic_reference = self._resolve_generic_topic_reference(user_input)
+        named_topic_return = bool(re.search(
+            r"(?:قلت|اقصد|المقصود)\s+(?:موضوع\s+)?(?:الكتب|كتب|الفن|الرسم|النحت)",
+            self._normalize_transition_text(user_input),
+        ))
+        specific_dialogue_return = bool(
+            explicit_topic_reference
+            or self._ordinal_dialogue_exchange(user_input)
+            or named_topic_return
+        )
+        if raw_act == "CONVERSATION_HISTORY_QUERY" and not specific_dialogue_return:
+            history_result = self._conversation_history_answer(user_input, parsed)
+            if history_result is None:
+                history_result = {
+                    "status": "needs_clarification",
+                    "intent": Intent.MEMORY_DUMP,
+                    "source": "dialogue_memory",
+                    "text": (
+                        "لا توجد بيانات كافية في ذاكرة الحوار للإجابة عن طلب الاسترجاع. "
+                        "اذكر الموضوع أو اطلب ملخص الحوار الحالي."
+                    ),
+                    "executed": False,
+                }
+            history_result["semantic_request"] = semantic.as_dict()
+            history_result = self._finalize_local_dialogue_result(
+                history_result, mode, parsed, semantic
+            )
+            # Retrieval is read-only: do not archive the retrieval request as a
+            # new dialogue exchange or make it the next active topic.
+            return history_result
+
         local_social = self._local_social_answer(user_input, parsed)
         if local_social is not None:
             local_social["semantic_request"] = semantic.as_dict()
@@ -1690,6 +1734,29 @@ class ConversationManager:
             return result if isinstance(result, dict) else {}
         except Exception:
             return {}
+
+    @staticmethod
+    def _semantic_signal_from_parsed(parsed: dict | None) -> dict:
+        """Expose the canonical parse as a read-only routing signal.
+
+        ConversationManager may inspect the signal to choose a response owner,
+        but it must not run a second NLU pass over the same user text.
+        IntentParser already owns the mode-independent semantic classification.
+        """
+        parsed = parsed if isinstance(parsed, dict) else {}
+        return {
+            "conversation_domain": parsed.get("conversation_domain", "general"),
+            "conversation_act": parsed.get("conversation_act", "NONE"),
+            "confidence": float(
+                parsed.get("conversation_confidence", parsed.get("confidence", 0.0))
+                or 0.0
+            ),
+            "response_attributes": dict(parsed.get("response_attributes") or {}),
+            "conversational": parsed.get("intent") in {
+                Intent.PERSONAL_CHAT,
+                "personal_chat",
+            },
+        }
 
     @staticmethod
     @staticmethod
