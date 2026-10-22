@@ -128,9 +128,13 @@ def display(result: dict):
     print(f"❓ لم أفهم الأمر (intent={intent} status={status})")
 
 def main():
-    with open("lab_v4_dev/cache/state.json","w") as f:
-        json.dump({"mode":"normal","consecutive_failures":0,
-                   "session_start":"","last_error":None,"saved_at":""}, f)
+    state_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "lab_v4_dev", "cache", "state.json")
+    os.makedirs(os.path.dirname(state_path), exist_ok=True)
+    if not os.path.exists(state_path):
+        with open(state_path, "w", encoding="utf-8") as f:
+            json.dump({"mode":"normal","consecutive_failures":0,
+                       "session_start":"","last_error":None,"saved_at":""}, f)
 
     agent = Agent()
     if not agent.boot():

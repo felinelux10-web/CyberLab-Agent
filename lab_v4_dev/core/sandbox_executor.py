@@ -7,8 +7,9 @@ import json
 import time
 from datetime import datetime
 
-WORKSPACE = "workspace"
-ERROR_LOG = "workspace/error_log"
+CYBERLAB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+WORKSPACE = os.path.join(CYBERLAB_ROOT, "workspace")
+ERROR_LOG = os.path.join(WORKSPACE, "error_log")
 
 def run_code(file_path, timeout=10):
     from lab_v4_dev.core.project_context import get_active_project_root

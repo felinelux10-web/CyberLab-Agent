@@ -1,9 +1,10 @@
 # CyberLab Agent v4.4
-# lab_v4/cli/commands.py
+# lab_v4_dev/cli/commands.py
 
 import os
 import shutil
 import json
+from pathlib import Path
 from datetime import datetime
 
 SHORTCUTS = {
@@ -11,7 +12,7 @@ SHORTCUTS = {
     "log"     : "اقرأ lab_v4_dev/logs/agent.log",
     "errors"  : "اقرأ lab_v4_dev/logs/errors.log",
     "status"  : "status",
-    "ls"      : "شغّل ls lab_v4",
+    "ls"      : "شغّل ls lab_v4_dev",
     "help"    : "help",
     "space"   : "space",
     "clean"   : "clean",
@@ -21,9 +22,11 @@ SHORTCUTS = {
     "schedule": "schedule",
 }
 
-NOTES_FILE    = "lab_v4_dev/cache/notes.json"
-TODOS_FILE    = "lab_v4_dev/cache/todos.json"
-SCHEDULE_FILE = "lab_v4_dev/cache/schedule.json"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+CACHE_DIR = ROOT_DIR / "lab_v4_dev" / "cache"
+NOTES_FILE = str(CACHE_DIR / "notes.json")
+TODOS_FILE = str(CACHE_DIR / "todos.json")
+SCHEDULE_FILE = str(CACHE_DIR / "schedule.json")
 
 def load_json(path):
     try:
@@ -80,7 +83,7 @@ def handle_special(cmd, agent):
         h = agent.session.summary()
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         report = f"Session Report\ntime:{now}\ntasks:{h['tasks_done']}\nfiles:{h['files_modified']}\nerrors:{h['error_count']}\nstate:{agent.state.mode}"
-        path = f"lab_v4/cache/report_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
+        path = str(CACHE_DIR / f"report_{datetime.now().strftime('%Y%m%d_%H%M')}.txt")
         try:
             open(path, "w").write(report)
             report += f"\nsaved:{path}"
@@ -150,7 +153,7 @@ def handle_special(cmd, agent):
     if c.startswith("search "):
         keyword = cmd[7:].strip()
         results = []
-        for root, dirs, files in os.walk("lab_v4"):
+        for root, dirs, files in os.walk(ROOT_DIR / "lab_v4_dev"):
             dirs[:] = [d for d in dirs if d not in ["__pycache__","archives","cache"]]
             for f in files:
                 if not f.endswith(".py"):
@@ -170,7 +173,7 @@ def handle_special(cmd, agent):
         topic = cmd[6:].strip()
         now = datetime.now().strftime("%Y-%m-%d")
         draft = f"Draft: {topic}\nDate: {now}\n\n[Introduction]\nWrite about {topic} here.\n\n[Points]\n- Point 1\n- Point 2\n\n[Conclusion]\nWrite conclusion here."
-        path = f"lab_v4/cache/draft_{topic[:20].replace(chr(32),chr(95))}.txt"
+        path = str(CACHE_DIR / f"draft_{topic[:20].replace(chr(32),chr(95))}.txt")
         try:
             open(path, "w").write(draft)
             draft += f"\nsaved:{path}"
@@ -186,7 +189,7 @@ def handle_special(cmd, agent):
 health         : system health
 log / errors   : logs
 status         : agent status
-ls             : list lab_v4
+ls             : list lab_v4_dev
 space          : storage info
 clean          : remove temp files
 report         : session report

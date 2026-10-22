@@ -214,6 +214,19 @@ def session_selector(raw: str) -> dict:
         return {"kind": "status", "status": "paused", "report_mode": report_mode}
     if "قارن" in text and any(token in text for token in ("الجلسات", "جلستين", "جلسة")):
         return {"kind": "compare", "report_mode": "full"}
+    # Distinguish a prior saved dialogue from the generic latest session/work report.
+    # This is intentionally checked before broad "استرجع الجلسة" -> latest matching.
+    previous_dialogue_markers = (
+        "حوار الجلسة السابقة", "حوار الجلسه السابقه",
+        "الجلسة السابقة المحفوظة", "الجلسه السابقه المحفوظه",
+        "حوارنا السابق", "الحوار السابق", "الدردشة السابقة",
+        "ماذا كنا نقول", "ماذا كنا نتحدث", "ما كنا نتحدث",
+        "موضوع الجلسة السابقة", "موضوعنا السابق",
+    )
+    if any(token in text for token in previous_dialogue_markers) and any(
+        token in text for token in ("حوار", "الحوار", "كنا", "موضوع", "نقاش", "نتحدث", "نقول", "استرجع", "استرجاع", "تذكر", "تتذكر", "ملخص")
+    ):
+        return {"kind": "previous_dialogue", "report_mode": report_mode}
     if any(token in text for token in ("آخر جلسة", "اخر جلسة", "الجلسة الأخيرة", "الجلسه الاخيره")):
         return {"kind": "latest", "report_mode": report_mode}
     search_marker = re.search(r"(?:عن|حول)\s+(.*?)(?:،|,|\s+واعرض|\s+ثم|\s+فقط|$)", raw_text, flags=re.IGNORECASE)
@@ -221,7 +234,16 @@ def session_selector(raw: str) -> dict:
         query = search_marker.group(1).strip() if search_marker else raw_text
         query = re.sub(r"^(?:جلسة|الجلسة|جلسه|الجلسه)\s+", "", query, flags=re.IGNORECASE).strip()
         return {"kind": "search", "query": query, "report_mode": report_mode}
-    if (
+    list_markers = (
+        "جميع الجلسات", "كل الجلسات", "كل الجلسات المحفوظة",
+        "جميع الجلسات المحفوظة", "ملخصات الجلسات", "ملخصات جميع الجلسات",
+        "ملخصات كل الجلسات", "جميع الملخصات", "كل الملخصات",
+        "اعرض الجلسات", "اعرض جميع الجلسات", "اعرض كل الجلسات",
+        "اعرض ملخصات الجلسات", "اعرض ملخصات جميع الجلسات",
+        "اعرض ملخصات كل الجلسات", "قائمة الجلسات المحفوظة",
+        "الجلسات المحفوظة كلها", "كل الجلسات السابقة",
+    )
+    if any(token in text for token in list_markers) or (
         any(token in text for token in ("استرجع", "استعد", "استكمل"))
         and any(token in text for token in ("جلسة محفوظة", "الجلسة المحفوظة"))
     ):
@@ -412,10 +434,14 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
         and not exchanges
         and not (state.get("context_history") or [])
     )
+    # A checkpoint belongs to the dialogue session that produced it.
+    # Reusing the latest dialogue record for a different in-memory session
+    # makes the archive ID disagree with dialogue_state.session_id and can
+    # cause restore to select the wrong transcript.
     data = (
         {}
         if empty_dialogue_reset
-        else get_session_by_id(previous_id) if previous_id and not same_as_work else {}
+        else get_session_by_id(session_id)
     )
     now = datetime.now().isoformat()
     if not isinstance(data, dict) or not data:
@@ -427,6 +453,7 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
     topic = str(state.get("last_topic") or state.get("pending_topic") or "").strip()
     data.update({
         "schema_version": data.get("schema_version", SESSION_SCHEMA_VERSION),
+        "session_id": session_id,
         "updated_at": now,
         "timestamp": now,
         "version": version or data.get("version", "unknown"),

@@ -415,7 +415,13 @@ class ConversationManager:
             selected_session.get("kind") == "none"
             and raw_signal.get("conversation_act") == "SAVED_SESSION_RESTORE_REQUEST"
         ):
-            pending = getattr(self, "_pending_work_sessions", []) or []
+            pending = getattr(self, "_pending_work_sessions", None)
+            if pending is None:
+                pending = getattr(
+                    getattr(self.orchestrator, "agent", None),
+                    "_pending_work_sessions",
+                    [],
+                ) or []
             choices = "، ".join(
                 f"{item.get('number')} ({str((item.get('report') or {}).get('topic') or 'جلسة بلا عنوان')[:45]})"
                 for item in pending

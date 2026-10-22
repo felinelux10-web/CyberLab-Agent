@@ -4,7 +4,7 @@
 import os
 import shutil
 from typing import Optional
-from lab_v4_dev.recovery.snapshot import list_snapshots, SNAPSHOTS_DIR
+from lab_v4_dev.recovery.snapshot import list_snapshots, SNAPSHOTS_DIR, _snapshot_key
 from lab_v4_dev.core.audit import emit_event
 from lab_v4_dev.recovery.permissions import check_write
 from lab_v4_dev.recovery.path_policy import canonical_path, is_within
@@ -16,9 +16,12 @@ def _snapshot_matches_target(file_path: str, snapshot_path: str) -> bool:
     candidate = canonical_path(snapshot_path)
     if not is_within(candidate, archive_root) or candidate == archive_root:
         return False
-    safe_name = file_path.replace("/", "_").replace(".", "_")
     name = os.path.basename(candidate)
-    return name.startswith(safe_name + "__") and name.endswith(".snap")
+    key = _snapshot_key(file_path)
+    return (
+        name.startswith((f"file__{key}__", f"new__{key}__"))
+        and name.endswith(".snap")
+    )
 
 
 def rollback(file_path: str, snapshot_path: Optional[str] = None, trusted: Optional[bool] = None) -> dict:
@@ -70,7 +73,14 @@ def rollback(file_path: str, snapshot_path: Optional[str] = None, trusted: Optio
         return {"status": "failed", "reason": str(e)}
 
     try:
-        shutil.copy2(snapshot_path, file_path)
+        # A "new" snapshot means the target did not exist before the
+        # transaction. Restoring it must restore absence, not create an empty file.
+        if os.path.basename(snapshot_path).startswith(f"new__{_snapshot_key(file_path)}__"):
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        else:
+            os.makedirs(os.path.dirname(file_path) or os.curdir, exist_ok=True)
+            shutil.copy2(snapshot_path, file_path)
         emit_event("rollback.success", source="rollback", context={"file": file_path, "snapshot": snapshot_path}, details={})
         return {
             "status": "ok",

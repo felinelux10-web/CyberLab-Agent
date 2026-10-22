@@ -5,8 +5,9 @@ import sqlite3
 import os
 from datetime import datetime
 
-DB_PATH = "lab_v4_dev/memory/agent.db"
-SCHEMA_PATH = "lab_v4_dev/memory/schema.sql"
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+DB_PATH = os.path.join(ROOT_DIR, "lab_v4_dev", "memory", "agent.db")
+SCHEMA_PATH = os.path.join(ROOT_DIR, "lab_v4_dev", "memory", "schema.sql")
 
 class Database:
 
@@ -20,17 +21,7 @@ class Database:
         self._apply_schema()
 
     def _apply_schema(self):
-        # Use a package-relative path to locate the schema file so that
-        # Database.connect works even if the current working directory is
-        # changed (e.g., pytest tmp_path). This avoids FileNotFoundError
-        # when tests run in isolated directories.
-        base_dir = os.path.dirname(__file__)
-        schema_path = os.path.join(base_dir, "schema.sql")
-        if not os.path.exists(schema_path):
-            # Fall back to legacy relative path for backward compatibility
-            schema_path = SCHEMA_PATH
-
-        with open(schema_path, "r", encoding="utf-8") as f:
+        with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
             schema = f.read()
         self.conn.executescript(schema)
         self.conn.commit()

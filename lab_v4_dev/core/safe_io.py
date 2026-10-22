@@ -103,21 +103,26 @@ def safe_delete(path: str, reason: str = "") -> dict:
 
     os.remove(path)
 
-    _log_event({
-        "op": "delete",
-        "path": path,
-        "status": "success",
-        "backup": backup_path,
-        "snapshot": snapshot_path,
-        "reason": reason,
-    })
-
-    return {
+    result = {
         "status": "success",
         "path": path,
         "backup": backup_path,
         "snapshot": snapshot_path,
     }
+    try:
+        _log_event({
+            "op": "delete",
+            "path": path,
+            "status": "success",
+            "backup": backup_path,
+            "snapshot": snapshot_path,
+            "reason": reason,
+        })
+    except Exception as exc:
+        # The file is already deleted. Do not report the operation itself as
+        # failed merely because its post-operation audit append failed.
+        result["audit_warning"] = str(exc)
+    return result
 
 def get_audit_log(limit: int = 10) -> list:
     """آخر العمليات المسجلة"""

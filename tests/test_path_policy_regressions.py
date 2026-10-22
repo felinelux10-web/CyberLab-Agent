@@ -33,10 +33,17 @@ def test_containment_resolves_symlinked_parent(tmp_path):
 
 
 def test_snapshot_cannot_restore_a_different_target(tmp_path, monkeypatch):
+    import lab_v4_dev.core.audit as audit
+    import lab_v4_dev.recovery.snapshot as snapshot_module
     from lab_v4_dev.recovery.snapshot import take
     from lab_v4_dev.recovery.rollback import rollback
 
     monkeypatch.chdir(tmp_path)
+    archive_dir = str(tmp_path / "archives" / "snapshots")
+    import lab_v4_dev.recovery.rollback as rollback_module
+    monkeypatch.setattr(snapshot_module, "SNAPSHOTS_DIR", archive_dir)
+    monkeypatch.setattr(rollback_module, "SNAPSHOTS_DIR", archive_dir)
+    monkeypatch.setattr(audit, "AUDIT_FILE", str(tmp_path / "execution_audit.json"))
     first = tmp_path / "project" / "first.txt"
     second = tmp_path / "project" / "second.txt"
     first.parent.mkdir(parents=True)

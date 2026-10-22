@@ -9,8 +9,14 @@ from typing import List
 from lab_v4_dev.recovery.permissions import check_write
 from lab_v4_dev.recovery.path_policy import canonical_path
 from lab_v4_dev.core.audit import emit_event
+from lab_v4_dev.core.project_context import CYBERLAB_ROOT
 
-SNAPSHOTS_DIR = "lab_v4_dev/archives/snapshots"
+SNAPSHOTS_DIR = os.path.join(CYBERLAB_ROOT, "lab_v4_dev", "archives", "snapshots")
+
+
+def _snapshot_key(file_path: str) -> str:
+    """Stable, collision-resistant identity for a canonical target path."""
+    return hashlib.sha256(canonical_path(file_path).encode("utf-8")).hexdigest()
 
 
 def _hash_file(path: str) -> str:
@@ -29,14 +35,16 @@ def take(file_path: str) -> dict:
         raise
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    safe_name = file_path.replace("/", "_").replace(".", "_")
-    snapshot_name = f"{safe_name}__{timestamp}.snap"
+    existed_before = os.path.exists(file_path)
+    kind = "file" if existed_before else "new"
+    snapshot_name = f"{kind}__{_snapshot_key(file_path)}__{timestamp}.snap"
 
     os.makedirs(SNAPSHOTS_DIR, exist_ok=True)
     snapshot_path = os.path.join(SNAPSHOTS_DIR, snapshot_name)
 
-    # إذا الملف غير موجود — احفظ نسخة فارغة كمرجع
-    if not os.path.exists(file_path):
+    # A missing target is represented by the snapshot's identity, not by an
+    # empty file that rollback would mistakenly copy into existence.
+    if not existed_before:
         with open(snapshot_path, "w", encoding="utf-8") as handle:
             handle.write("")
         rec = {
@@ -68,10 +76,11 @@ def list_snapshots(file_path: str) -> List[str]:
     file_path = canonical_path(file_path)
     if not os.path.exists(SNAPSHOTS_DIR):
         return []
-    safe_name = file_path.replace("/", "_").replace(".", "_")
+    key = _snapshot_key(file_path)
+    prefixes = (f"file__{key}__", f"new__{key}__")
     snaps = [
         f for f in os.listdir(SNAPSHOTS_DIR)
-        if f.startswith(safe_name)
+        if f.startswith(prefixes) and f.endswith(".snap")
     ]
     snaps = sorted(snaps)
     emit_event("snapshot.list", source="snapshot", context={"file": file_path}, details={"count": len(snaps)})

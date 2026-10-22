@@ -3,8 +3,11 @@
 
 import os
 import sqlite3
+from pathlib import Path
 from lab_v4_dev.executor.throttle import get_ram_mb
 from lab_v4_dev.core.config import HARD_LIMITS, FROZEN_ZONES
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
 
 def check_health(state) -> dict:
     results = {}
@@ -16,25 +19,24 @@ def check_health(state) -> dict:
 
     # DB
     try:
-        db_path = "lab_v4_dev/memory/agent.db"
-        conn = sqlite3.connect(db_path)
-        conn.execute("PRAGMA integrity_check")
-        conn.close()
-        results["db_ok"] = True
-    except Exception:
+        db_path = ROOT_DIR / "lab_v4_dev" / "memory" / "agent.db"
+        with sqlite3.connect(str(db_path), timeout=3) as conn:
+            integrity = conn.execute("PRAGMA integrity_check").fetchone()
+        results["db_ok"] = bool(integrity and integrity[0] == "ok")
+    except (OSError, sqlite3.Error):
         results["db_ok"] = False
 
     # stable محمية
     try:
-        test = "stable/v3.5/agent_memory.py"
-        results["stable_ok"] = os.path.exists(test)
+        test = ROOT_DIR / "stable" / "v3.5" / "agent_memory.py"
+        results["stable_ok"] = test.exists()
     except Exception:
         results["stable_ok"] = False
 
     # logs
-    log_path = "lab_v4_dev/logs/agent.log"
-    if os.path.exists(log_path):
-        size_mb = os.path.getsize(log_path) / 1024 / 1024
+    log_path = ROOT_DIR / "lab_v4_dev" / "logs" / "agent.log"
+    if log_path.exists():
+        size_mb = log_path.stat().st_size / 1024 / 1024
         results["log_ok"] = size_mb < HARD_LIMITS["log_max_size_mb"]
         results["log_mb"] = round(size_mb, 3)
     else:
