@@ -5,6 +5,19 @@ import os
 import json
 from datetime import datetime
 
+
+def _write_json(path: str, payload: dict, reason: str) -> dict:
+    from lab_v4_dev.core.safe_io import safe_write
+
+    result = safe_write(
+        path,
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        reason=reason,
+    )
+    if result.get("status") != "success":
+        raise PermissionError(result.get("message", f"تعذر حفظ: {path}"))
+    return result
+
 PENDING_DIR = "workspace/pending_fixes"
 
 def create_diff(original_code: str, suggested_code: str) -> str:
@@ -33,7 +46,6 @@ def _learn_pattern(pending: dict):
     err_name = m.group(1) if m else ""
     if not err_name:
         return
-    os.makedirs(os.path.dirname(PATTERNS_PATH), exist_ok=True)
     patterns = {}
     if os.path.exists(PATTERNS_PATH):
         try:
@@ -46,11 +58,9 @@ def _learn_pattern(pending: dict):
         "category": analysis.get("category", "runtime"),
         "fixable" : True,
     }
-    with open(PATTERNS_PATH, "w", encoding="utf-8") as f:
-        json.dump(patterns, f, ensure_ascii=False, indent=2)
+    _write_json(PATTERNS_PATH, patterns, "repair:learn_error_pattern")
 
 def save_pending_fix(file_path: str, fix: dict, error: dict, analysis: dict = None) -> str:
-    os.makedirs(PENDING_DIR, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     pending = {
         "timestamp" : datetime.now().isoformat(),
@@ -62,8 +72,7 @@ def save_pending_fix(file_path: str, fix: dict, error: dict, analysis: dict = No
         "applied"   : False,
     }
     path = os.path.join(PENDING_DIR, f"fix_{ts}.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(pending, f, ensure_ascii=False, indent=2)
+    _write_json(path, pending, "repair:create_pending_fix")
     return path
 
 def show_fix_proposal(fix: dict, error: dict) -> str:
@@ -82,23 +91,34 @@ def show_fix_proposal(fix: dict, error: dict) -> str:
     lines.append("\nاكتب 'وافق' للتطبيق أو 'رفض' للإلغاء")
     return "\n".join(lines)
 
-def apply_fix(pending_path: str) -> dict:
+def apply_fix(pending_path: str, *, approved: bool = False) -> dict:
     with open(pending_path) as f:
         pending = json.load(f)
+
+    if not approved:
+        return {
+            "status": "needs_approval",
+            "message": "يلزم تمرير موافقة صريحة لتطبيق الإصلاح",
+        }
+
     fix       = pending["fix"]
     file_path = pending["file"]
     fix_type  = fix.get("fix_type","")
 
     if fix_type == "install_package":
         import subprocess
+        import shlex
+        from lab_v4_dev.core.security_guard import check_command
         cmd = fix.get("command","")
         if cmd:
-            r = subprocess.run(cmd.split(), capture_output=True, text=True)
+            security = check_command(cmd)
+            if not security.get("safe", False):
+                return {"status": "blocked", "message": security.get("reason", "أمر مرفوض")}
+            r = subprocess.run(shlex.split(cmd), shell=False, capture_output=True, text=True)
             success = r.returncode == 0
             pending["applied"]  = success
             pending["approved"] = True
-            with open(pending_path,"w") as f:
-                json.dump(pending, f, ensure_ascii=False, indent=2)
+            _write_json(pending_path, pending, "repair:apply_install_package")
             if success:
                 _learn_pattern(pending)
             return {"status":"success" if success else "failed",
@@ -126,8 +146,7 @@ def apply_fix(pending_path: str) -> dict:
                 return {"status":"failed","message":write_result.get("message","فشل الكتابة الآمنة")}
             pending["applied"]  = True
             pending["approved"] = True
-            with open(pending_path,"w") as f:
-                json.dump(pending, f, ensure_ascii=False, indent=2)
+            _write_json(pending_path, pending, "repair:apply_fix_metadata")
             _learn_pattern(pending)
             return {"status":"success","message":"تم التعديل","backup":write_result.get("backup")}
 

@@ -2229,7 +2229,7 @@ SOURCE CODE:
             if not pending_path:
                 return {"status":"failed","intent":intent,
                         "text":"لا يوجد إصلاح معلق"}
-            result = apply_fix(pending_path)
+            result = apply_fix(pending_path, approved=True)
             return {"status":result["status"],"intent":intent,
                     "text":f"{'✅' if result['status']=='success' else '❌'} {result['message']}"}
 
