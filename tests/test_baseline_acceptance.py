@@ -82,6 +82,13 @@ def test_game_generation_is_interactive_and_syntax_valid(tmp_path, monkeypatch):
     import lab_v4_dev.core.code_engine as engine
 
     monkeypatch.setattr(engine, "WORKSPACE", str(tmp_path / "workspace"))
+    def isolated_safe_write(path, content, reason=""):
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        return {"status": "success", "path": str(target)}
+
+    monkeypatch.setattr("lab_v4_dev.core.safe_io.safe_write", isolated_safe_write)
     result = engine.generate_code("اكتب لعبة بسيطة لكن يجب أن تشتغل اللعبة")
 
     assert result["status"] == "success"

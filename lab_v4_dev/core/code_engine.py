@@ -33,9 +33,15 @@ def extract_code(text):
 
 def save_file(code, filename, folder="scripts"):
     path = os.path.join(WORKSPACE, folder, filename)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(code)
+    from lab_v4_dev.core.safe_io import safe_write
+
+    result = safe_write(
+        path,
+        code,
+        reason=f"code_engine.save_file:{folder}/{filename}",
+    )
+    if result.get("status") != "success":
+        raise PermissionError(result.get("message", f"تعذر حفظ الملف: {path}"))
     return path
 
 
