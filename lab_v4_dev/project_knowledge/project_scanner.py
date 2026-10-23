@@ -68,12 +68,18 @@ def run(project_root: str = None) -> dict:
         active = get_active_project()
         if active:
             project_root = active["root"]
-        else:
-            project_root = os.path.abspath(
+    else:
+        project_root = os.path.abspath(
                 os.path.join(os.path.dirname(__file__), ".."))
     result = scan(project_root)
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    from lab_v4_dev.core.safe_io import safe_write
+    write_result = safe_write(
+        OUTPUT_FILE,
+        json.dumps(result, ensure_ascii=False, indent=2),
+        reason="project_scanner:write_inventory",
+    )
+    if write_result.get("status") != "success":
+        raise PermissionError(write_result.get("message", "تعذر حفظ inventory.json"))
     return result
 
 
@@ -81,4 +87,3 @@ if __name__ == "__main__":
     r = run()
     print(f"✅ inventory.json: {r['total_files']} ملف")
     print(f"📁 {OUTPUT_FILE}")
-

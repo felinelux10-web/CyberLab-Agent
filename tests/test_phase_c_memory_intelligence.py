@@ -1,8 +1,20 @@
+import json
+
+
+def _isolated_safe_write(path, content, reason=""):
+    from pathlib import Path
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    return {"status": "success", "path": str(target)}
+
+
 def test_knowledge_base_rejects_unconfirmed_low_quality_and_deduplicates(monkeypatch, tmp_path):
     from lab_v4_dev.awareness import knowledge_base as kb
 
     path = tmp_path / "knowledge.json"
     monkeypatch.setattr(kb, "_kb_path", lambda: str(path))
+    monkeypatch.setattr("lab_v4_dev.core.safe_io.safe_write", _isolated_safe_write)
     assert kb.store("TCP", "قصير") is False
     answer = "TCP ينشئ الاتصال عبر خطوات منظمة تشمل المصافحة الثلاثية وتبادل الحزم والتحقق من أرقام التسلسل قبل نقل البيانات بأمان واستقرار."
     assert kb.store("TCP three-way handshake", answer, confirmed=True)
@@ -52,6 +64,7 @@ def test_knowledge_lifecycle_archives_low_usage_and_restores_on_retrieval(monkey
 
     path = tmp_path / "knowledge.json"
     monkeypatch.setattr(kb, "_kb_path", lambda: str(path))
+    monkeypatch.setattr("lab_v4_dev.core.safe_io.safe_write", _isolated_safe_write)
     answer = "هذه معلومة تقنية موثقة وطويلة بما يكفي لتجتاز بوابة الجودة، وتشرح تفاصيل عملية يمكن الرجوع إليها عند الحاجة دون ادعاء غير مثبت."
     assert kb.store("DNS cache", answer, confirmed=True)
     data = kb._load()

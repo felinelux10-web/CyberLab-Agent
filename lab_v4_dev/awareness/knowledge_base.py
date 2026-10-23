@@ -36,9 +36,14 @@ def _load() -> dict:
 
 def _save(data: dict) -> None:
     path = _kb_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    from lab_v4_dev.core.safe_io import safe_write
+    result = safe_write(
+        path,
+        json.dumps(data, indent=2, ensure_ascii=False),
+        reason="knowledge_base:save",
+    )
+    if result.get("status") != "success":
+        raise PermissionError(result.get("message", "تعذر حفظ قاعدة المعرفة"))
 
 def _normalize(text: str) -> str:
     text = unicodedata.normalize("NFKC", str(text or "")).casefold()

@@ -84,10 +84,16 @@ def save_map(base_dir: str = None) -> str:
         from lab_v4_dev.core.project_context import get_active_project_root
         base_dir = get_active_project_root()
     dep_map = build_dependency_map(base_dir)
-    os.makedirs(os.path.dirname(_map_file()), exist_ok=True)
-    with open(_map_file(), "w", encoding="utf-8") as f:
-        json.dump(dep_map, f, ensure_ascii=False, indent=2)
-    return _map_file()
+    path = _map_file()
+    from lab_v4_dev.core.safe_io import safe_write
+    write_result = safe_write(
+        path,
+        json.dumps(dep_map, ensure_ascii=False, indent=2),
+        reason="dependency_map:save_map",
+    )
+    if write_result.get("status") != "success":
+        raise PermissionError(write_result.get("message", "تعذر حفظ خريطة الاعتماديات"))
+    return path
 
 def get_critical_files() -> list:
     """الملفات التي يعتمد عليها الكثيرون = حرجة"""
