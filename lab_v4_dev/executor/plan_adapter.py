@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from lab_v4_dev.planner.contracts import Plan, PlanStep
 from lab_v4_dev.executor.contracts import ExecutionRequest
+from lab_v4_dev.intent.risk_levels import get_risk
 
 
 class PlanExecutionAdapter:
@@ -40,16 +41,32 @@ class PlanExecutionAdapter:
             if "file" in parameters and "file_path" not in parameters:
                 parameters["file_path"] = parameters.pop("file")
 
+        intent = plan.intent
+        if isinstance(intent, dict):
+            intent = intent.get("intent") or intent.get("action")
+        risk_level = get_risk(intent)
+        if risk_level == "unreliable" and action == "write_file":
+            risk_level = "safe_write"
+
+        metadata = {
+            "source": "p10_plan",
+            "planning_action": step.action,
+            "execution_schema": "p11.v1",
+            "risk_level": risk_level,
+        }
+        if risk_level == "safe_write":
+            metadata["write_policy"] = "safe_write"
+        if isinstance(plan.metadata, dict):
+            approval = plan.metadata.get("approval")
+            if approval is not None:
+                metadata["approval"] = approval
+
         return ExecutionRequest(
             plan_id=plan.plan_id or "p10-plan",
             step_id=step.step_id,
             action=action,
             parameters=parameters,
-            metadata={
-                "source": "p10_plan",
-                "planning_action": step.action,
-                "execution_schema": "p11.v1",
-            },
+            metadata=metadata,
         )
 
 

@@ -64,6 +64,31 @@ class Executor:
             metadata=dict(request.metadata),
         )
 
+    @staticmethod
+    def _risk_gate(request: ExecutionRequest) -> dict:
+        """Enforce risk metadata supplied by the planning boundary."""
+        risk = str(request.metadata.get("risk_level") or "").casefold()
+        if not risk:
+            # Legacy direct ExecutionRequest callers remain compatible; the
+            # P10 adapter always supplies the risk metadata for planned work.
+            return {"ok": True}
+
+        if risk == "dangerous":
+            approval = request.metadata.get("approval")
+            if not isinstance(approval, dict) or approval.get("approved") is not True:
+                return {
+                    "ok": False,
+                    "reason": "dangerous operation requires explicit approval",
+                }
+
+        if risk == "safe_write" and request.metadata.get("write_policy") != "safe_write":
+            return {
+                "ok": False,
+                "reason": "safe_write operation requires the safe_write policy marker",
+            }
+
+        return {"ok": True}
+
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         """
         Canonical P011 entry point.
@@ -75,6 +100,20 @@ class Executor:
             raise TypeError("execute() requires ExecutionRequest")
 
         context = self._context_for(request)
+
+        risk_check = self._risk_gate(request)
+        if not risk_check["ok"]:
+            return ExecutionResult(
+                status="blocked",
+                plan_id=context.plan_id,
+                step_id=context.step_id,
+                action=request.action,
+                error=risk_check["reason"],
+                metadata={
+                    "execution_schema": "p11.v1",
+                    **dict(request.metadata),
+                },
+            )
 
         check = self._check_limits()
         if not check["ok"]:
