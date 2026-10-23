@@ -28,6 +28,20 @@ def is_dangerous(command: str) -> bool:
     return any(re.search(p, command) for p in DANGEROUS_PATTERNS)
 
 def run_shell(command: str, timeout: int = None) -> dict:
+    from lab_v4_dev.core.security_guard import check_command
+
+    security = check_command(command)
+    if not security.get("safe", False):
+        return {
+            "status": "blocked",
+            "stdout": "",
+            "stderr": "DNI-9 Security: " + security.get(
+                "reason", "الأمر مرفوض من حارس الأمان"
+            ),
+            "code": -1,
+            "security": security,
+        }
+
     if is_dangerous(command):
         return {
             "status": "blocked",

@@ -13,6 +13,27 @@ ERROR_LOG = os.path.join(WORKSPACE, "error_log")
 
 def run_code(file_path, timeout=10):
     from lab_v4_dev.core.project_context import get_active_project_root
+    from lab_v4_dev.core.security_guard import check_command, check_path
+
+    path_check = check_path(file_path)
+    if not path_check.get("safe", False):
+        return {
+            "status": "blocked",
+            "error": path_check.get("reason", "المسار مرفوض من حارس الأمان"),
+            "file": file_path,
+            "security": path_check,
+        }
+
+    command = f"python3 {file_path}"
+    command_check = check_command(command)
+    if not command_check.get("safe", False):
+        return {
+            "status": "blocked",
+            "error": command_check.get("reason", "الأمر مرفوض من حارس الأمان"),
+            "file": file_path,
+            "security": command_check,
+        }
+
     os.makedirs(ERROR_LOG, exist_ok=True)
     if not os.path.exists(file_path):
         return {"status":"failed","error":"الملف غير موجود: " + file_path}
