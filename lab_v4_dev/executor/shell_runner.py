@@ -3,29 +3,15 @@
 # DNI-9 S4: أضيفت قائمة حظر لأوامر مدمّرة كطبقة دفاع مستقلة (defense in depth)
 
 import subprocess
-import re
 from lab_v4_dev.core.config import HARD_LIMITS
-
-DANGEROUS_PATTERNS = [
-    r"rm\s+-rf\s+/(?:\s|$)",
-    r"rm\s+-rf\s+~(?:\s|$)",
-    r"rm\s+-rf\s+\*",
-    r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:",
-    r"\bmkfs\.",
-    r"\bdd\s+if=",
-    r">\s*/dev/sd[a-z]",
-    r"\bchmod\s+-R\s+777\s+/(?:\s|$)",
-    r"\bshutdown\b",
-    r"\breboot\b",
-    r"\bmkfs\b",
-    r":/\s*$",
-]
 
 class DangerousCommandError(Exception):
     pass
 
 def is_dangerous(command: str) -> bool:
-    return any(re.search(p, command) for p in DANGEROUS_PATTERNS)
+    from lab_v4_dev.core.security_guard import is_dangerous as guard_is_dangerous
+
+    return guard_is_dangerous(command)
 
 def run_shell(command: str, timeout: int = None) -> dict:
     from lab_v4_dev.core.security_guard import check_command
@@ -40,14 +26,6 @@ def run_shell(command: str, timeout: int = None) -> dict:
             ),
             "code": -1,
             "security": security,
-        }
-
-    if is_dangerous(command):
-        return {
-            "status": "blocked",
-            "stdout": "",
-            "stderr": f"DNI-9 Security: أمر مرفوض (نمط خطير مكتشف): {command}",
-            "code"  : -1,
         }
 
     if timeout is None:

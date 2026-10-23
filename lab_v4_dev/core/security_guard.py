@@ -11,16 +11,25 @@ SECURITY_LOG  = os.path.join(CYBERLAB_ROOT, "workspace", "security_log.jsonl")
 
 DANGEROUS_PATTERNS = [
     r"rm\s+-rf",
+    r"rm\s+-rf\s+/(?:\s|$)",
+    r"rm\s+-rf\s+~(?:\s|$)",
+    r"rm\s+-rf\s+\*",
     r"chmod\s+777",
+    r"chmod\s+-R\s+777\s+/(?:\s|$)",
     r"chmod\s+\+s",
     r"mkfs",
+    r"\bmkfs\.\b",
     r"dd\s+if=",
     r">\s*/dev/sd",
     r"fork\s*bomb",
     r":\(\)\{.*\}",
+    r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:",
     r"base64\s+-d.*\|.*sh",
     r"curl.*\|\s*bash",
     r"wget.*\|\s*sh",
+    r"\bshutdown\b",
+    r"\breboot\b",
+    r":/\s*$",
 ]
 
 FORBIDDEN_PATHS = [
@@ -31,15 +40,28 @@ FORBIDDEN_PATHS = [
 
 def check_command(cmd: str) -> dict:
     """يفحص أمر bash قبل تنفيذه"""
-    for pattern in DANGEROUS_PATTERNS:
-        if re.search(pattern, cmd, re.IGNORECASE):
-            _log_threat("dangerous_command", cmd, pattern)
-            return {
-                "safe": False,
-                "reason": f"أمر خطير: يطابق النمط [{pattern}]",
-                "cmd": cmd,
-            }
+    pattern = dangerous_pattern(cmd)
+    if pattern:
+        _log_threat("dangerous_command", cmd, pattern)
+        return {
+            "safe": False,
+            "reason": f"أمر خطير: يطابق النمط [{pattern}]",
+            "cmd": cmd,
+        }
     return {"safe": True, "cmd": cmd}
+
+
+def dangerous_pattern(cmd: str) -> str | None:
+    """Return the central blocking pattern matching *cmd*, if any."""
+    for pattern in DANGEROUS_PATTERNS:
+        if re.search(pattern, str(cmd or ""), re.IGNORECASE):
+            return pattern
+    return None
+
+
+def is_dangerous(cmd: str) -> bool:
+    """Compatibility predicate backed by the central command policy."""
+    return dangerous_pattern(cmd) is not None
 
 def check_path(path: str) -> dict:
     """يفحص مسار قبل القراءة أو الكتابة"""
