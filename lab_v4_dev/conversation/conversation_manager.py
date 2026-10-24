@@ -557,14 +557,12 @@ class ConversationManager:
         raw_signal = self._semantic_signal_from_parsed(candidate)
         from lab_v4_dev.memory.session_state import session_selector
         selected_session = session_selector(user_input)
-        # A natural-language request about what was said is dialogue history,
-        # not restoration of a work checkpoint. Session selection may inspect
-        # overlapping words, but it cannot override the canonical history act.
-        if (
-            raw_signal.get("conversation_act") == "CONVERSATION_HISTORY_QUERY"
-            and selected_session.get("kind") != "none"
-        ):
-            selected_session = {"kind": "none", "report_mode": "standard"}
+        # Explicit saved-session language has precedence over the generic
+        # dialogue-history act. Otherwise phrases such as "what were we saying
+        # in the previous session?" are answered from the live dialogue and the
+        # persisted-session selector never reaches the orchestrator. The selector
+        # is deliberately phrase-based and returns "none" for ordinary history
+        # questions, so those remain in the dialogue-memory path.
         if selected_session.get("kind") != "none" and not _restore_context:
             candidate = dict(candidate or {})
             candidate.update({
