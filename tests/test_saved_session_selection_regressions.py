@@ -197,6 +197,7 @@ def test_session_selector_recognizes_all_saved_session_summary_requests():
         "اعرض ملخصات كل الجلسات",
         "أعطني ملخصات جميع الجلسات المحفوظة",
         "لخص كل الجلسات",
+        "اعرض كل الجلسات وملخصاتها",
     ):
         selected = session_selector(request)
         assert selected["kind"] == "list"
