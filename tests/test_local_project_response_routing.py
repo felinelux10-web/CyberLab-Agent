@@ -109,3 +109,46 @@ def test_empty_cached_project_index_does_not_claim_there_are_zero_source_files(m
     assert "لا يعني أن المشروع لا يحتوي على ملفات مصدر" in context
     assert "التركيز الحالي: إصلاح الرد المحلي" in context
     assert "عدد ملفات Python: 0" not in context
+
+
+def test_project_scoped_continuation_cannot_be_hijacked_by_stale_technical_topic(monkeypatch):
+    monkeypatch.setattr(
+        "lab_v4_dev.awareness.project_knowledge.get_project_state",
+        lambda: {
+            "current_focus": "إصلاح الرد المحلي",
+            "last_goal": "تصحيح مسارات الحوار",
+            "last_step": "اختبار استمرار سياق المشروع",
+            "active": ["توجيه نية الرسالة"],
+            "planned": ["تغطية أخطاء الحوار"],
+            "completed_count": 2,
+        },
+    )
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("project-scoped continuation must not drift to a stale technical topic")
+        ),
+    )
+    orchestrator = LocalOnlyOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    memory.state.last_topic = "Buffer Overflow"
+    memory.state.last_entity_type = "CONCEPT"
+    memory.state.exchange_archive = [{
+        "session_id": memory.state.session_id,
+        "user": "اشرح Buffer Overflow",
+        "assistant": "شرح تقني قديم",
+        "target": "Buffer Overflow",
+        "intent": "cyber_explain",
+        "conversation_domain": "technical",
+        "context_kind": "dialogue",
+    }]
+    manager = ConversationManager(orchestrator, memory)
+
+    result = manager.process("أكمل الشرح في نفس سؤال مشروع cyberlab_agent")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_project_knowledge"
+    assert "إصلاح الرد المحلي" in result["text"]
+    assert "Buffer Overflow" not in result["text"]
+    assert orchestrator.calls == []
