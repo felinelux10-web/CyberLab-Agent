@@ -136,22 +136,48 @@ def build_project_context(
     roadmap = _load_roadmap()
     proj    = get_active_project()
 
-    if isinstance(index.get("files"), list):
+    if isinstance(index.get("files"), list) and index["files"]:
         real_files = index["files"]
         listed = chr(10).join(f"- {p}" for p in real_files[:60])
         more = f"\n... و{len(real_files)-60} ملف إضافي" if len(real_files) > 60 else ""
         return f"""أنت مساعد هندسي لمشروع {proj.name}.
 
-=== قواعد صارمة ===
-1. استخدم فقط المعلومات أدناه — لا تخترع ملفات أو وظائف
-2. إذا لم تجد المعلومة في البيانات أدناه → قل "غير موجود في البيانات المتاحة"
-3. لا تستخدم معرفتك العامة عن Python أو البرمجة لاختراع ملفات
+=== قواعد الاستناد ===
+1. قائمة الملفات التالية مأخوذة من فهرس المشروع المحفوظ؛ لا تعتبرها جردًا لحظيًا.
+2. لا تخترع ملفات أو وظائف، ولا تستنتج غياب ملف من فهرس قديم.
+3. عند السؤال عن التقدم، استخدم سجل roadmap/session_state أدناه، وميّز بين حالة محفوظة وحالة تشغيل لحظية.
 
-=== الملفات الحقيقية في المشروع ({len(real_files)} ملف) ===
+=== الملفات المسجلة في الفهرس ({len(real_files)} ملف) ===
 {listed}{more}
 
-=== ملاحظة ===
-لا توجد بيانات أدوار/طبقات مصنّفة لهذا المشروع — فقط قائمة المسارات أعلاه.
+=== حالة التطوير المحفوظة ===
+الإصدار: {roadmap.get('version', '?')}
+التركيز الحالي: {roadmap.get('current_focus', '?')}
+الأعمال النشطة: {', '.join(roadmap.get('active', [])) or 'لا توجد عناصر نشطة مسجلة'}
+الخطط المتبقية: {', '.join(roadmap.get('planned', [])) or 'لا توجد عناصر مخططة مسجلة'}
+المكتمل المسجل: {', '.join(roadmap.get('completed', [])[:8]) or 'لا توجد عناصر مكتملة مسجلة'}
+
+=== قيد الدقة ===
+هذه بيانات محفوظة وليست trace لتشغيل حي. إذا كانت الحقول فارغة أو قديمة، صرّح بذلك ولا تستنتج أن المشروع لا يحتوي على ملفات.
+"""
+    if isinstance(index.get("files"), list) and not index["files"]:
+        # An empty cached index is not evidence that the repository has no source files.
+        index = {key: value for key, value in index.items() if key != "files"}
+    if not index:
+        return f"""أنت مساعد هندسي لمشروع {proj.name}.
+
+=== حدود الأدلة المحلية ===
+فهرس الملفات المحفوظ لا يحتوي على قائمة قابلة للاعتماد. هذا لا يعني أن المشروع لا يحتوي على ملفات مصدر.
+لا تدّعِ أن عدد ملفات Python صفر اعتمادًا على هذا الفهرس الفارغ.
+
+=== حالة التطوير المحفوظة ===
+الإصدار: {roadmap.get('version', '?')}
+التركيز الحالي: {roadmap.get('current_focus', '?')}
+الأعمال النشطة: {', '.join(roadmap.get('active', [])) or 'لا توجد عناصر نشطة مسجلة'}
+الخطط المتبقية: {', '.join(roadmap.get('planned', [])) or 'لا توجد عناصر مخططة مسجلة'}
+المكتمل المسجل: {', '.join(roadmap.get('completed', [])[:8]) or 'لا توجد عناصر مكتملة مسجلة'}
+
+هذه بيانات محفوظة وليست trace لتشغيل حي؛ إذا كانت الحقول فارغة أو قديمة، صرّح بذلك.
 """
 
     real_files = list(index.keys())
