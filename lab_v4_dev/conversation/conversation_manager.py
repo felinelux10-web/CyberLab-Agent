@@ -1933,11 +1933,33 @@ class ConversationManager:
         # responder; a turn that explicitly asks to run/test/deploy remains
         # owned by the operational intent path below.
         normalized_turn = self._normalize_transition_text(user_question or text)
-        explicit_execution_markers = (
-            "نفذ", "نفذ الامر", "ابدأ التنفيذ", "ابدا التنفيذ",
-            "شغل", "تشغيل", "اختبر", "اختبار", "انشر",
-            "execute", "run", "deploy",
-        )
+        # Only an affirmative operational command should keep this inherited
+        # project branch on the execution path. Negated commands (for example,
+        # "لا تشغل الاختبارات") and descriptive mentions ("نتيجة الاختبار")
+        # are not execution requests.
+        negated_execution = bool(re.search(
+            r"(?:^|\\s)(?:لا|لم|لن|ما|don't|do not|not)"
+            r"(?:\\s+\\w+){0,2}\\s+"
+            r"(?:نفذ|تنفذ|شغل|تشغل|تشغيل|اختبر|تختبر|انشر|تنشر|execute|run|deploy)"
+            r"(?:\\s|$)",
+            normalized_turn,
+        ))
+        explicit_execution = bool(
+            re.search(
+                r"(?:^|\\s)(?:نفذ|شغل|اختبر|انشر|ابدأ التنفيذ|ابدا التنفيذ)"
+                r"(?:\\s|$)",
+                normalized_turn,
+            )
+            or re.search(
+                r"(?:^|\\s)تشغيل\\s+(?:ال)?(?:اختبارات|اختبار|الأوامر|الاوامر|البرنامج|المشروع)"
+                r"(?:\\s|$)",
+                normalized_turn,
+            )
+            or re.search(
+                r"\\b(?:execute|deploy)\\b|\\brun\\s+(?:the\\s+)?(?:tests?|command|script|app|application)\\b",
+                normalized_turn,
+            )
+        ) and not negated_execution
         contextual_project_continuation = (
             intent == Intent.CYBER_EXPLAIN
             and context_transition in CONTEXTUAL_TRANSITIONS
@@ -1949,7 +1971,7 @@ class ConversationManager:
         )
         if (
             contextual_project_continuation
-            and not any(marker in normalized_turn for marker in explicit_execution_markers)
+            and not explicit_execution
         ):
             # Context resolution may label the inherited PROJECT branch as
             # technical. Canonicalize it back to project ownership before prompt
