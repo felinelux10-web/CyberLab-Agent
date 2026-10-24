@@ -86,6 +86,136 @@ class ConversationManager:
         self.dni = dni
 
     @staticmethod
+    def _is_project_progress_request(text: str) -> bool:
+        """Recognize project-state questions by combining intent cues, not a single keyword."""
+        normalized = normalize_text(str(text or ""))
+        status_cues = (
+            "اين توقف", "اين وصل", "اين انتهي العمل", "حاله العمل",
+            "حاله المشروع", "سياق العمل", "تقدم العمل", "ما انجز",
+            "ماذا انجز", "ما المتبقي", "الخطوه التاليه", "اخر خطوه",
+            "where did we stop", "project status", "next step",
+        )
+        plan_cues = (
+            "خطه العمل", "خطه تطوير", "الخطه القادمه", "ما الخطه",
+            "ماهي الخطه", "ما هي خطه", "what is the plan", "project roadmap",
+        )
+        return any(cue in normalized for cue in status_cues + plan_cues)
+
+    def _local_project_progress_answer(
+        self,
+        text: str,
+        parsed: dict,
+        context_entity: dict | None,
+    ) -> dict | None:
+        """Answer explicit project progress/plan questions from the local project-state record."""
+        if not self._is_project_progress_request(text):
+            return None
+
+        context_parts = [str(text or "")]
+        if isinstance(parsed, dict):
+            context_parts.extend((
+                str(parsed.get("target") or ""),
+                str(parsed.get("conversation_domain") or ""),
+            ))
+        if isinstance(context_entity, dict):
+            context_parts.extend((
+                str(context_entity.get("entity") or ""),
+                str(context_entity.get("conversation_domain") or ""),
+            ))
+        scope_text = " ".join(part for part in context_parts if part)
+        intent = (parsed or {}).get("intent")
+        scope = resolve_project_scope(scope_text, intent=intent)
+        if (
+            scope != ProjectScope.CURRENT_PROJECT
+            and isinstance(context_entity, dict)
+            and (
+                str(context_entity.get("conversation_domain") or "").casefold() == "project"
+                or str(context_entity.get("entity_type") or "").upper() == "PROJECT"
+            )
+        ):
+            scope = ProjectScope.CURRENT_PROJECT
+        if scope != ProjectScope.CURRENT_PROJECT:
+            return None
+
+        try:
+            from lab_v4_dev.awareness.project_knowledge import get_project_state
+            state = get_project_state()
+        except Exception as exc:
+            state = {}
+            retrieval_error = type(exc).__name__
+        else:
+            retrieval_error = ""
+
+        state = state if isinstance(state, dict) else {}
+
+        def usable(value):
+            if value is None:
+                return False
+            if isinstance(value, str):
+                return value.strip().casefold() not in {"", "?", "unknown", "غير معروف", "غير متاح"}
+            if isinstance(value, (list, tuple, set, dict)):
+                return bool(value)
+            return True
+
+        lines = ["وفق سجل حالة المشروع المحلي:"]
+        fields = (
+            ("current_focus", "التركيز الحالي"),
+            ("last_goal", "آخر هدف محفوظ"),
+            ("last_step", "الخطوة التالية المسجلة"),
+        )
+        evidence_count = 0
+        for key, label in fields:
+            value = state.get(key)
+            if usable(value):
+                lines.append(f"- {label}: {value}")
+                evidence_count += 1
+
+        for key, label in (("active", "الأعمال النشطة"), ("planned", "الأعمال المخططة")):
+            values = state.get(key)
+            if usable(values):
+                rendered = [str(item).strip() for item in values if str(item).strip()]
+                if rendered:
+                    lines.append(f"- {label}: " + "؛ ".join(rendered[:5]))
+                    evidence_count += 1
+
+        completed_count = state.get("completed_count")
+        if isinstance(completed_count, int) and completed_count > 0:
+            lines.append(f"- العناصر المكتملة المسجلة: {completed_count}")
+            evidence_count += 1
+
+        if not evidence_count:
+            detail = (
+                f" تعذر قراءة السجل بسبب {retrieval_error}."
+                if retrieval_error else
+                " السجل لا يحتوي على تركيز أو خطوة تالية أو عناصر عمل موثقة."
+            )
+            return {
+                "status": "needs_clarification",
+                "intent": intent or Intent.PERSONAL_CHAT,
+                "source": "local_project_knowledge",
+                "text": (
+                    "حددت أن السؤال عن حالة مشروع CyberLab Agent، لكن لا توجد "
+                    "بيانات محلية كافية لإثبات نقطة التوقف أو الخطة الحالية." + detail
+                    + " لن أخمّن حالة العمل. يلزم تحديث roadmap.json أو session_state.json "
+                    "بآخر خطوة مؤكدة."
+                ),
+                "executed": False,
+            }
+
+        lines.append(
+            "هذه معلومات من سجل الحالة المحفوظ، وليست إثباتًا على حالة تشغيل لحظية. "
+            "إذا كان السجل قديمًا فقد يحتاج إلى تحديث."
+        )
+        return {
+            "status": "success",
+            "intent": intent or Intent.PERSONAL_CHAT,
+            "source": "local_project_knowledge",
+            "text": "\n".join(lines),
+            "project_state": state,
+            "executed": False,
+        }
+
+    @staticmethod
     def _is_bare_confirmation(text: str) -> bool:
         return str(text).strip().casefold() in {
             "نعم", "أجل", "اجل", "بلى", "لا", "كلا",
@@ -1476,6 +1606,23 @@ class ConversationManager:
             # Retrieval is read-only: do not archive the retrieval request as a
             # new dialogue exchange or make it the next active topic.
             return history_result
+
+        # Project progress is a local knowledge request, not generic chat or dialogue recall.
+        # Resolve scope from the current turn plus an already-authorized active branch.
+        local_project_answer = self._local_project_progress_answer(
+            user_input, parsed, context_entity
+        )
+        if local_project_answer is not None:
+            local_project_answer["semantic_request"] = semantic.as_dict()
+            local_project_answer = self._finalize_local_dialogue_result(
+                local_project_answer, mode, parsed, semantic
+            )
+            if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
+                self.dialogue_memory.update(
+                    user_input, local_project_answer, mode=mode, parsed=parsed,
+                    context_transition=transition,
+                )
+            return local_project_answer
 
         local_social = self._local_social_answer(user_input, parsed)
         if local_social is not None:
