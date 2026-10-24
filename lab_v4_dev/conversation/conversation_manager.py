@@ -1527,7 +1527,27 @@ class ConversationManager:
             else:
                 parsed["target"] = ""
 
-        chat_history = self._history_for_transition(transition, parsed)
+        # A saved-session selector is an explicit routing decision. Context
+        # enrichment above may re-parse a synthetic reference and discard
+        # selector metadata, so reassert saved-session ownership immediately
+        # before semantic construction and keep the request isolated from the
+        # active dialogue branch.
+        if saved_session_request:
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.SESSION_RESTORE,
+                "target": "",
+                "context": "system",
+                "session_selector": selected_session,
+                "conversation_domain": "system",
+                "conversation_act": "ASSISTANT_STATE_QUERY",
+                "source": "session_selector",
+            })
+            transition = ContextTransition.NEW_INDEPENDENT
+            context_entity = None
+            chat_history = []
+        else:
+            chat_history = self._history_for_transition(transition, parsed)
 
         parsed = dict(parsed or {})
         conversation_act = str(parsed.get("conversation_act") or "NONE")
@@ -2628,6 +2648,22 @@ class ConversationManager:
         """Answer recent-dialogue questions from bounded dialogue memory only."""
         normalized = str(text or "").casefold()
         history_act = str((parsed or {}).get("conversation_act") or "").upper()
+        normalized_query = normalize_text(text)
+        state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
+        live_previous_session_recall = (
+            normalized_query.strip(" .!؟?") == "استرجع الجلسة السابقة"
+            and state is not None
+            and bool(
+                getattr(state, "exchange_archive", [])
+                or getattr(state, "history", [])
+                or getattr(state, "last_topic", None)
+            )
+        )
+        if live_previous_session_recall:
+            # The bare phrase is ambiguous by itself, but when a live dialogue
+            # archive exists it means recall that branch. Explicit saved-session
+            # requests are excluded by the caller's saved_session_request guard.
+            history_act = "CONVERSATION_HISTORY_QUERY"
         if re.search(
             r"(?:قلت|اقصد|المقصود)\s+(?:موضوع\s+)?(?:الكتب|كتب|الفن|الرسم|النحت)",
             self._normalize_transition_text(text),
@@ -2656,19 +2692,26 @@ class ConversationManager:
             return None
         if history_act == "TOPIC_RETURN" and str((parsed or {}).get("target") or "").strip():
             return None
-        if history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"} and any(marker in normalized for marker in (
-            "ارجع", "عد إلى", "عد الى", "الاول", "الأول", "الثاني", "السابق",
-            "previous", "first", "second",
-        )):
+        if (
+            history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
+            and not live_previous_session_recall
+            and any(marker in normalized for marker in (
+                "ارجع", "عد إلى", "عد الى", "الاول", "الأول", "الثاني", "السابق",
+                "previous", "first", "second",
+            ))
+        ):
             return None
         markers = (
             "موضوعين", "الموضوعين", "موضوعات", "المواضيع", "آخر موضوع",
             "اخر موضوع", "ماذا شرح", "ماذا شرحت", "شرحنا", "تكلمنا",
             "ناقشنا", "سجل المحادث", "تاريخ المحادث",
         )
-        if history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"} and not any(marker in normalized for marker in markers):
+        if (
+            history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
+            and not live_previous_session_recall
+            and not any(marker in normalized for marker in markers)
+        ):
             return None
-        state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
         current_session_id = str(getattr(state, "session_id", "") or "")
         history = [
             turn for turn in (getattr(state, "history", []) if state is not None else [])
@@ -2691,13 +2734,26 @@ class ConversationManager:
                 or str(item.get("session_id") or "") == current_session_id
             )
         ]
+        response_attributes = dict((parsed or {}).get("response_attributes") or {})
         response_mode = str(
-            ((parsed or {}).get("response_attributes") or {}).get(
-                "dialogue_response_mode", ""
-            )
+            response_attributes.get("dialogue_response_mode", "")
         ).casefold()
+        if not response_mode and (
+            live_previous_session_recall
+            or any(marker in normalized_query for marker in (
+                "ماذا كنا نقول", "ماذا قلنا", "ما كنا نقول",
+                "الردود السابقة", "الردود السابقه", "قبل قليل",
+                "كنا نناقش", "كنا نتحدث", "ملخص الحوار السابق",
+                "ملخص الحوار السابق", "اكتب ملخص الحوار السابق",
+            ))
+        ):
+            response_mode = "summary"
         if response_mode in {"summary", "last_question", "answer", "transcript"}:
-            return self._answer_dialogue_history(text, response_mode, exchanges)
+            result = self._answer_dialogue_history(text, response_mode, exchanges)
+            response_attributes["dialogue_response_mode"] = response_mode
+            result["response_attributes"] = response_attributes
+            result["dialogue_response_mode"] = response_mode
+            return result
         topics = []
         for turn in history or []:
             if not isinstance(turn, dict) or turn.get("role") != "user":
