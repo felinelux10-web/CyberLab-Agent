@@ -5,6 +5,8 @@ import lab_v4_dev.llm.prompt_builder as prompt_builder
 from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
+from lab_v4_dev.conversation.semantic_contract import ContextTransition
+from lab_v4_dev.intent.intents import Intent
 
 
 class LocalOnlyOrchestrator:
@@ -207,3 +209,26 @@ def test_bare_follow_up_keeps_the_project_branch_after_a_local_progress_reply(mo
     assert "إصلاح الرد المحلي" in prompts[-1][1]
     assert "Buffer Overflow" not in prompts[-1][0] + prompts[-1][1]
     assert orchestrator.calls == []
+
+
+def test_explicit_project_execution_request_still_uses_orchestrator():
+    orchestrator = LocalOnlyOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+
+    result = manager._dispatch(
+        "شغل الاختبارات",
+        "FOLLOW_UP",
+        {
+            "intent": Intent.CYBER_EXPLAIN,
+            "target": "CyberLab Agent",
+            "entity_type": "PROJECT",
+            "conversation_domain": "project",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+        },
+        user_question="شغل الاختبارات",
+        context_transition=ContextTransition.CONTINUE.value,
+    )
+
+    assert result["text"] == "unexpected execution response"
+    assert len(orchestrator.calls) == 1
+
