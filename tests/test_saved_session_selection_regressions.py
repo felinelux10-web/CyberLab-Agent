@@ -192,3 +192,76 @@ def test_previous_dialogue_restore_skips_live_dialogue_and_work_checkpoint(monke
     assert "النحت البارز" in result["text"]
     assert "agent.py" not in result["text"]
 
+def test_session_selector_recognizes_all_saved_session_summary_requests():
+    for request in (
+        "اعرض ملخصات كل الجلسات",
+        "أعطني ملخصات جميع الجلسات المحفوظة",
+        "لخص كل الجلسات",
+    ):
+        selected = session_selector(request)
+        assert selected["kind"] == "list"
+        assert selected["report_mode"] == "summaries"
+
+
+def test_orchestrator_returns_semantic_summary_for_each_saved_session(monkeypatch):
+    sessions = [
+        {
+            "session_id": "dialogue-art-001",
+            "session_type": "dialogue",
+            "status": "completed",
+            "active_goal": "الرسم والنحت",
+            "next_step": "متابعة النقش البارز",
+            "dialogue_state": {
+                "session_id": "dialogue-art-001",
+                "last_topic": "الرسم والنحت",
+                "history": [],
+                "exchange_archive": [],
+            },
+        },
+        {
+            "session_id": "work-tests-002",
+            "session_type": "work",
+            "status": "paused",
+            "active_goal": "إصلاح الاختبارات",
+            "next_step": "تشغيل الاختبارات المستهدفة",
+            "completed_work": ["إضافة اختبار ارتدادي"],
+            "context_state": {"subject": "إصلاح الاختبارات"},
+        },
+    ]
+    agent = SimpleNamespace(
+        restore_session_snapshot=lambda _data: True,
+        restore_session_context=lambda: False,
+        runtime=None,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    orchestrator = Orchestrator(agent)
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_index",
+        lambda: sessions,
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_by_id",
+        lambda session_id: next(
+            (item for item in sessions if item["session_id"] == session_id), {}
+        ),
+    )
+
+    request = "اعرض ملخصات كل الجلسات"
+    result = orchestrator.handle(
+        request,
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "target": "",
+            "context": "system",
+            "session_selector": session_selector(request),
+        },
+    )
+
+    assert result["status"] == "success"
+    assert "ملخصات الجلسات المحفوظة" in result["text"]
+    assert "الرسم والنحت" in result["text"]
+    assert "متابعة النقش البارز" in result["text"]
+    assert "إصلاح الاختبارات" in result["text"]
+    assert "تشغيل الاختبارات المستهدفة" in result["text"]
+    assert len(result["sessions"]) == 2
+\n
