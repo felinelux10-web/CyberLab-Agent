@@ -152,3 +152,58 @@ def test_project_scoped_continuation_cannot_be_hijacked_by_stale_technical_topic
     assert "إصلاح الرد المحلي" in result["text"]
     assert "Buffer Overflow" not in result["text"]
     assert orchestrator.calls == []
+
+
+def test_bare_follow_up_keeps_the_project_branch_after_a_local_progress_reply(monkeypatch):
+    monkeypatch.setattr(
+        "lab_v4_dev.awareness.project_knowledge.get_project_state",
+        lambda: {
+            "current_focus": "إصلاح الرد المحلي",
+            "last_goal": "تصحيح مسارات الحوار",
+            "last_step": "اختبار متابعة المشروع",
+            "active": ["توجيه النية"],
+            "planned": ["اختبارات رجعية"],
+            "completed_count": 2,
+        },
+    )
+    monkeypatch.setattr(prompt_builder, "_load_index", lambda: {"files": []})
+    monkeypatch.setattr(
+        prompt_builder,
+        "_load_roadmap",
+        lambda: {
+            "version": "5.9.13-dev",
+            "current_focus": "إصلاح الرد المحلي",
+            "active": ["توجيه النية"],
+            "planned": ["اختبارات رجعية"],
+            "completed": ["توحيد طبقة الكتابة"],
+        },
+    )
+    monkeypatch.setattr(
+        prompt_builder,
+        "get_active_project",
+        lambda: SimpleNamespace(name="CyberLab Agent"),
+    )
+    prompts = []
+
+    def fake_gateway(prompt, **kwargs):
+        prompts.append((str(prompt), str(kwargs.get("system") or "")))
+        return {"status": "success", "text": "متابعة من سياق المشروع", "provider_used": "test"}
+
+    monkeypatch.setattr(manager_module, "gateway_ask", fake_gateway)
+    orchestrator = LocalOnlyOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    memory.state.last_topic = "Buffer Overflow"
+    memory.state.last_entity_type = "CONCEPT"
+    manager = ConversationManager(orchestrator, memory)
+
+    first = manager.process("أين توقف العمل في مشروع cyberlab_agent؟")
+    assert first["source"] == "local_project_knowledge"
+
+    follow_up = manager.process("أكمل")
+
+    assert follow_up["status"] == "success"
+    assert follow_up["text"] == "متابعة من سياق المشروع"
+    assert prompts
+    assert "إصلاح الرد المحلي" in prompts[-1][1]
+    assert "Buffer Overflow" not in prompts[-1][0] + prompts[-1][1]
+    assert orchestrator.calls == []
