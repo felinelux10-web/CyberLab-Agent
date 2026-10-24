@@ -82,7 +82,7 @@ def test_project_plan_uses_local_state_and_does_not_fall_back_to_generic_plan(mo
 
 
 def test_empty_cached_project_index_does_not_claim_there_are_zero_source_files(monkeypatch):
-    monkeypatch.setattr(prompt_builder, "_load_index", lambda: {"files": []})
+    monkeypatch.setattr(prompt_builder, "_load_index", lambda: {"files": [], "version": 2, "total_files": 0})
     monkeypatch.setattr(
         prompt_builder,
         "_load_roadmap",
