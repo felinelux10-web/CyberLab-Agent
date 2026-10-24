@@ -1615,13 +1615,28 @@ class ConversationManager:
             user_input, parsed, context_entity
         )
         if local_project_answer is not None:
-            local_project_answer["semantic_request"] = semantic.as_dict()
+            # Anchor the saved branch to the actual project, not a stale technical target
+            # inherited by a parser fallback on a short continuation.
+            from dataclasses import replace as dataclass_replace
+            project_parsed = dict(parsed or {})
+            project_parsed.update({
+                "target": "CyberLab Agent",
+                "entity_type": "PROJECT",
+                "conversation_domain": "project",
+            })
+            project_semantic = dataclass_replace(
+                semantic,
+                conversation_domain="project",
+                context_kind="project",
+                target="CyberLab Agent",
+            )
+            local_project_answer["semantic_request"] = project_semantic.as_dict()
             local_project_answer = self._finalize_local_dialogue_result(
-                local_project_answer, mode, parsed, semantic
+                local_project_answer, mode, project_parsed, project_semantic
             )
             if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
                 self.dialogue_memory.update(
-                    user_input, local_project_answer, mode=mode, parsed=parsed,
+                    user_input, local_project_answer, mode=mode, parsed=project_parsed,
                     context_transition=transition,
                 )
             return local_project_answer
@@ -3565,11 +3580,24 @@ class ConversationManager:
                 and not explicitly_general_scope
                 else None
             )
+            scope_question = " ".join(
+                part for part in (
+                    str(user_question or text),
+                    str((parsed or {}).get("target") or ""),
+                ) if part
+            )
             project_scope = (
                 "general"
                 if compound_request or explicitly_general_scope
-                else resolve_project_scope(user_question or text, intent=intent)
+                else resolve_project_scope(scope_question, intent=intent)
             )
+            if (
+                not compound_request
+                and not explicitly_general_scope
+                and str((parsed or {}).get("conversation_domain") or "").casefold() == "project"
+                and str((parsed or {}).get("target") or "").strip()
+            ):
+                project_scope = ProjectScope.CURRENT_PROJECT
             
             # Retrieve project knowledge for the question if applicable
             project_knowledge = None
