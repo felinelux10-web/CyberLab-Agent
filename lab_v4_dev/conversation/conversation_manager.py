@@ -2691,7 +2691,10 @@ class ConversationManager:
         # An unnamed return is a routing instruction, not a request to print
         # the archive. Let the transition resolver select the interrupted
         # branch and pass that branch to the response path.
-        if recovery_mode in {"interrupted_branch", "ordinal_topic_return"}:
+        if (
+            recovery_mode in {"interrupted_branch", "ordinal_topic_return"}
+            and not live_previous_session_recall
+        ):
             return None
         if history_act == "TOPIC_RETURN" and str((parsed or {}).get("target") or "").strip():
             return None
