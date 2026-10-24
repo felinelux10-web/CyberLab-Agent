@@ -26,8 +26,10 @@ LLM
 
 Important:
 FOLLOW_UP is a conversational MODE, not an automatic LLM route.
-If IntentParser resolves a FOLLOW_UP to an executable Intent
-    (e.g. CYBER_EXPLAIN), that Intent goes to Orchestrator.
+Explicit executable intents go to Orchestrator. A contextual project
+continuation that was promoted to CYBER_EXPLAIN only because the active
+branch is a PROJECT remains a knowledge-backed conversational response,
+unless the current turn explicitly requests an operation.
 """
 
 import re
@@ -1916,6 +1918,39 @@ class ConversationManager:
         # Agent self-description is grounded conversation, not a system action.
         # This check deliberately precedes SYSTEM mode dispatch.
         if intent in _AGENT_SELF_INTENTS:
+            return self._handle_chat(
+                text,
+                mode,
+                parsed=parsed,
+                user_question=user_question or text,
+                history=chat_history,
+            )
+
+        # A bare continuation can inherit CYBER_EXPLAIN solely because the
+        # active dialogue branch is the project itself. That inheritance is
+        # context resolution, not an instruction to execute project work.
+        # Keep this project-owned continuation with the evidence-backed chat
+        # responder; a turn that explicitly asks to run/test/deploy remains
+        # owned by the operational intent path below.
+        normalized_turn = self._normalize_transition_text(user_question or text)
+        explicit_execution_markers = (
+            "نفذ", "نفذ الامر", "ابدأ التنفيذ", "ابدا التنفيذ",
+            "شغل", "تشغيل", "اختبر", "اختبار", "انشر",
+            "execute", "run", "deploy",
+        )
+        contextual_project_continuation = (
+            intent == Intent.CYBER_EXPLAIN
+            and context_transition in CONTEXTUAL_TRANSITIONS
+            and str((parsed or {}).get("conversation_act") or "").upper()
+            in {"CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY"}
+            and str((parsed or {}).get("conversation_domain") or "").casefold()
+            == "project"
+            and str((parsed or {}).get("entity_type") or "").upper() == "PROJECT"
+        )
+        if (
+            contextual_project_continuation
+            and not any(marker in normalized_turn for marker in explicit_execution_markers)
+        ):
             return self._handle_chat(
                 text,
                 mode,
