@@ -557,13 +557,49 @@ class ConversationManager:
         raw_signal = self._semantic_signal_from_parsed(candidate)
         from lab_v4_dev.memory.session_state import session_selector
         selected_session = session_selector(user_input)
+        normalized_session_request = self._normalize_transition_text(user_input).strip(
+            " .,،؛:!?؟"
+        )
+        live_state = getattr(self.dialogue_memory, "state", None)
+        live_dialogue_archive = bool(
+            self.dialogue_memory
+            and (
+                getattr(live_state, "exchange_archive", [])
+                or getattr(live_state, "history", [])
+                or getattr(live_state, "last_topic", None)
+            )
+        )
+        # The bare "restore the previous session" wording is ambiguous when
+        # the current dialogue already has a live archive. In that context it
+        # means recall the dialogue branch; explicit "what were we saying in
+        # the last session" remains a persisted-session request.
+        prefer_live_dialogue = (
+            (
+                selected_session.get("kind") == "previous_dialogue"
+                and not any(marker in normalized_session_request for marker in (
+                    "اخر جلسة", "الجلسة السابقة", "جلسة محفوظة", "الجلسه المحفوظه",
+                ))
+            )
+            or (
+                selected_session.get("kind") == "latest"
+                and live_dialogue_archive
+                and "استرجع الجلسة السابقة" in normalized_session_request
+                and not any(marker in normalized_session_request for marker in (
+                    "ملخص", "تقرير", "سياق", "حالة",
+                ))
+            )
+        )
         # Explicit saved-session language has precedence over the generic
         # dialogue-history act. Otherwise phrases such as "what were we saying
         # in the previous session?" are answered from the live dialogue and the
         # persisted-session selector never reaches the orchestrator. The selector
         # is deliberately phrase-based and returns "none" for ordinary history
         # questions, so those remain in the dialogue-memory path.
-        if selected_session.get("kind") != "none" and not _restore_context:
+        if (
+            selected_session.get("kind") != "none"
+            and not prefer_live_dialogue
+            and not _restore_context
+        ):
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.SESSION_RESTORE,
@@ -574,6 +610,11 @@ class ConversationManager:
                 "conversation_act": "ASSISTANT_STATE_QUERY",
                 "source": "session_selector",
             })
+        saved_session_request = (
+            selected_session.get("kind") != "none"
+            and not prefer_live_dialogue
+            and not _restore_context
+        )
         if (
             selected_session.get("kind") == "none"
             and raw_signal.get("conversation_act") == "SAVED_SESSION_RESTORE_REQUEST"
@@ -1216,7 +1257,11 @@ class ConversationManager:
                 if not explicit_explanation:
                     candidate["intent"] = Intent.PERSONAL_CHAT
                     candidate["conversation_domain"] = "social"
-        if selected_session.get("kind") != "none" and not _restore_context:
+        if (
+            selected_session.get("kind") != "none"
+            and not prefer_live_dialogue
+            and not _restore_context
+        ):
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.SESSION_RESTORE,
@@ -1588,7 +1633,11 @@ class ConversationManager:
             or self._ordinal_dialogue_exchange(user_input)
             or named_topic_return
         )
-        if raw_act == "CONVERSATION_HISTORY_QUERY" and not specific_dialogue_return:
+        if (
+            raw_act == "CONVERSATION_HISTORY_QUERY"
+            and not specific_dialogue_return
+            and not saved_session_request
+        ):
             history_result = self._conversation_history_answer(user_input, parsed)
             if history_result is None:
                 history_result = {
@@ -1659,7 +1708,7 @@ class ConversationManager:
         # المشروع أو مزود النموذج.
         conversation_history_answer = (
             None
-            if generic_topic or _restore_context
+            if generic_topic or _restore_context or saved_session_request
             else self._conversation_history_answer(user_input, parsed)
         )
         recovery_mode = str(
@@ -1668,6 +1717,7 @@ class ConversationManager:
         if (
             conversation_history_answer is None
             and not _restore_context
+            and not saved_session_request
             and self._dialogue_recall_requested(user_input, parsed)
             and not self._resolve_generic_topic_reference(user_input)
             and not self._ordinal_dialogue_exchange(user_input)
@@ -1825,6 +1875,16 @@ class ConversationManager:
     ) -> dict:
         """Apply the shared presentation and analysis contract to local dialogue replies."""
         result = dict(result)
+        response_attributes = dict(
+            result.get("response_attributes")
+            or getattr(semantic, "response_attributes", {})
+            or {}
+        )
+        if response_attributes:
+            result["response_attributes"] = response_attributes
+            response_mode = response_attributes.get("dialogue_response_mode")
+            if response_mode and not result.get("dialogue_response_mode"):
+                result["dialogue_response_mode"] = response_mode
         if (
             semantic.context_kind in {"social", "dialogue"}
             or parsed.get("intent") == Intent.PERSONAL_CHAT
@@ -2395,6 +2455,9 @@ class ConversationManager:
 
     def _ambiguous_resume_without_domain(self, text: str, parsed: dict) -> bool:
         normalized = str(text or "").casefold().strip()
+        selector = (parsed or {}).get("session_selector") or {}
+        if isinstance(selector, dict) and selector.get("kind") not in {None, "none"}:
+            return False
         # A classified conversational continuation/history request is not a
         # work-session resume, even when the active dialogue has no named entity.
         conversation_act = str((parsed or {}).get("conversation_act") or "").upper()
