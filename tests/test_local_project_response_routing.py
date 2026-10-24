@@ -232,3 +232,38 @@ def test_explicit_project_execution_request_still_uses_orchestrator():
     assert result["text"] == "unexpected execution response"
     assert len(orchestrator.calls) == 1
 
+
+def test_negated_or_descriptive_execution_words_do_not_trigger_project_execution(monkeypatch):
+    prompts = []
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda prompt, **kwargs: (
+            prompts.append((str(prompt), str(kwargs.get("system") or "")))
+            or {"status": "success", "text": "رد حواري", "provider_used": "test"}
+        ),
+    )
+    orchestrator = LocalOnlyOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+    parsed = {
+        "intent": Intent.CYBER_EXPLAIN,
+        "target": "CyberLab Agent",
+        "entity_type": "PROJECT",
+        "conversation_domain": "project",
+        "conversation_act": "CONVERSATION_CONTINUATION",
+    }
+
+    for message in ("لا تشغل الاختبارات", "نتيجة الاختبار"):
+        result = manager._dispatch(
+            message,
+            "FOLLOW_UP",
+            dict(parsed),
+            user_question=message,
+            context_transition=ContextTransition.CONTINUE.value,
+        )
+        assert result["status"] == "success"
+        assert result["text"] == "رد حواري"
+
+    assert len(prompts) == 2
+    assert orchestrator.calls == []
+
