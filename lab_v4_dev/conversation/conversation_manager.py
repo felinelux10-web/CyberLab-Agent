@@ -2651,7 +2651,10 @@ class ConversationManager:
         normalized_query = normalize_text(text)
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
         live_previous_session_recall = (
-            normalized_query.strip(" .!؟?") == "استرجع الجلسة السابقة"
+            normalized_query.strip(" .!؟?") in {
+                "استرجع الجلسة السابقة",
+                "استرجع الجلسه السابقه",
+            }
             and state is not None
             and bool(
                 getattr(state, "exchange_archive", [])
@@ -2744,7 +2747,7 @@ class ConversationManager:
                 "ماذا كنا نقول", "ماذا قلنا", "ما كنا نقول",
                 "الردود السابقة", "الردود السابقه", "قبل قليل",
                 "كنا نناقش", "كنا نتحدث", "ملخص الحوار السابق",
-                "ملخص الحوار السابق", "اكتب ملخص الحوار السابق",
+                "اكتب ملخص الحوار السابق",
             ))
         ):
             response_mode = "summary"
