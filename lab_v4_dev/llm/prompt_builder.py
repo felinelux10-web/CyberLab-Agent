@@ -162,7 +162,7 @@ def build_project_context(
 """
     if isinstance(index.get("files"), list) and not index["files"]:
         # An empty cached index is not evidence that the repository has no source files.
-        index = {key: value for key, value in index.items() if key != "files"}
+        index = {}
     if not index:
         return f"""أنت مساعد هندسي لمشروع {proj.name}.
 
