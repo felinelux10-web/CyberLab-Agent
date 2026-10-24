@@ -229,6 +229,49 @@ def test_session_selector_routes_saved_session_summary_wording_to_summary_report
         assert selected["report_mode"] in {"summaries", "full"}, (request, selected)
 
 
+def test_explicit_previous_session_request_reaches_orchestrator(monkeypatch):
+    calls = []
+    orchestrator = SimpleNamespace(
+        context=ContextStore(),
+        handle=lambda text, parsed=None, **kwargs: (
+            calls.append((text, parsed, kwargs))
+            or {"status": "success", "text": "SAVED SESSION PATH"}
+        ),
+    )
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+
+    result = manager.process("ماذا كنا نقول في اخر جلسة")
+
+    assert result["status"] == "success"
+    assert calls, "explicit saved-session request must reach the orchestrator"
+    parsed = calls[-1][1]
+    assert parsed["intent"] == Intent.SESSION_RESTORE
+    assert parsed["session_selector"]["kind"] == "previous_dialogue"
+    assert result["text"] == "SAVED SESSION PATH"
+
+
+def test_all_saved_session_summaries_request_reaches_orchestrator(monkeypatch):
+    calls = []
+    orchestrator = SimpleNamespace(
+        context=ContextStore(),
+        handle=lambda text, parsed=None, **kwargs: (
+            calls.append((text, parsed, kwargs))
+            or {"status": "success", "text": "ALL SAVED SESSION SUMMARIES"}
+        ),
+    )
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+
+    result = manager.process("قلت لك اكتب ملخصات الجلسات المحفوظة كلها")
+
+    assert result["status"] == "success"
+    assert calls, "all-session summary request must reach the orchestrator"
+    parsed = calls[-1][1]
+    assert parsed["intent"] == Intent.SESSION_RESTORE
+    assert parsed["session_selector"]["kind"] == "list"
+    assert parsed["session_selector"]["report_mode"] == "summaries"
+    assert result["text"] == "ALL SAVED SESSION SUMMARIES"
+
+
 def test_orchestrator_returns_semantic_summary_for_each_saved_session(monkeypatch):
     sessions = [
         {
