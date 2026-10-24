@@ -18,11 +18,11 @@ ConversationManager
        ONE execution owner.
 
 Orchestrator
-    -> sole execution owner for executable Intent.
+    -> sole execution owner for operational requests.
 
 LLM
-    -> direct conversational responder only when IntentParser resolves
-       no executable operation.
+    -> conversational and evidence-backed knowledge responder for
+       non-operational turns, including context-authorized project continuations.
 
 Important:
 FOLLOW_UP is a conversational MODE, not an automatic LLM route.
