@@ -1944,17 +1944,24 @@ class ConversationManager:
             and str((parsed or {}).get("conversation_act") or "").upper()
             in {"CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY"}
             and str((parsed or {}).get("conversation_domain") or "").casefold()
-            == "project"
+            in {"project", "technical"}
             and str((parsed or {}).get("entity_type") or "").upper() == "PROJECT"
         )
         if (
             contextual_project_continuation
             and not any(marker in normalized_turn for marker in explicit_execution_markers)
         ):
+            # Context resolution may label the inherited PROJECT branch as
+            # technical. Canonicalize it back to project ownership before prompt
+            # construction so the project roadmap/state is actually injected.
+            project_continuation = dict(parsed or {})
+            project_continuation["target"] = explicit_target or "CyberLab Agent"
+            project_continuation["entity_type"] = "PROJECT"
+            project_continuation["conversation_domain"] = "project"
             return self._handle_chat(
                 text,
                 mode,
-                parsed=parsed,
+                parsed=project_continuation,
                 user_question=user_question or text,
                 history=chat_history,
             )
