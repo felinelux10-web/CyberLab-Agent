@@ -265,4 +265,3 @@ def test_orchestrator_returns_semantic_summary_for_each_saved_session(monkeypatc
     assert "إصلاح الاختبارات" in result["text"]
     assert "تشغيل الاختبارات المستهدفة" in result["text"]
     assert len(result["sessions"]) == 2
-\n
