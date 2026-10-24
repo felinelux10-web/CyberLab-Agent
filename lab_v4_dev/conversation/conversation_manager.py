@@ -1938,25 +1938,25 @@ class ConversationManager:
         # "لا تشغل الاختبارات") and descriptive mentions ("نتيجة الاختبار")
         # are not execution requests.
         negated_execution = bool(re.search(
-            r"(?:^|\\s)(?:لا|لم|لن|ما|don't|do not|not)"
-            r"(?:\\s+\\w+){0,2}\\s+"
+            r"(?:^|\s)(?:لا|لم|لن|ما|don't|do not|not)"
+            r"(?:\s+\w+){0,2}\s+"
             r"(?:نفذ|تنفذ|شغل|تشغل|تشغيل|اختبر|تختبر|انشر|تنشر|execute|run|deploy)"
-            r"(?:\\s|$)",
+            r"(?:\s|$)",
             normalized_turn,
         ))
         explicit_execution = bool(
             re.search(
-                r"(?:^|\\s)(?:نفذ|تنفذ|شغل|تشغل|اختبر|تختبر|انشر|تنشر|ابدأ التنفيذ|ابدا التنفيذ)"
-                r"(?:\\s|$)",
+                r"(?:^|\s)(?:نفذ|تنفذ|شغل|تشغل|اختبر|تختبر|انشر|تنشر|ابدأ التنفيذ|ابدا التنفيذ)"
+                r"(?:\s|$)",
                 normalized_turn,
             )
             or re.search(
-                r"(?:^|\\s)تشغيل\\s+(?:ال)?(?:اختبارات|اختبار|الأوامر|الاوامر|البرنامج|المشروع)"
-                r"(?:\\s|$)",
+                r"(?:^|\s)تشغيل\s+(?:ال)?(?:اختبارات|اختبار|الأوامر|الاوامر|البرنامج|المشروع)"
+                r"(?:\s|$)",
                 normalized_turn,
             )
             or re.search(
-                r"\\b(?:execute|deploy)\\b|\\brun\\s+(?:the\\s+)?(?:tests?|command|script|app|application)\\b",
+                r"\b(?:execute|deploy)\b|\brun\s+(?:the\s+)?(?:tests?|command|script|app|application)\b",
                 normalized_turn,
             )
         ) and not negated_execution
