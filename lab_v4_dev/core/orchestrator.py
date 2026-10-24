@@ -1767,14 +1767,32 @@ SOURCE CODE:
                 if not candidates:
                     return {"status": "success", "intent": intent,
                             "text": "لا توجد جلسات محفوظة حاليًا."}
-                lines = ["=== الجلسات المحفوظة ==="]
+                detailed_summaries = report_mode == "summaries"
+                lines = [
+                    "=== ملخصات الجلسات المحفوظة ==="
+                    if detailed_summaries else "=== الجلسات المحفوظة ==="
+                ]
                 for number, item in enumerate(candidates, 1):
                     report = analyze_session(get_session_by_id(item.get("session_id")) or item)
-                    session_type = str(item.get("session_type") or "work").casefold()
+                    session_type = str(item.get("session_type") or report.get("session_type") or "work").casefold()
                     label = "حوار" if session_type == "dialogue" else "عمل"
-                    lines.append(
-                        f"{number}. [{label}] {report['topic']} — الحالة: {report['status']}"
-                    )
+                    if detailed_summaries:
+                        lines.extend([
+                            "",
+                            f"{number}. [{label}] {report['topic']}",
+                            f"- المعرّف: {report['session_id']}",
+                            f"- الحالة: {report['status']} — {report['current_state']}",
+                            f"- آخر إنجاز مؤكد: {report['last_completed_step']}",
+                            f"- الخطوة التالية: {report['next_step']}",
+                            "- الأعمال المتبقية: " + (
+                                "؛ ".join(report["pending_tasks"][:3])
+                                if report["pending_tasks"] else "لا توجد أعمال متبقية محددة"
+                            ),
+                        ])
+                    else:
+                        lines.append(
+                            f"{number}. [{label}] {report['topic']} — الحالة: {report['status']}"
+                        )
                 lines.append("للاسترجاع اكتب: استرجع الجلسة رقم 1 (أو أي رقم ظاهر).")
                 return {"status": "success", "intent": intent,
                         "text": "\n".join(lines), "sessions": candidates}
