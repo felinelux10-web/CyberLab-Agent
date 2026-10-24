@@ -198,10 +198,35 @@ def test_session_selector_recognizes_all_saved_session_summary_requests():
         "أعطني ملخصات جميع الجلسات المحفوظة",
         "لخص كل الجلسات",
         "اعرض كل الجلسات وملخصاتها",
+        "اكتب ملخصات الجلسات المحفوظة كلها",
+        "اعرض نلخصات الجلسات السابقة كلها",
+        "اعرض ملخصات الجلسة المحفوظة",
     ):
         selected = session_selector(request)
-        assert selected["kind"] == "list"
-        assert selected["report_mode"] == "summaries"
+        assert selected["kind"] == "list", (request, selected)
+        assert selected["report_mode"] == "summaries", (request, selected)
+
+
+def test_explicit_previous_session_request_is_not_downgraded_to_live_history():
+    for request in (
+        "ماذا كنا نقول في اخر جلسة",
+        "تحقق اولا ثم اكتب ملخص ماذا كنا نقول في الجلسة السابقة",
+        "اعرض سياق الجلسة السابقة",
+        "عن اي موضوع كنا نتحدث في الجلسة المحفوظة اكتب تقرير",
+    ):
+        selected = session_selector(request)
+        assert selected["kind"] in {"previous_dialogue", "latest", "list"}, (request, selected)
+
+
+def test_session_selector_routes_saved_session_summary_wording_to_summary_report():
+    for request in (
+        "اعرض ملخصات الجلسة المحفوظة",
+        "اكتب ملخص الجلسة المحفوظة",
+        "قلت لك اكتب ملخصات الجلسات المحفوظة كلها",
+    ):
+        selected = session_selector(request)
+        assert selected["kind"] in {"list", "latest"}, (request, selected)
+        assert selected["report_mode"] in {"summaries", "full"}, (request, selected)
 
 
 def test_orchestrator_returns_semantic_summary_for_each_saved_session(monkeypatch):
