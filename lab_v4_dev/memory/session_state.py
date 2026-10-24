@@ -208,7 +208,11 @@ def session_selector(raw: str) -> dict:
         "اعرض ملخصات الجلسة المحفوظة",
     )):
         report_mode = "summaries"
-    elif any(token in text for token in ("تقرير كامل", "تقريرًا كاملًا", "تقريرا كاملا")):
+    elif any(token in text for token in (
+        "تقرير كامل", "تقريرًا كاملًا", "تقريرا كاملا",
+        "اكتب ملخص الجلسة المحفوظة", "اكتب تقرير الجلسة المحفوظة",
+        "تقرير الجلسة المحفوظة", "ملخص الجلسة المحفوظة",
+    )):
         report_mode = "full"
     id_match = re.search(r"(?:معرّف|معرف|id)\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9_.-]{5,})", raw_text, flags=re.IGNORECASE)
     if id_match and any(token in text for token in ("جلسة", "استعد", "استرجع", "ابحث")):
@@ -238,9 +242,11 @@ def session_selector(raw: str) -> dict:
         "حوارنا السابق", "الحوار السابق", "الدردشة السابقة",
         "ماذا كنا نقول", "ماذا كنا نتحدث", "ما كنا نتحدث",
         "موضوع الجلسة السابقة", "موضوعنا السابق",
+        "سياق الجلسة السابقة", "سياق الجلسه السابقه",
+        "الجلسة المحفوظة", "الجلسه المحفوظه",
     )
     if any(token in text for token in previous_dialogue_markers) and any(
-        token in text for token in ("حوار", "الحوار", "كنا", "موضوع", "نقاش", "نتحدث", "نقول", "استرجع", "استرجاع", "تذكر", "تتذكر", "ملخص")
+        token in text for token in ("حوار", "الحوار", "كنا", "موضوع", "نقاش", "نتحدث", "نقول", "سياق", "تقرير", "استرجع", "استرجاع", "تذكر", "تتذكر", "ملخص")
     ):
         return {"kind": "previous_dialogue", "report_mode": report_mode}
     if any(token in text for token in ("آخر جلسة", "اخر جلسة", "الجلسة الأخيرة", "الجلسه الاخيره")):
