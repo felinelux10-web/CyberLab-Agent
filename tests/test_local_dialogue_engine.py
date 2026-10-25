@@ -99,3 +99,66 @@ def test_technical_request_is_not_stolen_by_social_responder():
     )
 
     assert result is None
+
+def test_explicit_dialogue_continuation_is_local_even_when_parser_says_resume_system():
+    memory = memory_with(
+        {"user": "مرحبا", "assistant": "مرحبًا بك.", "target": ""},
+        {"user": "كيف الحال", "assistant": "أنا جاهز للمحادثة. كيف تسير أمورك أنت؟", "target": ""},
+    )
+
+    result = respond_locally(
+        "اكمل الحوار",
+        {"intent": "resume", "conversation_domain": "system",
+         "conversation_act": "CONVERSATION_CONTINUATION"},
+        memory,
+    )
+
+    assert result is not None
+    assert result["status"] == "success"
+    assert result["source"] == "local_dialogue_engine"
+    assert result["executed"] is False
+    assert "لم نحدد موضوعًا للنقاش بعد" in result["text"]
+
+
+def test_bare_continuation_is_not_stolen_from_a_latest_technical_exchange():
+    memory = memory_with(
+        {"user": "مرحبا", "assistant": "مرحبًا بك.", "target": ""},
+        {"user": "حلل الخطأ", "assistant": "شرح تقني", "target": "Python",
+         "context_kind": "execution", "conversation_domain": "technical"},
+    )
+
+    result = respond_locally(
+        "اكمل",
+        {"intent": "resume", "conversation_domain": "technical",
+         "conversation_act": "CONVERSATION_CONTINUATION"},
+        memory,
+    )
+
+    assert result is None
+
+
+def test_one_word_how_question_gets_local_clarification_instead_of_provider_fallback():
+    result = respond_locally(
+        "كيف",
+        {"intent": "resume", "conversation_domain": "system"},
+        memory_with(),
+    )
+
+    assert result is not None
+    assert result["status"] == "success"
+    assert result["source"] == "local_dialogue_engine"
+    assert "لا تحدد ما الذي تسأل عنه" in result["text"]
+
+
+def test_arabic_wellbeing_variants_are_recognized_locally():
+    for phrase in ("كيف هي الاحوال", "كيف الأحوال", "كيف اخبارك"):
+        result = respond_locally(
+            phrase,
+            {"intent": "personal_chat", "conversation_domain": "social",
+             "conversation_act": "SOCIAL_CHECK_IN"},
+            memory_with(),
+        )
+        assert result is not None, phrase
+        assert result["source"] == "local_dialogue_engine", phrase
+        assert "كيف تسير أمورك أنت" in result["text"], phrase
+
