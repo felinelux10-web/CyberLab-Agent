@@ -700,9 +700,22 @@ def analyze_session(data: dict | None = None) -> dict:
     if saved_dialogue_topic.casefold() in {"حفظ سياق الحوار", "جلسة حوار", "حوار عام"}:
         saved_dialogue_topic = ""
     if is_dialogue_session:
+        # Dialogue snapshots may retain a useful session-level topic even when
+        # the archived exchange list is unavailable (e.g. older snapshots).
+        # Prefer actual dialogue-derived topics, then meaningful saved labels;
+        # never let generic save-command labels mask the real subject.
+        generic_topics = {"حفظ سياق الحوار", "جلسة حوار", "حوار عام", "جلسة غير معنونة"}
+        saved_session_topic = str(session.get("topic") or "").strip()
+        saved_session_goal = str(session.get("active_goal") or "").strip()
+        if saved_session_topic.casefold() in generic_topics:
+            saved_session_topic = ""
+        if saved_session_goal.casefold() in generic_topics:
+            saved_session_goal = ""
         topic = (
             saved_dialogue_topic
             or (structured_topics[-1] if structured_topics else "")
+            or saved_session_topic
+            or saved_session_goal
             or _dialogue_fallback_topic(dialogue)
         )
         goal = topic
