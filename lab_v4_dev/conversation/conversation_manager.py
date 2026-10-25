@@ -58,6 +58,7 @@ from lab_v4_dev.nlu.conversation_semantics import (
     is_style_act,
     normalize_text,
 )
+from lab_v4_dev.conversation.local_dialogue_engine import respond_locally
 
 
 _AGENT_SELF_INTENTS = {
@@ -1709,6 +1710,22 @@ class ConversationManager:
                     context_transition=transition,
                 )
             return local_project_answer
+
+        # Resolve ordinary dialogue locally from semantic act and same-session
+        # memory before attempting a network-backed language model. The local
+        # engine deliberately declines unsupported factual questions.
+        local_dialogue = respond_locally(user_input, parsed, self.dialogue_memory)
+        if local_dialogue is not None:
+            local_dialogue["semantic_request"] = semantic.as_dict()
+            local_dialogue = self._finalize_local_dialogue_result(
+                local_dialogue, mode, parsed, semantic
+            )
+            if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
+                self.dialogue_memory.update(
+                    user_input, local_dialogue, mode=mode, parsed=parsed,
+                    context_transition=transition,
+                )
+            return local_dialogue
 
         local_social = self._local_social_answer(user_input, parsed)
         if local_social is not None:
