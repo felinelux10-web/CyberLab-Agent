@@ -102,6 +102,18 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
         and latest_kind not in {"work", "system", "execution"}
     )
 
+    wellbeing_answer = bool(re.search(
+        r"^(بخير|انا بخير|الحمد لله|تمام|جيد|جيدة|بخير شكرا|بخير شكرا لك|"
+        r"الحمد لله بخير|كل شيء بخير)$",
+        normalized,
+    ))
+    previous_check_in = any(marker in last_assistant_norm for marker in (
+        "كيف حالك", "كيف تسير امورك", "كيف كان يومك", "كيف كان الحال",
+    ))
+    contextual_wellbeing_reply = (
+        wellbeing_answer and previous_check_in and latest_is_dialogue
+    )
+
     # Explicit dialogue continuation is allowed through a parser fallback that
     # labels the phrase as resume/system, but only when the latest recorded turn
     # is actually dialogue-owned. A bare "continue" follows the same rule.
@@ -110,8 +122,14 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
         and latest_is_dialogue
         and bool(exchanges)
     )
-    if not identity_request and not continuation_turn and not vague_how and (
-        domain in _NON_DIALOGUE_DOMAINS or intent not in _SOCIAL_INTENTS
+    if (
+        not identity_request
+        and not continuation_turn
+        and not vague_how
+        and not contextual_wellbeing_reply
+        and (
+            domain in _NON_DIALOGUE_DOMAINS or intent not in _SOCIAL_INTENTS
+        )
     ):
         return None
 
@@ -144,14 +162,7 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
 
     # Acknowledge the user's answer to a previous check-in using the actual turn,
     # rather than replaying a canned greeting or the previous assistant sentence.
-    wellbeing_answer = bool(re.search(
-        r"^(بخير|انا بخير|الحمد لله|تمام|جيد|جيدة|بخير شكرا|بخير شكرا لك|"
-        r"الحمد لله بخير|كل شيء بخير)$", normalized
-    ))
-    previous_check_in = any(marker in last_assistant_norm for marker in (
-        "كيف حالك", "كيف تسير امورك", "كيف كان يومك", "كيف كان الحال",
-    ))
-    if wellbeing_answer and previous_check_in:
+    if contextual_wellbeing_reply:
         return _result(
             "سعيد بأن أمورك بخير. يمكننا مواصلة الحديث بهدوء؛ هل حدث معك شيء اليوم "
             "تود الحديث عنه، أم تفضّل أن نختار موضوعًا للنقاش؟",
