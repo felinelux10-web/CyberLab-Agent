@@ -5,7 +5,7 @@ from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.core.orchestrator import Orchestrator
 from lab_v4_dev.intent.intents import Intent
-from lab_v4_dev.memory.session_state import session_selector
+from lab_v4_dev.memory.session_state import analyze_session, session_selector
 
 
 def test_session_selector_keeps_explicit_number_and_saved_session_list():
@@ -432,3 +432,81 @@ def test_explicit_dialogue_continuation_uses_local_engine_without_provider(monke
     assert result["status"] == "success"
     assert result["source"] == "local_dialogue_engine"
     assert result["executed"] is False
+
+def test_saved_dialogue_report_uses_recorded_dialogue_instead_of_generic_save_label():
+    session = {
+        "session_id": "dialogue-social-001",
+        "session_type": "dialogue",
+        "status": "completed",
+        "active_goal": "حفظ سياق الحوار",
+        "topic": "حفظ سياق الحوار",
+        "dialogue_state": {
+            "session_id": "dialogue-social-001",
+            "last_topic": None,
+            "history": [],
+            "exchange_archive": [
+                {
+                    "user": "مرحبا",
+                    "assistant": "مرحبًا بك.",
+                    "target": "",
+                    "conversation_domain": "social",
+                    "context_kind": "dialogue",
+                    "session_id": "dialogue-social-001",
+                },
+                {
+                    "user": "كيف الحال",
+                    "assistant": "أنا جاهز للمحادثة. كيف تسير أمورك أنت؟",
+                    "target": "",
+                    "conversation_domain": "social",
+                    "context_kind": "dialogue",
+                    "session_id": "dialogue-social-001",
+                },
+            ],
+        },
+    }
+
+    report = analyze_session(session)
+
+    assert report["topic"] == "حوار ودي عام"
+    assert report["active_goal"] == "حوار ودي عام"
+    assert "حفظ سياق الحوار" not in report["topics"]
+    assert report["current_state"] == "جلسة حوار محفوظة؛ لا توجد مهمة تنفيذية مسجلة لهذه الجلسة"
+    assert report["next_step"] == "يمكن استكمال الحوار من آخر تبادل محفوظ"
+
+
+def test_saved_dialogue_report_derives_topic_from_real_user_turn_when_no_target_exists():
+    session = {
+        "session_id": "dialogue-art-002",
+        "session_type": "dialogue",
+        "status": "completed",
+        "active_goal": "حفظ سياق الحوار",
+        "topic": "حفظ سياق الحوار",
+        "dialogue_state": {
+            "session_id": "dialogue-art-002",
+            "last_topic": None,
+            "history": [],
+            "exchange_archive": [
+                {
+                    "user": "دعنا نتحدث عن الفن والرسم والنحت",
+                    "assistant": "يمكننا مناقشة الفن من زوايا متعددة.",
+                    "target": "",
+                    "conversation_domain": "social",
+                    "context_kind": "dialogue",
+                    "session_id": "dialogue-art-002",
+                },
+                {
+                    "user": "حفظ سياق الحوار",
+                    "assistant": "تم حفظ الحوار.",
+                    "target": "",
+                    "conversation_domain": "social",
+                    "context_kind": "dialogue",
+                    "session_id": "dialogue-art-002",
+                },
+            ],
+        },
+    }
+
+    report = analyze_session(session)
+
+    assert report["topic"] == "دعنا نتحدث عن الفن والرسم والنحت"
+    assert report["active_goal"] == "دعنا نتحدث عن الفن والرسم والنحت"
