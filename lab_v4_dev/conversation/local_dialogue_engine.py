@@ -40,12 +40,15 @@ def _recent_exchanges(memory) -> list[dict]:
 
 
 def _result(text: str, *, act: str, target: str = "") -> dict:
+    # Preserve the established source label for the greeting path; the new
+    # engine owns broader conversational turns under its explicit source.
+    source = "local_social" if act == "SOCIAL_OPENING" else "local_dialogue_engine"
     return {
         "status": "success",
         "intent": "personal_chat",
         "text": text,
         "mode": "CHAT",
-        "source": "local_dialogue_engine",
+        "source": source,
         "conversation_act": act,
         "target": target,
         "executed": False,
