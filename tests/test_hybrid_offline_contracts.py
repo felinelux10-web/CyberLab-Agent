@@ -78,6 +78,19 @@ def test_gateway_preserves_connection_failure_and_never_uses_dummy(monkeypatch):
     assert all(provider.calls == 1 for provider in providers.values())
 
 
+def test_no_available_provider_returns_error_instead_of_dummy_fallback(monkeypatch):
+    monkeypatch.setattr(gateway, "route", lambda _text: type("Decision", (), {"provider": "openrouter"})())
+    monkeypatch.setattr(gateway, "get_active_provider", lambda: "openrouter")
+    monkeypatch.setattr(gateway, "get_fallback_provider", lambda: "local")
+    monkeypatch.setattr(gateway, "is_provider_available", lambda _name: False)
+
+    result = gateway.ask("Explain a general concept", routing_text="general question")
+
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "NO_PROVIDER_AVAILABLE"
+    assert "dummy" not in result["provider_chain"]
+
+
 def test_openrouter_maps_connection_exception_to_a_typed_network_error(monkeypatch):
     def raise_connection_error(*_args, **_kwargs):
         raise requests.ConnectionError("offline")
