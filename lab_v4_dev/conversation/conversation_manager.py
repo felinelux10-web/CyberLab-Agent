@@ -92,6 +92,15 @@ class ConversationManager:
     def _is_project_progress_request(text: str) -> bool:
         """Recognize project-state questions by combining intent cues, not a single keyword."""
         normalized = normalize_text(str(text or ""))
+        # Bare "where did we stop?" is normally a dialogue-recall request.
+        # It must not be promoted to a project/work checkpoint merely because
+        # older session state happens to mention a project.
+        explicit_work_scope = any(marker in normalized for marker in (
+            "المشروع", "مشروع", "سياق العمل", "العمل", "ملف", "المهمه",
+            "جلسه محفوظ", "جلسة محفوظ", "project", "work", "task", "file",
+        ))
+        if "اين توقفنا" in normalized and not explicit_work_scope:
+            return False
         status_cues = (
             "اين توقف", "اين وصل", "اين انتهي العمل", "حاله العمل",
             "حاله المشروع", "سياق العمل", "عن سياق العمل", "نفس سياق العمل",
@@ -2441,8 +2450,9 @@ class ConversationManager:
             "ماذا كنا نقول", "ماذا كنا نتحدث", "قبل هذا الموضوع",
             "الموضوع السابق", "الحوار السابق", "النقاش السابق", "الحديث السابق",
             "موضوعنا الاصلي", "ارجع الى الموضوع", "ارجع للحوار", "ارجع الى الحوار",
-            "ارجع للنقاش", "ارجع الى النقاش", "اين توقفنا", "ما اخر موضوع",
-            "ما اخر نقاش", "ما اخر حوار", "لخص الحوار", "ملخص الحوار",
+            "ارجع للنقاش", "ارجع الى النقاش", "اين توقفنا", "اخر موضوع",
+            "اخر نقاش", "اخر حوار", "ما اخر موضوع", "ما اخر نقاش", "ما اخر حوار",
+            "لخص الحوار", "ملخص الحوار",
         )
         if any(marker in normalized for marker in strong_recall_markers):
             return True
@@ -2737,8 +2747,9 @@ class ConversationManager:
             return None
         markers = (
             "موضوعين", "الموضوعين", "موضوعات", "المواضيع", "آخر موضوع",
-            "اخر موضوع", "ماذا شرح", "ماذا شرحت", "شرحنا", "تكلمنا",
-            "ناقشنا", "سجل المحادث", "تاريخ المحادث",
+            "اخر موضوع", "اين توقفنا", "آخر حوار", "اخر حوار",
+            "آخر نقاش", "اخر نقاش", "ماذا شرح", "ماذا شرحت", "شرحنا",
+            "تكلمنا", "ناقشنا", "سجل المحادث", "تاريخ المحادث",
         )
         if (
             history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
