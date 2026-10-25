@@ -656,7 +656,7 @@ def _dialogue_fallback_topic(dialogue: dict) -> str:
 
     def normalize(value):
         value = str(value or "").casefold()
-        value = re.sub(r"[\\u064b-\\u065f\\u0670\\u0640]", "", value)
+        value = re.sub(r"[\u064b-\u065f\u0670\u0640]", "", value)
         value = value.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ى", "ي")
         return " ".join(value.split()).strip(" .،؛:!?؟")
 
