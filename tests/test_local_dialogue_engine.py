@@ -106,18 +106,19 @@ def test_explicit_dialogue_continuation_is_local_even_when_parser_says_resume_sy
         {"user": "كيف الحال", "assistant": "أنا جاهز للمحادثة. كيف تسير أمورك أنت؟", "target": ""},
     )
 
-    result = respond_locally(
-        "اكمل الحوار",
-        {"intent": "resume", "conversation_domain": "system",
-         "conversation_act": "CONVERSATION_CONTINUATION"},
-        memory,
-    )
+    for phrase in ("اكمل الحوار", "استكمال الحوار"):
+        result = respond_locally(
+            phrase,
+            {"intent": "resume", "conversation_domain": "system",
+             "conversation_act": "CONVERSATION_CONTINUATION"},
+            memory,
+        )
 
-    assert result is not None
-    assert result["status"] == "success"
-    assert result["source"] == "local_dialogue_engine"
-    assert result["executed"] is False
-    assert "لم نحدد موضوعًا للنقاش بعد" in result["text"]
+        assert result is not None, phrase
+        assert result["status"] == "success", phrase
+        assert result["source"] == "local_dialogue_engine", phrase
+        assert result["executed"] is False, phrase
+        assert "لم نحدد موضوعًا للنقاش بعد" in result["text"], phrase
 
 
 def test_bare_continuation_is_not_stolen_from_a_latest_technical_exchange():
