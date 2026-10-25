@@ -27,7 +27,7 @@ def test_casual_opening_is_handled_locally_without_fixed_greeting_reply():
     assert result["source"] == "local_dialogue_engine"
     assert result["executed"] is False
     assert "بكل سرور" in result["text"]
-    assert "موضوعًا" in result["text"]
+    assert "أي موضوع يهمك" in result["text"]
 
 
 def test_wellbeing_acknowledgement_uses_prior_dialogue_context():
