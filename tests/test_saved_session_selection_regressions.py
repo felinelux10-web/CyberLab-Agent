@@ -333,3 +333,40 @@ def test_orchestrator_returns_semantic_summary_for_each_saved_session(monkeypatc
     assert "إصلاح الاختبارات" in result["text"]
     assert "تشغيل الاختبارات المستهدفة" in result["text"]
     assert len(result["sessions"]) == 2
+
+def test_bare_dialogue_progress_phrase_is_not_classified_as_latest_saved_session():
+    assert session_selector("أين توقفنا")["kind"] == "none"
+    assert session_selector("أين توقفنا في الجلسة المحفوظة")["kind"] == "latest"
+
+
+def test_bare_dialogue_progress_phrase_uses_current_dialogue_memory_offline(monkeypatch):
+    calls = []
+    context = ContextStore()
+    orchestrator = SimpleNamespace(
+        context=context,
+        handle=lambda *args, **kwargs: calls.append((args, kwargs)) or {
+            "status": "success", "text": "unexpected saved-session/work report"
+        },
+    )
+    memory = DialogueMemory(context)
+    memory.state.exchange_archive = [{
+        "user": "مرحبا",
+        "assistant": "مرحبًا بك. كيف يمكنني مساعدتك؟",
+        "intent": "personal_chat",
+        "target": "",
+        "conversation_domain": "social",
+        "conversation_act": "SOCIAL_OPENING",
+        "context_kind": "dialogue",
+        "session_id": memory.state.session_id,
+    }]
+    manager = ConversationManager(orchestrator, memory)
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+
+    result = manager.process("أين توقفنا")
+
+    assert result["source"] == "dialogue_memory"
+    assert "unexpected saved-session/work report" not in result["text"]
+    assert calls == []
