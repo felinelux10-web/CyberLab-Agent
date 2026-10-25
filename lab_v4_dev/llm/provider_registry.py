@@ -8,9 +8,9 @@ from lab_v4_dev.llm.dummy_provider import provider as dummy_provider
 from lab_v4_dev.llm.gemini_provider import provider as gemini_provider
 from lab_v4_dev.llm.openrouter_provider import provider as openrouter_provider
 REGISTRY = {
-    # These imports implement the canonical BaseProvider.execute(LLMRequest)
-    # contract. Wrapping them in LegacyProviderAdapter is incorrect: that
-    # adapter invokes .ask(), which these providers do not implement.
+    # These are canonical BaseProvider implementations. Register them directly
+    # so the gateway has one clear execute(LLMRequest) boundary; the legacy
+    # adapter is reserved for providers that only implement the old ask API.
     GROQ: groq_provider,
     DUMMY: dummy_provider,
     GEMINI: gemini_provider,
