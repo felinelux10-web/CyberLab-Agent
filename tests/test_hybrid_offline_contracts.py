@@ -6,7 +6,9 @@ from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.llm.contracts import LLMError, LLMRequest, LLMResponse
+from lab_v4_dev.llm.base_provider import BaseProvider
 from lab_v4_dev.llm.openrouter_provider import OpenRouterProvider
+from lab_v4_dev.llm.provider_adapter import LegacyProviderAdapter
 from lab_v4_dev.llm.provider_registry import get_provider, is_provider_available
 
 
@@ -42,8 +44,9 @@ def test_registry_exposes_canonical_execute_providers_without_legacy_adapter():
     for name in ("openrouter", "gemini", "groq", "dummy"):
         provider = get_provider(name)
         assert is_provider_available(name)
+        assert isinstance(provider, BaseProvider)
+        assert not isinstance(provider, LegacyProviderAdapter)
         assert callable(getattr(provider, "execute", None))
-        assert not callable(getattr(provider, "ask", None))
 
 
 def test_dummy_is_not_part_of_the_normal_provider_chain():
