@@ -162,3 +162,20 @@ def test_arabic_wellbeing_variants_are_recognized_locally():
         assert result["source"] == "local_dialogue_engine", phrase
         assert "كيف تسير أمورك أنت" in result["text"], phrase
 
+def test_wellbeing_reply_bypasses_system_resume_fallback_when_prior_turn_asked_about_wellbeing():
+    memory = memory_with({
+        "user": "كيف الحال",
+        "assistant": "أنا جاهز للمحادثة. كيف تسير أمورك أنت؟",
+        "target": "",
+    })
+
+    result = respond_locally(
+        "بخير شكرا",
+        {"intent": "resume", "conversation_domain": "system",
+         "conversation_act": "CONVERSATION_CONTINUATION"},
+        memory,
+    )
+
+    assert result is not None
+    assert result["status"] == "success"
+    assert "سعيد بأن أمورك بخير" in result["text"]
