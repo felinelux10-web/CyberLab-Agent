@@ -29,7 +29,12 @@ def ask(prompt: str, system: str = None, max_tokens: int = 800, model: str = Non
     model = model or GROQ_MODEL
     key = _load_key()
     if not key:
-        return {"status": "error", "message": "GROQ_API_KEY not found"}
+        return {
+            "status": "error",
+            "code": "PROVIDER_CONFIGURATION_ERROR",
+            "retryable": False,
+            "message": "Groq API key is not configured",
+        }
 
     messages = []
     if system:
