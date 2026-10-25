@@ -212,12 +212,16 @@ class DialogueMemory:
         # Persist that resolved target rather than treating "return to the
         # previous discussion" as a new topic or leaving the intervening branch active.
         turn_target = (
-            parsed.get("target")
-            or result.get("target")
-            or (
-                semantic.get("target")
-                if getattr(context_transition, "value", context_transition) == "restore"
-                else None
+            (result.get("target") or None)
+            if local_dialogue_result
+            else (
+                parsed.get("target")
+                or result.get("target")
+                or (
+                    semantic.get("target")
+                    if getattr(context_transition, "value", context_transition) == "restore"
+                    else None
+                )
             )
         )
         turn_confidence = parsed.get("confidence", result.get("confidence", 0.0))
