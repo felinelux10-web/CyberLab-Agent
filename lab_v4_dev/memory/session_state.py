@@ -616,6 +616,8 @@ def _structured_topics(dialogue: dict) -> list[str]:
                 continue
             for field in ("target", "topic", "entity", "subject"):
                 value = str(record.get(field) or "").strip()
+                if value.casefold() in {"حفظ سياق الحوار", "جلسة حوار", "حوار عام"}:
+                    continue
                 if value and value not in topics:
                     topics.append(value)
     return topics
@@ -691,7 +693,7 @@ def analyze_session(data: dict | None = None) -> dict:
     session_type = str(session.get("session_type") or "").strip()
     is_dialogue_session = (
         session_type.casefold() == "dialogue"
-        or bool(dialogue and not context)
+        or (not session_type and bool(dialogue and not context))
     )
     structured_topics = _structured_topics(dialogue)
     saved_dialogue_topic = str(dialogue.get("last_topic") or "").strip()
