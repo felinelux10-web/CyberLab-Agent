@@ -20,7 +20,10 @@ from lab_v4_dev.llm.contracts import (
     LLMError,
 )
 
-CHAIN = ["openrouter", "gemini", "groq", "local", "dummy"]
+# Only real providers belong in the normal runtime chain. DummyProvider is
+# available for explicit tests/development, but must never consume a user turn
+# or masquerade as an offline language model.
+CHAIN = ["openrouter", "gemini", "groq", "local"]
 
 privacy = PrivacyEngine()
 
