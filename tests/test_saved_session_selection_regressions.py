@@ -370,3 +370,64 @@ def test_bare_dialogue_progress_phrase_uses_current_dialogue_memory_offline(monk
     assert result["source"] == "dialogue_memory"
     assert "unexpected saved-session/work report" not in result["text"]
     assert calls == []
+
+def test_local_wellbeing_reply_is_persisted_as_dialogue_despite_resume_system_parse(monkeypatch):
+    context = ContextStore()
+    orchestrator = SimpleNamespace(context=context, handle=lambda *args, **kwargs: {
+        "status": "success", "text": "unexpected orchestrator response"
+    })
+    memory = DialogueMemory(context)
+    memory.state.exchange_archive = [{
+        "user": "كيف الحال",
+        "assistant": "أنا جاهز للمحادثة. كيف تسير أمورك أنت؟",
+        "intent": "personal_chat",
+        "target": "",
+        "conversation_domain": "social",
+        "conversation_act": "SOCIAL_CHECK_IN",
+        "context_kind": "dialogue",
+        "session_id": memory.state.session_id,
+    }]
+    manager = ConversationManager(orchestrator, memory)
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+
+    result = manager.process("بخير شكرا")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_dialogue_engine"
+    assert "سعيد بأن أمورك بخير" in result["text"]
+    latest = memory.state.exchange_archive[-1]
+    assert latest["user"] == "بخير شكرا"
+    assert latest["context_kind"] == "dialogue"
+    assert latest["conversation_domain"] == "social"
+
+
+def test_explicit_dialogue_continuation_uses_local_engine_without_provider(monkeypatch):
+    context = ContextStore()
+    orchestrator = SimpleNamespace(context=context, handle=lambda *args, **kwargs: {
+        "status": "success", "text": "unexpected orchestrator response"
+    })
+    memory = DialogueMemory(context)
+    memory.state.exchange_archive = [{
+        "user": "كيف الحال",
+        "assistant": "أنا جاهز للمحادثة. كيف تسير أمورك أنت؟",
+        "intent": "personal_chat",
+        "target": "",
+        "conversation_domain": "social",
+        "conversation_act": "SOCIAL_CHECK_IN",
+        "context_kind": "dialogue",
+        "session_id": memory.state.session_id,
+    }]
+    manager = ConversationManager(orchestrator, memory)
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+
+    result = manager.process("اكمل الحوار")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_dialogue_engine"
+    assert result["executed"] is False
