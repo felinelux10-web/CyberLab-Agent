@@ -27,7 +27,11 @@ def _recent_exchanges(memory) -> list[dict]:
     session_id = str(getattr(state, "session_id", "") or "")
     result = []
     for item in archive:
-        if not isinstance(item, dict) or item.get("recall_only"):
+        if (
+            not isinstance(item, dict)
+            or item.get("recall_only")
+            or item.get("state_boundary_only")
+        ):
             continue
         if session_id and str(item.get("session_id") or "") != session_id:
             continue
