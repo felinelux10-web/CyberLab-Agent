@@ -402,6 +402,7 @@ def test_local_wellbeing_reply_is_persisted_as_dialogue_despite_resume_system_pa
     assert latest["user"] == "بخير شكرا"
     assert latest["context_kind"] == "dialogue"
     assert latest["conversation_domain"] == "social"
+    assert not latest["target"]
 
 
 def test_explicit_dialogue_continuation_uses_local_engine_without_provider(monkeypatch):
