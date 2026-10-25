@@ -426,7 +426,7 @@ def test_explicit_dialogue_continuation_uses_local_engine_without_provider(monke
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
     )
 
-    result = manager.process("اكمل الحوار")
+    result = manager.process("استكمال الحوار")
 
     assert result["status"] == "success"
     assert result["source"] == "local_dialogue_engine"
