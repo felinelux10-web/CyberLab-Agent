@@ -68,10 +68,13 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
         r"^(من انت|من تكون|ما اسمك|من هو cyberlab agent)$", normalized
     ))
     explicit_continuation = bool(re.fullmatch(
-        r"(?:اكمل|استكمل|تابع|واصل|نكمل) (?:الحوار|الحديث|النقاش|المحادثه)",
+        r"(?:اكمل|استكمل|استكمال|تابع|متابعة|واصل|مواصلة|نكمل) "
+        r"(?:الحوار|الحديث|النقاش|المحادثه|المحادثة)",
         normalized,
     ))
-    bare_continuation = normalized in {"اكمل", "استكمل", "تابع", "واصل", "نكمل"}
+    bare_continuation = normalized in {
+        "اكمل", "استكمل", "استكمال", "تابع", "متابعة", "واصل", "مواصلة", "نكمل"
+    }
     vague_how = normalized == "كيف"
 
     exchanges = _recent_exchanges(dialogue_memory)
