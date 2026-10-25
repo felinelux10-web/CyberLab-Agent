@@ -62,7 +62,12 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
     act = str(parsed.get("conversation_act") or "NONE").upper()
 
     # Never let a social fallback steal an operational or clearly technical turn.
-    if domain in _NON_DIALOGUE_DOMAINS or intent not in _SOCIAL_INTENTS:
+    identity_request = bool(re.search(
+        r"^(من انت|من تكون|ما اسمك|من هو cyberlab agent)$", normalized
+    ))
+    if not identity_request and (
+        domain in _NON_DIALOGUE_DOMAINS or intent not in _SOCIAL_INTENTS
+    ):
         return None
 
     exchanges = _recent_exchanges(dialogue_memory)
