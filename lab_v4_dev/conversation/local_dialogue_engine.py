@@ -64,14 +64,15 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
     domain = str(parsed.get("conversation_domain") or "general").casefold()
     act = str(parsed.get("conversation_act") or "NONE").upper()
 
-    # Never let a social fallback steal an operational or clearly technical turn.
     identity_request = bool(re.search(
         r"^(من انت|من تكون|ما اسمك|من هو cyberlab agent)$", normalized
     ))
-    if not identity_request and (
-        domain in _NON_DIALOGUE_DOMAINS or intent not in _SOCIAL_INTENTS
-    ):
-        return None
+    explicit_continuation = bool(re.fullmatch(
+        r"(?:اكمل|استكمل|تابع|واصل|نكمل) (?:الحوار|الحديث|النقاش|المحادثه)",
+        normalized,
+    ))
+    bare_continuation = normalized in {"اكمل", "استكمل", "تابع", "واصل", "نكمل"}
+    vague_how = normalized == "كيف"
 
     exchanges = _recent_exchanges(dialogue_memory)
     last = exchanges[-1] if exchanges else {}
@@ -79,6 +80,40 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
     last_assistant = str(last.get("assistant") or "").strip()
     last_user_norm = _norm(last_user)
     last_assistant_norm = _norm(last_assistant)
+
+    # A previous social turn is not enough if the latest recorded exchange
+    # belongs to work/system/technical routing. Continuation ownership must be
+    # based on the latest real exchange, not any older eligible item.
+    state = getattr(dialogue_memory, "state", None) if dialogue_memory else None
+    archive = getattr(state, "exchange_archive", []) or []
+    session_id = str(getattr(state, "session_id", "") or "")
+    latest_record = next((
+        item for item in reversed(archive)
+        if isinstance(item, dict)
+        and not item.get("recall_only")
+        and not item.get("state_boundary_only")
+        and (not session_id or str(item.get("session_id") or "") == session_id)
+    ), {})
+    latest_domain = str(latest_record.get("conversation_domain") or "").casefold()
+    latest_kind = str(latest_record.get("context_kind") or "").casefold()
+    latest_is_dialogue = bool(
+        latest_record
+        and latest_domain not in _NON_DIALOGUE_DOMAINS
+        and latest_kind not in {"work", "system", "execution"}
+    )
+
+    # Explicit dialogue continuation is allowed through a parser fallback that
+    # labels the phrase as resume/system, but only when the latest recorded turn
+    # is actually dialogue-owned. A bare "continue" follows the same rule.
+    continuation_turn = (
+        (explicit_continuation or bare_continuation)
+        and latest_is_dialogue
+        and bool(exchanges)
+    )
+    if not identity_request and not continuation_turn and not vague_how and (
+        domain in _NON_DIALOGUE_DOMAINS or intent not in _SOCIAL_INTENTS
+    ):
+        return None
 
     if re.search(r"^(من انت|من تكون|ما اسمك|من هو cyberlab agent)$", normalized):
         return _result(
@@ -96,7 +131,11 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
             act="SOCIAL_OPENING",
         )
 
-    if re.search(r"^(كيفك|كيف الحال|كيف حالك|ما اخبارك|كيف تسير امورك)$", normalized):
+    if re.search(
+        r"^(كيفك|كيف الحال|كيف هي الاحوال|كيف الاحوال|كيف حالك|كيف اخبارك|"
+        r"ما اخبارك|ما الاخبار|كيف تسير امورك)$",
+        normalized,
+    ):
         return _result(
             "أنا جاهز للمحادثة ومساعدتك قدر ما تسمح به المعلومات المتاحة محليًا. "
             "كيف تسير أمورك أنت؟",
@@ -117,6 +156,57 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
             "سعيد بأن أمورك بخير. يمكننا مواصلة الحديث بهدوء؛ هل حدث معك شيء اليوم "
             "تود الحديث عنه، أم تفضّل أن نختار موضوعًا للنقاش؟",
             act="SOCIAL_ACKNOWLEDGEMENT",
+        )
+
+    if vague_how:
+        return _result(
+            "كلمة «كيف؟» وحدها لا تحدد ما الذي تسأل عنه. هل تقصد السؤال عن الحال، "
+            "أم تريد معرفة كيفية حدوث شيء محدد؟",
+            act="CLARIFICATION_REQUEST",
+        )
+
+    if continuation_turn:
+        if not exchanges:
+            return _result(
+                "لا يظهر في ذاكرة هذه الجلسة حوار سابق كافٍ لاستكماله. "
+                "اذكر الموضوع الذي تريد العودة إليه.",
+                act="CONVERSATION_CONTINUATION",
+            )
+        named_topic = next(
+            (str(item.get("target") or "").strip()
+             for item in reversed(exchanges)
+             if str(item.get("target") or "").strip()),
+            "",
+        )
+        if named_topic:
+            return _result(
+                f"آخر موضوع حواري محفوظ هو «{named_topic}». "
+                "لا يظهر في السجل ما يكفي لتحديد نقطة شرح أدق دون افتراضات. "
+                "أي جانب من الموضوع تريد أن نتابع؟",
+                act="CONVERSATION_CONTINUATION",
+                target=named_topic,
+            )
+        social_only = all(
+            _norm(item.get("user") or "") in {
+                "مرحبا", "اهلا", "السلام عليكم", "كيف الحال", "كيفك",
+                "كيف حالك", "كيف هي الاحوال", "كيف الاحوال", "بخير",
+                "بخير شكرا", "انا بخير", "الحمد لله", "تمام",
+            }
+            for item in exchanges[-4:]
+        )
+        if social_only:
+            return _result(
+                "حتى الآن تبادلنا التحية وتحدثنا عن الحال، ولم نحدد موضوعًا للنقاش بعد. "
+                "يمكننا الحديث عن الفن أو الحياة اليومية أو أي موضوع تختاره.",
+                act="CONVERSATION_CONTINUATION",
+            )
+        excerpt = last_assistant[:220].strip()
+        return _result(
+            "سأتابع من آخر نقطة مسجلة في الحوار: "
+            + (f"«{excerpt}»." if excerpt else "لم تُحفظ إجابة سابقة واضحة.")
+            + " ما الجانب الذي تريد التوسع فيه؟",
+            act="CONVERSATION_CONTINUATION",
+            target=str(last.get("target") or ""),
         )
 
     if re.search(r"^(لنتحدث قليلا|لنتحدث قليلا|دعنا نتحدث|اريد ان اتحدث|"
