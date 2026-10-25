@@ -621,6 +621,59 @@ def _structured_topics(dialogue: dict) -> list[str]:
     return topics
 
 
+def _dialogue_fallback_topic(dialogue: dict) -> str:
+    """Derive a useful topic label from actual saved user turns, not save commands."""
+    records = dialogue.get("exchange_archive") or []
+    user_texts = []
+    for item in records:
+        if not isinstance(item, dict) or item.get("recall_only") or item.get("state_boundary_only"):
+            continue
+        if str(item.get("context_kind") or "").casefold() in {"work", "system", "execution"}:
+            continue
+        if str(item.get("conversation_domain") or "").casefold() in {"work", "system", "execution"}:
+            continue
+        user_text = str(item.get("user") or "").strip()
+        if user_text:
+            user_texts.append(user_text)
+    if not user_texts:
+        user_texts = [
+            str(item.get("content") or "").strip()
+            for item in (dialogue.get("history") or [])
+            if isinstance(item, dict)
+            and item.get("role") == "user"
+            and str(item.get("content") or "").strip()
+            and str(item.get("context_kind") or "").casefold() not in {"work", "system", "execution"}
+        ]
+
+    controls = {
+        "مرحبا", "اهلا", "السلام عليكم", "صباح الخير", "مساء الخير",
+        "كيف الحال", "كيف حالك", "كيفك", "كيف هي الاحوال", "كيف الاحوال",
+        "بخير", "بخير شكرا", "انا بخير", "الحمد لله", "تمام",
+        "حفظ سياق الحوار", "استرجاع الحوار", "استرجع الحوار",
+        "ملخص الحوار", "ملخص الجلسة المحفوظة", "ماذا كنا نقول",
+        "اين توقفنا", "اكمل الحوار", "استكمال الحوار", "اكمل",
+    }
+
+    def normalize(value):
+        value = str(value or "").casefold()
+        value = re.sub(r"[\\u064b-\\u065f\\u0670\\u0640]", "", value)
+        value = value.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ى", "ي")
+        return " ".join(value.split()).strip(" .،؛:!?؟")
+
+    substantive = [
+        text for text in user_texts
+        if normalize(text) not in controls
+        and not any(marker in normalize(text) for marker in (
+            "حفظ سياق الحوار", "استرجاع الحوار", "ملخص الجلسة المحفوظة",
+        ))
+    ]
+    if substantive:
+        return substantive[-1][:120]
+    if user_texts:
+        return "حوار ودي عام"
+    return "حوار محفوظ دون تبادلات قابلة للاسترجاع"
+
+
 def analyze_session(data: dict | None = None) -> dict:
     """Derive a grounded semantic report without exposing transcript content."""
     session = data if isinstance(data, dict) else load_session()
@@ -635,11 +688,27 @@ def analyze_session(data: dict | None = None) -> dict:
     if not isinstance(result, dict):
         result = {}
 
+    session_type = str(session.get("session_type") or "").strip()
+    is_dialogue_session = (
+        session_type.casefold() == "dialogue"
+        or bool(dialogue and not context)
+    )
     structured_topics = _structured_topics(dialogue)
-    topic = (dialogue.get("last_topic") or context.get("subject")
-             or context.get("current_subject") or (structured_topics[-1] if structured_topics else None)
-             or session.get("topic") or session.get("active_goal"))
-    goal = session.get("active_goal") or context.get("current_subject")
+    saved_dialogue_topic = str(dialogue.get("last_topic") or "").strip()
+    if saved_dialogue_topic.casefold() in {"حفظ سياق الحوار", "جلسة حوار", "حوار عام"}:
+        saved_dialogue_topic = ""
+    if is_dialogue_session:
+        topic = (
+            saved_dialogue_topic
+            or (structured_topics[-1] if structured_topics else "")
+            or _dialogue_fallback_topic(dialogue)
+        )
+        goal = topic
+    else:
+        topic = (dialogue.get("last_topic") or context.get("subject")
+                 or context.get("current_subject") or (structured_topics[-1] if structured_topics else None)
+                 or session.get("topic") or session.get("active_goal"))
+        goal = session.get("active_goal") or context.get("current_subject")
     # Keep descriptive work history, but do not treat it as proof.
     completed = _as_clean_list(session.get("completed_work"))
     confirmed = _evidence_labels(session.get("confirmed_achievements"))
@@ -666,7 +735,13 @@ def analyze_session(data: dict | None = None) -> dict:
     pending = _as_clean_list(session.get("pending_tasks"))
     if not pending:
         pending = _as_clean_list(session.get("open_questions"))
-    next_step = str(session.get("next_step") or (pending[0] if pending else "غير محدد من البيانات المتاحة")).strip()
+    next_step = str(
+        session.get("next_step")
+        or (pending[0] if pending else (
+            "يمكن استكمال الحوار من آخر تبادل محفوظ"
+            if is_dialogue_session else "غير محدد من البيانات المتاحة"
+        ))
+    ).strip()
     if next_step != "غير محدد من البيانات المتاحة" and next_step not in pending:
         pending.insert(0, next_step)
     files = _as_clean_list(session.get("relevant_files"))
@@ -678,19 +753,23 @@ def analyze_session(data: dict | None = None) -> dict:
     topics = structured_topics
     for item in [dialogue.get("last_topic"), context.get("subject"), context.get("current_subject"), topic]:
         item = str(item or "").strip()
+        if item.casefold() in {"حفظ سياق الحوار", "جلسة حوار", "حوار عام"}:
+            continue
         if item and item not in topics:
             topics.append(item)
-    session_type = str(session.get("session_type") or "").strip()
     if not session_type:
         intent = str(context.get("last_intent") or "").casefold()
         session_type = "educational" if intent in {"cyber_explain", "analyze_code"} and not files else "programming" if files or intent in {"modify_code", "generate_code", "run_tests"} else "planning"
-    current_state = {
-        "failed": "فشلت آخر عملية مثبتة",
-        "paused": "المهمة متوقفة عند الخطوة التالية",
-        "completed": "المهمة مكتملة حسب الأدلة المحفوظة",
-        "running": "المهمة قيد التنفيذ",
-        "active": "المهمة نشطة دون نقطة توقف تنفيذية",
-    }.get(status, "غير محدد من البيانات المتاحة")
+    current_state = (
+        "جلسة حوار محفوظة؛ لا توجد مهمة تنفيذية مسجلة لهذه الجلسة"
+        if is_dialogue_session else {
+            "failed": "فشلت آخر عملية مثبتة",
+            "paused": "المهمة متوقفة عند الخطوة التالية",
+            "completed": "المهمة مكتملة حسب الأدلة المحفوظة",
+            "running": "المهمة قيد التنفيذ",
+            "active": "المهمة نشطة دون نقطة توقف تنفيذية",
+        }.get(status, "غير محدد من البيانات المتاحة")
+    )
     return {
         "session_id": session.get("session_id") or "غير محدد من البيانات المتاحة",
         "topic": str(topic or "غير محدد من البيانات المتاحة"),
