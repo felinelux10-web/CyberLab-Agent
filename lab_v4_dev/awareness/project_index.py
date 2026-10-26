@@ -8,8 +8,10 @@ import ast
 import os as _os
 from lab_v4_dev.core.project_context import get_active_project_root, project_index_dir
 
-def _index_file():
-    return _os.path.join(project_index_dir(get_active_project_root()), "project_index.json")
+def _index_file(base_dir: str = None):
+    """مسار فهرس المشروع المحدد، لا مسار المشروع النشط ضمنياً."""
+    root = base_dir or get_active_project_root()
+    return _os.path.join(project_index_dir(root), "project_index.json")
 
 # خريطة الملفات المعروفة
 KNOWN_ROLES = {
@@ -69,13 +71,14 @@ def _extract_functions(path: str) -> list:
 
 def save_index(base_dir: str = None) -> str:
     if base_dir is None:
-        from lab_v4_dev.core.project_context import get_active_project_root
         base_dir = get_active_project_root()
+    base_dir = os.path.abspath(os.path.expanduser(os.fspath(base_dir)))
     index = build_index(base_dir)
-    os.makedirs(os.path.dirname(_index_file()), exist_ok=True)
-    with open(_index_file(), "w", encoding="utf-8") as f:
+    path = _index_file(base_dir)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(index, f, ensure_ascii=False, indent=2)
-    return _index_file()
+    return path
 
 # ترجمة الاستعلامات العربية
 ARABIC_SEARCH = {
