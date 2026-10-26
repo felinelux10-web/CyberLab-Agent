@@ -1,4 +1,7 @@
+import lab_v4_dev.conversation.conversation_manager as manager_module
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
+from lab_v4_dev.context.context_store import ContextStore
+from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.conversation.local_response_engine import answer_local_social
 from lab_v4_dev.nlu.conversation_semantics import classify_conversation_semantics
 
@@ -44,3 +47,32 @@ def test_open_ended_social_phrase_is_routed_locally_from_semantic_classification
     assert result is not None
     assert result["source"] == "local_social_engine"
     assert "اختر موضوعًا" in result["text"]
+
+
+class _LocalOnlyOrchestrator:
+    def __init__(self):
+        self.context = ContextStore()
+        self.calls = []
+
+    def handle(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        raise AssertionError("social dialogue must not reach the execution owner")
+
+
+def test_open_ended_social_turn_does_not_call_gateway_or_orchestrator(monkeypatch):
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("classified social dialogue must be answered locally")
+        ),
+    )
+    orchestrator = _LocalOnlyOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+
+    result = manager.process("لا أعرف ماذا أقول")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_social_engine"
+    assert "اختر موضوعًا" in result["text"]
+    assert orchestrator.calls == []
