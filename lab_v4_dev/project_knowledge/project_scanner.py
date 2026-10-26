@@ -18,7 +18,7 @@ from lab_v4_dev.project_knowledge.analyzer_registry import supports_extension
 SKIP_DIRS = {
     "stable", "snapshots", "__pycache__", ".git",
     "venv", "cache", ".venv", "node_modules", "dist", "build",
-    "project_knowledge",
+    "project_knowledge", "project_indices",
 }
 
 OUTPUT_FILE = os.path.join(os.path.dirname(__file__), "inventory.json")
