@@ -336,3 +336,30 @@ def test_orchestrator_returns_semantic_summary_for_each_saved_session(monkeypatc
     assert "إصلاح الاختبارات" in result["text"]
     assert "تشغيل الاختبارات المستهدفة" in result["text"]
     assert len(result["sessions"]) == 2
+
+
+def test_dialogue_restore_summary_uses_saved_topic_and_stop_point():
+    from lab_v4_dev.memory.session_state import build_session_restore_summary
+
+    sid = "dialogue-summary-test"
+    saved = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "last_topic": "النحت البارز",
+            "exchange_archive": [
+                {
+                    "session_id": sid,
+                    "user": "ما الفرق بين النحت البارز والغائر؟",
+                    "assistant": "الفرق هو اتجاه بروز الشكل عن السطح.",
+                    "target": "النحت البارز",
+                }
+            ],
+        },
+    }
+    summary = build_session_restore_summary(saved)
+    assert "ملخص الحوار المحفوظ" in summary
+    assert "النحت البارز" in summary
+    assert "نقطة التوقف" in summary
+    assert "ما الفرق بين النحت البارز والغائر؟" not in summary
