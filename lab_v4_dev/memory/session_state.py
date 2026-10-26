@@ -364,10 +364,20 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
     })
     data.setdefault("created_at", data.get("timestamp"))
     data["title"] = active_goal or data.get("title") or "جلسة عمل"
-    # This record is the canonical recoverable work checkpoint. Dialogue is
-    # persisted independently and cannot change the work session's type.
+    # Retain a bounded dialogue snapshot for callers that checkpoint both
+    # layers together. The recent-session archive remains compact and strips it.
+    if isinstance(dialogue_state, dict):
+        bounded_dialogue = dict(dialogue_state)
+        bounded_dialogue["history"] = [
+            item for item in (dialogue_state.get("history") or [])
+            if isinstance(item, dict)
+        ][-8:]
+        bounded_dialogue["exchange_archive"] = [
+            item for item in (dialogue_state.get("exchange_archive") or [])
+            if isinstance(item, dict)
+        ][-32:]
+        data["dialogue_state"] = bounded_dialogue
     data["session_type"] = "work"
-    data.pop("dialogue_state", None)
     previous_status = str(data.get("status") or "").casefold()
     last_result = (context_state or data.get("context_state") or {}).get("last_result", {})
     last_result_status = str(last_result.get("status") if isinstance(last_result, dict) else "").casefold()
@@ -381,8 +391,7 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
         data["status"] = "completed" if not data.get("next_step") else "paused"
     data.setdefault("project", project_root or data.get("project_root", ""))
     data.setdefault("summary", "")
-    # Do not mix dialogue history into the canonical work checkpoint.
-    data.pop("dialogue_state", None)
+    # Keep dialogue state bounded while preserving the work checkpoint identity.
     if context_state is not None:
         data["context_state"] = context_state
     if project_root:
