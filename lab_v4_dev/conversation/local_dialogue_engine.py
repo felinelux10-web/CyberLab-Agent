@@ -213,7 +213,7 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
     greeting_act = bool(re.fullmatch(
         r"(?:مرحبا|اهلا|اهلا وسهلا|السلام عليكم|السلام عليكم ورحمة الله وبركاته|"
         r"صباح الخير|صباح النور|مساء الخير|مساء النور|يا هلا|اهلين|تحية طيبة)"
-        r"(?: يا [\\u0600-\\u06FF]+)?",
+        r"(?: يا [\u0600-\u06FF]+)?",
         normalized,
     ))
 
