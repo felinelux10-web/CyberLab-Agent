@@ -111,7 +111,8 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
 
     wellbeing_answer = bool(re.search(
         r"^(بخير|انا بخير|الحمد لله|تمام|جيد|جيدة|بخير شكرا|بخير شكرا لك|"
-        r"الحمد لله بخير|كل شيء بخير)$",
+        r"بخير الحمد لله|انا بخير الحمد لله|الحمد لله بخير|كل شيء بخير|"
+        r"كل الامور بخير|انا بخير شكرا|بخير وانت)$",
         normalized,
     ))
     previous_check_in = any(marker in last_assistant_norm for marker in (
@@ -129,11 +130,94 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
         and latest_is_dialogue
         and bool(exchanges)
     )
+    # Explicit, low-risk social acts are recognized by the local dialogue
+    # layer even when the intent parser falls back to a system/unknown label.
+    # Exact normalized phrases are used here so operational requests are not
+    # captured merely because they contain a friendly word.
+    social_act = ""
+    social_phrases = {
+        "SOCIAL_GRATITUDE": {
+            "شكرا", "شكرا لك", "شكرا جزيلا", "اشكرك", "ممتن لك",
+            "انا ممتن لك", "جزاك الله خيرا",
+        },
+        "SOCIAL_APOLOGY": {
+            "اسف", "انا اسف", "اعتذر", "اعتذر منك", "سامحني",
+        },
+        "SOCIAL_BOREDOM": {
+            "اشعر بالملل", "انا اشعر بالملل", "مللت", "اشعر بالضجر",
+            "لا شيء افعله", "ليس لدي ما افعله",
+        },
+        "SOCIAL_LONELINESS": {
+            "اشعر بالوحدة", "انا وحيد", "انا وحيدة", "اشعر انني وحيد",
+            "اشعر انني وحيدة",
+        },
+        "SOCIAL_LOW_MOOD": {
+            "انا حزين", "انا حزينة", "اشعر بالحزن", "انا متضايق",
+            "انا متضايقة", "لست بخير", "يومي سيء", "اشعر بالتعب",
+            "انا متعب", "انا متعبة", "انا قلق", "انا قلقة",
+        },
+        "SOCIAL_POSITIVE_MOOD": {
+            "انا سعيد", "انا سعيدة", "اشعر بالسعادة", "انا فرحان",
+            "انا فرحانة", "لدي خبر جميل", "حدث شيء جميل",
+        },
+        "SOCIAL_COMPLIMENT": {
+            "انت رائع", "انت رائعة", "احسنت", "ردك مفيد",
+            "انت مفيد", "انت مفيدة", "اعجبني ردك",
+        },
+        "SOCIAL_FAREWELL": {
+            "الى اللقاء", "مع السلامة", "تصبح على خير",
+            "تصبحين على خير", "سأذهب الان", "اراك لاحقا",
+        },
+        "SOCIAL_OPEN_ENDED_PROMPT": {
+            "لا اعرف ماذا اقول", "لا اعرف ما الذي اقوله",
+            "حدثني عن شيء ممتع", "اقترح موضوعا للحديث",
+        },
+    }
+    for candidate_act, phrases in social_phrases.items():
+        if normalized in phrases:
+            social_act = candidate_act
+            break
+
+    # Accept natural expansions such as "شكرًا لك على المساعدة" and
+    # "أشعر بالملل الشديد" without matching arbitrary sentences by keywords.
+    if not social_act:
+        social_patterns = (
+            (r"^(?:شكرا|اشكرك|ممتن لك|انا ممتن لك)(?:\s+.*)?$", "SOCIAL_GRATITUDE"),
+            (r"^(?:اعتذر|انا اسف|انا اسفه|سامحني)(?:\s+.*)?$", "SOCIAL_APOLOGY"),
+            (r"^(?:اشعر بالملل|اشعر بالضجر|مللت)(?:\s+.*)?$", "SOCIAL_BOREDOM"),
+            (r"^(?:اشعر بالوحدة|انا وحيد|انا وحيدة)(?:\s+.*)?$", "SOCIAL_LONELINESS"),
+            (r"^(?:انا حزين|انا حزينة|انا متضايق|انا متضايقة|انا متعب|انا متعبة|انا قلق|انا قلقة|اشعر بالحزن|اشعر بالتعب|اشعر بالقلق|لست بخير)(?:\s+.*)?$", "SOCIAL_LOW_MOOD"),
+            (r"^(?:انا سعيد|انا سعيدة|انا فرحان|انا فرحانة|اشعر بالسعادة|لدي خبر جميل|حدث شيء جميل)(?:\s+.*)?$", "SOCIAL_POSITIVE_MOOD"),
+            (r"^(?:انت رائع|انت رائعة|احسنت|ردك مفيد|اعجبني ردك)(?:\s+.*)?$", "SOCIAL_COMPLIMENT"),
+        )
+        social_act = next(
+            (candidate_act for pattern, candidate_act in social_patterns
+             if re.fullmatch(pattern, normalized)),
+            "",
+        )
+
+    topic_suggestion_markers = (
+        "اقترح انت بعض المواضيع", "اقترح لي بعض المواضيع",
+        "اقترح بعض المواضيع", "اقترح مواضيع", "مواضيع مثيرة للنقاش",
+        "مواضيع للنقاش", "موضوع للنقاش", "اعطيني اقتراحات",
+        "اعطني اقتراحات", "اقترح موضوع", "اقترح موضوعا",
+        "اقتراحات اخرى", "اقتراحات اخرى في مجال اخر",
+        "اريد اقتراحات اخرى في مجال اخر", "اقترح موضوعا للحديث",
+    )
+    topic_suggestion = any(marker in normalized for marker in topic_suggestion_markers)
+
+    contextual_short_ack = normalized in {
+        "حسنا", "تمام", "طيب", "موافق", "موافقة", "اتفق", "صحيح",
+    } and (latest_is_dialogue or intent in _SOCIAL_INTENTS)
+
     if (
         not identity_request
         and not continuation_turn
         and not vague_how
         and not contextual_wellbeing_reply
+        and not social_act
+        and not topic_suggestion
+        and not contextual_short_ack
         and (
             domain in _NON_DIALOGUE_DOMAINS or intent not in _SOCIAL_INTENTS
         )
@@ -149,7 +233,12 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
             act="AGENT_IDENTITY",
         )
 
-    if re.search(r"^(مرحبا|اهلا|السلام عليكم|صباح الخير|مساء الخير|يا هلا)$", normalized):
+    if re.search(
+        r"^(مرحبا|اهلا|اهلا وسهلا|السلام عليكم|السلام عليكم ورحمة الله وبركاته|"
+        r"صباح الخير|صباح النور|مساء الخير|مساء النور|يا هلا|اهلين|تحية طيبة)"
+        r"(?: يا [\u0600-\u06FF]+)?$",
+        normalized,
+    ):
         return _result(
             "مرحبًا بك. يمكننا التحدث بحرية، أو متابعة موضوع محفوظ في سياق هذه الجلسة. "
             "ما الذي تود أن نبدأ به؟",
@@ -157,8 +246,10 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
         )
 
     if re.search(
-        r"^(كيفك|كيف الحال|كيف هي الاحوال|كيف الاحوال|كيف حالك|كيف اخبارك|"
-        r"ما اخبارك|ما الاخبار|كيف تسير امورك)$",
+        r"^(كيفك|كيف الحال|كيف هي الاحوال|كيف الاحوال|كيف حالك|كيف حالك اليوم|"
+        r"كيف حالك الان|هل انت بخير|كيف اخبارك|ما اخبارك|ما الاخبار|"
+        r"كيف تسير امورك|كيف تسير امورك اليوم|كيف كان يومك|كيف يومك)"
+        r"(?: يا [\u0600-\u06FF]+)?$",
         normalized,
     ):
         return _result(
@@ -174,6 +265,88 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
             "سعيد بأن أمورك بخير. يمكننا مواصلة الحديث بهدوء؛ هل حدث معك شيء اليوم "
             "تود الحديث عنه، أم تفضّل أن نختار موضوعًا للنقاش؟",
             act="SOCIAL_ACKNOWLEDGEMENT",
+        )
+
+    if topic_suggestion:
+        return _result(
+            "إليك بعض الموضوعات التي تصلح لنقاش هادئ:\n"
+            "1. هل تأتي الراحة من تحقيق الأهداف أم من الاستمتاع بالطريق؟\n"
+            "2. هل تزيد التكنولوجيا إبداع الإنسان أم تجعله أكثر اعتمادًا عليها؟\n"
+            "3. كيف يستطيع الفن التعبير عن أفكار يصعب نقلها بالكلمات؟\n"
+            "اختر موضوعًا، وسنناقشه خطوة بخطوة.",
+            act="SOCIAL_TOPIC_SUGGESTION",
+        )
+
+    if social_act == "SOCIAL_GRATITUDE":
+        return _result(
+            "على الرحب والسعة. يسعدني أن يكون الرد مفيدًا لك.",
+            act=social_act,
+        )
+
+    if social_act == "SOCIAL_APOLOGY":
+        return _result(
+            "لا بأس، لا حاجة إلى الاعتذار. يمكننا المتابعة بهدوء.",
+            act=social_act,
+        )
+
+    if social_act == "SOCIAL_BOREDOM":
+        return _result(
+            "يمكننا تغيير الجو قليلًا. هل تفضّل حديثًا عن الفن، أو فكرة طريفة، "
+            "أم سؤالًا خفيفًا للتفكير؟",
+            act=social_act,
+        )
+
+    if social_act == "SOCIAL_LONELINESS":
+        return _result(
+            "يمكنك التحدث عمّا يشغلك هنا، وسأتابع معك قدر ما أستطيع. "
+            "ما أكثر ما يجعلك تشعر بالوحدة الآن؟",
+            act=social_act,
+        )
+
+    if social_act == "SOCIAL_LOW_MOOD":
+        return _result(
+            "يبدو أن يومك ليس سهلًا. إذا رغبت، أخبرني بما حدث؛ يمكننا ترتيب "
+            "الأفكار معًا دون استعجال.",
+            act=social_act,
+        )
+
+    if social_act == "SOCIAL_POSITIVE_MOOD":
+        return _result(
+            "يسعدني سماع ذلك. ما الخبر الجميل أو الشيء الذي أسعدك؟",
+            act=social_act,
+        )
+
+    if social_act == "SOCIAL_COMPLIMENT":
+        return _result(
+            "شكرًا لك. الأهم أن يكون الحديث واضحًا ومفيدًا لك.",
+            act=social_act,
+        )
+
+    if social_act == "SOCIAL_FAREWELL":
+        return _result(
+            "إلى اللقاء. يمكنك العودة إلى الحديث متى شئت.",
+            act=social_act,
+        )
+
+    if social_act == "SOCIAL_OPEN_ENDED_PROMPT":
+        return _result(
+            "يمكننا البدء بسؤال بسيط: ما الفكرة أو المكان أو العمل الفني الذي "
+            "ترك لديك انطباعًا قويًا مؤخرًا؟ وإن لم يخطر ببالك شيء، أستطيع اقتراح "
+            "موضوع خفيف آخر.",
+            act=social_act,
+        )
+
+    if contextual_short_ack:
+        topic = str(last.get("target") or "").strip()
+        if topic and latest_is_dialogue:
+            return _result(
+                f"حسنًا، نتابع من سياق «{topic}». ما الجانب الذي تود استكشافه بعد ذلك؟",
+                act="CONTEXTUAL_ACKNOWLEDGEMENT",
+                target=topic,
+            )
+        return _result(
+            "حسنًا. أنا معك؛ ما الذي تود الحديث عنه أو متابعته؟",
+            act="CONTEXTUAL_ACKNOWLEDGEMENT",
         )
 
     if vague_how:
@@ -227,8 +400,13 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
             target=str(last.get("target") or ""),
         )
 
-    if re.search(r"^(لنتحدث قليلا|لنتحدث قليلا|دعنا نتحدث|اريد ان اتحدث|"
-                 r"اريد التحدث|نتحدث قليلا|دردشة|دردشه|خلينا نتحدث)$", normalized):
+    if re.search(
+        r"^(لنتحدث قليلا|دعنا نتحدث|هل يمكننا التحدث|هل نتحدث قليلا|"
+        r"اريد ان اتحدث|اريد ان اتحدث معك|اريد التحدث|اريد التحدث معك|"
+        r"ارغب في التحدث|ارغب في التحدث معك|نتحدث قليلا|دردشة|دردشه|"
+        r"دردشة ودية|محادثة ودية|خلينا نتحدث|لنتكلم قليلا)$",
+        normalized,
+    ):
         topic = str(last.get("target") or "").strip()
         if topic and last_assistant:
             return _result(
