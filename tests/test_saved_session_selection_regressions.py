@@ -208,6 +208,9 @@ def test_session_selector_recognizes_all_saved_session_summary_requests():
 
 
 def test_explicit_previous_session_request_is_not_downgraded_to_live_history():
+    # Joined words are common in mobile terminal input and must still select
+    # persisted-session restoration instead of the live dialogue archive.
+    assert session_selector("ماذاكنا نقول في اخر جلسة")["kind"] == "previous_dialogue"
     for request in (
         "ماذا كنا نقول في اخر جلسة",
         "تحقق اولا ثم اكتب ملخص ماذا كنا نقول في الجلسة السابقة",
