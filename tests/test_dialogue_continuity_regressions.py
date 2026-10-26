@@ -1247,3 +1247,42 @@ def test_continue_explanation_is_classified_as_dialogue_continuation():
     result = classify_conversation_semantics("اكمل الشرح")
     assert result["conversation_act"] == "CONVERSATION_CONTINUATION"
     assert result["conversation_domain"] == "general"
+
+def test_provider_failure_preserves_dialogue_branch_as_local_recovery(monkeypatch):
+    calls = []
+
+    def gateway(prompt, **kwargs):
+        calls.append((prompt, kwargs))
+        if len(calls) == 1:
+            return {
+                "status": "success",
+                "text": "ناقشنا أن الفن يستخدم الصورة والخط لنقل المعنى.",
+                "provider_used": "test",
+            }
+        return {
+            "status": "error",
+            "error": {"code": "NO_PROVIDER_AVAILABLE", "message": "offline"},
+            "message": "provider offline",
+        }
+
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        gateway,
+    )
+    orchestrator = RecordingOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    manager = ConversationManager(orchestrator, memory)
+
+    first = manager.process("لنتحدث عن الفن والرسم والنحت")
+    assert first["status"] == "success"
+
+    continued = manager.process("أكمل")
+
+    assert continued["status"] == "needs_clarification"
+    assert continued["source"] == "dialogue_memory"
+    assert continued["recovery"] == "provider_unavailable_preserved_dialogue"
+    assert "الفن والرسم والنحت" in continued["text"]
+    assert "آخر نقطة محفوظة" in continued["text"]
+    assert "لم أختلق محتوى جديدًا" in continued["text"]
+    assert orchestrator.calls == []
+
