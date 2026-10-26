@@ -29,9 +29,9 @@ def is_safe_project_path(path: str) -> bool:
 
 
 def project_index_dir(project_root: str) -> str:
-    """مجلد فهرسة هذا المشروع - داخل مساحة عمل الوكيل، لا داخل المشروع نفسه"""
+    """مجلد فهرسة معزول لكل مشروع داخل مساحة الكتابة المسموح بها."""
     h = hashlib.md5(os.path.abspath(project_root).encode()).hexdigest()[:10]
-    return os.path.join(CYBERLAB_ROOT, "project_indices", h)
+    return os.path.join(CYBERLAB_ROOT, "workspace", "project_indices", h)
 
 
 def project_data_dir(project_root: str = None) -> str:
