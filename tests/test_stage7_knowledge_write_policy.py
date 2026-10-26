@@ -81,12 +81,17 @@ def test_project_index_is_saved_for_the_requested_project(tmp_path, monkeypatch)
         "project_index_dir",
         lambda root: str(tmp_path / "indices" / Path(root).name),
     )
+    calls = []
+    monkeypatch.setattr("lab_v4_dev.core.safe_io.safe_write", fake_safe_write(calls))
 
     saved_a = Path(project_index.save_index(str(project_a)))
     saved_b = Path(project_index.save_index(str(project_b)))
 
     assert saved_a == tmp_path / "indices" / "project_a" / "project_index.json"
     assert saved_b == tmp_path / "indices" / "project_b" / "project_index.json"
+    assert [call[2] for call in calls] == [
+        "project_index:save_index", "project_index:save_index"
+    ]
     assert "alpha.py" in json.loads(saved_a.read_text(encoding="utf-8"))
     assert "beta.py" in json.loads(saved_b.read_text(encoding="utf-8"))
     assert "beta.py" not in json.loads(saved_a.read_text(encoding="utf-8"))
