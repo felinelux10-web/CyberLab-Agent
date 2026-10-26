@@ -128,10 +128,11 @@ def test_dependency_map_is_saved_for_the_requested_project(tmp_path, monkeypatch
 
 
 def test_project_index_directory_is_allowed_by_safe_write_policy(tmp_path):
+    import lab_v4_dev.core.safe_io as safe_io
     from lab_v4_dev.core.project_context import project_index_dir
-    from lab_v4_dev.core.safe_io import _is_allowed
 
     index_dir = project_index_dir(str(tmp_path / "external_project"))
+    workspace = Path(safe_io.PROJECT_ROOT) / "workspace"
 
-    assert Path(index_dir).is_relative_to(Path(__import__("lab_v4_dev.core.safe_io", fromlist=["PROJECT_ROOT"]).PROJECT_ROOT) / "workspace")
-    assert _is_allowed(str(Path(index_dir) / "project_index.json"))
+    assert Path(index_dir).is_relative_to(workspace)
+    assert safe_io._is_allowed(str(Path(index_dir) / "project_index.json"))
