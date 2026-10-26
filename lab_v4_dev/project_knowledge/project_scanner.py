@@ -63,14 +63,21 @@ def scan(project_root: str) -> dict:
 
 
 def run(project_root: str = None) -> dict:
-    """نقطة الدخول الرسمية"""
+    """نقطة الدخول الرسمية."""
     if project_root is None:
         active = get_active_project()
-        if active:
-            project_root = active["root"]
-    else:
+        project_root = active.get("root") if active else None
+
+    if project_root is None:
         project_root = os.path.abspath(
-                os.path.join(os.path.dirname(__file__), ".."))
+            os.path.join(os.path.dirname(__file__), "..", "..")
+        )
+    else:
+        project_root = os.path.abspath(os.path.expanduser(os.fspath(project_root)))
+
+    if not os.path.isdir(project_root):
+        raise NotADirectoryError(f"جذر المشروع غير موجود أو ليس مجلداً: {project_root}")
+
     result = scan(project_root)
     from lab_v4_dev.core.safe_io import safe_write
     write_result = safe_write(
