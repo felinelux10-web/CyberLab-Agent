@@ -5,10 +5,10 @@ import ast
 import os
 import json
 
-def _map_file():
+def _map_file(base_dir: str = None):
     from lab_v4_dev.core.project_context import get_active_project_root, project_index_dir
-    import os
-    return os.path.join(project_index_dir(get_active_project_root()), "dependency_map.json")
+    root = base_dir or get_active_project_root()
+    return os.path.join(project_index_dir(root), "dependency_map.json")
 
 def extract_local_imports(file_path: str, base_dir: str) -> list:
     """يستخرج الاستيرادات المحلية — يبحث في كل المجلدات الفرعية"""
@@ -84,7 +84,7 @@ def save_map(base_dir: str = None) -> str:
         from lab_v4_dev.core.project_context import get_active_project_root
         base_dir = get_active_project_root()
     dep_map = build_dependency_map(base_dir)
-    path = _map_file()
+    path = _map_file(base_dir)
     from lab_v4_dev.core.safe_io import safe_write
     write_result = safe_write(
         path,
