@@ -838,8 +838,12 @@ def build_session_restore_summary(data: dict | None = None, *, report_mode: str 
     session = data if isinstance(data, dict) else load_session()
     session = session if isinstance(session, dict) else {}
     session_type = str(session.get("session_type") or "").casefold()
+    dialogue_state = session.get("dialogue_state")
     if session_type == "dialogue" or (
-        isinstance(session.get("dialogue_state"), dict) and not session.get("context_state")
+        not session_type
+        and isinstance(dialogue_state, dict)
+        and bool(str(dialogue_state.get("session_id") or "").strip())
+        and not session.get("context_state")
     ):
         return _build_dialogue_session_summary(session, report_mode)
 
