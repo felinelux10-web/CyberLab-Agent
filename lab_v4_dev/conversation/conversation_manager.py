@@ -36,6 +36,7 @@ import re
 
 from lab_v4_dev.conversation.mode_detector import detect_mode
 from lab_v4_dev.conversation.assistant_style import format_response, single_question
+from lab_v4_dev.conversation.local_response_engine import answer_local_social
 from lab_v4_dev.conversation.semantic_contract import (
     CONTEXTUAL_TRANSITIONS,
     ContextTransition,
@@ -2621,7 +2622,9 @@ class ConversationManager:
             "نهدرو شوية", "نهضر معاك شوية",
         )
         if not any(marker in normalized for marker in social_markers):
-            return None
+            # Use semantic act classification for social variants not covered by
+            # the legacy phrase rules. Non-social acts still fall through.
+            return answer_local_social(text, parsed)
         if any(marker in normalized for marker in ("كيفك", "كيف الحال", "ماهو الحال")):
             reply = "أنا بخير، شكرًا لسؤالك. كيف حالك أنت؟"
         elif any(marker in normalized for marker in ("كيفاش داز نهارك", "كيف داز نهارك")):
