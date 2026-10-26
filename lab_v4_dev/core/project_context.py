@@ -30,7 +30,8 @@ def is_safe_project_path(path: str) -> bool:
 
 def project_index_dir(project_root: str) -> str:
     """مجلد فهرسة معزول لكل مشروع داخل مساحة الكتابة المسموح بها."""
-    h = hashlib.md5(os.path.abspath(project_root).encode()).hexdigest()[:10]
+    normalized_root = os.path.abspath(os.path.expanduser(os.fspath(project_root)))
+    h = hashlib.md5(normalized_root.encode()).hexdigest()[:10]
     return os.path.join(CYBERLAB_ROOT, "workspace", "project_indices", h)
 
 
