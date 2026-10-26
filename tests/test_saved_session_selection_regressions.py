@@ -363,3 +363,27 @@ def test_dialogue_restore_summary_uses_saved_topic_and_stop_point():
     assert "النحت البارز" in summary
     assert "نقطة التوقف" in summary
     assert "ما الفرق بين النحت البارز والغائر؟" not in summary
+
+
+def test_explicit_saved_transcript_request_selects_transcript_mode():
+    from lab_v4_dev.memory.session_state import build_session_restore_summary, session_selector
+
+    sid = "dialogue-transcript-test"
+    saved = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "last_topic": "الرسم",
+            "exchange_archive": [
+                {"session_id": sid, "user": "رسالة أصلية 1", "assistant": "رد أصلي 1"},
+                {"session_id": sid, "user": "رسالة أصلية 2", "assistant": "رد أصلي 2"},
+            ],
+        },
+    }
+    selected = session_selector("اعرض نص الحوار المحفوظ حرفيًا")
+    transcript = build_session_restore_summary(saved, report_mode=selected["report_mode"])
+    assert selected["kind"] == "previous_dialogue"
+    assert selected["report_mode"] == "transcript"
+    assert transcript.index("رسالة أصلية 1") < transcript.index("رد أصلي 1")
+    assert transcript.index("رد أصلي 1") < transcript.index("رسالة أصلية 2")
