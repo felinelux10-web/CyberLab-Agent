@@ -271,15 +271,28 @@ class Orchestrator:
 
                 if not os.path.isfile(full_path):
                     from lab_v4_dev.awareness.project_index import search_index
+                    from lab_v4_dev.core.project_context import get_active_project_root
 
                     matches = search_index(target)
+                    active_root = os.path.realpath(
+                        os.path.expanduser(get_active_project_root())
+                    )
 
                     if matches:
                         candidate = matches[0].get("path", "")
                         if candidate:
-                            full_path = os.path.expanduser(
-                                f"~/cyberlab_agent/{candidate}"
+                            candidate_path = os.path.realpath(
+                                os.path.join(active_root, candidate)
                             )
+                            try:
+                                inside_project = (
+                                    os.path.commonpath([active_root, candidate_path])
+                                    == active_root
+                                )
+                            except ValueError:
+                                inside_project = False
+                            if inside_project and os.path.isfile(candidate_path):
+                                full_path = candidate_path
 
                 text = open(full_path, encoding="utf-8").read()
 
