@@ -38,15 +38,13 @@ def test_knowledge_or_execution_act_does_not_get_a_generic_local_social_reply():
     assert result is None
 
 
-def test_open_ended_social_phrase_is_routed_locally_from_semantic_classification():
+def test_open_ended_social_phrase_remains_with_conversational_responder():
     parsed = classify_conversation_semantics("لا أعرف ماذا أقول", intent="personal_chat")
 
     result = answer_local_social("لا أعرف ماذا أقول", parsed)
 
     assert parsed["conversation_act"] == "CASUAL_CONVERSATION"
-    assert result is not None
-    assert result["source"] == "local_social_engine"
-    assert "اختر موضوعًا" in result["text"]
+    assert result is None
 
 
 class _LocalOnlyOrchestrator:
@@ -59,20 +57,20 @@ class _LocalOnlyOrchestrator:
         raise AssertionError("social dialogue must not reach the execution owner")
 
 
-def test_open_ended_social_turn_does_not_call_gateway_or_orchestrator(monkeypatch):
+def test_unambiguous_greeting_does_not_call_gateway_or_orchestrator(monkeypatch):
     monkeypatch.setattr(
         manager_module,
         "gateway_ask",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("classified social dialogue must be answered locally")
+            AssertionError("unambiguous greeting must be answered locally")
         ),
     )
     orchestrator = _LocalOnlyOrchestrator()
     manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
 
-    result = manager.process("لا أعرف ماذا أقول")
+    result = manager.process("مرحبا")
 
     assert result["status"] == "success"
     assert result["source"] == "local_social_engine"
-    assert "اختر موضوعًا" in result["text"]
+    assert "مرحبًا" in result["text"]
     assert orchestrator.calls == []
