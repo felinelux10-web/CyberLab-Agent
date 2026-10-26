@@ -210,12 +210,20 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
         "حسنا", "تمام", "طيب", "موافق", "موافقة", "اتفق", "صحيح",
     } and (latest_is_dialogue or intent in _SOCIAL_INTENTS)
 
+    greeting_act = bool(re.fullmatch(
+        r"(?:مرحبا|اهلا|اهلا وسهلا|السلام عليكم|السلام عليكم ورحمة الله وبركاته|"
+        r"صباح الخير|صباح النور|مساء الخير|مساء النور|يا هلا|اهلين|تحية طيبة)"
+        r"(?: يا [\\u0600-\\u06FF]+)?",
+        normalized,
+    ))
+
     if (
         not identity_request
         and not continuation_turn
         and not vague_how
         and not contextual_wellbeing_reply
         and not social_act
+        and not greeting_act
         and not topic_suggestion
         and not contextual_short_ack
         and (
@@ -233,12 +241,7 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
             act="AGENT_IDENTITY",
         )
 
-    if re.search(
-        r"^(مرحبا|اهلا|اهلا وسهلا|السلام عليكم|السلام عليكم ورحمة الله وبركاته|"
-        r"صباح الخير|صباح النور|مساء الخير|مساء النور|يا هلا|اهلين|تحية طيبة)"
-        r"(?: يا [\u0600-\u06FF]+)?$",
-        normalized,
-    ):
+    if greeting_act
         return _result(
             "مرحبًا بك. يمكننا التحدث بحرية، أو متابعة موضوع محفوظ في سياق هذه الجلسة. "
             "ما الذي تود أن نبدأ به؟",
@@ -330,7 +333,7 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
 
     if social_act == "SOCIAL_OPEN_ENDED_PROMPT":
         return _result(
-            "يمكننا البدء بسؤال بسيط: ما الفكرة أو المكان أو العمل الفني الذي "
+            "نبدأ بسؤال بسيط: ما الفكرة أو المكان أو العمل الفني الذي "
             "ترك لديك انطباعًا قويًا مؤخرًا؟ وإن لم يخطر ببالك شيء، أستطيع اقتراح "
             "موضوع خفيف آخر.",
             act=social_act,
