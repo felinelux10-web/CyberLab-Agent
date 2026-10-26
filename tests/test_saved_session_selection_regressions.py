@@ -387,3 +387,22 @@ def test_explicit_saved_transcript_request_selects_transcript_mode():
     assert selected["report_mode"] == "transcript"
     assert transcript.index("رسالة أصلية 1") < transcript.index("رد أصلي 1")
     assert transcript.index("رد أصلي 1") < transcript.index("رسالة أصلية 2")
+
+
+def test_explicit_saved_transcript_request_is_not_downgraded_to_live_dialogue():
+    calls = []
+    orchestrator = SimpleNamespace(
+        context=ContextStore(),
+        handle=lambda text, parsed=None, **kwargs: (
+            calls.append((text, parsed)) or {"status": "success", "text": "TRANSCRIPT PATH"}
+        ),
+    )
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+    result = manager.process("اعرض نص الحوار المحفوظ حرفيًا")
+
+    assert result["status"] == "success"
+    assert calls
+    parsed = calls[-1][1]
+    assert parsed["intent"] == Intent.SESSION_RESTORE
+    assert parsed["session_selector"]["kind"] == "previous_dialogue"
+    assert parsed["session_selector"]["report_mode"] == "transcript"
