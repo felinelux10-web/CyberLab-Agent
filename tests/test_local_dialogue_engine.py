@@ -152,7 +152,10 @@ def test_one_word_how_question_gets_local_clarification_instead_of_provider_fall
 
 
 def test_arabic_wellbeing_variants_are_recognized_locally():
-    for phrase in ("كيف هي الاحوال", "كيف الأحوال", "كيف اخبارك"):
+    for phrase in (
+        "كيف هي الاحوال", "كيف الأحوال", "كيف اخبارك",
+        "كيف حالك اليوم", "هل انت بخير", "كيف كان يومك", "كيف حالك يا صديقي",
+    ):
         result = respond_locally(
             phrase,
             {"intent": "personal_chat", "conversation_domain": "social",
@@ -180,3 +183,134 @@ def test_wellbeing_reply_bypasses_system_resume_fallback_when_prior_turn_asked_a
     assert result is not None
     assert result["status"] == "success"
     assert "سعيد بأن أمورك بخير" in result["text"]
+
+
+def test_common_friendly_social_acts_are_handled_offline_even_after_parser_fallback():
+    cases = {
+        "شكرا جزيلا": "على الرحب والسعة",
+        "شكرا لك على المساعدة": "على الرحب والسعة",
+        "اعتذر منك": "لا حاجة إلى الاعتذار",
+        "اشعر بالملل": "تغيير الجو",
+        "اشعر بالملل الشديد": "تغيير الجو",
+        "اشعر بالوحدة": "يمكنك التحدث",
+        "انا حزينة": "يومك ليس سهلًا",
+        "انا حزينة جدا": "يومك ليس سهلًا",
+        "انا سعيد": "الخبر الجميل",
+        "احسنت": "شكرًا لك",
+        "مع السلامة": "إلى اللقاء",
+        "لا اعرف ماذا اقول": "نبدأ بسؤال بسيط",
+    }
+
+    for phrase, expected in cases.items():
+        result = respond_locally(
+            phrase,
+            {"intent": "resume", "conversation_domain": "system"},
+            memory_with(),
+        )
+
+        assert result is not None, phrase
+        assert result["status"] == "success", phrase
+        assert result["source"] == "local_dialogue_engine", phrase
+        assert result["executed"] is False, phrase
+        assert expected in result["text"], phrase
+
+
+def test_local_social_response_normalizes_arabic_diacritics_and_punctuation():
+    result = respond_locally(
+        "شُكْرًا جَزِيلًا!",
+        {"intent": "unclear", "conversation_domain": "general"},
+        memory_with(),
+    )
+
+    assert result is not None
+    assert "على الرحب والسعة" in result["text"]
+    assert result["executed"] is False
+
+
+def test_short_acknowledgement_does_not_override_unrelated_system_context():
+    result = respond_locally(
+        "تمام",
+        {"intent": "resume", "conversation_domain": "system"},
+        memory_with(),
+    )
+
+    assert result is None
+
+
+def test_short_acknowledgement_in_dialogue_context_stays_with_current_topic():
+    memory = memory_with({
+        "user": "لنتحدث عن الفن",
+        "assistant": "يمكننا الحديث عن الفن.",
+        "target": "الفن",
+    })
+
+    result = respond_locally(
+        "تمام",
+        {"intent": "resume", "conversation_domain": "system"},
+        memory,
+    )
+
+    assert result is not None
+    assert result["target"] == "الفن"
+    assert "الفن" in result["text"]
+    assert result["executed"] is False
+
+
+def test_operational_request_is_not_captured_by_friendly_dialogue_expansion():
+    result = respond_locally(
+        "حلل ملف Python ثم احفظ التقرير",
+        {"intent": "analyze_code", "conversation_domain": "technical"},
+        memory_with({"user": "شكرا", "assistant": "على الرحب", "target": ""}),
+    )
+
+    assert result is None
+
+
+def test_arabic_greeting_and_casual_opening_variants_are_local():
+    for phrase in (
+        "أهلاً وسهلاً", "السلام عليكم ورحمة الله وبركاته",
+        "صباح النور", "مساء النور", "تحية طيبة", "مرحبا يا صديقي",
+    ):
+        result = respond_locally(
+            phrase,
+            {"intent": "resume", "conversation_domain": "system"},
+            memory_with(),
+        )
+        assert result is not None, phrase
+        assert result["status"] == "success", phrase
+        assert result["source"] == "local_social", phrase
+        assert result["executed"] is False, phrase
+
+    for phrase in (
+        "هل يمكننا التحدث", "أريد التحدث معك",
+        "أرغب في التحدث معك", "محادثة ودية",
+    ):
+        result = respond_locally(
+            phrase,
+            {"intent": "personal_chat", "conversation_domain": "social",
+             "conversation_act": "CASUAL_CONVERSATION"},
+            memory_with(),
+        )
+        assert result is not None, phrase
+        assert result["source"] == "local_dialogue_engine", phrase
+        assert result["executed"] is False, phrase
+
+
+def test_topic_suggestions_are_local_and_written_in_standard_arabic():
+    for phrase in (
+        "اقترح لي بعض المواضيع",
+        "اقترح موضوعا للنقاش",
+        "مواضيع مثيرة للنقاش",
+    ):
+        result = respond_locally(
+            phrase,
+            {"intent": "resume", "conversation_domain": "system"},
+            memory_with(),
+        )
+
+        assert result is not None, phrase
+        assert result["source"] == "local_dialogue_engine", phrase
+        assert "إليك بعض الموضوعات" in result["text"], phrase
+        assert "واش" not in result["text"], phrase
+        assert "شنو" not in result["text"], phrase
+        assert result["executed"] is False, phrase
