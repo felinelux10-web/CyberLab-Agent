@@ -1711,7 +1711,14 @@ class ConversationManager:
                 )
             return local_project_answer
 
-        local_social = self._local_social_answer(user_input, parsed)
+        # Explicit persisted-session requests belong to Orchestrator. A local
+        # social responder may otherwise consume ASSISTANT_STATE_QUERY and
+        # return a generic greeting/history answer before session restoration.
+        local_social = (
+            None
+            if saved_session_request
+            else self._local_social_answer(user_input, parsed)
+        )
         if local_social is not None:
             local_social["semantic_request"] = semantic.as_dict()
             local_social = self._finalize_local_dialogue_result(
