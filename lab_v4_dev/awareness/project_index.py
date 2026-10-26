@@ -76,8 +76,14 @@ def save_index(base_dir: str = None) -> str:
     index = build_index(base_dir)
     path = _index_file(base_dir)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(index, f, ensure_ascii=False, indent=2)
+    from lab_v4_dev.core.safe_io import safe_write
+    write_result = safe_write(
+        path,
+        json.dumps(index, ensure_ascii=False, indent=2),
+        reason="project_index:save_index",
+    )
+    if write_result.get("status") != "success":
+        raise PermissionError(write_result.get("message", "تعذر حفظ فهرس المشروع"))
     return path
 
 # ترجمة الاستعلامات العربية
