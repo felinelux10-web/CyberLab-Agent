@@ -5,7 +5,7 @@ from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.core.orchestrator import Orchestrator
 from lab_v4_dev.intent.intents import Intent
-from lab_v4_dev.memory.session_state import session_selector
+from lab_v4_dev.memory.session_state import analyze_session, session_selector
 
 
 def test_session_selector_keeps_explicit_number_and_saved_session_list():
@@ -333,3 +333,180 @@ def test_orchestrator_returns_semantic_summary_for_each_saved_session(monkeypatc
     assert "إصلاح الاختبارات" in result["text"]
     assert "تشغيل الاختبارات المستهدفة" in result["text"]
     assert len(result["sessions"]) == 2
+
+def test_bare_dialogue_progress_phrase_is_not_classified_as_latest_saved_session():
+    assert session_selector("أين توقفنا")["kind"] == "none"
+    assert session_selector("أين توقفنا في الجلسة المحفوظة")["kind"] == "latest"
+
+
+def test_bare_dialogue_progress_phrase_uses_current_dialogue_memory_offline(monkeypatch):
+    calls = []
+    context = ContextStore()
+    orchestrator = SimpleNamespace(
+        context=context,
+        handle=lambda *args, **kwargs: calls.append((args, kwargs)) or {
+            "status": "success", "text": "unexpected saved-session/work report"
+        },
+    )
+    memory = DialogueMemory(context)
+    memory.state.exchange_archive = [{
+        "user": "مرحبا",
+        "assistant": "مرحبًا بك. كيف يمكنني مساعدتك؟",
+        "intent": "personal_chat",
+        "target": "",
+        "conversation_domain": "social",
+        "conversation_act": "SOCIAL_OPENING",
+        "context_kind": "dialogue",
+        "session_id": memory.state.session_id,
+    }]
+    manager = ConversationManager(orchestrator, memory)
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+
+    result = manager.process("أين توقفنا")
+
+    assert result["source"] == "dialogue_memory"
+    assert "unexpected saved-session/work report" not in result["text"]
+    assert calls == []
+
+def test_local_wellbeing_reply_is_persisted_as_dialogue_despite_resume_system_parse(monkeypatch):
+    context = ContextStore()
+    orchestrator = SimpleNamespace(context=context, handle=lambda *args, **kwargs: {
+        "status": "success", "text": "unexpected orchestrator response"
+    })
+    memory = DialogueMemory(context)
+    memory.state.exchange_archive = [{
+        "user": "كيف الحال",
+        "assistant": "أنا جاهز للمحادثة. كيف تسير أمورك أنت؟",
+        "intent": "personal_chat",
+        "target": "",
+        "conversation_domain": "social",
+        "conversation_act": "SOCIAL_CHECK_IN",
+        "context_kind": "dialogue",
+        "session_id": memory.state.session_id,
+    }]
+    manager = ConversationManager(orchestrator, memory)
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+
+    result = manager.process("بخير شكرا")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_dialogue_engine"
+    assert "سعيد بأن أمورك بخير" in result["text"]
+    latest = memory.state.exchange_archive[-1]
+    assert latest["user"] == "بخير شكرا"
+    assert latest["context_kind"] == "dialogue"
+    assert latest["conversation_domain"] == "social"
+    assert not latest["target"]
+
+
+def test_explicit_dialogue_continuation_uses_local_engine_without_provider(monkeypatch):
+    context = ContextStore()
+    orchestrator = SimpleNamespace(context=context, handle=lambda *args, **kwargs: {
+        "status": "success", "text": "unexpected orchestrator response"
+    })
+    memory = DialogueMemory(context)
+    memory.state.exchange_archive = [{
+        "user": "كيف الحال",
+        "assistant": "أنا جاهز للمحادثة. كيف تسير أمورك أنت؟",
+        "intent": "personal_chat",
+        "target": "",
+        "conversation_domain": "social",
+        "conversation_act": "SOCIAL_CHECK_IN",
+        "context_kind": "dialogue",
+        "session_id": memory.state.session_id,
+    }]
+    manager = ConversationManager(orchestrator, memory)
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+
+    result = manager.process("استكمال الحوار")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_dialogue_engine"
+    assert result["executed"] is False
+
+def test_saved_dialogue_report_uses_recorded_dialogue_instead_of_generic_save_label():
+    session = {
+        "session_id": "dialogue-social-001",
+        "session_type": "dialogue",
+        "status": "completed",
+        "active_goal": "حفظ سياق الحوار",
+        "topic": "حفظ سياق الحوار",
+        "dialogue_state": {
+            "session_id": "dialogue-social-001",
+            "last_topic": None,
+            "history": [],
+            "exchange_archive": [
+                {
+                    "user": "مرحبا",
+                    "assistant": "مرحبًا بك.",
+                    "target": "",
+                    "conversation_domain": "social",
+                    "context_kind": "dialogue",
+                    "session_id": "dialogue-social-001",
+                },
+                {
+                    "user": "كيف الحال",
+                    "assistant": "أنا جاهز للمحادثة. كيف تسير أمورك أنت؟",
+                    "target": "",
+                    "conversation_domain": "social",
+                    "context_kind": "dialogue",
+                    "session_id": "dialogue-social-001",
+                },
+            ],
+        },
+    }
+
+    report = analyze_session(session)
+
+    assert report["topic"] == "حوار ودي عام"
+    assert report["active_goal"] == "حوار ودي عام"
+    assert "حفظ سياق الحوار" not in report["topics"]
+    assert report["current_state"] == "جلسة حوار محفوظة؛ لا توجد مهمة تنفيذية مسجلة لهذه الجلسة"
+    assert report["next_step"] == "يمكن استكمال الحوار من آخر تبادل محفوظ"
+
+
+def test_saved_dialogue_report_derives_topic_from_real_user_turn_when_no_target_exists():
+    session = {
+        "session_id": "dialogue-art-002",
+        "session_type": "dialogue",
+        "status": "completed",
+        "active_goal": "حفظ سياق الحوار",
+        "topic": "حفظ سياق الحوار",
+        "dialogue_state": {
+            "session_id": "dialogue-art-002",
+            "last_topic": None,
+            "history": [],
+            "exchange_archive": [
+                {
+                    "user": "دعنا نتحدث عن الفن والرسم والنحت",
+                    "assistant": "يمكننا مناقشة الفن من زوايا متعددة.",
+                    "target": "",
+                    "conversation_domain": "social",
+                    "context_kind": "dialogue",
+                    "session_id": "dialogue-art-002",
+                },
+                {
+                    "user": "حفظ سياق الحوار",
+                    "assistant": "تم حفظ الحوار.",
+                    "target": "",
+                    "conversation_domain": "social",
+                    "context_kind": "dialogue",
+                    "session_id": "dialogue-art-002",
+                },
+            ],
+        },
+    }
+
+    report = analyze_session(session)
+
+    assert report["topic"] == "دعنا نتحدث عن الفن والرسم والنحت"
+    assert report["active_goal"] == "دعنا نتحدث عن الفن والرسم والنحت"

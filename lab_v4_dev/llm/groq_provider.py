@@ -47,10 +47,11 @@ class GroqProvider(BaseProvider):
 
             return LLMResponse.failure(
                 LLMError(
-                    code="PROVIDER_ERROR",
+                    code=result.get("code", "PROVIDER_ERROR"),
                     message=result.get("message", "Groq request failed"),
                     provider=self.name,
-                    retryable=True,
+                    retryable=bool(result.get("retryable", True)),
+                    timeout=bool(result.get("timeout", False)),
                 ),
                 provider=self.name,
                 model=result.get("model") or request.model,

@@ -159,6 +159,10 @@ class DialogueMemory:
 
         semantic = result.get("semantic_request") or {}
         result_intent = getattr(result.get("intent"), "value", result.get("intent"))
+        local_dialogue_result = (
+            str(result.get("source") or "").casefold() == "local_dialogue_engine"
+            and str(result.get("conversation_act") or "").upper() != "AGENT_IDENTITY"
+        )
         local_social_result = (
             str(result.get("source") or "").casefold() == "local_social"
             and str(result_intent or "").casefold() in {"personal_chat", "chat"}
@@ -183,7 +187,14 @@ class DialogueMemory:
             not in {"work", "system", "execution"}
             and str(context_kind or "").casefold() not in {"work", "system", "execution"}
         )
-        if local_social_result or targetless_chat_dialogue:
+        if local_dialogue_result:
+            # This responder is called only after the dialogue owner has
+            # authorized an offline conversational act. Its result must not be
+            # discarded because the first-pass parser called it resume/system,
+            # nor may it inherit a stale technical/project label.
+            conversation_domain = "social"
+            context_kind = "dialogue"
+        elif local_social_result or targetless_chat_dialogue:
             # Targetless friendly chat belongs to the dialogue lifecycle whether
             # the reply was produced locally or by the configured language model.
             # Parser fallback labels must not silently classify it as execution.
@@ -193,7 +204,7 @@ class DialogueMemory:
 
         turn_intent = (
             result.get("intent")
-            if local_social_result
+            if local_social_result or local_dialogue_result
             else parsed.get("intent") or result.get("intent")
         )
         # The canonical semantic request may contain the topic authorized by a
@@ -201,12 +212,16 @@ class DialogueMemory:
         # Persist that resolved target rather than treating "return to the
         # previous discussion" as a new topic or leaving the intervening branch active.
         turn_target = (
-            parsed.get("target")
-            or result.get("target")
-            or (
-                semantic.get("target")
-                if getattr(context_transition, "value", context_transition) == "restore"
-                else None
+            (result.get("target") or None)
+            if local_dialogue_result
+            else (
+                parsed.get("target")
+                or result.get("target")
+                or (
+                    semantic.get("target")
+                    if getattr(context_transition, "value", context_transition) == "restore"
+                    else None
+                )
             )
         )
         turn_confidence = parsed.get("confidence", result.get("confidence", 0.0))
@@ -265,7 +280,9 @@ class DialogueMemory:
                 # restored branch's original intent for the next continuation.
                 turn_intent = restored_context["action"]
         conversation_act = parsed.get("conversation_act")
-        if local_social_result and str(conversation_act or "NONE").upper() == "NONE":
+        if local_dialogue_result:
+            conversation_act = result.get("conversation_act") or conversation_act or "CONVERSATION_CONTINUATION"
+        elif local_social_result and str(conversation_act or "NONE").upper() == "NONE":
             conversation_act = "CASUAL_CONVERSATION"
         # Recall is read-only: storing the retrieval request and its summary as
         # a new exchange would make the memory report itself as the latest topic

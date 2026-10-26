@@ -20,7 +20,10 @@ from lab_v4_dev.llm.contracts import (
     LLMError,
 )
 
-CHAIN = ["openrouter", "gemini", "groq", "local", "dummy"]
+# Only real providers belong in the normal runtime chain. DummyProvider is
+# available for explicit tests/development, but must never consume a user turn
+# or masquerade as an offline language model.
+CHAIN = ["openrouter", "gemini", "groq", "local"]
 
 privacy = PrivacyEngine()
 
@@ -319,6 +322,59 @@ def ask(
         last_error.metadata = dict(last_error.metadata or {})
         last_error.metadata["provider_chain"] = providers
         last_error.metadata["provider_errors"] = provider_errors
+
+        # Report the aggregate outcome of the whole chain, not whichever
+        # provider happened to fail last. This prevents a missing key in the
+        # final provider from hiding that every configured endpoint was
+        # unreachable, and prevents mixed failures being mislabeled as a
+        # confirmed internet outage.
+        error_codes = {
+            str(item.get("code") or "").strip()
+            for item in provider_errors
+            if isinstance(item, dict) and item.get("code")
+        }
+        network_codes = {
+            "CONNECTION_ERROR", "TIMEOUT", "PROVIDER_NETWORK_ERROR"
+        }
+        configuration_codes = {
+            "PROVIDER_CONFIGURATION_ERROR", "HTTP_401", "HTTP_403"
+        }
+
+        aggregate_code = None
+        aggregate_message = None
+        aggregate_retryable = True
+        aggregate_timeout = False
+
+        if error_codes and error_codes.issubset(network_codes):
+            if error_codes == {"TIMEOUT"}:
+                aggregate_code = "TIMEOUT"
+                aggregate_message = "All attempted providers timed out"
+                aggregate_timeout = True
+            elif error_codes == {"CONNECTION_ERROR"}:
+                aggregate_code = "CONNECTION_ERROR"
+                aggregate_message = "All attempted providers failed to connect"
+            else:
+                aggregate_code = "PROVIDER_NETWORK_ERROR"
+                aggregate_message = "All attempted providers failed at the network layer"
+        elif error_codes and error_codes.issubset(configuration_codes):
+            aggregate_code = "PROVIDER_CONFIGURATION_ERROR"
+            aggregate_message = "Provider credentials or authorization are not configured correctly"
+            aggregate_retryable = False
+        elif len(error_codes) > 1:
+            aggregate_code = "PROVIDER_CHAIN_FAILED"
+            aggregate_message = "Provider chain failed for multiple reasons"
+
+        if aggregate_code:
+            last_error.error = LLMError(
+                code=aggregate_code,
+                message=aggregate_message,
+                provider="gateway",
+                retryable=aggregate_retryable,
+                timeout=aggregate_timeout,
+                details=provider_errors,
+            )
+            last_error.provider = "gateway"
+
         return _response_to_dict(last_error)
 
     return _response_to_dict(

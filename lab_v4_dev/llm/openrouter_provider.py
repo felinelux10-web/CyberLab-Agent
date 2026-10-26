@@ -103,6 +103,30 @@ class OpenRouterProvider(BaseProvider):
                 model=model_name,
             )
 
+        except requests.ConnectionError as exc:
+            return LLMResponse.failure(
+                LLMError(
+                    code="CONNECTION_ERROR",
+                    message=str(exc) or "Unable to connect to OpenRouter",
+                    provider=self.name,
+                    retryable=True,
+                ),
+                provider=self.name,
+                model=model_name,
+            )
+
+        except requests.RequestException as exc:
+            return LLMResponse.failure(
+                LLMError(
+                    code="PROVIDER_NETWORK_ERROR",
+                    message=str(exc) or "OpenRouter network request failed",
+                    provider=self.name,
+                    retryable=True,
+                ),
+                provider=self.name,
+                model=model_name,
+            )
+
         except Exception as exc:
             return LLMResponse.failure(
                 LLMError(

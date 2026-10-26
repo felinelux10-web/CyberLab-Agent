@@ -58,6 +58,7 @@ from lab_v4_dev.nlu.conversation_semantics import (
     is_style_act,
     normalize_text,
 )
+from lab_v4_dev.conversation.local_dialogue_engine import respond_locally
 
 
 _AGENT_SELF_INTENTS = {
@@ -91,6 +92,15 @@ class ConversationManager:
     def _is_project_progress_request(text: str) -> bool:
         """Recognize project-state questions by combining intent cues, not a single keyword."""
         normalized = normalize_text(str(text or ""))
+        # Bare "where did we stop?" is normally a dialogue-recall request.
+        # It must not be promoted to a project/work checkpoint merely because
+        # older session state happens to mention a project.
+        explicit_work_scope = any(marker in normalized for marker in (
+            "المشروع", "مشروع", "سياق العمل", "العمل", "ملف", "المهمه",
+            "جلسه محفوظ", "جلسة محفوظ", "project", "work", "task", "file",
+        ))
+        if "اين توقفنا" in normalized and not explicit_work_scope:
+            return False
         status_cues = (
             "اين توقف", "اين وصل", "اين انتهي العمل", "حاله العمل",
             "حاله المشروع", "سياق العمل", "عن سياق العمل", "نفس سياق العمل",
@@ -1710,6 +1720,22 @@ class ConversationManager:
                 )
             return local_project_answer
 
+        # Resolve ordinary dialogue locally from semantic act and same-session
+        # memory before attempting a network-backed language model. The local
+        # engine deliberately declines unsupported factual questions.
+        local_dialogue = respond_locally(user_input, parsed, self.dialogue_memory)
+        if local_dialogue is not None:
+            local_dialogue["semantic_request"] = semantic.as_dict()
+            local_dialogue = self._finalize_local_dialogue_result(
+                local_dialogue, mode, parsed, semantic
+            )
+            if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
+                self.dialogue_memory.update(
+                    user_input, local_dialogue, mode=mode, parsed=parsed,
+                    context_transition=transition,
+                )
+            return local_dialogue
+
         local_social = self._local_social_answer(user_input, parsed)
         if local_social is not None:
             local_social["semantic_request"] = semantic.as_dict()
@@ -2424,8 +2450,9 @@ class ConversationManager:
             "ماذا كنا نقول", "ماذا كنا نتحدث", "قبل هذا الموضوع",
             "الموضوع السابق", "الحوار السابق", "النقاش السابق", "الحديث السابق",
             "موضوعنا الاصلي", "ارجع الى الموضوع", "ارجع للحوار", "ارجع الى الحوار",
-            "ارجع للنقاش", "ارجع الى النقاش", "اين توقفنا", "ما اخر موضوع",
-            "ما اخر نقاش", "ما اخر حوار", "لخص الحوار", "ملخص الحوار",
+            "ارجع للنقاش", "ارجع الى النقاش", "اين توقفنا", "اخر موضوع",
+            "اخر نقاش", "اخر حوار", "ما اخر موضوع", "ما اخر نقاش", "ما اخر حوار",
+            "لخص الحوار", "ملخص الحوار",
         )
         if any(marker in normalized for marker in strong_recall_markers):
             return True
@@ -2561,88 +2588,8 @@ class ConversationManager:
 
     @staticmethod
     def _local_social_answer(text: str, parsed: dict) -> dict | None:
-        normalized = str(text or "").casefold()
-        bare_confirmation = normalized.strip(" .!؟?")
-        if (
-            bare_confirmation in {"نعم", "أجل", "اجل", "بلى", "لا", "كلا", "yes", "no"}
-            and (parsed or {}).get("source") == "bare_confirmation"
-        ):
-            reply = (
-                "حسنًا."
-                if bare_confirmation in {"لا", "كلا", "no"}
-                else "حسنًا، أخبرني بما تريد متابعته."
-            )
-            return {
-                "status": "success",
-                "intent": Intent.PERSONAL_CHAT,
-                "text": reply,
-                "mode": "CHAT",
-                "source": "local_social",
-                "executed": False,
-            }
-        if any(marker in normalized for marker in (
-            "اكمل", "أكمل", "استكمل", "نكمل", "ارجع", "استرجع",
-        )):
-            return None
-        suggestion_markers = (
-            "اقترح انت بعض المواضيع المثيرة", "اقترح أنت بعض المواضيع المثيرة",
-            "اقترح انت بعض المواضيع", "اقترح أنت بعض المواضيع",
-            "اقترح لي بعض المواضيع", "اقترح بعض المواضيع", "اقترح مواضيع",
-            "مواضيع مثيرة للنقاش", "مواضيع للنقاش", "موضوع للنقاش",
-            "انت اعطيني اقتراحات", "أنت أعطني اقتراحات", "اعطيني اقتراحات",
-            "اعطني اقتراحات", "اقترح موضوع", "اقترح شي موضوع", "اقترح موضوعا",
-            "انت اقترح شي موضوع", "نت قتارح شي موضوع", "عن اي موضوع قتارح نتا",
-            "عن اي موضوع تقترح انت", "اقترحات اخرى", "اقتراحات اخرى", "اقتراحات أخرى",
-            "اقتراحات اخرى في مجال اخر", "اقتراحات أخرى في مجال آخر",
-            "اريد اقتراحات اخرى في مجال اخر", "أريد اقتراحات أخرى في مجال آخر",
-            "موضوع الذي نتحدث فيه",
-        )
-        if any(marker in normalized for marker in suggestion_markers):
-            return {
-                "status": "success",
-                "intent": Intent.PERSONAL_CHAT,
-                "text": (
-                    "ها بعض المواضيع المثيرة للنقاش:\n"
-                    "1. واش الراحة كتجي من تحقيق الأهداف ولا من الاستمتاع بالطريق؟\n"
-                    "2. واش التكنولوجيا كتزيد إبداع الإنسان ولا كتخليه يعتمد عليها؟\n"
-                    "3. واش الفن يقدر يوصل أفكار ما تقدرش الكلمات توصلها؟ "
-                    "اختار واحد ونكملو فيه. شنو رأيك؟"
-                ),
-                "mode": "CHAT",
-                "source": "local_social",
-                "executed": False,
-            }
-        social_markers = (
-            "كيفك", "كيف الحال", "ماهو الحال", "حوار ودي", "حوار عادي",
-            "محادثة ودية", "محادثه وديه", "دردشة ودية", "دردشه وديه",
-            "نريد أن نتحدث فقط", "نريد ان نتحدث فقط", "دردشة فقط",
-            "بغيت نهضر معاك", "بغيت نهضر", "موضوع خفيف", "كيفاش داز نهارك",
-            "كيف داز نهارك", "كيف كان نهارك", "كيف قضيت يومك", "خلينا نهضرو",
-            "نهدرو شوية", "نهضر معاك شوية",
-        )
-        if not any(marker in normalized for marker in social_markers):
-            return None
-        if any(marker in normalized for marker in ("كيفك", "كيف الحال", "ماهو الحال")):
-            reply = "أنا بخير، شكرًا لسؤالك. كيف حالك أنت؟"
-        elif any(marker in normalized for marker in ("كيفاش داز نهارك", "كيف داز نهارك")):
-            reply = "نهاري هادئ، وأنا هنا للدردشة معك. ونتا كيف داز نهارك؟"
-        elif "كيف كان نهارك" in normalized or "كيف قضيت يومك" in normalized:
-            reply = "كان يومي هادئًا، وأنا جاهز للدردشة. كيف كان يومك أنت؟"
-        elif any(marker in normalized for marker in (
-            "محادثة ودية", "محادثه وديه", "دردشة ودية", "دردشه وديه",
-            "نريد أن نتحدث فقط", "نريد ان نتحدث فقط", "دردشة فقط",
-        )):
-            reply = "حسنًا، لنتحدث بشكل ودي بعيدًا عن العمل والمهام. ما الذي يشغل بالك؟"
-        else:
-            reply = "أكيد، نهضرو على شي موضوع خفيف. شنو بغيتي تحكي ليا؟"
-        return {
-            "status": "success",
-            "intent": Intent.PERSONAL_CHAT,
-            "text": reply,
-            "mode": "CHAT",
-            "source": "local_social",
-            "executed": False,
-        }
+        """Compatibility shim; the local dialogue engine is the sole social responder."""
+        return respond_locally(text, parsed, dialogue_memory=None)
 
     def _conversation_history_answer(self, text: str, parsed: dict | None = None) -> dict | None:
         """Answer recent-dialogue questions from bounded dialogue memory only."""
@@ -2709,8 +2656,9 @@ class ConversationManager:
             return None
         markers = (
             "موضوعين", "الموضوعين", "موضوعات", "المواضيع", "آخر موضوع",
-            "اخر موضوع", "ماذا شرح", "ماذا شرحت", "شرحنا", "تكلمنا",
-            "ناقشنا", "سجل المحادث", "تاريخ المحادث",
+            "اخر موضوع", "أين توقفنا", "اين توقفنا", "آخر حوار", "اخر حوار",
+            "آخر نقاش", "اخر نقاش", "ماذا شرح", "ماذا شرحت", "شرحنا",
+            "تكلمنا", "ناقشنا", "سجل المحادث", "تاريخ المحادث",
         )
         if (
             history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
@@ -3925,6 +3873,26 @@ class ConversationManager:
                 fallback = (
                     "انتهت مهلة انتظار مزود الذكاء الاصطناعي قبل وصول رد صالح. "
                     "لم أتمكن من متابعة الحوار في هذه المحاولة."
+                )
+            elif error_code == "CONNECTION_ERROR":
+                fallback = (
+                    "تعذر الاتصال بمزودي الذكاء الاصطناعي. قد يكون الجهاز دون اتصال "
+                    "بالإنترنت أو أن الاتصال بالخدمة غير متاح. لم يُنفَّذ أي إجراء."
+                )
+            elif error_code == "PROVIDER_NETWORK_ERROR":
+                fallback = (
+                    "فشل الاتصال الشبكي بأحد مزودي الذكاء الاصطناعي. لم أتمكن من "
+                    "إنتاج رد، ولم أُحوّل الطلب إلى تنفيذ."
+                )
+            elif error_code == "PROVIDER_CONFIGURATION_ERROR":
+                fallback = (
+                    "إعدادات مزودي الذكاء الاصطناعي أو بيانات الاعتماد غير مكتملة "
+                    "أو غير مقبولة. لم أتمكن من إنتاج الرد، ولم أُحوّل الطلب إلى تنفيذ."
+                )
+            elif error_code == "PROVIDER_CHAIN_FAILED":
+                fallback = (
+                    "فشلت محاولات مزودي الذكاء الاصطناعي لأسباب مختلفة. لم أتمكن من "
+                    "إنتاج رد موثوق، ولم أُحوّل الطلب إلى تنفيذ."
                 )
             elif error_code:
                 fallback = (

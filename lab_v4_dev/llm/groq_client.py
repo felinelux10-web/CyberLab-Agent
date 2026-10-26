@@ -29,7 +29,12 @@ def ask(prompt: str, system: str = None, max_tokens: int = 800, model: str = Non
     model = model or GROQ_MODEL
     key = _load_key()
     if not key:
-        return {"status": "error", "message": "GROQ_API_KEY not found"}
+        return {
+            "status": "error",
+            "code": "PROVIDER_CONFIGURATION_ERROR",
+            "retryable": False,
+            "message": "Groq API key is not configured",
+        }
 
     messages = []
     if system:
@@ -67,5 +72,27 @@ def ask(prompt: str, system: str = None, max_tokens: int = 800, model: str = Non
                 "message": f"HTTP {r.status_code}: {r.text[:200]}",
             }
 
+    except requests.exceptions.Timeout as e:
+        return {
+            "status": "error",
+            "code": "TIMEOUT",
+            "timeout": True,
+            "retryable": True,
+            "message": str(e) or "Groq request timed out",
+        }
+    except requests.exceptions.ConnectionError as e:
+        return {
+            "status": "error",
+            "code": "CONNECTION_ERROR",
+            "retryable": True,
+            "message": str(e) or "Unable to connect to Groq",
+        }
+    except requests.exceptions.RequestException as e:
+        return {
+            "status": "error",
+            "code": "PROVIDER_NETWORK_ERROR",
+            "retryable": True,
+            "message": str(e) or "Groq network request failed",
+        }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "code": "PROVIDER_EXCEPTION", "message": str(e)}
