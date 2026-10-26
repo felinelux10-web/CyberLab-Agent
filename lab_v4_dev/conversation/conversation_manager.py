@@ -3902,18 +3902,29 @@ class ConversationManager:
                 get_branch = getattr(self.dialogue_memory, "active_dialogue_branch", None)
                 branch = get_branch() if callable(get_branch) else None
             if continuation and branch:
+                # Provider failure must not erase locally recoverable dialogue
+                # context. Return a memory-owned recovery response, not a fake
+                # generated continuation and not a generic provider error.
+                topic = str(branch.get("entity") or "").strip()
                 last_point = str(branch.get("reference_text") or "").strip()
+                details = []
+                if topic:
+                    details.append(f"الموضوع المحفوظ: {topic}.")
+                if last_point:
+                    details.append(f"آخر نقطة محفوظة في هذا الفرع: {last_point}")
+                details.append(
+                    "تعذر توليد شرح جديد لأن المزود غير متاح في هذه المحاولة. "
+                    "حافظت على الفرع الحالي ولم أختلق محتوى جديدًا. "
+                    "يمكنك طلب تلخيص النقاط المحفوظة أو إعادة المحاولة لاحقًا."
+                )
                 return {
-                    "status": "error",
+                    "status": "needs_clarification",
                     "intent": (parsed or {}).get("intent", mode.lower()),
-                    "text": (
-                        "تعذر إنتاج متابعة جديدة من المزود، ولم أغيّر الفرع النشط. "
-                        + (f"آخر نقطة محفوظة: {last_point}" if last_point else "يمكنك إعادة المحاولة من آخر نقطة محفوظة.")
-                    ),
+                    "text": "\n".join(details),
                     "mode": mode,
-                    "source": "fallback",
+                    "source": "dialogue_memory",
                     "gateway_error": gateway_error,
-                    "error": "CONTINUATION_PROVIDER_FAILURE",
+                    "recovery": "provider_unavailable_preserved_dialogue",
                     "executed": False,
                 }
             error_code = (
