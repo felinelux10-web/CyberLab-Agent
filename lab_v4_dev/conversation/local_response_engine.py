@@ -14,16 +14,12 @@ _ALLOWED_ACTS = {
     "SOCIAL_GREETING",
     "SOCIAL_ACKNOWLEDGEMENT",
     "SOCIAL_CLOSING",
-    "SOCIAL_OPENING",
     "ASSISTANT_STATE_QUERY",
-    "PERSONAL_INTERACTION",
-    "CASUAL_DISCUSSION",
-    "CASUAL_CONVERSATION",
 }
 
 
 def answer_local_social(text: str, parsed: dict | None = None) -> dict | None:
-    """Return a local answer only when the semantic layer classified a social act."""
+    """Answer only bounded social acts; open-ended dialogue remains with the conversational responder."""
     parsed = parsed if isinstance(parsed, dict) else {}
     act = str(parsed.get("conversation_act") or "").strip().upper()
     if act not in _ALLOWED_ACTS or not is_social_act(act):
