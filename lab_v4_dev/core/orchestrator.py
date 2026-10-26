@@ -1949,22 +1949,54 @@ SOURCE CODE:
 
         # ─── Session Save ───
         elif intent == Intent.SESSION_SAVE:
-            from lab_v4_dev.memory.session_state import save_session
+            from lab_v4_dev.memory.session_state import save_session, save_dialogue_checkpoint
             from lab_v4_dev.data.project_timeline import add_event
-            s = save_session(
-                active_goal = self.context.current_subject or "عمل جاري",
-                next_step   = (f"استكمال: {self.context.current_subject}" if self.context.current_subject else "غير محددة"),
-                last_files  = [self.context.current_file] if self.context.current_file else [],
-                version     = self.agent._meta.get_version(),
-                dialogue_state = (
-                    self.agent.dialogue_memory.snapshot()
-                    if getattr(self.agent, "dialogue_memory", None) else None
-                ),
-                context_state = self.context.get_last(),
+
+            version = self.agent._meta.get_version()
+            dialogue_memory = getattr(self.agent, "dialogue_memory", None)
+            dialogue_state = dialogue_memory.snapshot() if dialogue_memory else None
+            dialogue_saved = (
+                save_dialogue_checkpoint(
+                    dialogue_state=dialogue_state,
+                    version=version,
+                )
+                if isinstance(dialogue_state, dict)
+                else {}
             )
-            add_event(self.agent._meta.get_version(), f"Session saved: {s['active_goal']}")
-            return {"status":"success","intent":intent,
-                    "text":f"تم حفظ الجلسة\nالهدف: {s['active_goal']}\nID: {s['session_id']}"}
+
+            # Work checkpoints and dialogue archives have different owners.
+            # Persist them as separate records rather than creating a mixed
+            # snapshot that later restore paths cannot safely reactivate.
+            work_saved = save_session(
+                active_goal=self.context.current_subject or "عمل جاري",
+                next_step=(
+                    f"استكمال: {self.context.current_subject}"
+                    if self.context.current_subject else "غير محددة"
+                ),
+                last_files=[self.context.current_file] if self.context.current_file else [],
+                version=version,
+                context_state=self.context.get_last(),
+            )
+            add_event(version, f"Session saved: {work_saved['active_goal']}")
+            lines = [
+                "تم حفظ السياقين كلٌّ في سجل مستقل.",
+                f"جلسة العمل: {work_saved['session_id']} — {work_saved['active_goal']}",
+            ]
+            if dialogue_saved:
+                lines.append(
+                    f"جلسة الحوار: {dialogue_saved['session_id']} — "
+                    f"{dialogue_saved.get('active_goal') or 'حوار محفوظ'}"
+                )
+            else:
+                lines.append("لم يُنشأ سجل حوار مستقل لعدم توفر لقطة حوار صالحة.")
+            return {
+                "status": "success",
+                "intent": intent,
+                "source": "local_session_store",
+                "text": "\\n".join(lines),
+                "work_session_id": work_saved["session_id"],
+                "dialogue_session_id": dialogue_saved.get("session_id") if dialogue_saved else None,
+            }
 
         # ─── Code Engine ───
         elif intent == Intent.GENERATE_CODE:
