@@ -74,3 +74,15 @@ def test_unambiguous_greeting_does_not_call_gateway_or_orchestrator(monkeypatch)
     assert result["source"] == "local_social_engine"
     assert "مرحبًا" in result["text"]
     assert orchestrator.calls == []
+
+def test_local_social_suggestions_use_formal_arabic():
+    result = ConversationManager._local_social_answer(
+        "اقترح لي بعض المواضيع المثيرة للنقاش",
+        {"intent": "personal_chat", "conversation_act": "SOCIAL_FOLLOW_UP"},
+    )
+
+    assert result is not None
+    assert "هل تتحقق الراحة" in result["text"]
+    assert "واش" not in result["text"]
+    assert "شنو" not in result["text"]
+
