@@ -119,3 +119,52 @@ def test_common_greeting_is_answered_locally_without_gateway_or_orchestrator(mon
     assert result["source"] == "local_social"
     assert "مرحبًا" in result["text"]
     assert orchestrator.calls == []
+
+
+def test_expanded_friendly_dialogue_uses_local_engine_before_gateway(monkeypatch):
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("covered friendly dialogue must not call the provider gateway")
+        ),
+    )
+    orchestrator = DialogueOnlyOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+
+    cases = (
+        ("شكرا جزيلا", "على الرحب والسعة"),
+        ("اشعر بالملل", "تغيير الجو"),
+        ("انا حزينة", "يومك ليس سهلًا"),
+        ("مع السلامة", "إلى اللقاء"),
+    )
+    for phrase, expected in cases:
+        result = manager.process(phrase)
+        assert result["status"] == "success", phrase
+        assert result["source"] == "local_dialogue_engine", phrase
+        assert expected in result["text"], phrase
+        assert result["executed"] is False, phrase
+
+    assert orchestrator.calls == []
+
+
+def test_topic_suggestions_use_the_single_local_responder_in_standard_arabic(monkeypatch):
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("local topic suggestions must not call the provider")
+        ),
+    )
+    orchestrator = DialogueOnlyOrchestrator()
+    manager = ConversationManager(orchestrator, DialogueMemory(orchestrator.context))
+
+    result = manager.process("اقترح لي بعض المواضيع")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_dialogue_engine"
+    assert "إليك بعض الموضوعات" in result["text"]
+    assert "واش" not in result["text"]
+    assert "شنو" not in result["text"]
+    assert result["executed"] is False
+    assert orchestrator.calls == []
