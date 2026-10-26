@@ -241,7 +241,7 @@ def respond_locally(text: str, parsed: dict | None, dialogue_memory=None) -> dic
             act="AGENT_IDENTITY",
         )
 
-    if greeting_act
+    if greeting_act:
         return _result(
             "مرحبًا بك. يمكننا التحدث بحرية، أو متابعة موضوع محفوظ في سياق هذه الجلسة. "
             "ما الذي تود أن نبدأ به؟",
