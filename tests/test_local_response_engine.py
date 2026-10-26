@@ -1,5 +1,6 @@
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.local_response_engine import answer_local_social
+from lab_v4_dev.nlu.conversation_semantics import classify_conversation_semantics
 
 
 def test_semantically_classified_greeting_has_a_local_response():
@@ -32,3 +33,14 @@ def test_knowledge_or_execution_act_does_not_get_a_generic_local_social_reply():
     )
 
     assert result is None
+
+
+def test_open_ended_social_phrase_is_routed_locally_from_semantic_classification():
+    parsed = classify_conversation_semantics("لا أعرف ماذا أقول", intent="personal_chat")
+
+    result = answer_local_social("لا أعرف ماذا أقول", parsed)
+
+    assert parsed["conversation_act"] == "CASUAL_CONVERSATION"
+    assert result is not None
+    assert result["source"] == "local_social_engine"
+    assert "اختر موضوعًا" in result["text"]
