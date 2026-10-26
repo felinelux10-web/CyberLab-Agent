@@ -187,6 +187,12 @@ def session_selector(raw: str) -> dict:
     """Classify explicit session selection/report language without an LLM."""
     raw_text = str(raw or "").strip()
     text = raw_text.casefold()
+    # Repair common mobile/terminal input where adjacent Arabic words are
+    # accidentally joined (e.g. "ماذاكنا نقول في اخر جلسة"). Keep the raw
+    # utterance for display; normalize only the selector's matching copy.
+    text = re.sub(r"(?<=ماذا)(?=كنا\\b)", " ", text)
+    text = re.sub(r"(?<=ما)(?=كنا\\b)", " ", text)
+    text = re.sub(r"\\s+", " ", text).strip()
     report_mode = "standard"
     if any(token in text for token in ("فقط", "المعرف والحالة", "المعرّف والموضوع والحالة")):
         report_mode = "compact"
