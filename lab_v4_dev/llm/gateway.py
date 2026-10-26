@@ -273,10 +273,23 @@ def ask(
                     metadata=result.metadata,
                 )
 
-            # P08-B7:
-            # A provider failure must not terminate the centralized
-            # fallback chain. Continue to the next provider.
+            # A fallback-only payload is diagnostic, not a completion.
+            # Do not let the dummy provider overwrite the real provider error
+            # that explains why no usable answer was produced.
             if not result.ok:
+                if result.status == "fallback":
+                    provider_errors.append({
+                        "provider": name,
+                        "code": "FALLBACK_NOT_ACCEPTED",
+                        "message": "Fallback-only payload is not a successful completion",
+                        "retryable": False,
+                        "timeout": False,
+                    })
+                    continue
+
+                # P08-B7:
+                # A provider failure must not terminate the centralized
+                # fallback chain. Continue to the next provider.
                 last_error = result
                 if result.error is not None:
                     provider_errors.append({
