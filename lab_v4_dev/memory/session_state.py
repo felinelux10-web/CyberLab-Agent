@@ -194,6 +194,12 @@ def session_selector(raw: str) -> dict:
     text = re.sub(r"(?<=ما)(?=كنا\b)", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     report_mode = "standard"
+    if any(token in text for token in (
+        "نص الحوار حرفيا", "نص الحوار حرفيًا", "الحوار المحفوظ حرفيا",
+        "الحوار المحفوظ حرفيًا", "اعرض الرسائل الأصلية", "اعرض نص الحوار",
+        "سجل الحوار حرفيا", "سجل الحوار حرفيًا",
+    )):
+        report_mode = "transcript"
     if any(token in text for token in ("فقط", "المعرف والحالة", "المعرّف والموضوع والحالة")):
         report_mode = "compact"
     elif any(token in text for token in ("أين توقفنا", "اين توقفنا", "الخطوة التالية", "ما الذي أُنجز", "ما الذي انجز")):
@@ -714,9 +720,130 @@ def analyze_session(data: dict | None = None) -> dict:
         "last_updated": session.get("updated_at") or session.get("timestamp") or "غير محدد من البيانات المتاحة",
     }
 
-def build_session_restore_summary(data: dict | None = None, *, report_mode: str = "standard") -> str:
-    """Render a grounded semantic report; never render the saved transcript."""
+def _dialogue_exchanges(data: dict) -> list[dict]:
+    """Return only completed exchanges belonging to the selected saved dialogue."""
+    dialogue = data.get("dialogue_state") or {}
+    if not isinstance(dialogue, dict):
+        return []
+    session_id = str(dialogue.get("session_id") or "").strip()
+    exchanges = dialogue.get("exchange_archive") or []
+    if not isinstance(exchanges, list):
+        return []
+    return [
+        item for item in exchanges
+        if isinstance(item, dict)
+        and not item.get("recall_only")
+        and not item.get("state_boundary_only")
+        and str(item.get("session_id") or "") == session_id
+        and str(item.get("user") or "").strip()
+        and str(item.get("assistant") or "").strip()
+        and not item.get("response_failed")
+    ]
+
+
+def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
+    """Summarize the selected dialogue and its stop point without mixing work state."""
     report = analyze_session(data)
+    exchanges = _dialogue_exchanges(data)
+    dialogue = data.get("dialogue_state") or {}
+    topic = str(
+        dialogue.get("last_topic")
+        or next((item.get("target") for item in reversed(exchanges) if item.get("target")), "")
+        or report.get("topic")
+        or "غير محدد من سجل الحوار"
+    ).strip()
+    last = exchanges[-1] if exchanges else {}
+    last_user = str(last.get("user") or "").strip()
+    if last:
+        stop_point = (
+            "توقف السجل بعد آخر تبادل مكتمل؛ "
+            + (f"كان موضوع التبادل «{last.get('target')}»." if last.get("target")
+               else "لم يُسجَّل موضوع فرعي صريح في آخر تبادل.")
+        )
+        if last_user:
+            stop_point += f" آخر طلب مسجل: «{last_user[:240]}»."
+        next_step = f"استكمال الحوار من آخر تبادل محفوظ حول «{topic}»."
+    else:
+        stop_point = "لا توجد تبادلات مكتملة محفوظة يمكن تحديد نقطة التوقف منها."
+        next_step = "حدّد الموضوع أو اختر جلسة أخرى إذا كان هذا السجل غير مكتمل."
+
+    if report_mode == "transcript":
+        lines = [
+            "=== نص الحوار المحفوظ حرفيًا ===",
+            f"معرّف الجلسة: {report['session_id']}",
+            f"الموضوع: {topic}",
+        ]
+        if not exchanges:
+            lines.append("لا يحتوي سجل الجلسة على تبادلات مكتملة قابلة للعرض.")
+        for index, exchange in enumerate(exchanges, 1):
+            lines.extend([
+                "",
+                f"[{index}] المستخدم:",
+                str(exchange.get("user") or ""),
+                f"[{index}] الوكيل:",
+                str(exchange.get("assistant") or ""),
+            ])
+        return "\n".join(lines)
+
+    if report_mode == "compact":
+        return "\n".join([
+            "=== ملخص الحوار المحفوظ ===",
+            f"المعرّف: {report['session_id']}",
+            f"الموضوع: {topic}",
+            f"عدد التبادلات المكتملة: {len(exchanges)}",
+        ])
+    if report_mode == "progress":
+        return "\n".join([
+            "=== ملخص الحوار ونقطة التوقف ===",
+            f"الموضوع: {topic}",
+            f"التبادلات المكتملة المحفوظة: {len(exchanges)}",
+            f"نقطة التوقف: {stop_point}",
+            f"الخطوة التالية: {next_step}",
+            "لم يتم تنفيذ أي خطوة جديدة أثناء الاستعادة.",
+        ])
+
+    topics = []
+    for exchange in exchanges:
+        value = str(exchange.get("target") or "").strip()
+        if value and value not in topics:
+            topics.append(value)
+    lines = [
+        "=== ملخص الحوار المحفوظ ===",
+        f"معرّف الجلسة: {report['session_id']}",
+        f"آخر تحديث: {report['last_updated']}",
+        f"الموضوع الحالي داخل هذا الحوار: {topic}",
+        f"عدد التبادلات المكتملة المحفوظة: {len(exchanges)}",
+        "",
+        "الموضوعات المثبتة في سجل الحوار:",
+    ]
+    lines.extend([f"- {item}" for item in topics] if topics else [
+        "- لا توجد موضوعات فرعية محددة في البيانات المحفوظة."
+    ])
+    lines.extend([
+        "",
+        "نقطة التوقف:",
+        stop_point,
+        "",
+        "الخطوة التالية المقترحة:",
+        next_step,
+        "",
+        "حدود الاستعادة: هذا ملخص للسجل المحدد فقط؛ لم تُدمج معه الجلسة الحية أو جلسة العمل. لم يُنشأ أي رد جديد.",
+        "لعرض الرسائل الأصلية بالترتيب، اطلب: اعرض نص الحوار المحفوظ حرفيًا.",
+    ])
+    return "\n".join(lines)
+
+
+def build_session_restore_summary(data: dict | None = None, *, report_mode: str = "standard") -> str:
+    """Render a report from the selected session type; never mix dialogue with work state."""
+    session = data if isinstance(data, dict) else load_session()
+    session = session if isinstance(session, dict) else {}
+    session_type = str(session.get("session_type") or "").casefold()
+    if session_type == "dialogue" or (
+        isinstance(session.get("dialogue_state"), dict) and not session.get("context_state")
+    ):
+        return _build_dialogue_session_summary(session, report_mode)
+
+    report = analyze_session(session)
     def bullets(items, empty="غير محدد من البيانات المتاحة"):
         return [f"- {item}" for item in (items or [empty])]
     if report_mode == "compact":
@@ -769,10 +896,9 @@ def build_session_restore_summary(data: dict | None = None, *, report_mode: str 
         "الأسئلة المفتوحة:", *bullets(report['open_questions']),
         "",
         "8) نتيجة الاستعادة",
-        "تم تحميل السياق الدلالي فقط؛ لم يتم عرض سجل الحوار الحرفي؛ لم يتم تنفيذ الخطوة التالية تلقائيًا.",
+        "تم تحميل سياق الجلسة المحددة؛ لم يتم تنفيذ الخطوة التالية تلقائيًا.",
     ]
     return "\n".join(lines)
-
 
 def _enrich_session_fields(data: dict) -> dict:
     """Persist semantic fields so later reports do not depend on live context."""
