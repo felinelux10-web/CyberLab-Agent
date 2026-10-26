@@ -579,6 +579,7 @@ class ConversationManager:
                 selected_session.get("kind") == "previous_dialogue"
                 and not any(marker in normalized_session_request for marker in (
                     "اخر جلسة", "الجلسة السابقة", "جلسة محفوظة", "الجلسه المحفوظه",
+                    "الحوار المحفوظ", "نص الحوار المحفوظ", "سجل الحوار المحفوظ",
                 ))
             )
             or (
