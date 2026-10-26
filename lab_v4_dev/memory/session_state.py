@@ -200,7 +200,7 @@ def session_selector(raw: str) -> dict:
         "سجل الحوار حرفيا", "سجل الحوار حرفيًا",
     )):
         report_mode = "transcript"
-    if any(token in text for token in ("فقط", "المعرف والحالة", "المعرّف والموضوع والحالة")):
+    elif any(token in text for token in ("فقط", "المعرف والحالة", "المعرّف والموضوع والحالة")):
         report_mode = "compact"
     elif any(token in text for token in ("أين توقفنا", "اين توقفنا", "الخطوة التالية", "ما الذي أُنجز", "ما الذي انجز")):
         report_mode = "progress"
