@@ -1273,7 +1273,7 @@ def test_provider_failure_preserves_dialogue_branch_as_local_recovery(monkeypatc
     memory = DialogueMemory(orchestrator.context)
     manager = ConversationManager(orchestrator, memory)
 
-    first = manager.process("لنتحدث عن الفن والرسم والنحت")
+    first = manager.process("دعنا نتحدث عن الفن والرسم والنحت")
     assert first["status"] == "success"
 
     continued = manager.process("أكمل")
