@@ -591,6 +591,25 @@ def classify_conversation_semantics(
             "conversational": True,
         }
 
+    # Explicit memory-search wording belongs to DialogueMemory. Without this
+    # boundary, verbs such as "ابحث" can be classified as project SEARCH and
+    # make a request about the saved dialogue inspect project files instead.
+    # Saved-session queries remain separate and are handled by the session
+    # selector when the user names a saved session explicitly.
+    dialogue_memory_search = (
+        _has_any(bases, {"ابحث", "بحث", "فتش", "دور", "تحقق"})
+        and _has_any(bases, {"ذاكره", "ذاكرة", "الحوار", "المحادثه", "المحادثة", "النقاش"})
+        and not _has_any(bases, {"ملف", "ملفات", "مشروع", "كود", "جلسه", "جلسة"})
+    )
+    if dialogue_memory_search:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.97,
+            "response_attributes": {"dialogue_response_mode": "summary"},
+            "conversational": True,
+        }
+
     standalone_summary_request = (
         _has_any(bases, {"ملخص", "تلخيص", "لخص"})
         and not _has_any(bases, work_context_markers)
