@@ -1740,8 +1740,8 @@ SOURCE CODE:
         elif intent in (Intent.RESUME, Intent.SESSION_RESTORE):
             from lab_v4_dev.memory.session_state import (
                 load_session, recoverable_work_checkpoint,
-                build_session_restore_summary, analyze_session, get_session_by_id,
-                get_session_index, search_sessions,
+                build_session_restore_summary, build_session_brief_summary,
+                analyze_session, get_session_by_id, get_session_index, search_sessions,
             )
             selector = session_selector or {}
             selected_id = None
@@ -1818,17 +1818,15 @@ SOURCE CODE:
                     session_type = str(item.get("session_type") or report.get("session_type") or "work").casefold()
                     label = "حوار" if session_type == "dialogue" else "عمل"
                     if detailed_summaries:
+                        brief = build_session_brief_summary(
+                            get_session_by_id(item.get("session_id")) or item
+                        )
                         lines.extend([
                             "",
-                            f"{number}. [{label}] {report['topic']}",
-                            f"- المعرّف: {report['session_id']}",
-                            f"- الحالة: {report['status']} — {report['current_state']}",
-                            f"- آخر إنجاز مؤكد: {report['last_completed_step']}",
-                            f"- الخطوة التالية: {report['next_step']}",
-                            "- الأعمال المتبقية: " + (
-                                "؛ ".join(report["pending_tasks"][:3])
-                                if report["pending_tasks"] else "لا توجد أعمال متبقية محددة"
-                            ),
+                            f"{number}. [{label}] {brief['topic']}",
+                            f"- المعرّف: {brief['session_id'] or report['session_id']}",
+                            f"- الملخص: {brief['summary']}",
+                            f"- الحالة: {brief['status']}",
                         ])
                     else:
                         lines.append(
@@ -1837,6 +1835,18 @@ SOURCE CODE:
                 lines.append("للاسترجاع اكتب: استرجع الجلسة رقم 1 (أو أي رقم ظاهر).")
                 return {"status": "success", "intent": intent,
                         "text": "\n".join(lines), "sessions": candidates}
+            if selector.get("kind") == "reference":
+                return {
+                    "status": "needs_clarification",
+                    "intent": intent,
+                    "source": "saved_session_reference",
+                    "executed": False,
+                    "text": (
+                        "تقصد جلسة بعينها، لكن لم يُحدَّد معرّف جلسة يمكنني تلخيصها بأمان. "
+                        "هل تقصد الحوار الحالي أم جلسة محفوظة؟ إذا كانت محفوظة، اذكر رقمها "
+                        "أو معرّفها. لن أستبدل ملخص محتواها بعدّاد المهام والأخطاء."
+                    ),
+                }
             if selector.get("kind") == "previous_dialogue":
                 # A previous-dialogue request must select a persisted dialogue,
                 # not the canonical work checkpoint or the active live dialogue.
@@ -1917,12 +1927,48 @@ SOURCE CODE:
                         )
                     return {"status": "success", "intent": intent,
                             "text": "\n".join(lines), "sessions": candidates}
-                if len(candidates) > 1 and candidates[0].get("match_score", 0) == candidates[1].get("match_score", 0):
-                    lines = ["وجدت أكثر من جلسة محتملة. اختر واحدة بذكر عنوانها أو معرّفها:"]
-                    for item in candidates:
-                        lines.append(f"- {item.get('title') or item.get('active_goal') or 'جلسة بلا عنوان'} [{item.get('session_id', '?')}] — {item.get('next_step') or 'لا توجد خطوة تالية'}")
-                    return {"status": "needs_clarification", "intent": intent,
-                            "text": "\n".join(lines), "sessions": candidates}
+                top_score = candidates[0].get("match_score", 0)
+                ambiguous = [
+                    item for item in candidates
+                    if item.get("match_score", 0) == top_score
+                ]
+                if len(ambiguous) > 1:
+                    lines = [
+                        "وجدت أكثر من جلسة متقاربة في المطابقة. "
+                        "اختر رقم الخيار أو أرسل معرّف الجلسة:"
+                    ]
+                    pending_candidates = []
+                    for option_number, item in enumerate(ambiguous, 1):
+                        selected = get_session_by_id(item.get("session_id")) or item
+                        brief = build_session_brief_summary(selected)
+                        option = {
+                            "session_id": str(item.get("session_id") or ""),
+                            "title": str(brief.get("topic") or item.get("title") or "جلسة بلا عنوان"),
+                            "topic": str(brief.get("topic") or item.get("topic") or ""),
+                            "summary": str(brief.get("summary") or ""),
+                        }
+                        pending_candidates.append(option)
+                        lines.append(
+                            f"- الخيار {option_number}: {option['title']} "
+                            f"[{option['session_id'] or '?'}]"
+                        )
+                        lines.append(f"  الملخص: {option['summary'] or 'لا توجد تفاصيل كافية في السجل.'}")
+                    memory = getattr(self.agent, "dialogue_memory", None)
+                    state = getattr(memory, "state", None)
+                    if state is not None:
+                        state.pending_clarification = {
+                            "kind": "saved_session_choice",
+                            "query": str(selector.get("query") or raw),
+                            "candidates": pending_candidates,
+                        }
+                    return {
+                        "status": "needs_clarification",
+                        "intent": intent,
+                        "source": "saved_session_selector",
+                        "executed": False,
+                        "text": "\n".join(lines),
+                        "sessions": ambiguous,
+                    }
                 selected_id = candidates[0].get("session_id")
             s = get_session_by_id(selected_id) if selected_id else load_session()
             if not s:

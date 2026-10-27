@@ -236,12 +236,40 @@ def session_selector(raw: str) -> dict:
     """Classify explicit session selection/report language without an LLM."""
     raw_text = str(raw or "").strip()
     text = raw_text.casefold()
-    # Repair common mobile/terminal input where adjacent Arabic words are
-    # accidentally joined (e.g. "ماذاكنا نقول في اخر جلسة"). Keep the raw
-    # utterance for display; normalize only the selector's matching copy.
+    # Normalize common Arabic typing variants for matching only. Preserve raw_text.
+    text = (
+        text.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        .replace("ى", "ي").replace("ـ", "")
+        .replace("ملهص", "ملخص").replace("نلخص", "ملخص")
+        .replace("جنيع", "جميع").replace("جميغ", "جميع")
+    )
+    text = re.sub(r"[\u064b-\u065f\u0670]", "", text)
+    # Repair common mobile/terminal input where adjacent words are joined.
     text = re.sub(r"(?<=ماذا)(?=كنا\b)", " ", text)
     text = re.sub(r"(?<=ما)(?=كنا\b)", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
+
+    # Multi-session summaries must be routed to the saved-session store,
+    # not the runtime SESSION_REPORT handler.
+    collective_sessions = re.search(
+        r"(?<!\w)(?:لكل|لجميع|كل|جميع|كافة|لكافة)\s+(?:(?:ال)?جلس(?:ة|ات|ه))(?!\w)",
+        text,
+    )
+    asks_for_summary = any(
+        marker in text
+        for marker in ("ملخص", "تلخيص", "لخص", "مضمون", "محتوى", "المحتوى", "المضمون")
+    )
+    if collective_sessions and asks_for_summary:
+        return {"kind": "list", "report_mode": "summaries"}
+
+    # A deictic request is not a safe selector for the latest saved checkpoint.
+    if asks_for_summary and any(marker in text for marker in (
+        "هذه الجلسة", "هذه الجلسه", "هذه الجلسات",
+        "الجلسة التي عرضتها", "الجلسه التي عرضتها",
+        "الجلسة التي عرضتها انت", "الجلسه التي عرضتها انت",
+    )):
+        return {"kind": "reference", "report_mode": "standard"}
+
     report_mode = "standard"
     if any(token in text for token in (
         "نص الحوار حرفيا", "نص الحوار حرفيًا", "الحوار المحفوظ حرفيا",
@@ -368,6 +396,96 @@ def session_selector(raw: str) -> dict:
     )):
         return {"kind": "latest", "report_mode": report_mode}
     return {"kind": "none"}
+
+
+def resolve_saved_session_choice(raw: str, candidates: list[dict]) -> str | None:
+    """Resolve a reply to a displayed saved-session ambiguity without guessing."""
+    if not isinstance(candidates, list) or not candidates:
+        return None
+
+    def normalized(value: object) -> str:
+        value = str(value or "").casefold()
+        value = (
+            value.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+            .replace("ى", "ي").replace("ـ", "")
+        )
+        value = re.sub(r"[\u064b-\u065f\u0670]", "", value)
+        value = re.sub(r"[^\w]+", " ", value, flags=re.UNICODE)
+        return " ".join(value.split())
+
+    text = normalized(raw)
+    if not text:
+        return None
+
+    raw_folded = str(raw or "").casefold()
+    for item in candidates:
+        session_id = str(item.get("session_id") or "").strip()
+        if session_id and session_id.casefold() in raw_folded:
+            return session_id
+
+    numeric = re.fullmatch(r"(?:الخيار|الاختيار|option)?\s*(\d+)", text)
+    if numeric:
+        number = int(numeric.group(1))
+        if 1 <= number <= len(candidates):
+            return str(candidates[number - 1].get("session_id") or "") or None
+
+    ordinals = (
+        (1, ("الاولى", "الاول", "الخيار الاول", "الاختيار الاول", "النتيجة الاولى", "المرشح الاول")),
+        (2, ("الثانية", "الثاني", "الخيار الثاني", "الاختيار الثاني", "النتيجة الثانية", "المرشح الثاني")),
+        (3, ("الثالثة", "الثالث", "الخيار الثالث", "الاختيار الثالث", "النتيجة الثالثة", "المرشح الثالث")),
+        (4, ("الرابعة", "الرابع", "الخيار الرابع", "الاختيار الرابع", "النتيجة الرابعة", "المرشح الرابع")),
+        (5, ("الخامسة", "الخامس", "الخيار الخامس", "الاختيار الخامس", "النتيجة الخامسة", "المرشح الخامس")),
+    )
+    for number, phrases in ordinals:
+        if number <= len(candidates) and any(phrase in text for phrase in phrases):
+            return str(candidates[number - 1].get("session_id") or "") or None
+
+    exact_matches = []
+    for item in candidates:
+        fields = (item.get("title"), item.get("topic"), item.get("active_goal"))
+        if any(
+            len(normalized(field)) >= 5
+            and (normalized(field) in text or text in normalized(field))
+            for field in fields
+        ):
+            exact_matches.append(item)
+    unique_ids = {
+        str(item.get("session_id") or "").strip()
+        for item in exact_matches
+        if str(item.get("session_id") or "").strip()
+    }
+    if len(unique_ids) == 1:
+        return next(iter(unique_ids))
+
+    stop_words = {
+        "جلسة", "الجلسة", "جلسه", "الجلسه", "جلسات", "الجلسات",
+        "ملخص", "الملخص", "اكتب", "اعرض", "استرجع", "استعد", "اختر",
+        "الخيار", "الاختيار", "هذه", "هذا", "التي", "الذي", "عرضتها",
+        "انت", "انا", "كنا", "نتحدث", "نتكلم", "عن", "حول", "موضوع",
+        "المحفوظة", "المحفوظ", "في", "من", "على", "و", "او", "ثم",
+        "مع", "كل", "جميع", "رقم", "اختصر", "اكمل", "تقرير",
+    }
+    query_tokens = {
+        token for token in re.findall(r"[\w]+", text, flags=re.UNICODE)
+        if len(token) > 1 and token not in stop_words
+    }
+    if len(query_tokens) < 2:
+        return None
+
+    scored = []
+    for item in candidates:
+        haystack = normalized(" ".join(
+            str(item.get(key) or "")
+            for key in ("title", "topic", "active_goal", "summary")
+        ))
+        candidate_tokens = set(re.findall(r"[\w]+", haystack, flags=re.UNICODE))
+        scored.append((len(query_tokens & candidate_tokens), str(item.get("session_id") or "").strip()))
+    scored.sort(reverse=True)
+    if scored and scored[0][0] >= 2 and scored[0][1] and (
+        len(scored) == 1 or scored[0][0] > scored[1][0]
+    ):
+        return scored[0][1]
+    return None
 
 def save_session(active_goal: str = None, completed: list = None,
                  next_step: str = None, last_files: list = None,
@@ -1002,6 +1120,139 @@ def build_session_restore_summary(data: dict | None = None, *, report_mode: str 
         "تم تحميل سياق الجلسة المحددة؛ لم يتم تنفيذ الخطوة التالية تلقائيًا.",
     ]
     return "\n".join(lines)
+
+
+def build_session_brief_summary(data: dict | None = None) -> dict:
+    """Build a concise list summary from saved dialogue/work evidence."""
+    session = data if isinstance(data, dict) else {}
+    report = analyze_session(session)
+    session_type = str(session.get("session_type") or report.get("session_type") or "work").casefold()
+    dialogue = session.get("dialogue_state") or {}
+    if not isinstance(dialogue, dict):
+        dialogue = {}
+
+    def clean(value: object, limit: int = 150) -> str:
+        value = " ".join(str(value or "").split()).strip()
+        return value if len(value) <= limit else value[:limit - 1].rstrip() + "…"
+
+    generic_topics = {
+        "", "حفظ سياق الحوار", "حفظ الجلسة", "جلسة حوار", "حوار محفوظ",
+        "غير محدد من سجل الحوار", "جلسة بلا عنوان", "عمل جاري",
+        "غير محدد من البيانات المتاحة", "غير محدد",
+    }
+
+    def useful_topic(value: object) -> bool:
+        candidate = clean(value, 100).casefold()
+        if candidate in generic_topics:
+            return False
+        return not any(
+            candidate.startswith(generic + " —") or candidate.startswith(generic + " -")
+            for generic in generic_topics if generic
+        )
+
+    is_dialogue = session_type == "dialogue" or (
+        not str(session.get("session_type") or "").strip()
+        and isinstance(session.get("dialogue_state"), dict)
+        and bool(str(dialogue.get("session_id") or "").strip())
+        and not session.get("context_state")
+    )
+
+    if is_dialogue:
+        exchanges = _dialogue_exchanges(session)
+        topic_candidates = (
+            dialogue.get("last_topic"),
+            next((item.get("target") for item in reversed(exchanges) if item.get("target")), ""),
+            report.get("topic"), session.get("title"), session.get("active_goal"),
+        )
+        topic = next(
+            (clean(value, 100) for value in topic_candidates if useful_topic(value)),
+            "",
+        )
+        control_phrases = {
+            "حفظ سياق الحوار", "حفظ الجلسة", "نفس السياق", "اكمل",
+            "اكمل من حيث توقفنا", "اختصر اكثر", "اختصر", "اكتب ملخص هذه الجلسة",
+            "اكتب ملخص لكل جلسة", "اكتب تقرير ملخص لكل جلسة",
+            "اعرض جميع الجلسات", "اعرض جميع الجلسات المحفوظة",
+            "كم عدد الجلسات المحفوظة",
+        }
+        meaningful_users = []
+        greeting_seen = False
+        for exchange in exchanges:
+            user = clean(exchange.get("user"), 180)
+            if not user:
+                continue
+            normalized_user = user.casefold().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+            normalized_user = re.sub(r"[ًٌٍَُِّْـ]", "", normalized_user)
+            normalized_user = " ".join(normalized_user.strip(" .,،؛:!?؟").split())
+            if normalized_user in {
+                "مرحبا", "اهلا", "اهلا وسهلا", "السلام عليكم",
+                "صباح الخير", "مساء الخير",
+            }:
+                greeting_seen = True
+                continue
+            if normalized_user in control_phrases:
+                continue
+            if (
+                re.search(r"(?:ملخص|لخص|تلخيص|تقرير).*(?:كل|جميع|الجلسات|الجلسة المحفوظة)", normalized_user)
+                or re.search(r"(?:استرجع|استعد|اعرض).*(?:الجلسة رقم|الجلسات المحفوظة)", normalized_user)
+            ):
+                continue
+            if user not in meaningful_users:
+                meaningful_users.append(user)
+
+        if not topic and meaningful_users:
+            topic = clean(meaningful_users[0], 100)
+        topic = topic or "حوار بلا موضوع محدد"
+        if meaningful_users:
+            excerpts = [f"«{clean(value, 92)}»" for value in meaningful_users[-2:]]
+            summary = "مضمون الحوار من الرسائل المحفوظة: " + "؛ ".join(excerpts) + "."
+        elif greeting_seen:
+            summary = "حوار افتتاحي للتحية والتعارف؛ لا تظهر في السجل تبادلات موضوعية أخرى مكتملة."
+        else:
+            summary = "لا يحتوي السجل على تبادلات مكتملة ذات مضمون يمكن تلخيصه بثقة."
+        return {
+            "session_id": str(session.get("session_id") or report.get("session_id") or ""),
+            "session_type": "dialogue",
+            "topic": topic,
+            "summary": clean(summary, 270),
+            "status": report.get("status", session.get("status", "غير محددة")),
+        }
+
+    topic_candidates = (
+        report.get("topic"), session.get("title"), session.get("active_goal"),
+        report.get("active_goal"),
+    )
+    topic = next(
+        (clean(value, 100) for value in topic_candidates if useful_topic(value)),
+        "",
+    )
+    topics = list(report.get("topics") or [])
+    completed = list(session.get("completed_work") or [])
+    achievements = list(report.get("confirmed_achievements") or [])
+    pending = list(report.get("pending_tasks") or [])
+    evidence = []
+    for value in [*achievements, *completed, *topics]:
+        value = clean(value, 100)
+        if value and useful_topic(value) and value != topic and value not in evidence:
+            evidence.append(value)
+    if not topic and evidence:
+        topic = evidence.pop(0)
+    topic = topic or "جلسة عمل بلا عنوان موثوق"
+    parts = [f"الموضوع/الهدف: {topic}."]
+    if evidence:
+        parts.append(f"المحفوظ من العمل: {evidence[0]}.")
+    next_step = clean(session.get("next_step") or (pending[0] if pending else ""), 100)
+    if next_step and useful_topic(next_step) and next_step != topic:
+        parts.append(f"الخطوة التالية: {next_step}.")
+    elif not evidence:
+        parts.append("لا توجد إنجازات أو تفاصيل إضافية مؤكدة في البيانات المحفوظة.")
+    return {
+        "session_id": str(session.get("session_id") or report.get("session_id") or ""),
+        "session_type": session_type or "work",
+        "topic": topic,
+        "summary": clean(" ".join(parts), 270),
+        "status": report.get("status", session.get("status", "غير محددة")),
+    }
 
 def _enrich_session_fields(data: dict) -> dict:
     """Persist semantic fields so later reports do not depend on live context."""

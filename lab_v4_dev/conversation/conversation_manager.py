@@ -449,14 +449,46 @@ class ConversationManager:
                 "executed": False,
             }
 
-        # Consume an existing project-list ordering clarification
-        # before treating "1/2/3" as a new independent request.
+        selected_saved_session_id = None
+        # Resolve saved-session ambiguity before NLU sees this turn.
         if self.dialogue_memory:
-            pending = getattr(
-                getattr(self.dialogue_memory, "state", None),
-                "pending_clarification",
-                None,
-            )
+            state = getattr(self.dialogue_memory, "state", None)
+            pending = getattr(state, "pending_clarification", None)
+            if isinstance(pending, dict) and pending.get("kind") == "saved_session_choice":
+                from lab_v4_dev.memory.session_state import resolve_saved_session_choice
+                candidates = pending.get("candidates") or []
+                selected_saved_session_id = resolve_saved_session_choice(user_input, candidates)
+                if selected_saved_session_id:
+                    state.pending_clarification = None
+                else:
+                    normalized_choice = self._normalize_transition_text(user_input)
+                    refers_to_saved_session = any(marker in normalized_choice for marker in (
+                        "جلسة", "جلسه", "ملخص", "ملخصات", "لخص", "تلخيص",
+                        "تقرير", "استرجع", "استعد", "هذه", "التي عرضتها",
+                        "اختصر", "اكمل", "الفن", "الرسم", "النحت", "النقش",
+                    ))
+                    if refers_to_saved_session:
+                        lines = [
+                            "لم أحدد جلسة واحدة بعد؛ لن أختار جلسة مختلفة بالتخمين.",
+                            "اختر رقم الخيار الظاهر أو أرسل معرّف الجلسة:",
+                        ]
+                        for number, item in enumerate(candidates, 1):
+                            title = str(item.get("title") or item.get("topic") or "جلسة بلا عنوان")
+                            session_id = str(item.get("session_id") or "?")
+                            lines.append(f"- الخيار {number}: {title} [{session_id}]")
+                            if item.get("summary"):
+                                lines.append(f"  الملخص: {item['summary']}")
+                        return {
+                            "status": "needs_clarification",
+                            "intent": Intent.SESSION_RESTORE,
+                            "source": "saved_session_selector",
+                            "executed": False,
+                            "text": "\n".join(lines),
+                        }
+                    state.pending_clarification = None
+
+            # Preserve project-list ordering clarification behavior.
+            pending = getattr(state, "pending_clarification", None)
             if isinstance(pending, dict) and pending.get("kind") == "project_order":
                 choice = str(user_input).strip()
                 orders = {
@@ -467,7 +499,7 @@ class ConversationManager:
                 order = orders.get(choice)
                 if order:
                     base_request = str(pending.get("request", "")).strip()
-                    self.dialogue_memory.state.pending_clarification = None
+                    state.pending_clarification = None
                     user_input = f"{base_request} {order}".strip()
 
         mode = detect_mode(user_input)
@@ -558,6 +590,12 @@ class ConversationManager:
         raw_signal = self._semantic_signal_from_parsed(candidate)
         from lab_v4_dev.memory.session_state import session_selector
         selected_session = session_selector(user_input)
+        if selected_saved_session_id:
+            selected_session = {
+                "kind": "id",
+                "session_id": selected_saved_session_id,
+                "report_mode": "standard",
+            }
         normalized_session_request = self._normalize_transition_text(user_input).strip(
             " .,،؛:!?؟"
         )
