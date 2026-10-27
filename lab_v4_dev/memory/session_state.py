@@ -334,7 +334,7 @@ def session_selector(raw: str) -> dict:
     search_marker = re.search(r"(?:عن|حول)\s+(.*?)(?:،|,|\s+واعرض|\s+ثم|\s+فقط|$)", raw_text, flags=re.IGNORECASE)
     other_saved_topic = (
         any(marker in text for marker in (
-            "جلسة اخرى", "جلسه اخرى", "جلسة أخرى", "جلسه أخرى",
+            "جلسة اخرى", "جلسه اخرى", "جلسة اخري", "جلسه اخري", "جلسة أخرى", "جلسه أخرى",
             "جلسة مختلفة", "جلسه مختلفه", "حوار آخر", "حوار اخر",
         ))
         and any(marker in text for marker in (
@@ -1191,12 +1191,17 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
             summary = "حوار افتتاحي للتحية والتعارف؛ لا تظهر في السجل تبادلات موضوعية أخرى مكتملة."
         else:
             summary = "لا يحتوي السجل على تبادلات مكتملة ذات مضمون يمكن تلخيصه بثقة."
+        next_step = clean(
+            session.get("next_step") or (report.get("next_step") if report.get("next_step") != "غير محدد من البيانات المتاحة" else ""),
+            120,
+        )
         return {
             "session_id": str(session.get("session_id") or report.get("session_id") or ""),
             "session_type": "dialogue",
             "topic": topic,
             "summary": clean(summary, 270),
             "status": report.get("status", session.get("status", "غير محددة")),
+            "next_step": next_step,
         }
 
     topic_candidates = (
