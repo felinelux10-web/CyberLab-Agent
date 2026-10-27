@@ -1751,20 +1751,28 @@ class ConversationManager:
                 )
             return local_project_answer
 
-        # Unified local response gets the canonical parse, semantic contract,
-        # and only the history authorized by the transition resolver. It runs
-        # before the legacy social responder so offline dialogue can use context
-        # rather than falling straight through to the provider.
+        # The unified local responder is deliberately limited at this point
+        # to greeting/closing acts. Continuations, acknowledgements, topic returns,
+        # and history recovery must reach their established owners below; a local
+        # paraphrase must not short-circuit branch restoration or the provider's
+        # context-aware continuation path. The pure responder remains reusable as
+        # a bounded fallback, but manager routing owns when it may answer.
+        unified_act = str(
+            (parsed or {}).get("conversation_act")
+            or semantic.conversation_act
+            or ""
+        ).strip().upper()
         local_unified = (
-            None
-            if saved_session_request
-            else answer_local_response(
+            answer_local_response(
                 user_input,
                 parsed,
                 semantic.as_dict(),
                 history=chat_history,
                 context_entity=context_entity,
             )
+            if not saved_session_request
+            and unified_act in {"SOCIAL_GREETING", "SOCIAL_CLOSING"}
+            else None
         )
         if local_unified is not None:
             local_unified["semantic_request"] = semantic.as_dict()
