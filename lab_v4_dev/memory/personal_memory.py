@@ -43,36 +43,21 @@ class PersonalMemoryStore:
             data = json.load(handle)
         if not isinstance(data, dict):
             raise ValueError("personal memory must be a JSON object")
+        data["schema_version"] = max(2, int(data.get("schema_version", 1)))
         data.setdefault("records", {})
         if not isinstance(data["records"], dict):
             raise ValueError("personal memory records must be an object")
         return data
 
     def _save(self, data: dict) -> None:
+        from lab_v4_dev.memory.intelligence import atomic_write_json
         directory = os.path.dirname(os.path.abspath(self.path))
         os.makedirs(directory, mode=0o700, exist_ok=True)
-        try:
-            os.chmod(directory, 0o700)
-        except OSError:
-            pass
-        temporary = f"{self.path}.{secrets.token_hex(4)}.tmp"
-        try:
-            with open(temporary, "w", encoding="utf-8") as handle:
-                os.chmod(temporary, 0o600)
-                json.dump(data, handle, ensure_ascii=False, indent=2)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self.path)
-            try:
-                os.chmod(self.path, 0o600)
-            except OSError:
-                pass
-        except Exception:
-            try:
-                os.unlink(temporary)
-            except OSError:
-                pass
-            raise
+        try: os.chmod(directory, 0o700)
+        except OSError: pass
+        atomic_write_json(self.path, data, mode=0o600)
+        try: os.chmod(self.path, 0o600)
+        except OSError: pass
 
     def _audit_event(self, access: PersonalMemoryAccess, operation: str, allowed: bool, success: bool) -> None:
         self._audit.append({
@@ -99,10 +84,16 @@ class PersonalMemoryStore:
             return False
         try:
             data = self._load()
+            from lab_v4_dev.memory.intelligence import memory_metadata
+            previous = data.get("records", {}).get(key, {})
+            metadata = memory_metadata("personal_preference", source=source,
+                confidence=confidence, importance=0.8, scope=category)
             data["records"][key] = {
-                "memory_id": f"pm:{secrets.token_hex(8)}", "key": key, "value": value,
-                "category": category, "confidence": confidence, "source": source,
-                "created_at": data.get("records", {}).get(key, {}).get("created_at", _now()),
+                **metadata,
+                "memory_id": previous.get("memory_id") or f"pm:{secrets.token_hex(8)}",
+                "key": key, "value": value, "category": category,
+                "confidence": confidence, "source": source,
+                "created_at": previous.get("created_at", metadata["created_at"]),
                 "updated_at": _now(), "status": "ACTIVE",
             }
             self._save(data)

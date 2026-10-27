@@ -72,9 +72,8 @@ def _append_recent_archive(data: dict) -> None:
     archive = archive[-MAX_SESSION_INDEX:]
     # The archive is the durable searchable index. The UI helper below still
     # returns only a small recent window for mobile/Termux memory limits.
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(archive, f, ensure_ascii=False, indent=2)
+    from lab_v4_dev.memory.intelligence import atomic_write_json
+    atomic_write_json(path, archive)
 
 
 def _session_updated_key(item: dict) -> str:
@@ -137,10 +136,8 @@ def _write_session_detail(data: dict) -> None:
         return
     path = _detail_file(session_id)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    temporary = f"{path}.tmp"
-    with open(temporary, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(temporary, path)
+    from lab_v4_dev.memory.intelligence import atomic_write_json
+    atomic_write_json(path, data)
 
 
 def _load_session_detail(session_id: str) -> dict:
@@ -164,39 +161,24 @@ def _session_text(item: dict) -> str:
 
 def search_sessions(query: str = "", *, status: str | None = None,
                     project: str | None = None, limit: int = 10) -> list:
-    """Search compact session metadata; details are loaded only after selection."""
-    needle = str(query or "").strip().casefold()
-    stop_words = {"جلسة", "الجلسة", "جلسه", "التي", "كنا", "في", "على", "إلى", "الى", "أريد", "اريد", "العودة", "ارجع", "استعد", "استرجع", "مشروع"}
-    tokens = [token for token in needle.split() if token not in stop_words and len(token) > 0]
-    def contains_token(field: str, token: str) -> bool:
-        if token.isdigit():
-            return bool(re.search(rf"(?<!\d){re.escape(token)}(?!\d)", field))
-        return token in field
-    results = []
-    for item in sorted(get_session_index(), key=_session_updated_key, reverse=True):
+    """Search the full saved-session index, then rank by content relevance."""
+    from lab_v4_dev.memory.intelligence import rank_memory_records
+    needle = str(query or "").strip()
+    candidates = []
+    for item in get_session_index():
         if status and str(item.get("status", "")).casefold() != str(status).casefold():
             continue
-        if project and str(project).casefold() not in _session_text(item):
+        if project and str(project).casefold() not in _session_text(item).casefold():
             continue
-        haystack = _session_text(item)
-        # Topic descriptions are often broader than the user's wording (for
-        # example, a saved title says "الفن والرسم" while the query says
-        # "الفن التجريدي"). Keep partial semantic candidates and rank them
-        # below exact/all-token matches instead of silently returning no result.
-        matched_tokens = sum(contains_token(haystack, token) for token in tokens)
-        if needle and needle not in haystack and matched_tokens == 0:
-            continue
-        score = 0
-        if needle:
-            for key in ("title", "project", "topic", "active_goal", "next_step"):
-                field = str(item.get(key, "")).casefold()
-                matched_tokens = sum(contains_token(field, token) for token in tokens)
-                if needle in field or matched_tokens:
-                    score += (3 if key in {"title", "project", "active_goal"} else 1) * max(1, matched_tokens)
-        results.append({**item, "match_score": score})
-        if len(results) >= max(1, int(limit)):
-            break
-    return sorted(results, key=lambda item: (item.get("match_score", 0), item.get("updated_at", item.get("timestamp", ""))), reverse=True)
+        candidates.append(item)
+    if not needle:
+        return sorted(candidates, key=_session_updated_key, reverse=True)[:max(1, int(limit))]
+    return rank_memory_records(
+        needle, candidates,
+        fields=("title","project","topic","active_goal","summary","current_state","next_step",
+                "confirmed_achievements","completed_work","decisions","open_questions"),
+        minimum_score=0.12, limit=max(1, int(limit)),
+    )
 
 
 def get_session_by_id(session_id: str) -> dict:
@@ -532,9 +514,8 @@ def save_session(active_goal: str = None, completed: list = None,
     except Exception:
         # FALLBACK — يُستخدم فقط إذا تعذر استيراد project_knowledge
         path = _session_file()
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        from lab_v4_dev.memory.intelligence import atomic_write_json
+        atomic_write_json(path, data)
     _write_session_detail(data)
     _append_recent_archive(data)
     return data

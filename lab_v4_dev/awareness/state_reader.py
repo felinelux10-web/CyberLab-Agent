@@ -35,9 +35,8 @@ def update(key: str, value):
     state = load()
     state[key] = value
     state["last_updated"] = datetime.now().isoformat()
-    os.makedirs(os.path.dirname(_state_file()), exist_ok=True)
-    with open(_state_file(), "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+    from lab_v4_dev.memory.intelligence import atomic_write_json
+    atomic_write_json(_state_file(), state)
 
 def add_modified_file(file_path: str):
     state = load()
@@ -46,9 +45,8 @@ def add_modified_file(file_path: str):
         files.insert(0, file_path)
     state["last_modified_files"] = files[:10]
     state["last_updated"] = datetime.now().isoformat()
-    os.makedirs(os.path.dirname(_state_file()), exist_ok=True)
-    with open(_state_file(), "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+    from lab_v4_dev.memory.intelligence import atomic_write_json
+    atomic_write_json(_state_file(), state)
 
 def summary() -> str:
     s = load()

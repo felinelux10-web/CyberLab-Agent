@@ -668,9 +668,8 @@ def _write(filename: str, data: dict):
     _load_all()
     data_dir = _data_dir()
     fpath = os.path.join(data_dir, filename)
-    os.makedirs(data_dir, exist_ok=True)
-    with open(fpath, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    from lab_v4_dev.memory.intelligence import atomic_write_json
+    atomic_write_json(fpath, data)
     _cache[filename] = data
     _cache_state["last_write"] = _time.time()
     _cache_state["dirty"] = False

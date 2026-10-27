@@ -5,6 +5,7 @@
 import json
 import os
 import time
+from lab_v4_dev.memory.intelligence import atomic_write_json, normalize_memory_text
 
 BASE = os.path.dirname(__file__)
 CONTEXT_FILE = os.path.join(BASE, "nlu_context.json")
@@ -14,22 +15,26 @@ CONTEXT_TTL = 300  # 5 دقائق
 def _load() -> list:
     try:
         with open(CONTEXT_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError, TypeError):
         return []
 
 def _save(history: list):
-    with open(CONTEXT_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
+    atomic_write_json(CONTEXT_FILE, history, mode=0o600)
 
 def save_state(action: str, entity: str, entity_type: str = ""):
     """يحفظ آخر NLU State — المعنى وليس النص"""
     history = _load()
     state = {
-        "action"     : action,
-        "entity"     : entity,
-        "entity_type": entity_type,
-        "timestamp"  : time.time(),
+        "action": str(action or "").strip(),
+        "entity": str(entity or "").strip(),
+        "entity_type": str(entity_type or "UNKNOWN").strip().upper(),
+        "normalized_entity": normalize_memory_text(entity),
+        "timestamp": time.time(),
+        "record_version": 1,
+        "memory_type": "short_term_nlu_context",
+        "status": "ACTIVE",
     }
     history.insert(0, state)
     history = history[:MAX_HISTORY]

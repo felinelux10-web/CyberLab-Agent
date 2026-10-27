@@ -4,6 +4,7 @@ import json
 import os
 import re
 import unicodedata
+import secrets
 from datetime import datetime
 from lab_v4_dev.llm.provider_names import GROQ
 KB_SCHEMA_VERSION = 2
@@ -71,16 +72,28 @@ def _record_matches(record: dict, key: str) -> bool:
     return bool(left and right and len(left & right) / max(len(left), len(right)) >= 0.8)
 
 def search(topic: str) -> str | None:
+    from lab_v4_dev.memory.intelligence import rank_memory_records
     key = _concept_key(topic)
+    if not key: return None
     data = _load()
-    for record in data.get("records", {}).values():
-        if _record_matches(record, key) and record.get("status", "ACTIVE") != "ARCHIVED":
-            record["hits"] = int(record.get("hits", record.get("access_count", 0))) + 1
-            record["access_count"] = record["hits"]
-            record["last_accessed_at"] = datetime.now().isoformat()
-            _save(data)
-            return record.get("answer")
-    if restore(topic):
+    candidates = []
+    for storage_key, record in data.get("records", {}).items():
+        if not isinstance(record, dict): continue
+        ranked = rank_memory_records(topic, [record], fields=("canonical_key","aliases","concept_id"))
+        score = ranked[0]["match_score"] if ranked else 0.0
+        if _record_matches(record, key): score = max(score, 0.85)
+        if score >= 0.42: candidates.append((score, storage_key, record))
+    candidates.sort(key=lambda item: (item[0], float(item[2].get("importance", 0.0) or 0.0),
+        str(item[2].get("updated_at") or ""),
+        int(item[2].get("access_count", item[2].get("hits", 0)) or 0)), reverse=True)
+    for _, _, record in candidates:
+        if record.get("status", "ACTIVE") == "ARCHIVED": continue
+        record["hits"] = int(record.get("hits", record.get("access_count", 0))) + 1
+        record["access_count"] = record["hits"]
+        record["last_accessed_at"] = datetime.now().isoformat()
+        _save(data)
+        return record.get("answer")
+    if any(record.get("status") == "ARCHIVED" for _, _, record in candidates) and restore(topic):
         return search(topic)
     return None
 
@@ -108,8 +121,12 @@ def store(topic: str, answer: str, source: str = GROQ, *, confirmed: bool = Fals
         record.update({"answer": answer, "updated_at": now, "status": "ACTIVE", "source": source, "confidence": confidence})
         record["importance"] = max(float(record.get("importance", 0.0)), float(importance))
     else:
+        from lab_v4_dev.memory.intelligence import memory_metadata
+        metadata = memory_metadata("technical_knowledge", source=source,
+            confidence=confidence, importance=importance, scope=scope)
         records[key] = {
-            "memory_id": f"kb:{len(records) + 1}", "concept_id": f"TECH.{key.replace(' ', '.')}", "canonical_key": key,
+            **metadata,
+            "memory_id": f"kb:{secrets.token_hex(8)}", "concept_id": f"TECH.{key.replace(' ', '.')}", "canonical_key": key,
             "aliases": [str(topic)], "answer": answer, "source": source, "scope": scope,
             "confidence": confidence, "quality": "validated" if is_quality(answer, topic) else "explicitly_confirmed",
             "importance": float(importance), "created_at": now, "updated_at": now,
