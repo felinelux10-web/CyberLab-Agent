@@ -26,6 +26,7 @@ _LOCAL_ACTS = {
     "CONVERSATION_CONTINUATION",
     "TOPIC_CONTINUATION_QUERY",
     "TOPIC_RETURN",
+    "CONVERSATION_HISTORY_QUERY",
 }
 
 
@@ -233,6 +234,17 @@ def answer_local_response(
         else:
             reply = "أنا جاهز لمناقشة طلبك. هل تريد حديثًا عامًا، أم سؤالًا محددًا، أم متابعة موضوع سابق؟"
         return _result(reply, parsed, "local_social_engine")
+
+    if act == "CONVERSATION_HISTORY_QUERY":
+        if not last_user and not last_assistant and not topic:
+            return {
+                **_result(
+                    "لا أجد في سجل الحوار المتاح موضوعًا سابقًا واضحًا لاستعادته. اذكر الموضوع المقصود أو أرسل جزءًا من الحوار.",
+                    parsed,
+                ),
+                "status": "needs_clarification",
+            }
+        return None
 
     if act in {"CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY", "TOPIC_RETURN"}:
         if not last_user and not last_assistant and not topic:
