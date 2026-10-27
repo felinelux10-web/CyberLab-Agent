@@ -65,7 +65,8 @@ def _append_recent_archive(data: dict) -> None:
     archive = normalized
     if session_id:
         if session_id in positions:
-            archive[positions[session_id]] = summary
+            position = positions[session_id]
+            archive[position] = {**archive[position], **summary}
         else:
             archive.append(summary)
     archive = archive[-MAX_SESSION_INDEX:]
@@ -272,6 +273,13 @@ def session_selector(raw: str) -> dict:
     id_match = re.search(r"(?:معرّف|معرف|id)\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9_.-]{5,})", raw_text, flags=re.IGNORECASE)
     if id_match and any(token in text for token in ("جلسة", "استعد", "استرجع", "ابحث")):
         return {"kind": "id", "session_id": id_match.group(1), "report_mode": report_mode}
+    count_request = any(token in text for token in (
+        "كم عدد الجلسات", "عدد الجلسات", "كم جلسة محفوظة",
+        "كم عدد الجلسات المحفوظة", "عدد الجلسات المحفوظة",
+        "كم عدد الجلسات السابقة", "عدد الجلسات السابقة",
+    ))
+    if count_request and any(token in text for token in ("جلسة", "جلسات", "الجلسات")):
+        return {"kind": "count", "report_mode": "compact"}
     number_match = re.search(
         r"(?:جلسة|الجلسة|جلسه|الجلسه|session)\s*(?:رقم\s*)?#?\s*(\d+)\b",
         raw_text,
