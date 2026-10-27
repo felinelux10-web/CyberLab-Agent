@@ -1746,6 +1746,30 @@ SOURCE CODE:
             selector = session_selector or {}
             selected_id = None
             report_mode = selector.get("report_mode", "standard")
+            if selector.get("kind") == "count":
+                candidates = get_session_index()
+                dialogue_count = sum(
+                    str(item.get("session_type") or "").casefold() == "dialogue"
+                    for item in candidates
+                )
+                work_count = sum(
+                    str(item.get("session_type") or "work").casefold() != "dialogue"
+                    for item in candidates
+                )
+                return {
+                    "status": "success",
+                    "intent": intent,
+                    "source": "local_session_store",
+                    "executed": False,
+                    "text": (
+                        f"عدد الجلسات المحفوظة: {len(candidates)}. "
+                        f"جلسات الحوار: {dialogue_count}. "
+                        f"جلسات العمل: {work_count}."
+                    ),
+                    "session_count": len(candidates),
+                    "dialogue_session_count": dialogue_count,
+                    "work_session_count": work_count,
+                }
             if selector.get("kind") == "compare":
                 recent = sorted(
                     get_session_index(),
