@@ -42,14 +42,32 @@ def _append_recent_archive(data: dict) -> None:
         )
         if key in data
     }
-    # Update an existing session wherever it appears, then move it to the end
-    # so the index has one authoritative, most-recent entry per session ID.
-    session_id = summary.get("session_id")
-    archive = [
-        item for item in archive
-        if not isinstance(item, dict) or item.get("session_id") != session_id
-    ]
-    archive.append(summary)
+    # Session numbers are positional references shown to the user. Updating a
+    # session must not move it to a new position, or the same number can select
+    # a different dialogue immediately after a successful restore.
+    session_id = str(summary.get("session_id") or "").strip()
+    normalized = []
+    positions = {}
+    for item in archive:
+        if not isinstance(item, dict):
+            continue
+        item_id = str(item.get("session_id") or "").strip()
+        if not item_id:
+            continue
+        if item_id in positions:
+            # Legacy archives may already contain duplicate IDs. Keep the
+            # first position, but refresh its metadata from the latest record.
+            position = positions[item_id]
+            normalized[position] = {**normalized[position], **item}
+        else:
+            positions[item_id] = len(normalized)
+            normalized.append(item)
+    archive = normalized
+    if session_id:
+        if session_id in positions:
+            archive[positions[session_id]] = summary
+        else:
+            archive.append(summary)
     archive = archive[-MAX_SESSION_INDEX:]
     # The archive is the durable searchable index. The UI helper below still
     # returns only a small recent window for mobile/Termux memory limits.
@@ -58,21 +76,46 @@ def _append_recent_archive(data: dict) -> None:
         json.dump(archive, f, ensure_ascii=False, indent=2)
 
 
+def _session_updated_key(item: dict) -> str:
+    return str(item.get("updated_at") or item.get("timestamp") or item.get("created_at") or "")
+
+
 def get_recent_sessions() -> list:
-    try:
-        with open(_archive_file(), encoding="utf-8") as f:
-            data = json.load(f)
-        return data[-MAX_RECENT_SESSIONS:] if isinstance(data, list) else []
-    except Exception:
-        return []
+    """Return the most recently updated unique sessions, newest first."""
+    return sorted(
+        get_session_index(),
+        key=_session_updated_key,
+        reverse=True,
+    )[:MAX_RECENT_SESSIONS]
 
 
 def get_session_index() -> list:
-    """Load the compact durable index without loading dialogue transcripts."""
+    """Load a unique, position-stable session index without transcripts.
+
+    The stored order is the numbering contract used by list and restore
+    commands. Deduplicate legacy repeated IDs in place; refresh metadata from
+    later copies without moving the session's original position.
+    """
     try:
         with open(_archive_file(), encoding="utf-8") as f:
             data = json.load(f)
-        return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+        if not isinstance(data, list):
+            return []
+        result = []
+        positions = {}
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            session_id = str(item.get("session_id") or "").strip()
+            if not session_id:
+                continue
+            if session_id in positions:
+                position = positions[session_id]
+                result[position] = {**result[position], **item}
+            else:
+                positions[session_id] = len(result)
+                result.append(item)
+        return result[-MAX_SESSION_INDEX:]
     except Exception:
         return []
 
@@ -129,7 +172,7 @@ def search_sessions(query: str = "", *, status: str | None = None,
             return bool(re.search(rf"(?<!\d){re.escape(token)}(?!\d)", field))
         return token in field
     results = []
-    for item in reversed(get_session_index()):
+    for item in sorted(get_session_index(), key=_session_updated_key, reverse=True):
         if status and str(item.get("status", "")).casefold() != str(status).casefold():
             continue
         if project and str(project).casefold() not in _session_text(item):
@@ -172,7 +215,7 @@ def get_latest_session_by_type(session_type: str) -> dict:
     wanted = str(session_type or "").strip().casefold()
     if not wanted:
         return {}
-    for item in reversed(get_session_index()):
+    for item in sorted(get_session_index(), key=_session_updated_key, reverse=True):
         if str(item.get("session_type") or "").casefold() != wanted:
             continue
         selected = get_session_by_id(item.get("session_id"))
@@ -454,7 +497,7 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
 
     index = get_session_index()
     previous = next(
-        (item for item in reversed(index)
+        (item for item in sorted(index, key=_session_updated_key, reverse=True)
          if str(item.get("session_type") or "").casefold() == "dialogue"),
         {},
     )
