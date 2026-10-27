@@ -126,7 +126,7 @@ class Agent:
         try:
             from lab_v4_dev.memory.session_state import (
                 load_session, recoverable_work_checkpoint, get_session_index,
-                get_session_by_id, analyze_session,
+                get_recent_sessions, get_session_by_id, analyze_session,
             )
             from lab_v4_dev.data.project_timeline import init_timeline
             init_timeline()
@@ -139,15 +139,26 @@ class Agent:
             # Keep startup readable: show only the three most recently saved
             # sessions. Full details remain available through `session N`.
             all_sessions = get_session_index()
-            index = all_sessions[-3:]
+            # Session numbers follow the stable index order; recency is a
+            # separate display concern. Do not derive a session number from
+            # the position in a transient "recent sessions" list.
+            number_by_id = {
+                str(item.get("session_id") or ""): number
+                for number, item in enumerate(all_sessions, 1)
+                if str(item.get("session_id") or "").strip()
+            }
+            index = get_recent_sessions()
             if not index and isinstance(s, dict) and s.get("session_id", s.get("active_goal")):
                 index = [s]
-            start_number = max(1, len(all_sessions) - len(index) + 1) if index else 1
             if index:
                 self._boot_ui.section("SAVED SESSIONS")
                 self._boot_ui.row("SESSIONS", f"{len(index)} saved session(s)", "INFO")
                 self._pending_work_sessions = []
-                for number, item in enumerate(index, start_number):
+                for item in index:
+                    number = number_by_id.get(
+                        str(item.get("session_id") or ""),
+                        len(all_sessions) + 1,
+                    )
                     selected = get_session_by_id(item.get("session_id")) or item
                     report = analyze_session(selected)
                     recoverable = recoverable_work_checkpoint(selected)
@@ -175,7 +186,9 @@ class Agent:
                     self._boot_ui.session_card(
                         number, f"{description}  — {state_label}", marker_state
                     )
-                visible_numbers = ", ".join(f"session {number}" for number in range(start_number, start_number + len(index)))
+                visible_numbers = ", ".join(
+                    f"session {item['number']}" for item in self._pending_work_sessions
+                )
                 self._boot_ui.row("DETAILS", f"Type {visible_numbers} for details", "INFO")
                 self._boot_ui.close_section()
         except Exception as exc:
