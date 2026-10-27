@@ -1,5 +1,3 @@
-from lab_v4_dev.memory import session_state
-
 import json
 
 from lab_v4_dev.memory import session_state
@@ -31,7 +29,12 @@ def test_updating_session_metadata_does_not_change_its_number(tmp_path, monkeypa
     archive_path.write_text(
         json.dumps(
             [
-                {"session_id": "dialogue-a", "title": "الفن", "updated_at": "2026-10-20"},
+                {
+                    "session_id": "dialogue-a",
+                    "title": "الفن",
+                    "created_at": "2026-10-20",
+                    "updated_at": "2026-10-20",
+                },
                 {"session_id": "dialogue-b", "title": "التحية", "updated_at": "2026-10-21"},
             ],
             ensure_ascii=False,
