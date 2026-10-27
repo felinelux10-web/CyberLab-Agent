@@ -1751,17 +1751,21 @@ class ConversationManager:
                 )
             return local_project_answer
 
-        # The unified local responder is deliberately limited at this point
-        # to greeting/closing acts. Continuations, acknowledgements, topic returns,
-        # and history recovery must reach their established owners below; a local
-        # paraphrase must not short-circuit branch restoration or the provider's
-        # context-aware continuation path. The pure responder remains reusable as
-        # a bounded fallback, but manager routing owns when it may answer.
+        # Route bounded social openings locally. For continuation/history turns,
+        # use the local responder only to detect missing substantive context; a
+        # successful local paraphrase must not replace the established branch
+        # restoration or provider-owned answer when a real topic is available.
         unified_act = str(
             (parsed or {}).get("conversation_act")
             or semantic.conversation_act
             or ""
         ).strip().upper()
+        local_guard_acts = {
+            "CONVERSATION_CONTINUATION",
+            "TOPIC_CONTINUATION_QUERY",
+            "TOPIC_RETURN",
+            "CONVERSATION_HISTORY_QUERY",
+        }
         local_unified = (
             answer_local_response(
                 user_input,
@@ -1771,9 +1775,24 @@ class ConversationManager:
                 context_entity=context_entity,
             )
             if not saved_session_request
-            and unified_act in {"SOCIAL_GREETING", "SOCIAL_CLOSING"}
+            and unified_act in {
+                "SOCIAL_GREETING",
+                "SOCIAL_CLOSING",
+                "SOCIAL_OPENING",
+                "CASUAL_CONVERSATION",
+                *local_guard_acts,
+            }
             else None
         )
+        if (
+            local_unified is not None
+            and unified_act in local_guard_acts
+            and local_unified.get("status") != "needs_clarification"
+        ):
+            # A locally composed continuation is not allowed to steal an
+            # existing dialogue branch; only a grounded "missing context"
+            # result may short-circuit an unavailable provider.
+            local_unified = None
         if local_unified is not None:
             local_unified["semantic_request"] = semantic.as_dict()
             local_unified = self._finalize_local_dialogue_result(
