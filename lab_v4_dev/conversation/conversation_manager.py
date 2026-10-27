@@ -2755,14 +2755,24 @@ class ConversationManager:
         response_mode = str(
             response_attributes.get("dialogue_response_mode", "")
         ).casefold()
-        if not response_mode and (
-            live_previous_session_recall
-            or any(marker in normalized_query for marker in (
+        if not response_mode and live_previous_session_recall:
+            response_mode = "summary"
+        elif not response_mode and any(
+            marker in normalized_query
+            for marker in (
                 "ماذا كنا نقول", "ماذا قلنا", "ما كنا نقول",
                 "الردود السابقة", "الردود السابقه", "قبل قليل",
+            )
+        ):
+            # History recall must preserve the recorded user/assistant pairs.
+            # A summary is selected only when the user asks for one explicitly.
+            response_mode = "transcript"
+        elif not response_mode and any(
+            marker in normalized_query
+            for marker in (
                 "كنا نناقش", "كنا نتحدث", "ملخص الحوار السابق",
                 "اكتب ملخص الحوار السابق",
-            ))
+            )
         ):
             response_mode = "summary"
         if response_mode in {"summary", "last_question", "answer", "transcript"}:
