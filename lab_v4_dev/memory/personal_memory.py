@@ -38,7 +38,7 @@ class PersonalMemoryStore:
 
     def _load(self) -> dict:
         if not os.path.exists(self.path):
-            return {"schema_version": 1, "records": {}}
+            return {"schema_version": 2, "records": {}}
         with open(self.path, encoding="utf-8") as handle:
             data = json.load(handle)
         if not isinstance(data, dict):

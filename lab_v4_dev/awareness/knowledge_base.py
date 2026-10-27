@@ -33,6 +33,29 @@ def _load() -> dict:
         data = {"schema_version": KB_SCHEMA_VERSION, "records": records}
     data.setdefault("schema_version", KB_SCHEMA_VERSION)
     data.setdefault("records", {})
+    if not isinstance(data["records"], dict):
+        raise ValueError("knowledge records must be an object")
+    # Lazy schema migration: normalize legacy records in memory without
+    # rewriting the file until a normal, successful save operation occurs.
+    from lab_v4_dev.memory.intelligence import memory_metadata
+    for storage_key, record in data["records"].items():
+        if not isinstance(record, dict):
+            continue
+        defaults = memory_metadata(
+            "technical_knowledge",
+            source=str(record.get("source") or "legacy_import"),
+            confidence=str(record.get("confidence") or "historical"),
+            importance=record.get("importance", 0.5),
+            scope=str(record.get("scope") or "technical"),
+        )
+        for field, value in defaults.items():
+            record.setdefault(field, value)
+        record.setdefault("canonical_key", str(storage_key))
+        record.setdefault("aliases", [])
+        if not isinstance(record["aliases"], list):
+            record["aliases"] = [str(record["aliases"])]
+        record.setdefault("answer", "")
+        record.setdefault("hits", int(record.get("access_count", 0) or 0))
     return data
 
 def _save(data: dict) -> None:
