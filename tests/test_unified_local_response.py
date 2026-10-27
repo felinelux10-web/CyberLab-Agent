@@ -87,3 +87,28 @@ def test_local_continuation_without_history_requests_the_missing_anchor():
 
     assert result is not None
     assert "لا أجد في السياق المتاح" in result["text"]
+
+
+
+def test_greeting_wording_changes_the_local_response_by_meaning():
+    common = {"intent": "personal_chat", "conversation_act": "SOCIAL_GREETING"}
+    semantic = {"conversation_act": "SOCIAL_GREETING", "conversation_domain": "general"}
+    hello = answer_local_response("أهلا", common, semantic)
+    salam = answer_local_response("السلام عليكم", common, semantic)
+
+    assert hello is not None and salam is not None
+    assert hello["text"] != salam["text"]
+    assert "أهلًا" in hello["text"]
+    assert "وعليكم السلام" in salam["text"]
+
+
+def test_unresolved_continuation_is_not_reported_as_a_successful_turn():
+    result = answer_local_response(
+        "أكمل",
+        {"intent": "personal_chat", "conversation_act": "CONVERSATION_CONTINUATION"},
+        {"conversation_act": "CONVERSATION_CONTINUATION", "conversation_domain": "general"},
+        history=[],
+    )
+
+    assert result is not None
+    assert result["status"] == "needs_clarification"
