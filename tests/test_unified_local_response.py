@@ -1,0 +1,89 @@
+from lab_v4_dev.conversation.unified_local_response import answer_local_response
+
+
+def test_greeting_uses_available_dialogue_context_without_fixed_universal_reply():
+    history = [
+        {"role": "user", "content": "أريد الحديث عن الفن التجريدي", "target": "الفن التجريدي", "context_kind": "dialogue"},
+        {"role": "assistant", "content": "يمكننا النظر إلى الألوان والأشكال ومعانيها.", "target": "الفن التجريدي", "context_kind": "dialogue"},
+    ]
+    result = answer_local_response(
+        "مرحبا",
+        {"intent": "personal_chat", "conversation_act": "SOCIAL_GREETING", "target": "الفن التجريدي"},
+        {"conversation_act": "SOCIAL_GREETING", "conversation_domain": "general"},
+        history=history,
+    )
+
+    assert result is not None
+    assert result["status"] == "success"
+    assert result["source"] == "local_social_engine"
+    assert "الفن التجريدي" in result["text"]
+    assert result["executed"] is False
+
+
+def test_continuation_composes_reply_from_user_and_assistant_history():
+    history = [
+        {"role": "user", "content": "لماذا يستخدم الفنانون التباين اللوني؟", "target": "التباين اللوني", "context_kind": "dialogue"},
+        {"role": "assistant", "content": "يساعد التباين على إبراز العناصر وتوجيه الانتباه.", "target": "التباين اللوني", "context_kind": "dialogue"},
+    ]
+    result = answer_local_response(
+        "أكمل",
+        {"intent": "personal_chat", "conversation_act": "CONVERSATION_CONTINUATION", "target": "التباين اللوني"},
+        {"conversation_act": "CONVERSATION_CONTINUATION", "conversation_domain": "general", "target": "التباين اللوني"},
+        history=history,
+    )
+
+    assert result is not None
+    assert "لماذا يستخدم الفنانون التباين اللوني؟" in result["text"]
+    assert "يساعد التباين على إبراز العناصر" in result["text"]
+    assert result["local_strategy"] == "semantic_context_composition"
+
+
+def test_local_suggestion_uses_current_topic_instead_of_unrelated_generic_template():
+    history = [
+        {"role": "user", "content": "أهتم بالرسم التجريدي", "target": "الرسم التجريدي", "context_kind": "dialogue"},
+        {"role": "assistant", "content": "يمكننا مناقشة العلاقة بين اللون والشكل.", "target": "الرسم التجريدي", "context_kind": "dialogue"},
+    ]
+    result = answer_local_response(
+        "ماذا تقترح علي الآن؟",
+        {"intent": "personal_chat", "conversation_act": "SOCIAL_FOLLOW_UP", "target": "الرسم التجريدي"},
+        {"conversation_act": "SOCIAL_FOLLOW_UP", "conversation_domain": "general", "target": "الرسم التجريدي"},
+        history=history,
+    )
+
+    assert result is not None
+    assert "الرسم التجريدي" in result["text"]
+    assert "أهتم بالرسم التجريدي" in result["text"]
+
+
+def test_local_engine_refuses_project_or_operational_turns():
+    result = answer_local_response(
+        "شغّل الاختبارات",
+        {"intent": "run_tests", "conversation_act": "CONVERSATION_CONTINUATION", "conversation_domain": "project"},
+        {"conversation_act": "CONVERSATION_CONTINUATION", "conversation_domain": "project"},
+        history=[],
+    )
+
+    assert result is None
+
+
+def test_local_engine_does_not_fabricate_answer_for_unknown_factual_question():
+    result = answer_local_response(
+        "ما أحدث اكتشاف علمي اليوم؟",
+        {"intent": "personal_chat", "conversation_act": "NONE", "conversation_domain": "general"},
+        {"conversation_act": "NONE", "conversation_domain": "general"},
+        history=[],
+    )
+
+    assert result is None
+
+
+def test_local_continuation_without_history_requests_the_missing_anchor():
+    result = answer_local_response(
+        "أكمل من آخر نقطة",
+        {"intent": "personal_chat", "conversation_act": "CONVERSATION_CONTINUATION"},
+        {"conversation_act": "CONVERSATION_CONTINUATION", "conversation_domain": "general"},
+        history=[],
+    )
+
+    assert result is not None
+    assert "لا أجد في السياق المتاح" in result["text"]
