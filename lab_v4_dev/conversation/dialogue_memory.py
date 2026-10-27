@@ -573,9 +573,9 @@ class DialogueMemory:
 
     @staticmethod
     def _same_topic(left, right) -> bool:
-        def normalize(value):
-            return " ".join(str(value or "").casefold().split())
-        return bool(normalize(left)) and normalize(left) == normalize(right)
+        from lab_v4_dev.memory.intelligence import normalize_memory_text
+        normalized_left = normalize_memory_text(left)
+        return bool(normalized_left) and normalized_left == normalize_memory_text(right)
 
     def _remember_context(self, context: dict | None) -> None:
         if not isinstance(context, dict):
@@ -584,10 +584,19 @@ class DialogueMemory:
         entity_type = str(context.get("entity_type") or "").upper()
         if not entity or entity_type in {"", "UNKNOWN", "REFERENCE", "ELABORATION"}:
             return
+        from lab_v4_dev.memory.intelligence import memory_metadata
         entry = {
+            **memory_metadata(
+                "short_term_dialogue_context",
+                source="dialogue_context_resolver",
+                confidence=str(context.get("confidence") or "observed"),
+                importance=0.65,
+                scope="current_dialogue",
+            ),
             "action": str(context.get("action") or ""),
             "entity": str(entity),
             "entity_type": entity_type,
+            "session_id": str(self.state.session_id or ""),
         }
         previous = [
             item for item in self.state.context_history
@@ -606,13 +615,24 @@ class DialogueMemory:
         """Return a previously validated subject only for an explicit target."""
         if not topic:
             return None
-        for item in reversed(self.state.context_history):
-            entity_type = str(item.get("entity_type") or "").upper()
-            if (
-                self._same_topic(item.get("entity"), topic)
-                and entity_type not in {"", "UNKNOWN", "REFERENCE", "ELABORATION"}
-            ):
-                return dict(item)
+        from lab_v4_dev.memory.intelligence import rank_memory_records
+        valid_context = [
+            item for item in self.state.context_history
+            if isinstance(item, dict)
+            and str(item.get("entity_type") or "").upper()
+                not in {"", "UNKNOWN", "REFERENCE", "ELABORATION"}
+            and (
+                not item.get("session_id")
+                or str(item.get("session_id")) == str(self.state.session_id)
+            )
+        ]
+        ranked_context = rank_memory_records(
+            topic, valid_context, fields=("entity",), minimum_score=0.80, limit=1
+        )
+        if ranked_context:
+            selected = dict(ranked_context[0])
+            selected.pop("match_score", None)
+            return selected
         # The exchange archive is authoritative when a compact/legacy
         # snapshot did not rebuild context_history.
         session_id = str(getattr(self.state, "session_id", "") or "")
@@ -621,7 +641,8 @@ class DialogueMemory:
                 continue
             if session_id and str(item.get("session_id") or "") != session_id:
                 continue
-            if not self._same_topic(item.get("target"), topic):
+            from lab_v4_dev.memory.intelligence import score_memory_record
+            if score_memory_record(topic, {"target": item.get("target")}, fields=("target",)) < 0.80:
                 continue
             domain = str(item.get("conversation_domain") or "general").casefold()
             kind = str(item.get("context_kind") or "dialogue").casefold()

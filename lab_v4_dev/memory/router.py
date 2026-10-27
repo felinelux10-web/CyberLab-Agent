@@ -129,3 +129,23 @@ def forget_personal_preference(key: str, *, category: str, purpose: str = "expli
             scope=category,
         ),
     )
+
+
+# Explicit relevance-aware search adapters. Each adapter stays within its
+# owning memory domain; the router does not merge private, dialogue, and project data.
+def search_saved_sessions(query: str, *, limit: int = 10) -> list:
+    from lab_v4_dev.memory.session_state import search_sessions
+    return search_sessions(query, limit=limit)
+
+
+def search_tasks(memory_store, query: str, *, limit: int = 10) -> list:
+    return memory_store.search_tasks(query, limit=limit)
+
+
+def search_lessons(memory_store, error_pattern: str) -> dict | None:
+    return memory_store.find_lesson(error_pattern)
+
+
+def search_technical_knowledge(topic: str) -> str | None:
+    from lab_v4_dev.awareness.knowledge_base import search
+    return search(topic)

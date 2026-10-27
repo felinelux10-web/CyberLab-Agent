@@ -74,3 +74,28 @@ def test_knowledge_base_search_prefers_relevant_alias_and_updates_access(monkeyp
     assert kb.search("شرح TCP handshake") == "إجابة TCP"
     assert data["records"]["net tcp three way handshake"]["access_count"] == 1
     assert data["records"]["sql injection"]["access_count"] == 0
+
+
+def test_context_store_extracts_full_semantic_versions_and_ranks_history():
+    from lab_v4_dev.context.context_store import ContextStore
+
+    store = ContextStore()
+    store.update("current_version", "CyberLab Agent v5.9.13-dev")
+    assert store.current_version == "5.9.13-dev"
+    store.update("explain", "SQL injection")
+    store.update("discuss", "الفن التجريدي والنحت البارز")
+    ranked = store.search_history("الفن التجريدي والنحت البارز", limit=1)
+    assert ranked
+    assert ranked[0]["target"] == "الفن التجريدي والنحت البارز"
+    assert "match_score" in ranked[0]
+    snapshot = store.snapshot()
+    assert snapshot["memory_type"] == "short_term_execution_context"
+    assert len(snapshot["history"]) == 3
+
+
+def test_dialogue_context_identity_normalizes_arabic_diacritics():
+    from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
+    from lab_v4_dev.context.context_store import ContextStore
+
+    memory = DialogueMemory(ContextStore())
+    assert memory._same_topic("الفَنّ التَجريدي", "الفن التجريدي")
