@@ -36,29 +36,86 @@ def _clean(value: Any, limit: int = 260) -> str:
     return text
 
 
+_SOCIAL_RESET_TURNS = {
+    normalize_text(value)
+    for value in (
+        "اهلا", "اهلا بك", "اهلا وسهلا", "مرحبا", "السلام عليكم",
+        "صباح الخير", "مساء الخير", "حسنا", "نعم", "اجل", "تمام",
+        "شكرا", "شكرا لك", "موافق", "حاضر", "لنتحدث قليلا",
+        "نتحدث قليلا", "دعنا نتحدث", "نريد ان نتحدث فقط", "دردشة فقط",
+    )
+}
+_SOCIAL_ASSISTANT_PREFIXES = tuple(
+    normalize_text(value)
+    for value in (
+        "اهلا بك هل نتابع حديثا سابقا",
+        "مرحبا اخبرني بما يشغل اهتمامك الان",
+        "مرحبا بك ما الموضوع الذي تود التحدث عنه",
+        "وعليكم السلام هل جئت بموضوع تريد مناقشته",
+        "انا جاهز لمناقشة طلبك",
+    )
+)
+_NON_TOPIC_ANCHORS = {
+    normalize_text(value)
+    for value in (
+        "ماذا", "لماذا", "ما", "ل", "ماخرا", "موخرا",
+        "سياق الحوار", "سياق العمل", "اكمل", "حسنا اكمل",
+        "تابع", "واصل", "اكمل الحوار", "اكمل الحديث",
+    )
+}
+
+
+def _is_social_reset_turn(value: Any, *, role: str = "user") -> bool:
+    normalized = normalize_text(_clean(value, 420))
+    if not normalized:
+        return True
+    if normalized in _SOCIAL_RESET_TURNS:
+        return True
+    if role == "assistant" and any(
+        normalized.startswith(prefix) for prefix in _SOCIAL_ASSISTANT_PREFIXES
+    ):
+        return True
+    return False
+
+
+def _is_substantive_anchor(value: Any) -> bool:
+    normalized = normalize_text(_clean(value, 420))
+    if not normalized or normalized in _SOCIAL_RESET_TURNS | _NON_TOPIC_ANCHORS:
+        return False
+    return len(normalized) > 2
+
+
 def _history_parts(history: list | None) -> tuple[str, str]:
-    """Return the last user and assistant turns from already-authorized history."""
-    user_text = ""
-    assistant_text = ""
-    for turn in reversed(history or []):
+    """Return the latest completed substantive exchange, never mismatched turns."""
+    pending_user = ""
+    last_pair = ("", "")
+    for turn in history or []:
         if not isinstance(turn, dict):
             continue
         role = str(turn.get("role") or "").casefold()
         content = _clean(turn.get("content"), 420)
         if not content:
             continue
-        if role == "assistant" and not assistant_text:
-            assistant_text = content
-        elif role == "user" and not user_text:
-            user_text = content
-        if user_text and assistant_text:
-            break
-    return user_text, assistant_text
+        if role == "user":
+            if _is_social_reset_turn(content, role="user"):
+                # A fresh social opening intentionally starts an independent
+                # branch; older topic turns must not leak into its continuation.
+                pending_user = ""
+                last_pair = ("", "")
+            else:
+                pending_user = content
+        elif role == "assistant":
+            if pending_user and not _is_social_reset_turn(content, role="assistant"):
+                last_pair = (pending_user, content)
+            elif _is_social_reset_turn(content, role="assistant"):
+                last_pair = ("", "")
+            pending_user = ""
+    return last_pair
 
 
 def _topic(parsed: dict, semantic: dict, history: list | None) -> str:
     target = _clean(parsed.get("target") or semantic.get("target"), 100)
-    if target:
+    if _is_substantive_anchor(target):
         return target
     for turn in reversed(history or []):
         if not isinstance(turn, dict):
@@ -70,7 +127,7 @@ def _topic(parsed: dict, semantic: dict, history: list | None) -> str:
         }:
             continue
         target = _clean(turn.get("target"), 100)
-        if target:
+        if _is_substantive_anchor(target):
             return target
     return ""
 
@@ -123,7 +180,9 @@ def answer_local_response(
     last_user, last_assistant = _history_parts(history)
     topic = _topic(parsed, semantic, history)
     if isinstance(context_entity, dict) and not topic:
-        topic = _clean(context_entity.get("entity"), 100)
+        candidate_topic = _clean(context_entity.get("entity"), 100)
+        if _is_substantive_anchor(candidate_topic):
+            topic = candidate_topic
 
     if act == "SOCIAL_GREETING":
         # Keep the active subject available when history was explicitly granted;
