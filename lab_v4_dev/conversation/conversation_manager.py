@@ -37,6 +37,7 @@ import re
 from lab_v4_dev.conversation.mode_detector import detect_mode
 from lab_v4_dev.conversation.assistant_style import format_response, single_question
 from lab_v4_dev.conversation.local_response_engine import answer_local_social
+from lab_v4_dev.conversation.unified_local_response import answer_local_response
 from lab_v4_dev.conversation.semantic_contract import (
     CONTEXTUAL_TRANSITIONS,
     ContextTransition,
@@ -1749,6 +1750,33 @@ class ConversationManager:
                     context_transition=transition,
                 )
             return local_project_answer
+
+        # Unified local response gets the canonical parse, semantic contract,
+        # and only the history authorized by the transition resolver. It runs
+        # before the legacy social responder so offline dialogue can use context
+        # rather than falling straight through to the provider.
+        local_unified = (
+            None
+            if saved_session_request
+            else answer_local_response(
+                user_input,
+                parsed,
+                semantic.as_dict(),
+                history=chat_history,
+                context_entity=context_entity,
+            )
+        )
+        if local_unified is not None:
+            local_unified["semantic_request"] = semantic.as_dict()
+            local_unified = self._finalize_local_dialogue_result(
+                local_unified, mode, parsed, semantic
+            )
+            if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
+                self.dialogue_memory.update(
+                    user_input, local_unified, mode=mode, parsed=parsed,
+                    context_transition=transition,
+                )
+            return local_unified
 
         # Explicit persisted-session requests belong to Orchestrator. A local
         # social responder may otherwise consume ASSISTANT_STATE_QUERY and
