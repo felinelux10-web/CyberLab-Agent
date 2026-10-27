@@ -1751,10 +1751,11 @@ class ConversationManager:
                 )
             return local_project_answer
 
-        # Route bounded social openings locally. For continuation/history turns,
-        # use the local responder only to detect missing substantive context; a
-        # successful local paraphrase must not replace the established branch
-        # restoration or provider-owned answer when a real topic is available.
+        # Keep the unified responder scoped to greetings and closings.
+        # Social openings, casual dialogue, acknowledgements, continuations, and
+        # history requests retain their established owners below; otherwise this
+        # helper can bypass social finalization, archive ownership, or provider
+        # failure recovery.
         unified_act = str(
             (parsed or {}).get("conversation_act")
             or semantic.conversation_act
@@ -1778,9 +1779,6 @@ class ConversationManager:
             and unified_act in {
                 "SOCIAL_GREETING",
                 "SOCIAL_CLOSING",
-                "SOCIAL_OPENING",
-                "CASUAL_CONVERSATION",
-                *local_guard_acts,
             }
             else None
         )
