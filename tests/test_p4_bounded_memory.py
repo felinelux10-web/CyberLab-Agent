@@ -34,8 +34,10 @@ def test_recent_session_archive_is_bounded_and_compact(monkeypatch, tmp_path):
 
     archive = session_state.get_recent_sessions()
     assert len(archive) == session_state.MAX_RECENT_SESSIONS == 5
-    assert archive[0]["session_id"] == "session-3"
-    assert archive[-1]["session_id"] == "session-7"
+    # Recent-window presentation is newest-first; session numbering remains
+    # tied to the durable archive index, not this recency-sorted view.
+    assert archive[0]["session_id"] == "session-7"
+    assert archive[-1]["session_id"] == "session-3"
     assert all("dialogue_state" not in item for item in archive)
     assert all("context_state" not in item for item in archive)
 
@@ -44,7 +46,10 @@ def test_bounded_dialogue_and_compact_session_are_separate(monkeypatch, tmp_path
     _isolate(monkeypatch, tmp_path)
     from lab_v4_dev.context.context_store import ContextStore
     from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
-    from lab_v4_dev.memory.session_state import save_recoverable_checkpoint, load_session
+    from lab_v4_dev.memory.session_state import (
+        save_recoverable_checkpoint, save_dialogue_checkpoint,
+        get_session_by_id, load_session,
+    )
 
     memory = DialogueMemory(ContextStore())
     for index in range(12):
@@ -53,12 +58,14 @@ def test_bounded_dialogue_and_compact_session_are_separate(monkeypatch, tmp_path
     save_recoverable_checkpoint(
         active_goal="goal",
         next_step="next",
-        dialogue_state=snapshot,
         context_state={"subject": "topic"},
     )
-    saved = load_session()
+    saved_work = load_session()
+    save_dialogue_checkpoint(dialogue_state=snapshot)
+    saved_dialogue = get_session_by_id(snapshot["session_id"])
 
     assert len(snapshot["history"]) == 8
-    assert len(saved["dialogue_state"]["history"]) == 8
-    assert saved["active_goal"] == "goal"
-    assert saved["next_step"] == "next"
+    assert "dialogue_state" not in saved_work
+    assert saved_work["active_goal"] == "goal"
+    assert saved_work["next_step"] == "next"
+    assert len(saved_dialogue["dialogue_state"]["history"]) == 8
