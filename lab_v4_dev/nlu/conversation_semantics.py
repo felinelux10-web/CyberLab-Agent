@@ -724,6 +724,26 @@ def classify_conversation_semantics(
             "conversational": True,
         }
 
+    # A direct request such as "اختصر أكثر" is a response-style operation on
+    # the active dialogue, not a bare continuation. Preserve its verbosity
+    # metadata so the selected saved branch is summarized concisely.
+    direct_concise_request = (
+        _has_any(bases, _CONCISE_MARKERS)
+        and not _has_any(bases, work_context_markers)
+        and (
+            _has_any(bases, {"اكثر", "أكثر", "كلامك", "ردك", "اجابتك", "إجابتك"})
+            or normalized_phrase in {"اختصر", "مختصر", "موجز", "اقصر", "اقل"}
+        )
+    )
+    if direct_concise_request:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "VERBOSITY_REQUEST",
+            "confidence": 0.96,
+            "response_attributes": {"verbosity": "concise"},
+            "conversational": True,
+        }
+
     saved_session_request = (
         _has_any(bases, {"استرجع", "استرجاع", "استعادة", "استرد"})
         and _has_any(bases, {"جلسه", "جلسة"})
