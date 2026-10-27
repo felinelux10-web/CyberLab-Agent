@@ -1761,12 +1761,6 @@ class ConversationManager:
             or semantic.conversation_act
             or ""
         ).strip().upper()
-        local_guard_acts = {
-            "CONVERSATION_CONTINUATION",
-            "TOPIC_CONTINUATION_QUERY",
-            "TOPIC_RETURN",
-            "CONVERSATION_HISTORY_QUERY",
-        }
         local_unified = (
             answer_local_response(
                 user_input,
@@ -1782,15 +1776,6 @@ class ConversationManager:
             }
             else None
         )
-        if (
-            local_unified is not None
-            and unified_act in local_guard_acts
-            and local_unified.get("status") != "needs_clarification"
-        ):
-            # A locally composed continuation is not allowed to steal an
-            # existing dialogue branch; only a grounded "missing context"
-            # result may short-circuit an unavailable provider.
-            local_unified = None
         if local_unified is not None:
             local_unified["semantic_request"] = semantic.as_dict()
             local_unified = self._finalize_local_dialogue_result(
