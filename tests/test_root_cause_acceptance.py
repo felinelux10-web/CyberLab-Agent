@@ -93,8 +93,10 @@ def test_new_session_does_not_generate_code_or_reuse_old_file(tmp_path):
 def test_dialogue_recall_keeps_user_and_assistant_pairs_and_excludes_work():
     context = ContextStore()
     memory = DialogueMemory(context)
+    session_id = memory.state.session_id
     memory.state.exchange_archive = [
         {
+            "session_id": session_id,
             "user": "اشرح SQL Injection",
             "assistant": "توقفنا عند آلية الحدوث.",
             "target": "SQL Injection",
@@ -102,6 +104,7 @@ def test_dialogue_recall_keeps_user_and_assistant_pairs_and_excludes_work():
             "conversation_domain": "technical",
         },
         {
+            "session_id": session_id,
             "user": "عدّل game.py",
             "assistant": "تم تعديل الملف.",
             "target": "game.py",
@@ -109,6 +112,7 @@ def test_dialogue_recall_keeps_user_and_assistant_pairs_and_excludes_work():
             "conversation_domain": "execution",
         },
         {
+            "session_id": session_id,
             "user": "اشرح CSRF",
             "assistant": "توقفنا عند آلية الحماية.",
             "target": "CSRF",
