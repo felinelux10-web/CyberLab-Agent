@@ -1,3 +1,5 @@
+from lab_v4_dev.memory import session_state
+
 import json
 
 from lab_v4_dev.memory import session_state
@@ -50,6 +52,7 @@ def test_updating_session_metadata_does_not_change_its_number(tmp_path, monkeypa
     index = session_state.get_session_index()
     assert [item["session_id"] for item in index] == ["dialogue-a", "dialogue-b"]
     assert index[0]["title"] == "الفن والنقش البارز"
+    assert index[0]["created_at"] == "2026-10-20"
 
 
 def test_recent_sessions_are_ordered_by_update_time_not_numbering(tmp_path, monkeypatch):
@@ -74,3 +77,10 @@ def test_recent_sessions_are_ordered_by_update_time_not_numbering(tmp_path, monk
         "dialogue-a",
         "dialogue-b",
     ]
+
+
+def test_explicit_saved_session_count_has_a_local_selector():
+    assert session_state.session_selector("كم عدد الجلسات المحفوظة؟") == {
+        "kind": "count",
+        "report_mode": "compact",
+    }
