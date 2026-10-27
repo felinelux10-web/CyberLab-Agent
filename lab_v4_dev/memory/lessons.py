@@ -9,10 +9,17 @@ class Lessons:
         self.db = db
 
     def record(self, error_pattern: str, solution: str, success: bool):
+        from lab_v4_dev.memory.intelligence import rank_memory_records
         existing = self.db.fetchone(
             "SELECT * FROM lessons WHERE error_pattern=?",
             (error_pattern,)
         )
+        if not existing:
+            ranked = rank_memory_records(
+                error_pattern, self.db.fetchall("SELECT * FROM lessons"),
+                fields=("error_pattern", "solution"), minimum_score=0.88, limit=1,
+            )
+            existing = ranked[0] if ranked else None
         if existing:
             self.db.execute(
                 """UPDATE lessons
@@ -31,10 +38,22 @@ class Lessons:
             )
 
     def find(self, error_pattern: str) -> dict | None:
-        return self.db.fetchone(
+        exact = self.db.fetchone(
             "SELECT * FROM lessons WHERE error_pattern=?",
             (error_pattern,)
         )
+        if exact:
+            return exact
+        from lab_v4_dev.memory.intelligence import rank_memory_records
+        ranked = rank_memory_records(
+            error_pattern, self.db.fetchall("SELECT * FROM lessons"),
+            fields=("error_pattern", "solution"), minimum_score=0.48, limit=1,
+        )
+        if not ranked:
+            return None
+        lesson = dict(ranked[0])
+        lesson.pop("match_score", None)
+        return lesson
 
     def success_rate(self, error_pattern: str) -> float:
         lesson = self.find(error_pattern)

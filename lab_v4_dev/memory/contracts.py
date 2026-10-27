@@ -44,6 +44,9 @@ class TaskMemory(Protocol):
     def recent(self, limit: int = 10) -> list:
         ...
 
+    def search(self, query: str, limit: int = 10) -> list:
+        ...
+
     def count_by_status(self) -> dict:
         ...
 

@@ -47,3 +47,17 @@ CREATE TABLE IF NOT EXISTS sessions (
     error_count INTEGER DEFAULT 0,
     summary TEXT
 );
+
+
+-- Bounded event journal for auditable memory lifecycle transitions.
+CREATE TABLE IF NOT EXISTS memory_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_events_owner_id
+    ON memory_events(owner, id DESC);

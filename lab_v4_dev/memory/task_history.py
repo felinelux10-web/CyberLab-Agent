@@ -30,9 +30,20 @@ class TaskHistory:
         )
 
     def recent(self, limit: int = 10):
+        bounded_limit = max(1, min(100, int(limit)))
         return self.db.fetchall(
             "SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?",
-            (limit,)
+            (bounded_limit,)
+        )
+
+    def search(self, query: str, limit: int = 10) -> list:
+        from lab_v4_dev.memory.intelligence import rank_memory_records
+        candidates = self.db.fetchall(
+            "SELECT * FROM tasks ORDER BY created_at DESC LIMIT 500"
+        )
+        return rank_memory_records(
+            query, candidates, fields=("intent", "plan", "status"),
+            minimum_score=0.18, limit=max(1, min(100, int(limit))),
         )
 
     def count_by_status(self):

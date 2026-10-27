@@ -33,35 +33,68 @@ class MemoryStore:
         self.tasks = TaskHistory(db)
         self.lessons = Lessons(db)
 
+    def _record_event(self, event_type: str, payload: dict | None = None) -> bool:
+        try:
+            self.db.record_event("session_task_lesson", event_type, payload or {})
+            return True
+        except Exception:
+            # The event journal is observability, not a prerequisite for work.
+            return False
+
     def start_session(self):
-        return self.session.start()
+        session_id = self.session.start()
+        self._record_event("session_started", {"session_id": session_id})
+        return session_id
 
     def record_task(self):
-        return self.session.record_task()
+        result = self.session.record_task()
+        self._record_event("task_count_incremented")
+        return result
 
     def record_file_modified(self):
-        return self.session.record_file_modified()
+        result = self.session.record_file_modified()
+        self._record_event("file_change_count_incremented")
+        return result
 
     def record_error(self):
-        return self.session.record_error()
+        result = self.session.record_error()
+        self._record_event("error_count_incremented")
+        return result
 
     def end_session(self):
-        return self.session.end()
+        summary = self.session.end()
+        self._record_event("session_ended", {"session_id": self.session.session_id})
+        return summary
 
     def session_summary(self):
         return self.session.summary()
 
     def add_task(self, intent: str, plan: str = None):
-        return self.tasks.add(intent, plan)
+        task_id = self.tasks.add(intent, plan)
+        self._record_event("task_created", {"task_id": task_id})
+        return task_id
 
     def update_task_status(self, task_id: int, status: str):
-        return self.tasks.update_status(task_id, status)
+        result = self.tasks.update_status(task_id, status)
+        self._record_event("task_status_changed", {
+            "task_id": int(task_id), "status": str(status),
+        })
+        return result
 
     def get_task(self, task_id: int):
         return self.tasks.get(task_id)
 
     def recent_tasks(self, limit: int = 10):
         return self.tasks.recent(limit)
+
+    def search_tasks(self, query: str, limit: int = 10):
+        return self.tasks.search(query, limit)
+
+    def recent_memory_events(self, limit: int = 20):
+        try:
+            return self.db.recent_events(limit, owner="session_task_lesson")
+        except Exception:
+            return []
 
     def task_status_counts(self):
         return self.tasks.count_by_status()
@@ -72,11 +105,9 @@ class MemoryStore:
         solution: str,
         success: bool,
     ):
-        return self.lessons.record(
-            error_pattern,
-            solution,
-            success,
-        )
+        result = self.lessons.record(error_pattern, solution, success)
+        self._record_event("lesson_updated", {"success": bool(success)})
+        return result
 
     def find_lesson(self, error_pattern: str):
         return self.lessons.find(error_pattern)
