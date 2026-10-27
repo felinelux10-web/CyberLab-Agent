@@ -747,12 +747,24 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     report = analyze_session(data)
     exchanges = _dialogue_exchanges(data)
     dialogue = data.get("dialogue_state") or {}
-    topic = str(
+    stored_topic = str(
         dialogue.get("last_topic")
         or next((item.get("target") for item in reversed(exchanges) if item.get("target")), "")
         or report.get("topic")
-        or "غير محدد من سجل الحوار"
     ).strip()
+    generic_topics = {
+        "حفظ سياق الحوار", "جلسة حوار", "حوار محفوظ", "غير محدد من سجل الحوار",
+    }
+    content_topic = next(
+        (
+            " ".join(str(item.get("user") or "").split())[:100]
+            for item in exchanges
+            if " ".join(str(item.get("user") or "").split()).strip()
+        ),
+        "",
+    )
+    topic = stored_topic if stored_topic and stored_topic not in generic_topics else content_topic
+    topic = topic or "غير محدد من سجل الحوار"
     last = exchanges[-1] if exchanges else {}
     if last:
         stop_point = (
@@ -806,6 +818,20 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         value = str(exchange.get("target") or "").strip()
         if value and value not in topics:
             topics.append(value)
+    content_lines = []
+    for exchange in exchanges[-8:]:
+        user = " ".join(str(exchange.get("user") or "").split()).strip()
+        assistant = " ".join(str(exchange.get("assistant") or "").split()).strip()
+        if not user and not assistant:
+            continue
+        exchange_topic = " ".join(str(exchange.get("target") or "").split()).strip()
+        prefix = f"حول «{exchange_topic}»: " if exchange_topic else ""
+        sentence = f"{prefix}المستخدم طرح: «{user[:220]}»"
+        if assistant:
+            sentence += f"، والوكيل أجاب: «{assistant[:260]}»."
+        else:
+            sentence += "."
+        content_lines.append(sentence)
     lines = [
         "=== ملخص الحوار المحفوظ ===",
         f"معرّف الجلسة: {report['session_id']}",
@@ -813,8 +839,12 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         f"الموضوع الحالي داخل هذا الحوار: {topic}",
         f"عدد التبادلات المكتملة المحفوظة: {len(exchanges)}",
         "",
-        "الموضوعات المثبتة في سجل الحوار:",
+        "ما نوقش فعليًا في الحوار:",
     ]
+    lines.extend([f"- {item}" for item in content_lines] if content_lines else [
+        "- لا توجد تبادلات مكتملة ذات مضمون قابل للتلخيص في البيانات المحفوظة."
+    ])
+    lines.extend(["", "الموضوعات المثبتة في سجل الحوار:"])
     lines.extend([f"- {item}" for item in topics] if topics else [
         "- لا توجد موضوعات فرعية محددة في البيانات المحفوظة."
     ])
