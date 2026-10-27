@@ -168,6 +168,7 @@ def normalize_text(text: str) -> str:
     # these substitutions deliberately narrow; they repair intent words
     # without changing user content stored in the dialogue archive.
     for misspelling, correction in {
+        "مرخبا": "مرحبا",
         "اختثر": "اختصر",
         "امثر": "اكثر",
         "ناذا": "ماذا",
