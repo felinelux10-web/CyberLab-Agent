@@ -136,7 +136,7 @@ class Agent:
             # A new process starts a new live dialogue. A saved dialogue is
             # never injected implicitly; it must be selected explicitly so
             # "this session" and "a saved session" cannot be mixed.
-            # Keep startup readable: show only the three most recently saved
+            # Keep startup readable: show only the five most recently saved
             # sessions. Full details remain available through `session N`.
             all_sessions = get_session_index()
             # Session numbers follow the stable index order; recency is a
@@ -150,9 +150,14 @@ class Agent:
             index = get_recent_sessions()
             if not index and isinstance(s, dict) and s.get("session_id", s.get("active_goal")):
                 index = [s]
+            total_sessions = max(len(all_sessions), len(index))
             if index:
                 self._boot_ui.section("SAVED SESSIONS")
-                self._boot_ui.row("SESSIONS", f"{len(index)} saved session(s)", "INFO")
+                self._boot_ui.row(
+                    "SESSIONS",
+                    f"{total_sessions} total; showing {len(index)} recent",
+                    "INFO",
+                )
                 self._pending_work_sessions = []
                 for item in index:
                     number = number_by_id.get(

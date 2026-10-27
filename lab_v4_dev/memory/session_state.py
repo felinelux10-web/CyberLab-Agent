@@ -252,7 +252,7 @@ def session_selector(raw: str) -> dict:
     # Multi-session summaries must be routed to the saved-session store,
     # not the runtime SESSION_REPORT handler.
     collective_sessions = re.search(
-        r"(?<!\w)(?:لكل|لجميع|كل|جميع|كافة|لكافة)\s+(?:(?:ال)?جلس(?:ة|ات|ه))(?!\w)",
+        r"(?<!\w)(?:لجميع|لكل|لل|لكافة|كافة|جميع|كل)\s*(?:(?:ال)?جلس(?:ة|ات|ه))(?!\w)",
         text,
     )
     asks_for_summary = any(
