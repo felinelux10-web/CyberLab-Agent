@@ -99,3 +99,40 @@ def test_dialogue_context_identity_normalizes_arabic_diacritics():
 
     memory = DialogueMemory(ContextStore())
     assert memory._same_topic("الفَنّ التَجريدي", "الفن التجريدي")
+
+
+def test_personal_memory_new_store_uses_current_schema_version(tmp_path):
+    from lab_v4_dev.memory.personal_memory import PersonalMemoryStore
+    store = PersonalMemoryStore(str(tmp_path / "private" / "personal.json"))
+    assert store._load()["schema_version"] == 2
+
+
+def test_legacy_knowledge_records_are_migrated_in_memory_without_losing_content(monkeypatch):
+    from lab_v4_dev.awareness import knowledge_base as kb
+    legacy = {
+        "schema_version": 1,
+        "records": {
+            "dns cache": {
+                "answer": "A cached DNS answer",
+                "aliases": "DNS caching",
+                "created_at": "2024-01-01T00:00:00",
+            }
+        },
+    }
+    monkeypatch.setattr(kb, "_kb_path", lambda: "/path/unused.json")
+    monkeypatch.setattr(kb.os.path, "exists", lambda path: True)
+    monkeypatch.setattr(kb, "open", open, raising=False)
+    # Test the same migration logic through a temporary on-disk legacy file.
+    import json
+    from pathlib import Path
+    import builtins
+    path = Path("/tmp/cyberlab_legacy_kb_memory_test.json")
+    path.write_text(json.dumps(legacy), encoding="utf-8")
+    monkeypatch.setattr(kb, "_kb_path", lambda: str(path))
+    migrated = kb._load()
+    record = migrated["records"]["dns cache"]
+    assert record["answer"] == "A cached DNS answer"
+    assert record["canonical_key"] == "dns cache"
+    assert record["aliases"] == ["DNS caching"]
+    assert record["memory_type"] == "technical_knowledge"
+    path.unlink()

@@ -43,7 +43,11 @@ class PersonalMemoryStore:
             data = json.load(handle)
         if not isinstance(data, dict):
             raise ValueError("personal memory must be a JSON object")
-        data["schema_version"] = max(2, int(data.get("schema_version", 1)))
+        try:
+            old_schema_version = int(data.get("schema_version", 1))
+        except (TypeError, ValueError):
+            old_schema_version = 1
+        data["schema_version"] = max(2, old_schema_version)
         data.setdefault("records", {})
         if not isinstance(data["records"], dict):
             raise ValueError("personal memory records must be an object")

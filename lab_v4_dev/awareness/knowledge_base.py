@@ -106,9 +106,12 @@ def search(topic: str) -> str | None:
         score = ranked[0]["match_score"] if ranked else 0.0
         if _record_matches(record, key): score = max(score, 0.85)
         if score >= 0.42: candidates.append((score, storage_key, record))
-    candidates.sort(key=lambda item: (item[0], float(item[2].get("importance", 0.0) or 0.0),
+    def safe_number(value, default=0.0):
+        try: return float(value or default)
+        except (TypeError, ValueError): return default
+    candidates.sort(key=lambda item: (item[0], safe_number(item[2].get("importance")),
         str(item[2].get("updated_at") or ""),
-        int(item[2].get("access_count", item[2].get("hits", 0)) or 0)), reverse=True)
+        int(safe_number(item[2].get("access_count", item[2].get("hits", 0)))),), reverse=True)
     for _, _, record in candidates:
         if record.get("status", "ACTIVE") == "ARCHIVED": continue
         record["hits"] = int(record.get("hits", record.get("access_count", 0))) + 1
