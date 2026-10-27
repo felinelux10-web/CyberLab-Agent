@@ -1771,7 +1771,11 @@ class ConversationManager:
             local_unified = self._finalize_local_dialogue_result(
                 local_unified, mode, parsed, semantic
             )
-            if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
+            if (
+                local_unified.get("status") == "success"
+                and self.dialogue_memory
+                and hasattr(self.dialogue_memory, "update")
+            ):
                 self.dialogue_memory.update(
                     user_input, local_unified, mode=mode, parsed=parsed,
                     context_transition=transition,
