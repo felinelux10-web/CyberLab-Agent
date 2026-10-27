@@ -1828,6 +1828,8 @@ SOURCE CODE:
                             f"- الملخص: {brief['summary']}",
                             f"- الحالة: {brief['status']}",
                         ])
+                        if brief.get("next_step"):
+                            lines.append(f"- الخطوة التالية: {brief['next_step']}")
                     else:
                         lines.append(
                             f"{number}. [{label}] {report['topic']} — الحالة: {report['status']}"
