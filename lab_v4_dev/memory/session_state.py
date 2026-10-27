@@ -179,7 +179,12 @@ def search_sessions(query: str = "", *, status: str | None = None,
         if project and str(project).casefold() not in _session_text(item):
             continue
         haystack = _session_text(item)
-        if needle and needle not in haystack and not (tokens and all(contains_token(haystack, token) for token in tokens)):
+        # Topic descriptions are often broader than the user's wording (for
+        # example, a saved title says "الفن والرسم" while the query says
+        # "الفن التجريدي"). Keep partial semantic candidates and rank them
+        # below exact/all-token matches instead of silently returning no result.
+        matched_tokens = sum(contains_token(haystack, token) for token in tokens)
+        if needle and needle not in haystack and matched_tokens == 0:
             continue
         score = 0
         if needle:
@@ -317,6 +322,20 @@ def session_selector(raw: str) -> dict:
     if any(token in text for token in ("آخر جلسة", "اخر جلسة", "الجلسة الأخيرة", "الجلسه الاخيره")):
         return {"kind": "latest", "report_mode": report_mode}
     search_marker = re.search(r"(?:عن|حول)\s+(.*?)(?:،|,|\s+واعرض|\s+ثم|\s+فقط|$)", raw_text, flags=re.IGNORECASE)
+    other_saved_topic = (
+        any(marker in text for marker in (
+            "جلسة اخرى", "جلسه اخرى", "جلسة أخرى", "جلسه أخرى",
+            "جلسة مختلفة", "جلسه مختلفه", "حوار آخر", "حوار اخر",
+        ))
+        and any(marker in text for marker in (
+            "كنا نتحدث", "كنا نتكلم", "كنا نناقش", "كنا نقول",
+            "عن موضوع", "حول موضوع", "الفن", "الرسم", "النحت", "النقش",
+        ))
+    )
+    if other_saved_topic:
+        query = search_marker.group(1).strip() if search_marker else raw_text
+        query = re.sub(r"^(?:موضوع|موضوع عن|الموضوع)\s+", "", query).strip()
+        return {"kind": "search", "query": query, "report_mode": report_mode}
     if any(token in text for token in ("ابحث في الجلسات", "ابحث عن جلسة", "جلسة مشروع", "جلسه مشروع", "جلسة إصلاح", "جلسة اختبار", "جلسه اختبار", "جلسة التي", "جلسه التي")):
         query = search_marker.group(1).strip() if search_marker else raw_text
         query = re.sub(r"^(?:جلسة|الجلسة|جلسه|الجلسه)\s+", "", query, flags=re.IGNORECASE).strip()
