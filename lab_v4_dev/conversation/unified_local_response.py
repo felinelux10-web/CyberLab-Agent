@@ -121,6 +121,9 @@ def _topic(parsed: dict, semantic: dict, history: list | None) -> str:
     for turn in reversed(history or []):
         if not isinstance(turn, dict):
             continue
+        role = str(turn.get("role") or "").casefold()
+        if _is_social_reset_turn(turn.get("content"), role=role):
+            continue
         kind = str(turn.get("context_kind") or "").casefold()
         domain = str(turn.get("conversation_domain") or "").casefold()
         if kind in {"work", "system", "execution", "project"} or domain in {
