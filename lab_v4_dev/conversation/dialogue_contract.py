@@ -61,6 +61,11 @@ class DialogueState:
     last_entity_type: str | None = None
     last_confidence: float = 0.0
     pending_clarification: dict[str, Any] | None = None
+    # Explicit saved-dialogue reference. It remains separate from the live
+    # conversation identity so follow-up requests can keep the selected saved
+    # session as their owner until the user starts or closes another session.
+    active_restored_session_id: str | None = None
+    active_restored_topic: str | None = None
     turns: list[DialogueTurn] = field(default_factory=list)
     last_items: list[Any] = field(default_factory=list)
     context_history: list[dict[str, str]] = field(default_factory=list)
@@ -114,6 +119,8 @@ class DialogueState:
             "last_entity_type": self.last_entity_type,
             "last_confidence": self.last_confidence,
             "pending_clarification": self.pending_clarification,
+            "active_restored_session_id": self.active_restored_session_id,
+            "active_restored_topic": self.active_restored_topic,
             "messages": len(self.turns),
             "history": self.history,
             "last_items": list(self.last_items),

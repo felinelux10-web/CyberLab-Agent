@@ -313,6 +313,9 @@ class Agent:
                 restored = self.dialogue_memory.restore_snapshot(dialogue_state)
             context_restored = False
             if session_type in {"work", "mixed"} and self.context and isinstance(context_state, dict):
+                clear_restored = getattr(self.dialogue_memory, "clear_restored_session", None)
+                if callable(clear_restored):
+                    clear_restored()
                 for name in (
                     "last_intent", "last_target", "last_result", "current_subject",
                     "current_version", "current_file", "current_analysis",

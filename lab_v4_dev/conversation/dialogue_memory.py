@@ -85,6 +85,21 @@ class DialogueMemory:
         """
         self.state = DialogueState()
 
+    def clear_restored_session(self) -> None:
+        """Close the explicit saved-dialogue reference without deleting live state."""
+        self.state.active_restored_session_id = None
+        self.state.active_restored_topic = None
+
+    def active_restored_session(self) -> dict | None:
+        """Return the saved-session reference currently owning follow-ups."""
+        session_id = str(getattr(self.state, "active_restored_session_id", "") or "").strip()
+        if not session_id:
+            return None
+        return {
+            "session_id": session_id,
+            "topic": getattr(self.state, "active_restored_topic", None),
+        }
+
     def restore_snapshot(self, snapshot: dict | None) -> bool:
         """Restore bounded dialogue state from an explicit recoverable checkpoint."""
         if not isinstance(snapshot, dict):
@@ -134,6 +149,18 @@ class DialogueMemory:
                 context_kind=turn.get("context_kind", "unknown"),
                 session_id=turn.get("session_id") or restored.session_id,
             )
+        restored.active_restored_session_id = snapshot_session_id
+        restored.active_restored_topic = (
+            str(restored.last_topic or "").strip()
+            or next(
+                (
+                    str(item.get("target") or "").strip()
+                    for item in reversed(restored.exchange_archive or [])
+                    if isinstance(item, dict) and str(item.get("target") or "").strip()
+                ),
+                None,
+            )
+        )
         self.state = restored
         return True
 
@@ -664,9 +691,11 @@ class DialogueMemory:
 
     def active_context_entity(self) -> dict | None:
         """Return the active dialogue subject for an already-approved transition."""
-        topic = self.state.last_topic
+        topic = self.state.last_topic or getattr(self.state, "active_restored_topic", None)
         entity_type = self.state.last_entity_type
         entity_type = str(entity_type or "").upper()
+        if topic and not entity_type and getattr(self.state, "active_restored_session_id", None):
+            entity_type = "CONCEPT"
         if not topic or entity_type in {
             "",
             "UNKNOWN", "REFERENCE", "ELABORATION",
