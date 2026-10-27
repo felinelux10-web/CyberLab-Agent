@@ -423,7 +423,7 @@ def test_casual_darija_opener_does_not_inherit_active_technical_topic(monkeypatc
 
     assert result["status"] == "success"
     assert result["source"] == "local_social"
-    assert "نهارك" in result["text"]
+    assert "يومك" in result["text"]
     assert "CSRF" not in result["text"]
     assert result["semantic_request"]["target"] is None
     assert result["semantic_request"]["conversation_domain"] == "social"
@@ -480,7 +480,7 @@ def test_direct_request_for_discussion_topic_gets_a_topic_without_clarification(
 
     assert result["status"] == "success"
     assert result["source"] == "local_social"
-    assert "شنو رأيك؟" in result["text"]
+    assert "ما رأيك؟" in result["text"]
     assert "تحتاجها" not in result["text"]
     assert orchestrator.calls == []
 
@@ -513,7 +513,7 @@ def test_darija_misspellings_requesting_a_topic_are_handled_as_social_chat(monke
         result = manager.process(text)
         assert result["status"] == "success"
         assert result["source"] == "local_social"
-        assert "شنو رأيك؟" in result["text"]
+        assert "ما رأيك؟" in result["text"]
 
     assert orchestrator.calls == []
 
@@ -529,7 +529,7 @@ def test_natural_suggestion_phrases_return_topics_directly(monkeypatch):
         assert result["source"] == "local_social"
         assert "التكنولوجيا" in result["text"]
         assert "الفن" in result["text"]
-        assert "شنو رأيك؟" in result["text"]
+        assert "ما رأيك؟" in result["text"]
 
     assert orchestrator.calls == []
 
