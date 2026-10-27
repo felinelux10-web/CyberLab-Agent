@@ -107,7 +107,7 @@ def test_personal_memory_new_store_uses_current_schema_version(tmp_path):
     assert store._load()["schema_version"] == 2
 
 
-def test_legacy_knowledge_records_are_migrated_in_memory_without_losing_content(monkeypatch):
+def test_legacy_knowledge_records_are_migrated_in_memory_without_losing_content(monkeypatch, tmp_path):
     from lab_v4_dev.awareness import knowledge_base as kb
     legacy = {
         "schema_version": 1,
@@ -119,14 +119,7 @@ def test_legacy_knowledge_records_are_migrated_in_memory_without_losing_content(
             }
         },
     }
-    monkeypatch.setattr(kb, "_kb_path", lambda: "/path/unused.json")
-    monkeypatch.setattr(kb.os.path, "exists", lambda path: True)
-    monkeypatch.setattr(kb, "open", open, raising=False)
-    # Test the same migration logic through a temporary on-disk legacy file.
-    import json
-    from pathlib import Path
-    import builtins
-    path = Path("/tmp/cyberlab_legacy_kb_memory_test.json")
+    path = tmp_path / "legacy_knowledge.json"
     path.write_text(json.dumps(legacy), encoding="utf-8")
     monkeypatch.setattr(kb, "_kb_path", lambda: str(path))
     migrated = kb._load()
@@ -135,4 +128,3 @@ def test_legacy_knowledge_records_are_migrated_in_memory_without_losing_content(
     assert record["canonical_key"] == "dns cache"
     assert record["aliases"] == ["DNS caching"]
     assert record["memory_type"] == "technical_knowledge"
-    path.unlink()
