@@ -87,3 +87,45 @@ def test_explicit_saved_session_count_has_a_local_selector():
         "kind": "count",
         "report_mode": "compact",
     }
+
+
+def test_other_saved_dialogue_with_topic_routes_to_search():
+    selected = session_state.session_selector(
+        "في جلسة أخرى كنا نتحدث عن موضوع الفن التجريدي"
+    )
+    assert selected["kind"] == "search"
+    assert "الفن التجريدي" in selected["query"]
+
+
+def test_partial_topic_search_finds_broader_saved_dialogue_title(tmp_path, monkeypatch):
+    archive_path = tmp_path / "session_archive.json"
+    archive_path.write_text(
+        json.dumps(
+            [
+                {
+                    "session_id": "art-session",
+                    "session_type": "dialogue",
+                    "title": "حوار: الفن والرسم والنحت والنقش",
+                    "topic": "الفن والرسم والنحت والنقش",
+                    "active_goal": "الفن والرسم والنحت والنقش",
+                    "updated_at": "2026-10-22",
+                },
+                {
+                    "session_id": "greeting-session",
+                    "session_type": "dialogue",
+                    "title": "حوار: مرحبا",
+                    "topic": "مرحبا",
+                    "active_goal": "مرحبا",
+                    "updated_at": "2026-10-27",
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(session_state, "_archive_file", lambda: str(archive_path))
+
+    results = session_state.search_sessions("الفن التجريدي", limit=5)
+
+    assert results
+    assert results[0]["session_id"] == "art-session"
