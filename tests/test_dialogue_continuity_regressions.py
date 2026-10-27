@@ -1286,3 +1286,14 @@ def test_provider_failure_preserves_dialogue_branch_as_local_recovery(monkeypatc
     assert "لم أختلق محتوى جديدًا" in continued["text"]
     assert orchestrator.calls == []
 
+def test_simple_chat_opening_is_answered_locally_without_provider(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+
+    result = manager.process("لنتحدث قليلا")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_social"
+    assert "موضوع خفيف" in result["text"]
+    assert calls == []
+    assert orchestrator.calls == []
+
