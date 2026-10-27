@@ -1747,7 +1747,11 @@ SOURCE CODE:
             selected_id = None
             report_mode = selector.get("report_mode", "standard")
             if selector.get("kind") == "compare":
-                recent = get_session_index()[-2:]
+                recent = sorted(
+                    get_session_index(),
+                    key=lambda item: str(item.get("updated_at") or item.get("timestamp") or item.get("created_at") or ""),
+                    reverse=True,
+                )[:2]
                 if len(recent) < 2:
                     return {"status": "success", "intent": intent,
                             "text": "لا توجد جلستان محفوظتان كافيتان للمقارنة."}
@@ -1816,7 +1820,11 @@ SOURCE CODE:
                 state = getattr(memory, "state", None)
                 current_dialogue_id = str(getattr(state, "session_id", "") or "").strip()
                 selected_dialogue = None
-                for item in reversed(get_session_index()):
+                for item in sorted(
+                    get_session_index(),
+                    key=lambda entry: str(entry.get("updated_at") or entry.get("timestamp") or entry.get("created_at") or ""),
+                    reverse=True,
+                ):
                     if not isinstance(item, dict):
                         continue
                     outer_id = str(item.get("session_id") or "").strip()
@@ -1858,9 +1866,13 @@ SOURCE CODE:
                             "text": f"لا توجد جلسة محفوظة بالرقم {number}. اختر رقمًا من 1 إلى {len(candidates)}."}
                 selected_id = candidates[number - 1].get("session_id")
             if selector.get("kind") == "latest":
-                index = get_session_index()
+                index = sorted(
+                    get_session_index(),
+                    key=lambda item: str(item.get("updated_at") or item.get("timestamp") or item.get("created_at") or ""),
+                    reverse=True,
+                )
                 if index:
-                    selected_id = index[-1].get("session_id")
+                    selected_id = index[0].get("session_id")
             elif selector.get("kind") == "id":
                 selected_id = selector.get("session_id")
                 if not get_session_by_id(selected_id):
