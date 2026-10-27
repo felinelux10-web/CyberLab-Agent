@@ -1670,10 +1670,14 @@ SOURCE CODE:
             stop = ["ما","تاثير","تعديل","ماذا","يحدث","لو","عدلت","على","في"]
             words = [w for w in raw.split() if w not in stop and len(w) > 2]
             q = words[-1] if words else target or raw
-            from lab_v4_dev.core.project_context import get_active_project, project_index_dir, CYBERLAB_ROOT
+            from lab_v4_dev.core.project_context import (
+                get_active_project,
+                project_index_dir,
+                CYBERLAB_ROOT as PROJECT_CONTEXT_ROOT,
+            )
             _active = get_active_project()
             _active_root = os.path.abspath(_active.root)
-            _base_root = os.path.abspath(CYBERLAB_ROOT)
+            _base_root = os.path.abspath(PROJECT_CONTEXT_ROOT)
             _is_external = os.path.commonpath([_active_root, _base_root]) != _base_root
             if _is_external:
                 import json as _j
