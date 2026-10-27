@@ -130,13 +130,19 @@ def answer_local_response(
         # do not claim a new topic or replace it with a generic greeting.
         if topic and last_user:
             reply = (
-                f"أهلًا بك. ما زال لدينا سياق سابق حول «{topic}». "
-                "هل تفضّل استكماله أم بدء موضوع مختلف؟"
+                f"أهلًا بعودتك إلى الحوار حول «{topic}». "
+                "هل تريد متابعة الفكرة السابقة أم النظر إليها من زاوية أخرى؟"
             )
-        elif any(word in normalized.split() for word in ("صباح", "مساء")):
-            reply = "أهلًا بك. هل ترغب في حديث خفيف أم لديك موضوع محدد تريد مناقشته؟"
+        elif any(word in normalized.split() for word in ("صباح", "صباحا", "صباحًا")):
+            reply = "صباح الخير. هل تود بدء يومك بسؤال محدد أم بحوار مفتوح؟"
+        elif any(word in normalized.split() for word in ("مساء", "مساءا", "مساءً")):
+            reply = "مساء الخير. ما الموضوع الذي يستحق أن نمنحه بعض الوقت اليوم؟"
+        elif "السلام" in normalized or normalized.startswith("سلام"):
+            reply = "وعليكم السلام. هل جئت بموضوع تريد مناقشته أم نختار موضوعًا معًا؟"
+        elif any(word in normalized.split() for word in ("اهلا", "أهلا", "هلا")):
+            reply = "أهلًا بك. هل نتابع حديثًا سابقًا أم نبدأ من فكرة جديدة؟"
         else:
-            reply = "أهلًا بك. يمكننا متابعة موضوع سابق أو فتح موضوع جديد؛ ما الأنسب لك الآن؟"
+            reply = "مرحبًا. أخبرني بما يشغل اهتمامك الآن، وسأتعامل معه بحسب سياقه."
         return _result(reply, parsed, "local_social_engine")
 
     if act == "SOCIAL_CLOSING":
@@ -171,10 +177,13 @@ def answer_local_response(
 
     if act in {"CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY", "TOPIC_RETURN"}:
         if not last_user and not last_assistant and not topic:
-            return _result(
-                "لا أجد في السياق المتاح نقطة سابقة موثوقة أتابع منها. اذكر الموضوع أو أرسل جزءًا من الحوار المقصود.",
-                parsed,
-            )
+            return {
+                **_result(
+                    "لا أجد في السياق المتاح نقطة سابقة موثوقة أتابع منها. اذكر الموضوع أو أرسل جزءًا من الحوار المقصود.",
+                    parsed,
+                ),
+                "status": "needs_clarification",
+            }
         anchor = topic or _clean(last_user, 100)
         if last_user and last_assistant:
             reply = (
