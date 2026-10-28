@@ -85,10 +85,17 @@ def _is_substantive_anchor(value: Any) -> bool:
     return len(normalized) > 2
 
 
-def _history_parts(history: list | None) -> tuple[str, str]:
-    """Return the latest completed substantive exchange, never mismatched turns."""
+def _history_parts(
+    history: list | None,
+    *,
+    allow_technical: bool = False,
+) -> tuple[str, str]:
+    """Return the latest completed exchange within the caller-authorized domain."""
     pending_user = ""
     last_pair = ("", "")
+    excluded_domains = {"work", "system", "execution", "project"}
+    if not allow_technical:
+        excluded_domains.add("technical")
     for turn in history or []:
         if not isinstance(turn, dict):
             continue
@@ -98,11 +105,8 @@ def _history_parts(history: list | None) -> tuple[str, str]:
             continue
         kind = str(turn.get("context_kind") or "").casefold()
         domain = str(turn.get("conversation_domain") or "").casefold()
-        if kind in {"work", "system", "execution", "project"} or domain in {
-            "work", "system", "execution", "project", "technical",
-        }:
-            # A general/social local response must not pull a stale work,
-            # project, or technical branch into an unrelated conversational turn.
+        if kind in {"work", "system", "execution", "project"} or domain in excluded_domains:
+            # Discard a branch outside the owner-authorized history window.
             pending_user = ""
             last_pair = ("", "")
             continue
@@ -123,7 +127,13 @@ def _history_parts(history: list | None) -> tuple[str, str]:
     return last_pair
 
 
-def _topic(parsed: dict, semantic: dict, history: list | None) -> str:
+def _topic(
+    parsed: dict,
+    semantic: dict,
+    history: list | None,
+    *,
+    allow_technical: bool = False,
+) -> str:
     target = _clean(parsed.get("target") or semantic.get("target"), 100)
     if _is_substantive_anchor(target):
         return target
@@ -135,9 +145,10 @@ def _topic(parsed: dict, semantic: dict, history: list | None) -> str:
             continue
         kind = str(turn.get("context_kind") or "").casefold()
         domain = str(turn.get("conversation_domain") or "").casefold()
-        if kind in {"work", "system", "execution", "project"} or domain in {
-            "work", "system", "execution", "project", "technical",
-        }:
+        excluded_domains = {"work", "system", "execution", "project"}
+        if not allow_technical:
+            excluded_domains.add("technical")
+        if kind in {"work", "system", "execution", "project"} or domain in excluded_domains:
             continue
         target = _clean(turn.get("target"), 100)
         if _is_substantive_anchor(target):
@@ -190,8 +201,20 @@ def answer_local_response(
     normalized = normalize_text(text).strip()
     if not normalized:
         return None
-    last_user, last_assistant = _history_parts(history)
-    topic = _topic(parsed, semantic, history)
+    # The caller's resolved conversation domain governs which historical
+    # branches may be reused. General/social replies exclude stale technical
+    # context, while an explicitly technical continuation may reuse that branch.
+    allow_technical_history = domain == "technical"
+    last_user, last_assistant = _history_parts(
+        history,
+        allow_technical=allow_technical_history,
+    )
+    topic = _topic(
+        parsed,
+        semantic,
+        history,
+        allow_technical=allow_technical_history,
+    )
     if isinstance(context_entity, dict) and not topic:
         candidate_topic = _clean(context_entity.get("entity"), 100)
         if _is_substantive_anchor(candidate_topic):

@@ -167,3 +167,40 @@ def test_general_social_response_does_not_reuse_stale_project_or_technical_histo
     assert result is not None
     assert "Buffer Overflow" not in result["text"]
     assert "شرح تقني سابق" not in result["text"]
+
+def test_explicit_technical_continuation_keeps_authorized_technical_history():
+    history = [
+        {
+            "role": "user",
+            "content": "اشرح Buffer Overflow",
+            "target": "Buffer Overflow",
+            "conversation_domain": "technical",
+            "context_kind": "dialogue",
+        },
+        {
+            "role": "assistant",
+            "content": "يحدث عند تجاوز البيانات حدود الذاكرة المخصصة.",
+            "target": "Buffer Overflow",
+            "conversation_domain": "technical",
+            "context_kind": "dialogue",
+        },
+    ]
+    result = answer_local_response(
+        "أكمل",
+        {
+            "intent": "personal_chat",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "conversation_domain": "technical",
+            "target": "Buffer Overflow",
+        },
+        {
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "conversation_domain": "technical",
+            "target": "Buffer Overflow",
+        },
+        history=history,
+    )
+
+    assert result is not None
+    assert "اشرح Buffer Overflow" in result["text"]
+    assert "تجاوز البيانات حدود الذاكرة" in result["text"]
