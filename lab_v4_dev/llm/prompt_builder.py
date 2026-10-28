@@ -417,6 +417,9 @@ def build_chat_prompt(
     """
     semantic = conversation_semantics or {}
     response_attributes = semantic.get("response_attributes") or {}
+    self_intent = str(
+        getattr(semantic.get("intent"), "value", semantic.get("intent")) or ""
+    ).casefold()
     compound_request = bool(response_attributes.get("compound_request"))
     # The message-level semantic contract outranks lexical domain hints.
     # A compound question may mention Python/security/project words without
@@ -434,26 +437,62 @@ def build_chat_prompt(
     )
 
     if agent_self_knowledge:
-        # Format any project knowledge that was retrieved
+        # Format project evidence only when it is explicitly authorized and relevant.
         proj_knowledge_text = ""
         if authorized_project_knowledge:
             proj_knowledge_text = "\n\n" + _format_retrieved_knowledge(project_knowledge)
-        
-        system = f"""أنت المكوّن الحواري في تطبيق CyberLab Agent الموجود في هذا المشروع.
-هذه الرسالة سؤال عن الوكيل الفعلي وبنيته، وليست دعوة لوصف نموذج ذكاء اصطناعي عام.
 
-=== قواعد الاستناد ===
-- اعتمد في وصف هوية الوكيل وقدراته ومساراته وحدوده على حقائق الشفرة المرفقة فقط.
-- لا تستنتج وجود نموذج محلي أو أدوات/صلاحيات/وصول لم يثبته مصدر مذكور.
-- لا تعمم مسار PreparedExecutionRequest على جميع العمليات؛ اذكره بوصفه المسار الذي تثبته المصادر.
-- ميّز بين تطبيق CyberLab Agent وLLM Gateway/المزوّد الذي يجيب عن المحادثة.
-- إذا لم تجب المصادر عن تفصيل، قل بوضوح إن الشفرة المتاحة لا تثبته.
-- أجب بالعربية، بدقة وبقدر السؤال، ولا تكرر السؤال.
-- سياق المحادثة السابقة ليس مصدرًا أعلى من حقائق الشفرة أدناه.
-- التمييز بين الحقائق المعمارية وأثر التشغيل لرسالة بعينها ضروري؛ وصف المسار في الشفرة لا يثبت أن الرسالة اتخذته.
-- لا تدّعِ أن الرسالة الحالية سلكت مسارًا بعينه دون trace صريح خاص بها؛ عند غياب ذلك، صِف المسار بوصفه معمارية.
+        if self_intent in {"agent_identity", "agent_capabilities"}:
+            self_answer_shape = (
+                "أجب في فقرة واحدة من جملتين أو ثلاث. استخدم أسلوبًا عربيًا فصيحًا "
+                "طبيعيًا وودّيًا وبسيطًا. لا تسرد بنية المشروع ولا أسماء الملفات أو "
+                "الكلاسات أو الدوال أو واجهات API إلا إذا طلب المستخدم ذلك صراحة."
+            )
+        elif self_intent in {"agent_architecture", "agent_execution_flow"}:
+            self_answer_shape = (
+                "أجب عن البنية أو تدفق الرسالة المطلوب فقط، في أربعة إلى ستة بنود "
+                "مختصرة كحد أقصى. لا تخلط قائمة المكونات بشرح دور كل مكوّن بالتفصيل "
+                "إذا لم يطلب المستخدم ذلك."
+            )
+        elif self_intent == "agent_limits":
+            self_answer_shape = (
+                "أجب مباشرة عن الحد المطلوب في ثلاث إلى خمس جمل. ميّز بين ما تثبته "
+                "الشفرة وما لا يمكن الجزم به، دون إعادة سرد المعمارية."
+            )
+        else:
+            self_answer_shape = "أجب مباشرة وبقدر السؤال، دون تفاصيل جانبية."
 
-=== حقائق self-knowledge الموثقة ===
+        normalized_self_request = str(user_input or "").casefold()
+        asks_for_friendly_answer = any(marker in normalized_self_request for marker in (
+            "بشكل ودي", "بأسلوب ودي", "بشكل بسيط", "ببساطة", "بأسلوب بسيط",
+            "لا تعرض بنية", "لا تشرح بنية", "لا تعرض هيكل", "لا تذكر الملفات",
+            "لا تعرض تفاصيل المشروع", "تحدث بشكل طبيعي", "حوار ودي",
+        ))
+        if asks_for_friendly_answer:
+            self_answer_shape = (
+                "التزم بطلب الأسلوب في الرسالة الحالية: تحدث بالعربية الفصحى المبسطة "
+                "وبنبرة ودية، وأجب عن المقصود دون عرض بنية المشروع أو أسماء مكوّناته."
+            )
+
+        system = f"""أنت المكوّن الحواري في تطبيق CyberLab Agent داخل هذا المشروع.
+أجب عن السؤال الفعلي، لا عن سؤال تقني أوسع لم يطرحه المستخدم.
+
+=== أسلوب وحجم الإجابة ===
+- {self_answer_shape}
+- لا تكرر السؤال ولا تفتتح الرد بمقدمة عن أنك ستجيب.
+- لا تذكر أسماء ملفات أو واجهات برمجية أو مسارات داخلية إلا إذا كانت ضرورية للإجابة أو طُلبت صراحة.
+- إذا طلب المستخدم تصحيح الأسلوب أو تضييق نطاق الإجابة، فطلبه الحالي يقيّد الرد التالي مباشرة.
+- حافظ على العربية الفصحى الواضحة؛ لا تحوّل الودّ إلى لهجة محلية.
+
+=== الاستناد والصدق ===
+- اعتمد في وصف هوية الوكيل وقدراته ومساراته وحدوده على الحقائق المرفقة فقط.
+- لا تستنتج وجود نموذج محلي أو أدوات أو صلاحيات أو وصول لم يثبته مصدر.
+- ميّز بين CyberLab Agent والمزوّد الذي قد يصوغ ردًا لغويًا.
+- إذا لم تجب المصادر عن تفصيل، فصرّح بأن الشفرة المتاحة لا تثبته.
+- لا تدّعِ أن الرسالة الحالية سلكت مسارًا بعينه دون trace خاص بها؛ وصف المعمارية لا يثبت مسار التنفيذ الفعلي.
+- لا تضف سياسات أو مدد احتفاظ أو قوائم سماح/حظر أو إمكانات لم ترد في الحقائق المرفقة.
+
+=== حقائق الوكيل المناسبة للسؤال ===
 {agent_self_knowledge}{proj_knowledge_text}
 """
 
