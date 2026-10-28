@@ -2822,9 +2822,8 @@ class ConversationManager:
             "محادثة ودية", "محادثه وديه", "دردشة ودية", "دردشه وديه",
             "نريد أن نتحدث فقط", "نريد ان نتحدث فقط", "دردشة فقط",
         )):
-            composed = contextual_social_reply()
-            if composed is not None:
-                return composed
+            # This explicitly switches away from work; do not revive an old
+            # topic through contextual composition after the user asked to leave it.
             reply = "حسنًا، لنتحدث بشكل ودي بعيدًا عن العمل والمهام. ما الذي يشغل بالك؟"
         else:
             composed = contextual_social_reply()

@@ -330,10 +330,18 @@ def answer_local_response(
 
     if act in {"SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION", "PERSONAL_INTERACTION"}:
         if topic and last_user:
-            reply = (
-                f"يمكننا مواصلة الحديث عن «{topic}» بصورة غير رسمية. "
-                f"آخر نقطة طرحتها كانت «{last_user}». ما الذي لفت انتباهك فيها؟"
-            )
+            if last_assistant:
+                reply = (
+                    f"يمكننا مواصلة الحديث عن «{topic}» بصورة غير رسمية. "
+                    f"آخر نقطة طرحتها كانت «{last_user}». "
+                    f"وكان الرد السابق: «{last_assistant}». "
+                    "أي جانب تريد أن نتابع منه؟"
+                )
+            else:
+                reply = (
+                    f"يمكننا مواصلة الحديث عن «{topic}» بصورة غير رسمية. "
+                    f"آخر نقطة طرحتها كانت «{last_user}». ما الذي لفت انتباهك فيها؟"
+                )
         elif last_user and last_assistant:
             reply = (
                 f"يمكننا متابعة الحديث من آخر نقطة طرحتها: «{last_user}». "
@@ -341,7 +349,7 @@ def answer_local_response(
             )
         else:
             reply = (
-                "يمكننا البدء من فكرة بسيطة ثم تطوير النقاش بحسب ما يهمك. "
+                "يمكننا اختيار موضوع خفيف ثم تطوير النقاش بحسب ما يثير اهتمامك. "
                 "هل تفضّل موضوعًا عن الفن، أو الأفكار والحياة اليومية، أو التقنية؟"
             )
         return _result(reply, parsed, "local_social_engine")

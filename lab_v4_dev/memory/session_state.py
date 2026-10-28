@@ -367,9 +367,6 @@ def session_selector(raw: str) -> dict:
             "ملخصات جميع الجلسات", "الجلسات المحفوظة كلها",
         )):
             return {"kind": "previous_dialogue", "report_mode": report_mode}
-    if prior_session_content_reference:
-        return {"kind": "previous_dialogue", "report_mode": report_mode}
-
     # Distinguish a prior saved dialogue from the generic latest session/work report.
     # This is intentionally checked before broad "استرجع الجلسة" -> latest matching.
     previous_dialogue_markers = (
