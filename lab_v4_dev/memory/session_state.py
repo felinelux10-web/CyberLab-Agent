@@ -332,7 +332,7 @@ def session_selector(raw: str) -> dict:
     prior_session_content_reference = bool(
         re.search(
             r"(?:الجلسة|الجلسه|جلسة|جلسه|الجلسات|جلسات|الحوار|حوار|الدردشة|دردشة)"
-            r"\s+(?:ال)?(?:سابقة|سابقه|سابق|ماضية|ماضيه|ماضي|اخيرة|اخيره|اخير|محفوظة|محفوظه|محفوظ)",
+            r"\s+(?:ال)?(?:سابقة|سابقه|سابق|ماضية|ماضيه|ماضي|اخيرة|اخيره|اخير)",
             text,
         )
         and (
@@ -344,6 +344,29 @@ def session_selector(raw: str) -> dict:
             ))
         )
     )
+    # A request about the content (not just the inventory) of one saved
+    # dialogue may omit a temporal adjective. Keep collection/list phrasing
+    # out of this route: "ملخصات الجلسات المحفوظة كلها" is a list request.
+    saved_dialogue_content_reference = bool(
+        re.search(
+            r"(?:الجلسة|الجلسه|جلسة|جلسه|الحوار|حوار|الدردشة|دردشة)"
+            r"\s+(?:ال)?محفوظ(?:ة|ه|ات)?",
+            text,
+        )
+        and any(marker in text for marker in (
+            "موضوع", "مضمون", "محتوى", "كنا نقول", "كنا نتحدث",
+            "كنا نتكلم", "كنا نناقش", "ناقشنا", "تحدثنا",
+            "نتحدث", "نتكلم", "نتناقش", "ماذا قلنا", "ما قلنا",
+        ))
+    )
+    if prior_session_content_reference or saved_dialogue_content_reference:
+        # Explicit collection/list markers have precedence over single-dialogue recall.
+        if not any(marker in text for marker in (
+            "كلها", "جميعها", "كل الجلسات", "جميع الجلسات",
+            "ملخصات الجلسات", "ملخصات كل الجلسات",
+            "ملخصات جميع الجلسات", "الجلسات المحفوظة كلها",
+        )):
+            return {"kind": "previous_dialogue", "report_mode": report_mode}
     if prior_session_content_reference:
         return {"kind": "previous_dialogue", "report_mode": report_mode}
 

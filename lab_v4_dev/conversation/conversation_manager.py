@@ -1837,11 +1837,20 @@ class ConversationManager:
         # Explicit persisted-session requests belong to Orchestrator. A local
         # social responder may otherwise consume ASSISTANT_STATE_QUERY and
         # return a generic greeting/history answer before session restoration.
+        social_history = chat_history
+        if not social_history and not saved_session_request and self.dialogue_memory:
+            # An opener may be classified as a new independent conversational
+            # turn while still benefiting from recent same-session dialogue.
+            # The local composer itself enforces domain boundaries so technical
+            # and project history cannot leak into a general social reply.
+            social_history = self._history_for_transition(
+                ContextTransition.CONTINUE, parsed
+            )
         local_social = (
             None
             if saved_session_request
             else self._local_social_answer(
-                user_input, parsed, history=chat_history
+                user_input, parsed, history=social_history
             )
         )
         if local_social is not None:
@@ -2795,7 +2804,10 @@ class ConversationManager:
                 return None
             composed = dict(composed)
             composed["intent"] = candidate.get("intent") or Intent.PERSONAL_CHAT
-            composed["source"] = "local_social_engine"
+            # Keep the established public source label for callers and
+            # DialogueMemory lifecycle rules; the local strategy is recorded
+            # separately in local_strategy.
+            composed["source"] = "local_social"
             composed["mode"] = "CHAT"
             composed["executed"] = False
             return composed
@@ -4111,11 +4123,13 @@ class ConversationManager:
             ).casefold()
             local_act = str((parsed or {}).get("conversation_act") or "").upper()
             local_domain = str((parsed or {}).get("conversation_domain") or "general").casefold()
+            # Only low-risk social openings/follow-ups may be composed
+            # locally after a provider failure. A direct "continue" request
+            # stays with the established memory recovery path below, which
+            # refuses to pretend it generated new factual explanation.
             local_fallback_acts = {
                 "SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION",
                 "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP",
-                "CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY",
-                "TOPIC_RETURN",
             }
             if (
                 local_intent in {"personal_chat", "discussion", "chat"}

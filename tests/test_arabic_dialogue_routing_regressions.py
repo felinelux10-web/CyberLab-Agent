@@ -131,35 +131,65 @@ def test_social_opening_uses_dialogue_history_instead_of_one_generic_template(mo
     result = manager.process("دعنا نتحدث قليلا")
 
     assert result["status"] == "success"
-    assert result["source"] == "local_social_engine"
+    assert result["source"] == "local_social"
     assert "الفن التجريدي" in result["text"] or "أريد الحديث عن الفن التجريدي" in result["text"]
     assert len(calls) == 1, "a bounded social opening with available history should be handled locally"
 
 
-def test_provider_failure_uses_contextual_local_continuation(monkeypatch):
-    manager, calls = _manager(monkeypatch)
-    first = manager.process("فقط اريد الدردشة معك")
-    assert first["status"] == "success"
-    assert first["source"] == "llm"
+def test_provider_failure_uses_contextual_local_social_opening(monkeypatch):
+    from lab_v4_dev.conversation.conversation_manager import ConversationManager
+    from lab_v4_dev.context.context_store import ContextStore
 
-    def unavailable(*_args, **_kwargs):
-        return {
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.build_chat_prompt",
+        lambda *args, **kwargs: ("test system", "test prompt"),
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        lambda *_args, **_kwargs: {
             "status": "error",
             "message": "offline",
             "error": {"code": "NO_PROVIDER_AVAILABLE"},
-        }
-
-    monkeypatch.setattr(
-        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
-        unavailable,
+        },
     )
-    result = manager.process(
-        "نعم سنكمل حوارنا في محادثة ودية كنا نقول ونريد ان ندردش قليلا"
+
+    class LocalOrchestrator:
+        context = ContextStore()
+
+    manager = ConversationManager(LocalOrchestrator())
+    history = [
+        {
+            "role": "user",
+            "content": "أريد الحديث عن الفن التجريدي",
+            "target": "الفن التجريدي",
+            "conversation_domain": "general",
+            "context_kind": "dialogue",
+        },
+        {
+            "role": "assistant",
+            "content": "يمكننا النظر إلى اللون والشكل والمعنى.",
+            "target": "الفن التجريدي",
+            "conversation_domain": "general",
+            "context_kind": "dialogue",
+        },
+    ]
+
+    result = manager._handle_chat(
+        "دعنا نتحدث قليلا",
+        "CHAT",
+        parsed={
+            "intent": "personal_chat",
+            "target": "",
+            "conversation_domain": "general",
+            "conversation_act": "SOCIAL_OPENING",
+            "response_attributes": {},
+        },
+        user_question="دعنا نتحدث قليلا",
+        history=history,
     )
 
     assert result["status"] == "success"
     assert result["source"] == "local_dialogue_fallback"
-    assert "فقط اريد الدردشة معك" in result["text"]
-    assert "رد سياقي رقم 1" in result["text"]
+    assert "الفن التجريدي" in result["text"]
+    assert "اللون والشكل والمعنى" in result["text"]
     assert "متابعة محلية" in result["text"]
-    assert calls, "the first turn should have used the configured provider"

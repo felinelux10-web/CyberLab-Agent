@@ -209,8 +209,30 @@ def answer_local_response(
         history,
         allow_technical=allow_technical_history,
     )
+    topic_parse = parsed
+    social_opening_text = any(marker in normalized for marker in (
+        "دعنا نتحدث", "لنتحدث قليلا", "لنتحدث قليل", "نتحدث قليلا",
+        "محادثه وديه", "دردشه وديه", "نريد ان نتحدث فقط",
+        "دردشه فقط", "موضوع خفيف",
+    ))
+    social_opening_act = act in {
+        "SOCIAL_GREETING", "SOCIAL_OPENING", "CASUAL_CONVERSATION",
+        "CASUAL_DISCUSSION", "PERSONAL_INTERACTION",
+    }
+    inherited_target = _clean(parsed.get("target"), 100)
+    # A target copied from the previous technical branch is not an explicit
+    # topic choice in a new greeting/opening. Resolve the subject from the
+    # authorized history instead, where the current domain filter applies.
+    if (
+        inherited_target
+        and normalize_text(inherited_target) not in normalized
+        and (social_opening_text or social_opening_act)
+        and not allow_technical_history
+    ):
+        topic_parse = dict(parsed)
+        topic_parse["target"] = ""
     topic = _topic(
-        parsed,
+        topic_parse,
         semantic,
         history,
         allow_technical=allow_technical_history,
