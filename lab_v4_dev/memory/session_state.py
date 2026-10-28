@@ -1094,6 +1094,20 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     )
     normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
     topic = " ".join(str(exchange.get("target") or "").split()).strip()
+    narrative_prefixes = (
+        ("تحدثنا عن ", "تناول الحوار موضوع "),
+        ("ناقشنا ", "تناول الحوار موضوع "),
+        ("ثم انتقلنا الى ", "انتقل النقاش إلى "),
+        ("انتقلنا الى ", "انتقل النقاش إلى "),
+        ("تطرقنا الى ", "تناول الحوار موضوع "),
+    )
+    for prefix, replacement in narrative_prefixes:
+        if normalized.startswith(prefix):
+            remainder = user_text[len(prefix):].strip(" .،؛:!?؟")
+            if remainder:
+                if answer:
+                    return [replacement + "«" + remainder[:130] + "»؛ والخلاصة المحفوظة: " + answer + "."]
+                return [replacement + "«" + remainder[:160] + "»."]
 
     # Offline synthesis cannot replace a language model, but it can preserve
     # the answer's core fact while avoiding the original question/answer format.
