@@ -468,6 +468,31 @@ class ConversationManager:
             context.current_file = None
 
     @staticmethod
+    def _is_fragmentary_turn(text: str) -> bool:
+        """Reject isolated letters/unknown two-letter fragments before context inheritance."""
+        normalized = normalize_text(str(text or ""))
+        compact = "".join(
+            char for char in normalized
+            if char.isalnum() or "\u0600" <= char <= "\u06ff"
+        ).strip()
+        if not compact:
+            return False
+        if len(compact) == 1:
+            return True
+        if len(compact) != 2:
+            return False
+        # These are valid short Arabic words/particles; leave their normal
+        # conversational and clarification routes intact.
+        common_short_words = {
+            "لا", "ما", "من", "في", "عن", "هل", "هو", "هي", "كم", "كل",
+            "لم", "لن", "قد", "بل", "يا", "مع", "به", "له", "هم", "هن",
+            "اي", "اذ", "ثم",
+        }
+        return compact not in common_short_words and all(
+            "\u0600" <= char <= "\u06ff" for char in compact
+        )
+
+    @staticmethod
     def _is_new_dialogue_session_request(text: str) -> bool:
         """Recognize explicit natural-language requests to start an isolated dialogue."""
         normalized = " ".join(
@@ -600,6 +625,21 @@ class ConversationManager:
                 "intent": Intent.STOP,
                 "source": "conversation_manager",
                 "text": "سأتوقف عن متابعة الطلب الحالي؛ لم أرسل أمر إلغاء إلى أي مهمة تنفيذية.",
+                "executed": False,
+            }
+
+        # Incomplete fragments must not inherit a prior continuation act or
+        # stale target. Asking for the missing text is read-only: do not append
+        # it to dialogue history, update the active topic, or call a provider.
+        if self._is_fragmentary_turn(user_input):
+            return {
+                "status": "needs_clarification",
+                "intent": Intent.PERSONAL_CHAT,
+                "source": "conversation_manager",
+                "text": (
+                    "وصلتني رسالة قصيرة أو مبتورة ولم يتضح المقصود منها. "
+                    "اكتب الفكرة كاملة أو وضّح ما تريد متابعته."
+                ),
                 "executed": False,
             }
 
