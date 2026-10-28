@@ -718,3 +718,60 @@ def test_numbered_saved_dialogue_summary_uses_only_selected_records_for_provider
     assert "تؤثر العلاقة بين الألوان" not in observed[0][0]
     assert not restore_calls
 
+
+
+def test_explicit_session_number_never_falls_back_to_current_when_identity_mismatches(monkeypatch):
+    selected = {
+        "session_id": "saved-session-1",
+        "session_type": "dialogue",
+        "status": "completed",
+        "active_goal": "الفن التجريدي",
+        "dialogue_state": {"session_id": "saved-session-1", "last_topic": "الفن التجريدي"},
+    }
+    wrong_detail = {
+        "session_id": "live-current-session",
+        "session_type": "dialogue",
+        "status": "active",
+        "active_goal": "التحية الحالية",
+        "dialogue_state": {"session_id": "live-current-session", "last_topic": "التحية الحالية"},
+    }
+    agent = SimpleNamespace(
+        restore_session_snapshot=lambda _data: True,
+        restore_session_context=lambda: False,
+        runtime=None,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    orchestrator = Orchestrator(agent)
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_index",
+        lambda: [selected],
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_by_id",
+        lambda session_id: wrong_detail if session_id == "saved-session-1" else {},
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.load_session",
+        lambda: wrong_detail,
+    )
+
+    result = orchestrator.handle(
+        "اكتب ملخص الجلسة المحفوظة رقم 1",
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "target": "",
+            "context": "system",
+            "session_selector": {
+                "kind": "number",
+                "number": 1,
+                "report_mode": "full",
+            },
+        },
+    )
+
+    assert result["status"] == "needs_clarification"
+    assert result["source"] == "saved_session_identity_guard"
+    assert result["requested_session_id"] == "saved-session-1"
+    assert result["resolved_session_id"] == "live-current-session"
+    assert "لم أستبدلها" in result["text"]
+    assert "التحية الحالية" not in result["text"]
