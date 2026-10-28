@@ -2871,3 +2871,17 @@ SOURCE CODE:
     def get_history(self) -> list: return self.history
 
     def summary(self) -> dict:
+intents = {}
+        statuses = {}
+        for h in self.history:
+            i = h.get("intent", "?")
+            s = h.get("status", "?")
+            intents[i] = intents.get(i, 0) + 1
+            statuses[s] = statuses.get(s, 0) + 1
+        return {
+            "total": len(self.history),
+            "phase": self.phase,
+            "intents": intents,
+            "statuses": statuses,
+        }
+
