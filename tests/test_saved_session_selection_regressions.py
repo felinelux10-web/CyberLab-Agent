@@ -605,6 +605,7 @@ def test_numbered_saved_session_summary_is_read_only_and_reports_the_selected_re
     )
     orchestrator = Orchestrator(agent)
     context_before = getattr(orchestrator.context, "last_result", None)
+    monkeypatch.setattr("lab_v4_dev.llm.gateway.ask", lambda *args, **kwargs: {"status": "error", "text": ""})
     monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_index", lambda: sessions)
     monkeypatch.setattr(
         "lab_v4_dev.memory.session_state.get_session_by_id",
@@ -643,4 +644,77 @@ def test_numbered_saved_session_summary_is_read_only_and_reports_the_selected_re
     assert "ما الفرق بين القائمة والقاموس؟" not in result["text"]
     assert not restore_calls
     assert getattr(orchestrator.context, "last_result", None) is context_before
+
+def test_numbered_saved_dialogue_summary_uses_only_selected_records_for_provider(monkeypatch):
+    sessions = [
+        {
+            "session_id": "art-saved-1",
+            "session_type": "dialogue",
+            "active_goal": "الفن التجريدي",
+            "dialogue_state": {
+                "session_id": "art-saved-1",
+                "last_topic": "الفن التجريدي",
+                "exchange_archive": [
+                    {"session_id": "art-saved-1", "user": "كيف نختار الألوان؟",
+                     "assistant": "تؤثر العلاقة بين الألوان في التكوين التعبيري.",
+                     "target": "تقنيات اللون"},
+                ],
+            },
+        },
+        {
+            "session_id": "python-saved-2",
+            "session_type": "dialogue",
+            "active_goal": "هياكل البيانات",
+            "dialogue_state": {
+                "session_id": "python-saved-2",
+                "last_topic": "هياكل البيانات في Python",
+                "exchange_archive": [
+                    {"session_id": "python-saved-2", "user": "ما الفرق بين القائمة والقاموس؟",
+                     "assistant": "القائمة تحفظ ترتيبًا؛ القاموس يربط المفاتيح بالقيم.",
+                     "target": "هياكل البيانات في Python"},
+                ],
+            },
+        },
+    ]
+    observed = []
+    restore_calls = []
+    def fake_gateway(prompt, **kwargs):
+        observed.append((prompt, kwargs))
+        return {"status": "success", "text": "تناول الحوار الفرق البنيوي بين القوائم والقواميس واستخدام كل نوع."}
+
+    monkeypatch.setattr("lab_v4_dev.llm.gateway.ask", fake_gateway)
+    agent = SimpleNamespace(
+        restore_session_snapshot=lambda data: restore_calls.append(data) or True,
+        restore_session_context=lambda: restore_calls.append("current-context") or True,
+        runtime=None,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    orchestrator = Orchestrator(agent)
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_index", lambda: sessions)
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_by_id",
+        lambda session_id: next((item for item in sessions if item["session_id"] == session_id), {}),
+    )
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.load_session", lambda: {})
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.recoverable_work_checkpoint", lambda data: None)
+
+    request = "اكتب ملخص الجلسة المحفوظة رقم 2"
+    selected = session_selector(request)
+    result = orchestrator.handle(
+        request,
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "target": "",
+            "context": "system",
+            "session_selector": selected,
+        },
+    )
+
+    assert result["source"] == "saved_session_report"
+    assert result["session_id"] == "python-saved-2"
+    assert "الفرق البنيوي بين القوائم والقواميس" in result["text"]
+    assert observed and "هياكل البيانات في Python" in observed[0][0]
+    assert "الفن التجريدي" not in observed[0][0]
+    assert "تؤثر العلاقة بين الألوان" not in observed[0][0]
+    assert not restore_calls
 
