@@ -405,3 +405,71 @@ def test_privacy_block_is_not_reported_as_provider_outage(monkeypatch):
     assert "بوابة الخصوصية" in result["text"]
     assert "مزود اللغة" not in result["text"]
     assert result["save_prompt"] is None
+
+def test_natural_language_friendly_start_creates_a_fresh_dialogue_session(monkeypatch):
+    manager, memory, orchestrator = _manager(monkeypatch)
+    manager.process("اشرح SQL Injection")
+    previous_session_id = memory.state.session_id
+    prior_execution_calls = len(orchestrator.calls)
+
+    result = manager.process("قلت نبدا حوار ودي جديد مثلا")
+
+    assert result["status"] == "success"
+    assert result["source"] == "conversation_manager"
+    assert "جلسة حوار جديدة ومستقلة" in result["text"]
+    assert memory.state.session_id != previous_session_id
+    assert memory.state.history == []
+    assert memory.state.exchange_archive == []
+    assert len(orchestrator.calls) == prior_execution_calls
+
+
+def test_offline_continuation_after_social_only_turns_does_not_echo_greeting_archive(monkeypatch):
+    manager, memory, orchestrator = _manager(monkeypatch)
+    monkeypatch.setattr(conversation_module, "gateway_ask", lambda *_a, **_k: {
+        "status": "error",
+        "text": "",
+        "error": {"code": "NO_PROVIDER_AVAILABLE"},
+    })
+
+    opener = manager.process("لنتحدث قليلا")
+    state_question = manager.process("كيف الحال")
+    result = manager.process("اكمل")
+
+    assert opener["status"] == "success"
+    assert state_question["status"] == "success"
+    assert result["status"] == "success"
+    assert result["source"] == "local_dialogue_fallback"
+    assert result["recovery"] == "provider_unavailable_local_dialogue"
+    assert "لم نحدد موضوعًا" in result["text"]
+    assert "آخر نقطة محفوظة في هذا الفرع" not in result["text"]
+    assert "أنا بخير، شكرًا لسؤالك" not in result["text"]
+    assert "كيف الحال" not in result["text"]
+    assert orchestrator.calls == []
+
+
+def test_social_only_dialogue_summary_does_not_present_greetings_as_a_topic(monkeypatch):
+    manager, memory, _orchestrator = _manager(monkeypatch)
+    exchanges = [
+        {
+            "user": "لنتحدث قليلا",
+            "assistant": "يمكننا اختيار موضوع خفيف ثم تطوير النقاش بحسب ما يثير اهتمامك.",
+            "conversation_domain": "social",
+            "context_kind": "social",
+            "session_id": memory.state.session_id,
+        },
+        {
+            "user": "كيف الحال",
+            "assistant": "أنا بخير، شكرًا لسؤالك. كيف حالك أنت؟",
+            "conversation_domain": "social",
+            "context_kind": "social",
+            "session_id": memory.state.session_id,
+        },
+    ]
+
+    result = manager._answer_dialogue_history("ماذا كنا نقول", "summary", exchanges)
+
+    assert result["status"] == "success"
+    assert "لم نحدد موضوعًا فعليًا للنقاش بعد" in result["text"]
+    assert "أنا بخير، شكرًا لسؤالك" not in result["text"]
+    assert "لنتحدث قليلا" not in result["text"]
+
