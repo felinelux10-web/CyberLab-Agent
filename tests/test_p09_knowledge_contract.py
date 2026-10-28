@@ -401,3 +401,46 @@ def test_p09_relationship_write_normalizes_absolute_source():
 
     finally:
         conn.close()
+
+
+
+def test_p09_relationship_reads_share_canonical_file_identity():
+    from types import SimpleNamespace
+
+    from lab_v4_dev.core.project_context import get_active_project_root
+    from lab_v4_dev.project_knowledge import knowledge_query, knowledge_store, graph_query
+
+    root = Path(get_active_project_root()).resolve()
+    relative = "__p09_relationship_read_identity__.py"
+    absolute = str(root / relative)
+    relationship = SimpleNamespace(
+        source=absolute,
+        target="p09_identity_probe",
+        relation_type="imports",
+        target_kind="module",
+    )
+
+    knowledge_store.save_relationships([relationship])
+    try:
+        assert knowledge_query.get_file_relationships(absolute) == [
+            ("p09_identity_probe", "imports", "module")
+        ]
+        assert knowledge_query.get_file_relationships(relative) == [
+            ("p09_identity_probe", "imports", "module")
+        ]
+        assert graph_query.get_dependencies_of(absolute) == ["p09_identity_probe"]
+        assert graph_query.get_dependencies_of(relative) == ["p09_identity_probe"]
+    finally:
+        conn = knowledge_store.get_connection()
+        try:
+            conn.execute("BEGIN")
+            conn.execute(
+                "DELETE FROM relationships WHERE source_file=? AND target_name=? AND relation_type=?",
+                (relative, "p09_identity_probe", "imports"),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
