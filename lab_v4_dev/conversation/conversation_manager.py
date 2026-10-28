@@ -1796,10 +1796,27 @@ class ConversationManager:
             r"(?:قلت|اقصد|المقصود)\s+(?:موضوع\s+)?(?:الكتب|كتب|الفن|الرسم|النحت)",
             self._normalize_transition_text(user_input),
         ))
+        normalized_history_request = self._normalize_transition_text(user_input)
+        history_output_request = (
+            self._dialogue_recall_requested(user_input, parsed)
+            and any(marker in normalized_history_request for marker in (
+                "ماذا كنا نقول", "ماذا كنا نتحدث", "ما كنا نقول",
+                "الردود السابقة", "الردود السابقه", "قبل قليل",
+                "ملخص الحوار", "اكتب ملخص", "لخص الحوار",
+                "مضمون الجلسة", "مضمون الجلسه", "محتوى الجلسة",
+                "محتوى الجلسه", "الموضوع الذي ناقشناه سابقا",
+            ))
+        )
+        # A request to print/summarize the dialogue archive outranks a vague
+        # reference to "the topic". Only an actual named/ordinal topic return
+        # should bypass the history renderer.
         specific_dialogue_return = bool(
-            explicit_topic_reference
-            or self._ordinal_dialogue_exchange(user_input)
-            or named_topic_return
+            not history_output_request
+            and (
+                explicit_topic_reference
+                or self._ordinal_dialogue_exchange(user_input)
+                or named_topic_return
+            )
         )
         if (
             (
