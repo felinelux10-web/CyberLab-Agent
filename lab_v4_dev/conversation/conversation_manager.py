@@ -2479,8 +2479,8 @@ class ConversationManager:
             r"تاسع(?:ة|ه)?|عاشر(?:ة|ه)?|[0-9٠-٩]+)"
         )
         patterns = (
-            rf"(?:ما|ماذا|اي|اية)\\s+(?:(?:هو|هي|كان|كانت)\\s+)?(?:ال)?{nouns}\\s+(?:ال)?{ordinals}",
-            rf"(?:ما|ماذا|اي|اية)\\s+(?:(?:هو|هي|كان|كانت)\\s+)?(?:ال)?{ordinals}\\s+(?:ال)?{nouns}",
+            rf"(?:ما|ماذا|اي|اية)\s+(?:(?:هو|هي|كان|كانت)\s+)?(?:ال)?{nouns}\s+(?:ال)?{ordinals}",
+            rf"(?:ما|ماذا|اي|اية)\s+(?:(?:هو|هي|كان|كانت)\s+)?(?:ال)?{ordinals}\s+(?:ال)?{nouns}",
         )
         return any(re.fullmatch(pattern, normalized) for pattern in patterns)
 
