@@ -428,14 +428,17 @@ def test_p09_relationship_reads_share_canonical_file_identity():
 
     knowledge_store.save_relationships([relationship, module_relationship])
     try:
-        assert knowledge_query.get_file_relationships(absolute) == [
-            ("p09_identity_probe", "imports", "module")
+        # Absolute and relative source paths identify the same file. Both
+        # distinct edges must therefore be visible through either read path.
+        expected_relationships = [
+            ("lab_v4_dev.core.agent", "imports", "module"),
+            ("p09_identity_probe", "imports", "module"),
         ]
-        assert knowledge_query.get_file_relationships(relative) == [
-            ("p09_identity_probe", "imports", "module")
-        ]
-        assert graph_query.get_dependencies_of(absolute) == ["p09_identity_probe"]
-        assert graph_query.get_dependencies_of(relative) == ["lab_v4_dev.core.agent", "p09_identity_probe"]
+        expected_dependencies = ["lab_v4_dev.core.agent", "p09_identity_probe"]
+        assert knowledge_query.get_file_relationships(absolute) == expected_relationships
+        assert knowledge_query.get_file_relationships(relative) == expected_relationships
+        assert graph_query.get_dependencies_of(absolute) == expected_dependencies
+        assert graph_query.get_dependencies_of(relative) == expected_dependencies
         assert graph_query.get_importers("lab_v4_dev/core/agent") == [relative]
     finally:
         conn = knowledge_store.get_connection()
