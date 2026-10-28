@@ -171,7 +171,11 @@ class Orchestrator:
 
         entry["status"] = result.get("status", "unknown")
         # لا تحدث السياق عند show_last_result
-        if intent != "show_last_result":
+        read_only_session_report = (
+            isinstance(result, dict)
+            and result.get("context_action") == "read_only_report"
+        )
+        if intent != "show_last_result" and not read_only_session_report:
             self.context.update(intent, target, result)
         self.history.append(entry)
 
@@ -2032,21 +2036,72 @@ SOURCE CODE:
                         f"الملف: {file_text}"
                     ),
                 }
+            normalized_request = " ".join(
+                str(raw or "").casefold()
+                .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+                .replace("ى", "ي")
+                .split()
+            )
+            summary_language = any(marker in normalized_request for marker in (
+                "ملخص", "تلخيص", "لخص", "تقرير", "مضمون", "محتوى",
+                "المحتوى", "المضمون", "ماذا كنا نقول", "ما كنا نقول",
+                "ماذا كنا نتحدث", "ما كنا نتحدث", "عن اي موضوع",
+                "ما الموضوع الذي", "الموضوع الذي ناقشناه",
+                "اعرض نص الحوار", "اعرض الرسائل الاصليه",
+            ))
+            explicit_context_restore = any(marker in normalized_request for marker in (
+                "استرجع السياق", "استعد السياق", "استعادة السياق", "تحميل السياق",
+                "استكمل العمل", "استئناف العمل", "resume work", "restore context",
+                "استرجع الجلسة رقم", "استعد الجلسة رقم", "استكمل الجلسة رقم",
+                "استرجع الجلسة المحفوظة رقم", "استعد الجلسة المحفوظة رقم",
+                "استكمل الجلسة المحفوظة رقم",
+            ))
+            read_only_report = (
+                not explicit_context_restore
+                and (
+                    summary_language
+                    or report_mode == "transcript"
+                    or selector.get("kind") in {"previous_dialogue", "search"}
+                )
+            )
+            summary = build_session_restore_summary(s, report_mode=report_mode)
+            if read_only_report:
+                summary += (
+                    "\n\nنطاق التقرير: قراءة فقط. استُخدم سجل الجلسة المحدد دون دمجه "
+                    "مع الحوار الحالي أو جلسة العمل، ولم يُحمّل أي سياق في الذاكرة النشطة."
+                )
+                return {
+                    "status": "success",
+                    "intent": intent,
+                    "source": "saved_session_report",
+                    "context_action": "read_only_report",
+                    "context_restored": None,
+                    "session_id": str(s.get("session_id") or selected_id or ""),
+                    "text": summary,
+                    "session_summary": summary,
+                }
+
             restore_selected = getattr(self.agent, "restore_session_snapshot", None)
             restore_context = getattr(self.agent, "restore_session_context", None)
             if selected_id and callable(restore_selected):
                 restored = bool(restore_selected(s))
             else:
                 restored = bool(restore_context()) if callable(restore_context) else False
-            summary = build_session_restore_summary(s, report_mode=report_mode)
             summary += (
-                "\n\nنتيجة تحميل السياق: "
-                + ("تمت استعادة السياق المحفوظ؛ تمت استعادته بنجاح." if restored else "تم عرض الملخص؛ تعذر تحميل السياق التنفيذي بالكامل.")
+                "\n\nنتيجة الاستعادة: "
+                + ("تم تحميل السياق المحفوظ بنجاح." if restored
+                   else "عُرض التقرير، لكن تعذر تحميل السياق المحفوظ بالكامل.")
             )
-            return {"status":"success","intent":intent,
-                    "text":summary,
-                    "session_summary": summary,
-                    "context_restored": restored}
+            return {
+                "status": "success",
+                "intent": intent,
+                "source": "saved_session_restore",
+                "context_action": "restore",
+                "text": summary,
+                "session_summary": summary,
+                "context_restored": restored,
+                "session_id": str(s.get("session_id") or selected_id or ""),
+            }
 
         # ─── Session Save ───
         elif intent == Intent.SESSION_SAVE:
