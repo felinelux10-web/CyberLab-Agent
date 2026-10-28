@@ -1998,8 +1998,10 @@ SOURCE CODE:
             # missing or its detail file points at a different session.
             if selected_id:
                 s = get_session_by_id(selected_id)
-                resolved_id = str((s or {}).get("session_id") or "").strip()
-                if not isinstance(s, dict) or not s or resolved_id != str(selected_id).strip():
+                if not isinstance(s, dict):
+                    s = {}
+                resolved_id = str(s.get("session_id") or "").strip()
+                if not s or resolved_id != str(selected_id).strip():
                     return {
                         "status": "needs_clarification",
                         "intent": intent,
