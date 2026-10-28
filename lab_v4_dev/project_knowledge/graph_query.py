@@ -76,8 +76,19 @@ def get_importers(target):
 
         # Accept a project-relative path, absolute path inside the project,
         # or an import/module name while querying the same canonical store.
-        normalized_target = _canonical_source_path(target)
-        target_module = _module_name(normalized_target) if normalized_target.endswith(".py") else target
+        raw_target = str(target or "").strip()
+        path_like_target = (
+            raw_target.endswith(".py")
+            or "/" in raw_target
+            or "\\" in raw_target
+            or os.path.isabs(raw_target)
+        )
+        normalized_target = _canonical_source_path(raw_target)
+        target_module = (
+            _module_name(normalized_target)
+            if path_like_target
+            else raw_target
+        )
         
         cur.execute(
             """
