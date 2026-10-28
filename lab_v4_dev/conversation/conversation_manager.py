@@ -468,6 +468,66 @@ class ConversationManager:
             context.current_file = None
 
     @staticmethod
+    def _bound_agent_self_reply(
+        reply: str,
+        intent,
+        user_input: str,
+        fallback: str = "",
+    ) -> str:
+        """Enforce concise non-architectural replies for identity/capability questions."""
+        value = str(getattr(intent, "value", intent) or "").casefold()
+        if value not in {"agent_identity", "agent_capabilities"}:
+            return str(reply or "").strip()
+
+        normalized = normalize_text(str(user_input or ""))
+        no_internals = any(marker in normalized for marker in (
+            "لا تعرض بنية", "ليس تعرض بنية", "لا تشرح بنية",
+            "لا تعرض تفاصيل المشروع", "لا تذكر الملفات",
+            "لا تعرض هيكل", "بشكل ودي", "ببساطة", "بشكل بسيط",
+        ))
+        asks_for_explicit_architecture = not no_internals and any(
+            marker in normalized for marker in (
+                "المكونات البرمجية", "الطبقات", "المعمارية", "البنية البرمجية",
+                "مسار التنفيذ", "اسماء الملفات", "أسماء الملفات",
+                "preparedexecutionrequest", "eventloop",
+            )
+        )
+        internal_pattern = re.compile(
+            r"(?:lab_v4_dev/|(?:[A-Za-z_][\w.-]*/)+[A-Za-z_][\w.-]*"
+            r"|\b(?:PreparedExecutionRequest|EventLoop|ConversationManager|"
+            r"DialogueMemory|MemoryStore|ContextStore|Orchestrator|gateway_ask)\b"
+            r"|\b[A-Za-z_][A-Za-z0-9_]*\.py\b)",
+            re.IGNORECASE,
+        )
+
+        pieces = [
+            re.sub(r"^\s*(?:[-*•]+\s*|\d+[.)、]\s*)", "", part).strip()
+            for part in re.split(r"(?<=[.!؟?])\s+|\n+", str(reply or "").strip())
+        ]
+        pieces = [
+            part for part in pieces
+            if part and (asks_for_explicit_architecture or not internal_pattern.search(part))
+        ]
+        max_pieces = 5 if asks_for_explicit_architecture else 3
+        max_chars = 900 if asks_for_explicit_architecture else 620
+        bounded = []
+        length = 0
+        for part in pieces:
+            separator_length = 1 if bounded else 0
+            if len(bounded) >= max_pieces or length + separator_length + len(part) > max_chars:
+                break
+            bounded.append(part)
+            length += separator_length + len(part)
+
+        result = " ".join(bounded).strip()
+        if result:
+            return result
+        return str(fallback or "").strip() or (
+            "أنا CyberLab Agent. أساعدك في فهم طلبك وتحديد الخطوة المناسبة، "
+            "وأوضّح حدود ما أستطيع فعله بدل الادعاء بقدرات غير متاحة."
+        )
+
+    @staticmethod
     def _is_fragmentary_turn(text: str) -> bool:
         """Reject isolated letters/unknown two-letter fragments before context inheritance."""
         normalized = normalize_text(str(text or ""))
@@ -4368,6 +4428,14 @@ class ConversationManager:
 
             if not reply:
                 raise ValueError("empty")
+
+            if self_knowledge:
+                reply = self._bound_agent_self_reply(
+                    reply,
+                    (parsed or {}).get("intent"),
+                    user_question or text,
+                    fallback=self_knowledge,
+                )
 
             return {
                 "status": "success",
