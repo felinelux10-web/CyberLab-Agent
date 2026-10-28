@@ -496,7 +496,24 @@ class ConversationManager:
             "ابدأ جلسة جديدة ومستقلة",
             "ابدا جلسه جديده ومستقله",
         )
-        return any(normalized.startswith(prefix) for prefix in explicit_starts)
+        if any(normalized.startswith(prefix) for prefix in explicit_starts):
+            return True
+
+        # Spoken examples and discourse-prefixed requests still express a real
+        # session boundary ("قلت نبدا حوار ودي جديد مثلا"). Detect the semantic
+        # combination rather than requiring the request to start with a template.
+        tokens = set(normalized.split())
+        has_dialogue_object = bool(tokens & {
+            "جلسة", "جلسه", "حوار", "محادثة", "محادثه", "دردشة", "دردشه", "حديث",
+        })
+        has_new_marker = bool(tokens & {
+            "جديد", "جديدة", "جديده", "جديدا", "مستقل", "مستقلة", "مستقله",
+        }) or "من جديد" in normalized
+        has_start_marker = bool(tokens & {
+            "ابدأ", "ابدا", "نبدا", "نبدأ", "لنبدأ", "لنبدأ", "بدء",
+            "انشئ", "انشاء", "خلينا", "نفتح", "نبدأ", "ننشئ",
+        })
+        return has_dialogue_object and has_new_marker and has_start_marker
 
     def process(self, user_input: str, *, _restore_context: dict | None = None) -> dict:
         # Session boundaries take precedence over pending clarifications and all
@@ -3003,6 +3020,39 @@ class ConversationManager:
             "executed": False,
         }
 
+    @staticmethod
+    def _is_social_filler_exchange(item: dict) -> bool:
+        """Keep summaries focused on topics rather than greetings and chat controls."""
+        if not isinstance(item, dict):
+            return False
+        user = normalize_text(str(item.get("user") or ""))
+        assistant = normalize_text(str(item.get("assistant") or ""))
+        filler_users = {
+            normalize_text(value)
+            for value in (
+                "مرحبا", "مرخبا", "أهلًا", "أهلا", "السلام عليكم",
+                "لنتحدث قليلا", "دعنا نتحدث قليلا", "حوار ودي جديد",
+                "كيف الحال", "كيفك", "كيف حالك", "كيف كان نهارك",
+                "نعم", "أجل", "بلى", "لا", "حسنا", "تمام", "ماذا",
+                "أكمل", "اكمل", "نكمل", "تابع", "واصل", "أكمل الحديث",
+            )
+        }
+        social_reply_prefixes = tuple(
+            normalize_text(value)
+            for value in (
+                "أنا بخير، شكرًا لسؤالك",
+                "لا أعيش يومًا بالمعنى البشري",
+                "مرحبًا. أخبرني بما يشغل اهتمامك الآن",
+                "أهلًا بك. هل نتابع حديثًا سابقًا",
+                "وعليكم السلام. هل جئت بموضوع تريد مناقشته",
+                "حسنًا، أخبرني بما تريد متابعته",
+                "يمكننا اختيار موضوع خفيف ثم تطوير النقاش",
+            )
+        )
+        if user in filler_users:
+            return True
+        return bool(user and any(assistant.startswith(prefix) for prefix in social_reply_prefixes))
+
     def _conversation_history_answer(self, text: str, parsed: dict | None = None) -> dict | None:
         """Answer recent-dialogue questions from bounded dialogue memory only."""
         normalized = str(text or "").casefold()
@@ -3504,6 +3554,21 @@ class ConversationManager:
                 )
             )
             if recall_recent_exchanges:
+                meaningful_branch = [
+                    item for item in branch
+                    if not self._is_social_filler_exchange(item)
+                ]
+                if meaningful_branch:
+                    branch = meaningful_branch[-6:]
+                elif branch:
+                    return {
+                        **base,
+                        "text": (
+                            "سجل الحوار المتاح هنا يتكون من تحيات وتبادل قصير عن الحال؛ "
+                            "لم نحدد موضوعًا فعليًا للنقاش بعد."
+                        ),
+                        "dialogue_turns": [],
+                    }
                 lines = []
                 for item in branch:
                     user = " ".join(str(item.get("user") or "").split())
@@ -4296,6 +4361,7 @@ class ConversationManager:
             local_fallback_acts = {
                 "SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION",
                 "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP",
+                "CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY",
             }
             local_history = list(history or [])
             local_history_is_dialogue = bool(local_history) and all(
@@ -4335,10 +4401,11 @@ class ConversationManager:
                         if isinstance(gateway_error, dict)
                         else ""
                     )
-                    local_result["text"] = str(local_result.get("text") or "").rstrip() + (
-                        "\n\nملاحظة: تعذر الحصول على رد من المزود؛ هذه متابعة محلية "
-                        "مبنية على الحوار المحفوظ، وليست شرحًا جديدًا يعتمد على معرفة خارجية."
-                    )
+                    if local_result.get("local_strategy") != "friendly_dialogue_reopen":
+                        local_result["text"] = str(local_result.get("text") or "").rstrip() + (
+                            "\n\nملاحظة: تعذر الحصول على رد من المزود؛ هذه متابعة محلية "
+                            "مبنية على الحوار المحفوظ، وليست شرحًا جديدًا يعتمد على معرفة خارجية."
+                        )
                     return local_result
 
             continuation = str((parsed or {}).get("conversation_act") or "").upper() in {
