@@ -4399,10 +4399,12 @@ class ConversationManager:
             ).casefold()
             local_act = str((parsed or {}).get("conversation_act") or "").upper()
             local_domain = str((parsed or {}).get("conversation_domain") or "general").casefold()
-            # Only low-risk social openings/follow-ups may be composed
-            # locally after a provider failure. A direct "continue" request
-            # stays with the established memory recovery path below, which
-            # refuses to pretend it generated new factual explanation.
+            # Social openings/follow-ups can be composed locally after a
+            # provider failure. A continuation is eligible only when the local
+            # responder classifies the authorized history as social-only and
+            # returns the explicit friendly-reopen strategy. A real topic must
+            # retain the safe last-point recovery below rather than pretending
+            # that quoting its previous answer is a new continuation.
             local_fallback_acts = {
                 "SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION",
                 "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP",
@@ -4437,21 +4439,32 @@ class ConversationManager:
                 )
                 if local_result is not None:
                     local_result = dict(local_result)
-                    local_result["source"] = "local_dialogue_fallback"
-                    local_result["mode"] = mode
-                    local_result["executed"] = False
-                    local_result["recovery"] = "provider_unavailable_local_dialogue"
-                    local_result["provider_failure_code"] = (
-                        str(gateway_error.get("code") or "")
-                        if isinstance(gateway_error, dict)
-                        else ""
-                    )
-                    if local_result.get("local_strategy") != "friendly_dialogue_reopen":
-                        local_result["text"] = str(local_result.get("text") or "").rstrip() + (
-                            "\n\nملاحظة: تعذر الحصول على رد من المزود؛ هذه متابعة محلية "
-                            "مبنية على الحوار المحفوظ، وليست شرحًا جديدًا يعتمد على معرفة خارجية."
+                    is_continuation = local_act in {
+                        "CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY",
+                    }
+                    if (
+                        is_continuation
+                        and local_result.get("local_strategy") != "friendly_dialogue_reopen"
+                    ):
+                        # Preserve the established truthful recovery for a real
+                        # topic when no provider can generate the next content.
+                        local_result = None
+                    if local_result is not None:
+                        local_result["source"] = "local_dialogue_fallback"
+                        local_result["mode"] = mode
+                        local_result["executed"] = False
+                        local_result["recovery"] = "provider_unavailable_local_dialogue"
+                        local_result["provider_failure_code"] = (
+                            str(gateway_error.get("code") or "")
+                            if isinstance(gateway_error, dict)
+                            else ""
                         )
-                    return local_result
+                        if local_result.get("local_strategy") != "friendly_dialogue_reopen":
+                            local_result["text"] = str(local_result.get("text") or "").rstrip() + (
+                                "\n\nملاحظة: تعذر الحصول على رد من المزود؛ هذه متابعة محلية "
+                                "مبنية على الحوار المحفوظ، وليست شرحًا جديدًا يعتمد على معرفة خارجية."
+                            )
+                        return local_result
 
             continuation = str((parsed or {}).get("conversation_act") or "").upper() in {
                 "CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY",
