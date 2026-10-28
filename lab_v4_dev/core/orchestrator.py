@@ -1993,7 +1993,41 @@ SOURCE CODE:
                         "sessions": ambiguous,
                     }
                 selected_id = candidates[0].get("session_id")
-            s = get_session_by_id(selected_id) if selected_id else load_session()
+            # An explicit selection must resolve to that exact saved record.
+            # Never fall back to the live/current session when a selected ID is
+            # missing or its detail file points at a different session.
+            if selected_id:
+                s = get_session_by_id(selected_id)
+                resolved_id = str((s or {}).get("session_id") or "").strip()
+                if not isinstance(s, dict) or not s or resolved_id != str(selected_id).strip():
+                    return {
+                        "status": "needs_clarification",
+                        "intent": intent,
+                        "source": "saved_session_identity_guard",
+                        "executed": False,
+                        "text": (
+                            "تعذر التحقق من هوية الجلسة المحفوظة المحددة. "
+                            "لم أستبدلها بالحوار الحالي أو بجلسة أخرى. "
+                            "اعرض الجلسات المحفوظة ثم اختر رقمًا أو معرّفًا صحيحًا."
+                        ),
+                        "requested_session_id": str(selected_id),
+                        "resolved_session_id": resolved_id or None,
+                    }
+            else:
+                # Loading the current checkpoint is allowed only when the
+                # request did not explicitly identify a saved session.
+                if selector.get("kind") in {"number", "id", "latest", "previous_dialogue", "search"}:
+                    return {
+                        "status": "needs_clarification",
+                        "intent": intent,
+                        "source": "saved_session_identity_guard",
+                        "executed": False,
+                        "text": (
+                            "لم أتمكن من تحديد سجل محفوظ لهذا الطلب؛ "
+                            "لن أستخدم الجلسة الحالية بديلًا عنه."
+                        ),
+                    }
+                s = load_session()
             if not s:
                 return {"status":"success","intent":intent,
                         "text":"لا توجد جلسة سابقة محفوظة"}
