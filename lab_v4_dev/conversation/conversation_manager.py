@@ -1193,6 +1193,7 @@ class ConversationManager:
                 previous_exchange
                 and previous_kind in {"dialogue", "social"}
                 and previous_domain not in {"work", "system", "execution"}
+                and not self._is_explicit_targeted_proposal(user_input)
             ):
                 candidate = dict(candidate or {})
                 candidate.update({
