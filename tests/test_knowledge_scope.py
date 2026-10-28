@@ -52,3 +52,24 @@ def test_current_project_question_preserves_existing_retrieval():
     assert result["current_project_knowledge"] is True
     assert result["layers"] == ["lab_v4_dev"]
     assert result["entry_points"] == ["run.py"]
+
+
+def test_authorized_project_context_resolves_ambiguous_architecture_without_scope_leak():
+    retriever = _retriever()
+
+    result = retriever.retrieve(
+        "ما هي الطبقات التي نعمل على تطويرها؟",
+        authorized_current_project=True,
+    )
+    assert result["project_scope"] == ProjectScope.CURRENT_PROJECT
+    assert result["current_project_knowledge"] is True
+    assert result["layers"] == ["lab_v4_dev"]
+
+    # Context authorization must not override explicit external scope.
+    external = retriever.retrieve(
+        "ما هي طبقات مشروع آخر؟",
+        authorized_current_project=True,
+    )
+    assert external["project_scope"] == ProjectScope.EXTERNAL_PROJECT
+    assert external["current_project_knowledge"] is False
+    assert "layers" not in external

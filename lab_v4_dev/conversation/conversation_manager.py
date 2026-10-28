@@ -3873,15 +3873,29 @@ class ConversationManager:
                 if compound_request or explicitly_general_scope
                 else resolve_project_scope(scope_question, intent=intent)
             )
+            authorized_project_context = False
+            context_domain = str(
+                (parsed or {}).get("conversation_domain") or ""
+            ).casefold()
+            # A project branch is explicit authorization to resolve an
+            # otherwise ambiguous follow-up against this project. It cannot
+            # override a question explicitly scoped as generic, external, or
+            # historical, nor a compound/general conversation.
             if (
                 not compound_request
                 and not explicitly_general_scope
-                and str((parsed or {}).get("conversation_domain") or "").casefold() == "project"
-                and str((parsed or {}).get("target") or "").strip()
+                and context_domain == "project"
+                and project_scope not in {
+                    ProjectScope.EXTERNAL_PROJECT,
+                    ProjectScope.GENERIC_PROJECT,
+                    ProjectScope.HISTORICAL_PROJECT,
+                }
             ):
                 project_scope = ProjectScope.CURRENT_PROJECT
-            
-            # Retrieve project knowledge for the question if applicable
+                authorized_project_context = True
+
+            # Architecture is a knowledge type too; excluding it silently
+            # sent layer questions to generic provider prose.
             project_knowledge = None
             knowledge_type = QuestionClassifier.classify(user_question or text)
             if (
@@ -3890,12 +3904,21 @@ class ConversationManager:
                 and user_question
                 and (
                     intent in _AGENT_SELF_INTENTS
-                    or knowledge_type in {"component", "relationship", "execution", "file"}
+                    or knowledge_type in {
+                        "component", "relationship", "execution", "file",
+                        "architecture",
+                    }
                 )
                 and project_scope == ProjectScope.CURRENT_PROJECT
             ):
                 try:
-                    project_knowledge = retrieve_for_question(user_question)
+                    if authorized_project_context:
+                        project_knowledge = retrieve_for_question(
+                            user_question,
+                            authorized_current_project=True,
+                        )
+                    else:
+                        project_knowledge = retrieve_for_question(user_question)
                 except Exception as exc:
                     # Preserve a truthful, evidence-empty result instead of
                     # silently falling through to an apparently grounded LLM

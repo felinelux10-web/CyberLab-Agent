@@ -172,9 +172,21 @@ class KnowledgeRetriever:
     def __init__(self, model: Optional[ProjectKnowledgeModel] = None):
         self.model = model or build_project_knowledge()
     
-    def retrieve(self, question: str) -> Dict[str, Any]:
-        """Main retrieval entry point."""
+    def retrieve(
+        self,
+        question: str,
+        *,
+        authorized_current_project: bool = False,
+    ) -> Dict[str, Any]:
+        """Retrieve project facts only inside an explicitly resolved scope.
+
+        A previously established project-dialogue branch may authorize an
+        otherwise ambiguous follow-up, but it must never override evidence
+        that the current question is generic, external, or historical.
+        """
         scope = resolve_project_scope(question)
+        if scope == ProjectScope.UNKNOWN and authorized_current_project:
+            scope = ProjectScope.CURRENT_PROJECT
         if scope != ProjectScope.CURRENT_PROJECT:
             return self._scope_safe_result(scope)
 
@@ -501,7 +513,16 @@ class KnowledgeRetriever:
         }
 
 
-def retrieve_for_question(question: str) -> Dict[str, Any]:
-    """Convenience function for direct retrieval."""
+def retrieve_for_question(
+    question: str,
+    *,
+    authorized_current_project: bool = False,
+) -> Dict[str, Any]:
+    """Convenience entry point with an optional, caller-authorized project scope."""
     retriever = KnowledgeRetriever()
+    if authorized_current_project:
+        return retriever.retrieve(
+            question,
+            authorized_current_project=True,
+        )
     return retriever.retrieve(question)

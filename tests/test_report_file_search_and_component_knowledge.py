@@ -25,7 +25,11 @@ def test_process_routes_component_question_to_evidence_chat_not_orchestrator(mon
         }],
         "current_project_knowledge": True,
     }
-    monkeypatch.setattr(module, "retrieve_for_question", lambda question: captured.setdefault("evidence", evidence))
+    monkeypatch.setattr(
+        module,
+        "retrieve_for_question",
+        lambda question, **kwargs: captured.setdefault("evidence", evidence),
+    )
     monkeypatch.setattr(module, "build_chat_prompt", lambda *args, **kwargs: (
         captured.setdefault("prompt", kwargs), "grounded prompt"
     ))
@@ -137,3 +141,61 @@ def test_file_search_rejects_parent_absolute_and_symlink_escape(tmp_path, monkey
     for target in ("../outside.py", str(outside)) + (("link.py",) if link else ()):
         result = orchestrator._route(Intent.SEARCH_CODE, target, "file_operation", target)
         assert "غير موجود" in result["text"]
+
+
+def test_project_context_retrieves_architecture_for_ambiguous_follow_up(monkeypatch):
+    import lab_v4_dev.conversation.conversation_manager as module
+    from lab_v4_dev.conversation.conversation_manager import ConversationManager
+    from lab_v4_dev.context.context_store import ContextStore
+    from lab_v4_dev.intent.intents import Intent
+
+    captured = {}
+    evidence = {
+        "type": "architecture",
+        "layers": ["lab_v4_dev"],
+        "entry_points": ["run.py"],
+        "current_project_knowledge": True,
+    }
+
+    def retrieve(question, **kwargs):
+        captured["question"] = question
+        captured["retrieval_kwargs"] = kwargs
+        return evidence
+
+    monkeypatch.setattr(module, "retrieve_for_question", retrieve)
+    monkeypatch.setattr(
+        module,
+        "build_chat_prompt",
+        lambda *args, **kwargs: (
+            captured.setdefault("prompt_kwargs", kwargs),
+            "grounded project prompt",
+        ),
+    )
+    monkeypatch.setattr(module, "gateway_ask", lambda *args, **kwargs: {
+        "status": "success",
+        "text": "إجابة مبنية على بنية المشروع",
+        "provider_used": "test",
+    })
+
+    class FakeOrchestrator:
+        context = ContextStore()
+
+    manager = ConversationManager(FakeOrchestrator())
+    question = "ما هي الطبقات التي نعمل على تطويرها؟"
+    result = manager._handle_chat(
+        question,
+        "CHAT",
+        parsed={
+            "intent": Intent.PERSONAL_CHAT,
+            "target": "",
+            "conversation_domain": "project",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "response_attributes": {},
+        },
+        user_question=question,
+        history=[],
+    )
+
+    assert result["status"] == "success"
+    assert captured["retrieval_kwargs"]["authorized_current_project"] is True
+    assert captured["prompt_kwargs"]["project_knowledge"] == evidence
