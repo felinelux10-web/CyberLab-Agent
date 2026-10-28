@@ -2675,7 +2675,36 @@ class ConversationManager:
             if self.dialogue_memory and hasattr(self.dialogue_memory, "active_context_entity")
             else None
         )
-        return not bool(active)
+        if active:
+            return False
+
+        # A named entity is helpful but not required for a valid dialogue
+        # branch. Short/colloquial topic openers often have no canonical target;
+        # the same-session exchange archive is the fallback source of continuity.
+        state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
+        session_id = str(getattr(state, "session_id", "") or "")
+        exchanges = getattr(state, "exchange_archive", []) if state is not None else []
+        for item in reversed(exchanges or []):
+            if not isinstance(item, dict) or item.get("recall_only") or item.get("state_boundary_only"):
+                continue
+            item_session = str(item.get("session_id") or "")
+            if session_id and item_session != session_id:
+                continue
+            kind = str(item.get("context_kind") or "dialogue").casefold()
+            domain = str(item.get("conversation_domain") or "general").casefold()
+            if kind in {"work", "system"} or domain in {"work", "system", "execution"}:
+                continue
+            user_text = str(item.get("user") or "").strip()
+            if not user_text:
+                continue
+            normalized_user = self._normalize_transition_text(user_text)
+            if normalized_user in {
+                "نعم", "اجل", "لا", "حسنا", "تمام", "مرحبا", "اهلا",
+                "السلام عليكم", "وعليكم السلام", "hi", "hello", "yes", "no",
+            }:
+                continue
+            return False
+        return True
 
     def _context_kind(self, text: str, parsed: dict, transition) -> str:
         normalized = str(text or "").casefold()

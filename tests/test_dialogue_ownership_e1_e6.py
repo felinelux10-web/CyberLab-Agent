@@ -117,3 +117,31 @@ def test_targetless_deictic_reference_uses_dialogue_branch_without_literal_targe
     assert "هذا" not in (result["semantic_request"]["target"] or "")
     assert prompts
     assert orchestrator.calls == []
+
+def test_targetless_topic_in_exchange_archive_is_enough_to_resume(monkeypatch):
+    manager_, memory, orchestrator, prompts = manager(monkeypatch)
+    manager_.process("موضوع الفن التجريدي وتقنيات اللون")
+
+    # This conversational opener need not produce a canonical entity target.
+    assert memory.state.exchange_archive
+    latest = memory.state.exchange_archive[-1]
+    latest["target"] = None
+    memory.state.last_topic = None
+    memory.state.last_entity_type = "UNKNOWN"
+
+    monkeypatch.setattr(
+        conversation_module,
+        "gateway_ask",
+        lambda *_args, **_kwargs: {
+            "status": "success",
+            "text": "نواصل من أثر اللون والعلاقات بين الأشكال.",
+            "provider_used": "test",
+        },
+    )
+    result = manager_.process("اكمل الشرح")
+
+    assert result["status"] == "success"
+    assert result["source"] == "llm"
+    assert prompts
+    assert "الفن التجريدي" in str(prompts[-1]) or "تقنيات اللون" in str(prompts[-1])
+    assert orchestrator.calls == []
