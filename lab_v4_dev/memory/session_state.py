@@ -1155,6 +1155,49 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     return ["يتضمن السجل تبادلًا حواريًا، لكن لا توجد بيانات دلالية كافية لتحديد موضوعه دون تخمين."]
 
 
+def _dialogue_assistant_insight(exchange: dict) -> str:
+    """Extract a concise grounded insight from an assistant turn without quoting the turn."""
+    text = " ".join(str(exchange.get("assistant") or "").split()).strip()
+    if not text:
+        return ""
+    normalized = (
+        text.casefold()
+        .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        .replace("ى", "ي").replace("ـ", "")
+    )
+    normalized = re.sub(r"[\\u064b-\\u065f\\u0670]", "", normalized)
+    prefixes = (
+        ("ناقشنا ", "تناول الحوار "),
+        ("ناقشنا: ", "تناول الحوار "),
+        ("تناولنا ", "تناول الحوار "),
+        ("تحدثنا عن ", "تناول الحوار "),
+        ("توقفنا عند ", "نقطة التوقف في الحوار: "),
+        ("انتهينا الى ", "انتهى الحوار إلى "),
+        ("خلصنا الى ", "خلص الحوار إلى "),
+        ("الفرق يرتبط بـ", "وضح الحوار ارتباط الفرق بـ"),
+        ("الفرق يرتبط ب", "وضح الحوار ارتباط الفرق بـ"),
+        ("الفرق هو ", "وضح الحوار أن الفرق "),
+        ("الفرق يكمن في ", "وضح الحوار أن الفرق يكمن في "),
+    )
+    for prefix, replacement in prefixes:
+        if normalized.startswith(prefix):
+            remainder = text[len(prefix):].strip(" .،؛:!?؟")
+            if remainder:
+                return (replacement + remainder).rstrip(" .،؛:!?؟") + "."
+    # Only retain a compact semantic fragment when the response has recognizable
+    # content terms. Do not copy generic acknowledgements or the full response.
+    content_markers = (
+        "فوائد", "مخاطر", "تقليل", "حماية", "خصوصية", "موافقة",
+        "اسباب", "خطوات", "نتيجة", "استنتاج", "توصية",
+    )
+    if any(marker in normalized for marker in content_markers):
+        fragment = text.strip(" .،؛:!?؟")
+        if len(fragment) > 180:
+            fragment = fragment[:177].rstrip() + "…"
+        return "أبرز مضمون محفوظ في رد الوكيل: " + fragment + "."
+    return ""
+
+
 def _dialogue_explicit_conclusions(exchanges: list[dict]) -> list[str]:
     """Collect only conclusions/decisions explicitly stored as structured fields."""
     items = []
@@ -1261,8 +1304,11 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     # available in transcript mode but cannot become the report's subject.
     content_lines = []
     for exchange in summary_exchanges:
-        for insight in _dialogue_exchange_insights(exchange):
-            if insight not in content_lines:
+        for insight in (
+            *_dialogue_exchange_insights(exchange),
+            _dialogue_assistant_insight(exchange),
+        ):
+            if insight and insight not in content_lines:
                 content_lines.append(insight)
     content_lines = content_lines[:12]
     explicit_conclusions = _dialogue_explicit_conclusions(summary_exchanges)
@@ -1467,7 +1513,10 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
         # remain available only through the explicit transcript report mode.
         insights = []
         for exchange in meaningful_exchanges:
-            for insight in _dialogue_exchange_insights(exchange):
+            for insight in (
+                *_dialogue_exchange_insights(exchange),
+                _dialogue_assistant_insight(exchange),
+            ):
                 if insight and insight not in insights:
                     insights.append(insight)
         if insights:
