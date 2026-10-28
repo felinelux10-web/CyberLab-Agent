@@ -1105,8 +1105,6 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         if normalized.startswith(prefix):
             remainder = user_text[len(prefix):].strip(" .،؛:!?؟")
             if remainder:
-                if answer:
-                    return [replacement + "«" + remainder[:130] + "»؛ والخلاصة المحفوظة: " + answer + "."]
                 return [replacement + "«" + remainder[:160] + "»."]
 
     # Offline synthesis cannot replace a language model, but it can preserve
