@@ -367,6 +367,22 @@ def session_selector(raw: str) -> dict:
             "ملخصات جميع الجلسات", "الجلسات المحفوظة كلها",
         )):
             return {"kind": "previous_dialogue", "report_mode": report_mode}
+    # A retrospective question explicitly anchored to "the last session"
+    # is persisted-dialogue recall; the same wording without a session anchor
+    # remains a live DialogueMemory request.
+    last_session_dialogue_reference = bool(
+        re.search(
+            r"(?:اخر|آخر)\\s+جلس(?:ة|ه)|(?:الجلسة|الجلسه)\\s+(?:ال)?اخير(?:ة|ه)",
+            text,
+        )
+        and any(marker in text for marker in (
+            "ماذا كنا نقول", "كنا نقول", "ماذا كنا نتحدث",
+            "كنا نتحدث", "كنا نتكلم", "كنا نناقش",
+        ))
+    )
+    if last_session_dialogue_reference:
+        return {"kind": "previous_dialogue", "report_mode": report_mode}
+
     # Distinguish a prior saved dialogue from the generic latest session/work report.
     # This is intentionally checked before broad "استرجع الجلسة" -> latest matching.
     previous_dialogue_markers = (
