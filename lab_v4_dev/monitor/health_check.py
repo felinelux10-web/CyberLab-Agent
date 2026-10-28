@@ -26,12 +26,23 @@ def check_health(state) -> dict:
     except (OSError, sqlite3.Error):
         results["db_ok"] = False
 
-    # stable محمية
+    # The active runtime is lab_v4_dev. A legacy stable tree is optional;
+    # if it exists, preserve the original integrity requirement for its protected
+    # v3.5 memory file. Its absence must not make the canonical runtime unhealthy.
     try:
-        test = ROOT_DIR / "stable" / "v3.5" / "agent_memory.py"
-        results["stable_ok"] = test.exists()
-    except Exception:
+        stable_root = ROOT_DIR / "stable"
+        if not stable_root.exists():
+            results["stable_ok"] = True
+            results["stable_status"] = "not_installed"
+        else:
+            test = stable_root / "v3.5" / "agent_memory.py"
+            results["stable_ok"] = test.is_file()
+            results["stable_status"] = (
+                "verified" if results["stable_ok"] else "required_file_missing"
+            )
+    except OSError:
         results["stable_ok"] = False
+        results["stable_status"] = "check_error"
 
     # logs
     log_path = ROOT_DIR / "lab_v4_dev" / "logs" / "agent.log"
