@@ -96,6 +96,16 @@ def _history_parts(history: list | None) -> tuple[str, str]:
         content = _clean(turn.get("content"), 420)
         if not content:
             continue
+        kind = str(turn.get("context_kind") or "").casefold()
+        domain = str(turn.get("conversation_domain") or "").casefold()
+        if kind in {"work", "system", "execution", "project"} or domain in {
+            "work", "system", "execution", "project", "technical",
+        }:
+            # A general/social local response must not pull a stale work,
+            # project, or technical branch into an unrelated conversational turn.
+            pending_user = ""
+            last_pair = ("", "")
+            continue
         if role == "user":
             if _is_social_reset_turn(content, role="user"):
                 # A fresh social opening intentionally starts an independent
@@ -126,7 +136,7 @@ def _topic(parsed: dict, semantic: dict, history: list | None) -> str:
         kind = str(turn.get("context_kind") or "").casefold()
         domain = str(turn.get("conversation_domain") or "").casefold()
         if kind in {"work", "system", "execution", "project"} or domain in {
-            "work", "system", "execution", "project",
+            "work", "system", "execution", "project", "technical",
         }:
             continue
         target = _clean(turn.get("target"), 100)
@@ -279,12 +289,17 @@ def answer_local_response(
                 f"يمكننا مواصلة الحديث عن «{topic}» بصورة غير رسمية. "
                 f"آخر نقطة طرحتها كانت «{last_user}». ما الذي لفت انتباهك فيها؟"
             )
+        elif last_user and last_assistant:
+            reply = (
+                f"يمكننا متابعة الحديث من آخر نقطة طرحتها: «{last_user}». "
+                f"وكان الرد السابق: «{last_assistant}». أي جانب تريد أن نتابع منه؟"
+            )
         else:
             reply = (
                 "يمكننا البدء من فكرة بسيطة ثم تطوير النقاش بحسب ما يهمك. "
                 "هل تفضّل موضوعًا عن الفن، أو الأفكار والحياة اليومية، أو التقنية؟"
             )
-        return _result(reply, parsed)
+        return _result(reply, parsed, "local_social_engine")
 
     if act == "SOCIAL_FOLLOW_UP":
         if any(marker in normalized for marker in ("اقترح", "اقتراح", "ماذا تقترح", "ما تقترح")):

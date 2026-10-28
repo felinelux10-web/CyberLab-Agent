@@ -112,3 +112,58 @@ def test_unresolved_continuation_is_not_reported_as_a_successful_turn():
 
     assert result is not None
     assert result["status"] == "needs_clarification"
+
+def test_social_opening_uses_last_completed_exchange_even_without_topic_metadata():
+    history = [
+        {
+            "role": "user",
+            "content": "أريد الحديث عن الفن التجريدي",
+            "conversation_domain": "general",
+            "context_kind": "dialogue",
+        },
+        {
+            "role": "assistant",
+            "content": "يمكننا النظر إلى اللون والشكل والمعنى.",
+            "conversation_domain": "general",
+            "context_kind": "dialogue",
+        },
+    ]
+    result = answer_local_response(
+        "دعنا نتحدث قليلا",
+        {"intent": "personal_chat", "conversation_act": "SOCIAL_OPENING"},
+        {"conversation_act": "SOCIAL_OPENING", "conversation_domain": "general"},
+        history=history,
+    )
+
+    assert result is not None
+    assert "أريد الحديث عن الفن التجريدي" in result["text"]
+    assert "اللون والشكل والمعنى" in result["text"]
+
+
+def test_general_social_response_does_not_reuse_stale_project_or_technical_history():
+    history = [
+        {
+            "role": "user",
+            "content": "اشرح Buffer Overflow",
+            "target": "Buffer Overflow",
+            "conversation_domain": "technical",
+            "context_kind": "dialogue",
+        },
+        {
+            "role": "assistant",
+            "content": "شرح تقني سابق",
+            "target": "Buffer Overflow",
+            "conversation_domain": "technical",
+            "context_kind": "dialogue",
+        },
+    ]
+    result = answer_local_response(
+        "مرحبا",
+        {"intent": "personal_chat", "conversation_act": "SOCIAL_GREETING"},
+        {"conversation_act": "SOCIAL_GREETING", "conversation_domain": "general"},
+        history=history,
+    )
+
+    assert result is not None
+    assert "Buffer Overflow" not in result["text"]
+    assert "شرح تقني سابق" not in result["text"]
