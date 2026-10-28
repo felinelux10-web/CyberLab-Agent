@@ -15,6 +15,20 @@ def test_session_selector_keeps_explicit_number_and_saved_session_list():
     assert session_selector("استرجع سياق حوار الجلسة المحفوظة")["kind"] == "list"
 
 
+def test_session_selector_extracts_numbers_after_saved_session_descriptors():
+    cases = (
+        ("اكتب ملخص الجلسة المحفوظة رقم 30", 30, "full"),
+        ("اعرض ملخص الجلسة المحفوظة رقم 1", 1, "full"),
+        ("اكتب تقرير الجلسة المحفوظة رقم 22", 22, "full"),
+        ("استرجع جلسة العمل المحفوظة رقم 3", 3, "standard"),
+    )
+    for request, number, report_mode in cases:
+        selected = session_selector(request)
+        assert selected["kind"] == "number", (request, selected)
+        assert selected["number"] == number, (request, selected)
+        assert selected["report_mode"] == report_mode, (request, selected)
+
+
 def test_orchestrator_restores_the_selected_number_not_the_latest(monkeypatch):
     sessions = [
         {"session_id": "session-1", "session_type": "dialogue", "status": "completed",
@@ -119,7 +133,7 @@ def test_previous_saved_dialogue_selector_is_distinct_from_latest_work_session()
     assert session_selector("استرجع الجلسة السابقة")["kind"] == "latest"
 
 
-def test_previous_dialogue_restore_skips_live_dialogue_and_work_checkpoint(monkeypatch):
+def test_previous_dialogue_report_skips_live_dialogue_and_work_checkpoint(monkeypatch):
     from lab_v4_dev.memory.session_state import session_selector
 
     sessions = [
@@ -187,8 +201,10 @@ def test_previous_dialogue_restore_skips_live_dialogue_and_work_checkpoint(monke
     )
 
     assert result["status"] == "success"
-    assert result["context_restored"] is True
-    assert restored and restored[0]["session_id"] == "prior-dialogue-record"
+    assert result["source"] == "saved_session_report"
+    assert result["context_action"] == "read_only_report"
+    assert result["context_restored"] is None
+    assert not restored, "a content-summary request must not mutate active dialogue/work context"
     assert "النحت البارز" in result["text"]
     assert "agent.py" not in result["text"]
 
@@ -363,9 +379,9 @@ def test_dialogue_restore_summary_uses_saved_topic_and_stop_point():
     assert "النحت البارز" in summary
     assert "نقطة التوقف" in summary
     assert "ما نوقش فعليًا في الحوار" in summary
-    assert "ما الفرق بين النحت البارز والغائر؟" in summary
-    assert "المستخدم: ما الفرق بين النحت البارز والغائر؟" not in summary
-    assert "الوكيل: الفرق هو اتجاه بروز الشكل عن السطح." not in summary
+    assert "قارن الحوار بين «النحت البارز والغائر»." in summary
+    assert "ما الفرق بين النحت البارز والغائر؟" not in summary
+    assert "الفرق هو اتجاه بروز الشكل عن السطح." not in summary
 
 
 def test_explicit_saved_transcript_request_selects_transcript_mode():
@@ -542,3 +558,89 @@ def test_live_dialogue_recall_is_not_mistaken_for_a_saved_session():
     assert session_selector(
         "نعم اريد ان نتحدث عن موضوع في الجلسة السابقة"
     )["kind"] == "previous_dialogue"
+
+def test_numbered_saved_session_summary_is_read_only_and_reports_the_selected_record(monkeypatch):
+    sessions = [
+        {
+            "session_id": "dialogue-art-record",
+            "session_type": "dialogue",
+            "active_goal": "الفن التجريدي",
+            "dialogue_state": {
+                "session_id": "dialogue-art-record",
+                "last_topic": "الفن التجريدي",
+                "exchange_archive": [
+                    {
+                        "session_id": "dialogue-art-record",
+                        "user": "كيف نستخدم اللون في الفن التجريدي؟",
+                        "assistant": "تختلف المعالجة بحسب التكوين والهدف التعبيري.",
+                        "target": "الفن التجريدي وتقنيات اللون",
+                    }
+                ],
+            },
+        },
+        {
+            "session_id": "dialogue-python-record",
+            "session_type": "dialogue",
+            "active_goal": "Python",
+            "dialogue_state": {
+                "session_id": "dialogue-python-record",
+                "last_topic": "Python",
+                "exchange_archive": [
+                    {
+                        "session_id": "dialogue-python-record",
+                        "user": "ما الفرق بين القائمة والقاموس؟",
+                        "assistant": "القائمة تحفظ ترتيب العناصر، والقاموس يربط مفاتيح بقيم.",
+                        "target": "هياكل البيانات في Python",
+                    }
+                ],
+            },
+        },
+    ]
+    restore_calls = []
+    agent = SimpleNamespace(
+        restore_session_snapshot=lambda data: restore_calls.append(data) or True,
+        restore_session_context=lambda: restore_calls.append("current-context") or True,
+        runtime=None,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    orchestrator = Orchestrator(agent)
+    context_before = getattr(orchestrator.context, "last_result", None)
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_index", lambda: sessions)
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_by_id",
+        lambda session_id: next(
+            (item for item in sessions if item["session_id"] == session_id), {}
+        ),
+    )
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.load_session", lambda: {})
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.recoverable_work_checkpoint",
+        lambda data: None,
+    )
+
+    request = "اكتب ملخص الجلسة المحفوظة رقم 2"
+    selected = session_selector(request)
+    assert selected == {"kind": "number", "number": 2, "report_mode": "full"}
+
+    result = orchestrator.handle(
+        request,
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "target": "",
+            "context": "system",
+            "session_selector": selected,
+        },
+    )
+
+    assert result["status"] == "success"
+    assert result["source"] == "saved_session_report"
+    assert result["context_action"] == "read_only_report"
+    assert result["context_restored"] is None
+    assert result["session_id"] == "dialogue-python-record"
+    assert "Python" in result["text"]
+    assert "هياكل البيانات في Python" in result["text"]
+    assert "الفن التجريدي" not in result["text"]
+    assert "ما الفرق بين القائمة والقاموس؟" not in result["text"]
+    assert not restore_calls
+    assert getattr(orchestrator.context, "last_result", None) is context_before
+
