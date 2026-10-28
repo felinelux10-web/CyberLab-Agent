@@ -163,10 +163,15 @@ def test_conversation_manager_routes_agent_self_to_grounded_chat(
     assert orchestrator.calls == []
     assert len(gateway_calls) == 1
     system = gateway_calls[0][1]["system"]
-    assert "حقائق self-knowledge الموثقة" in system
-    assert "مصادر الشفرة:" in system
-    assert "lab_v4_dev/intent/intents.py" in system
+    assert "حقائق الوكيل المناسبة للسؤال" in system
     assert "تمييز" in system and "trace" in system.lower()
+    if expected in {Intent.AGENT_IDENTITY, Intent.AGENT_CAPABILITIES}:
+        assert "جملتين أو ثلاث" in system
+        assert "لا تسرد بنية المشروع" in system
+        assert "lab_v4_dev/intent/intents.py" not in system
+    else:
+        assert "مصادر الشفرة:" in system
+        assert "lab_v4_dev/intent/intents.py" in system
 
 
 @pytest.mark.parametrize(("text", "expected"), PROJECT_NEGATIVE_CASES)
@@ -213,13 +218,38 @@ def test_grounded_prompt_separates_architectural_facts_from_runtime_trace():
     system, _prompt = build_chat_prompt(
         "كيف تعالج رسالتي؟",
         agent_self_knowledge=knowledge,
+        conversation_semantics={"intent": Intent.AGENT_EXECUTION_FLOW.value},
     )
 
-    assert "حقائق self-knowledge الموثقة" in system
+    assert "حقائق الوكيل المناسبة للسؤال" in system
     assert "مصادر الشفرة:" in system
     assert "lab_v4_dev/intent/intents.py" in system
-    assert "تمييز بين الحقائق المعمارية وأثر التشغيل" in system
-    assert "لا تدّعِ أن الرسالة الحالية سلكت مسارًا بعينه دون trace صريح" in system
+    assert "التمييز بين الحقائق المعمارية وأثر التشغيل" in system
+    assert "لا تدّعِ أن الرسالة الحالية سلكت مسارًا بعينه دون trace خاص بها" in system
+    assert "أربعة إلى ستة بنود" in system
+
+
+def test_identity_and_capability_prompt_stays_brief_and_avoids_architecture_inventory():
+    identity = build_agent_self_knowledge(Intent.AGENT_IDENTITY)
+    capabilities = build_agent_self_knowledge(Intent.AGENT_CAPABILITIES)
+
+    identity_system, _ = build_chat_prompt(
+        "من أنت؟",
+        agent_self_knowledge=identity,
+        conversation_semantics={"intent": Intent.AGENT_IDENTITY.value},
+    )
+    capability_system, _ = build_chat_prompt(
+        "ماذا تستطيع أن تفعل؟ تحدث بشكل ودي ولا تعرض بنية المشروع.",
+        agent_self_knowledge=capabilities,
+        conversation_semantics={"intent": Intent.AGENT_CAPABILITIES.value},
+    )
+
+    for system in (identity_system, capability_system):
+        assert "جملتين أو ثلاث" in system or "طلب الأسلوب في الرسالة الحالية" in system
+        assert "لا تعرض بنية المشروع" in system or "لا تسرد بنية المشروع" in system
+        assert "PreparedExecutionRequest" not in system
+        assert "lab_v4_dev/core/agent.py" not in system
+    assert "لا تعرض بنية المشروع أو أسماء مكوّناته" in capability_system
 
 
 @pytest.mark.parametrize(
