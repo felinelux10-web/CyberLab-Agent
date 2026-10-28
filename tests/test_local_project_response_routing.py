@@ -267,3 +267,41 @@ def test_negated_or_descriptive_execution_words_do_not_trigger_project_execution
     assert len(prompts) == 2
     assert orchestrator.calls == []
 
+
+def test_development_inventory_question_uses_project_state_not_generic_architecture(monkeypatch):
+    monkeypatch.setattr(
+        "lab_v4_dev.awareness.project_knowledge.get_project_state",
+        lambda: {
+            "version": "5.9.13-dev",
+            "current_focus": "توحيد طبقة كتابة المعرفة",
+            "last_goal": "منع الكتابات غير الموحدة",
+            "last_step": "إكمال Event System في Project Knowledge Engine",
+            "active": ["توحيد نقاط الكتابة المتبقية", "ربط أحداث المعرفة"],
+            "planned": ["اختبار مسارات القراءة والكتابة"],
+            "completed_count": 8,
+        },
+    )
+    manager = ConversationManager(LocalOnlyOrchestrator())
+    question = "ما هي الطبقات أو الوظائف التي كنا نطورها؟"
+    result = manager._local_project_progress_answer(
+        question,
+        {"intent": Intent.PERSONAL_CHAT, "target": "", "conversation_domain": "project"},
+        {"entity": "CyberLab Agent", "entity_type": "PROJECT", "conversation_domain": "project"},
+    )
+
+    assert result is not None
+    assert result["status"] == "success"
+    assert result["source"] == "local_project_knowledge"
+    assert "توحيد طبقة كتابة المعرفة" in result["text"]
+    assert "إكمال Event System" in result["text"]
+    assert "Presentation/Business Logic/Data Access" not in result["text"]
+
+
+def test_explicitly_general_follow_up_is_not_captured_by_stale_project_context(monkeypatch):
+    manager = ConversationManager(LocalOnlyOrchestrator())
+    result = manager._local_project_progress_answer(
+        "أكمل الشرح بشكل عام؛ لا نتحدث عن مشروع CyberLab بل عن الذكاء الاصطناعي",
+        {"intent": Intent.PERSONAL_CHAT, "target": "CyberLab Agent", "conversation_domain": "project"},
+        {"entity": "CyberLab Agent", "entity_type": "PROJECT", "conversation_domain": "project"},
+    )
+    assert result is None

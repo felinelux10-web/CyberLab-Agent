@@ -105,7 +105,31 @@ class ConversationManager:
             "خطه العمل", "خطه تطوير", "الخطه القادمه", "ما الخطه",
             "ماهي الخطه", "ما هي خطه", "what is the plan", "project roadmap",
         )
-        return any(cue in normalized for cue in status_cues + plan_cues)
+
+        # Questions about what we were developing are project-progress
+        # questions, not generic architecture questions. Require both a
+        # project artefact (layer/function/module/file/feature) and a
+        # collaborative development action so ordinary theory questions do
+        # not become current-project lookups.
+        development_entities = (
+            "طبقه", "طبقات", "وظيفه", "وظائف", "وضائف", "وضيفه",
+            "مكون", "مكونات", "وحده", "وحدات", "ميزه", "ميزات",
+            "ملف", "ملفات", "مسار", "مسارات",
+        )
+        development_actions = (
+            "كنا نطور", "كنا نعدل", "كنا نصلح", "كنا نعمل",
+            "نحن نطور", "نحن نعدل", "نحن نصلح", "التي نطور",
+            "التي نعمل", "التي نعدل", "نطورها", "نعدلها",
+            "نعمل على", "نشتغل على",
+        )
+        development_inventory = (
+            any(cue in normalized for cue in development_entities)
+            and any(cue in normalized for cue in development_actions)
+        )
+        return (
+            any(cue in normalized for cue in status_cues + plan_cues)
+            or development_inventory
+        )
 
     def _local_project_progress_answer(
         self,
@@ -114,7 +138,18 @@ class ConversationManager:
         context_entity: dict | None,
     ) -> dict | None:
         """Answer explicit project progress/plan questions from the local project-state record."""
-        if not self._is_project_progress_request(text):
+        normalized_request = normalize_text(str(text or ""))
+        explicitly_general_scope = any(marker in normalized_request for marker in (
+            "بصفه عامه", "بشكل عام", "بصوره عامه", "عموما",
+            "محادثه وديه", "دردشه وديه", "خارج بنية المشروع",
+            "لا نتحدث عن مشروع", "ليس عن مشروع",
+            "بلا علاقه بالمشروع", "not about cyberlab",
+            "outside cyberlab", "general discussion",
+        ))
+        if (
+            not self._is_project_progress_request(text)
+            or explicitly_general_scope
+        ):
             return None
 
         context_parts = [str(text or "")]
@@ -131,14 +166,28 @@ class ConversationManager:
         scope_text = " ".join(part for part in context_parts if part)
         intent = (parsed or {}).get("intent")
         scope = resolve_project_scope(scope_text, intent=intent)
-        if (
-            scope != ProjectScope.CURRENT_PROJECT
-            and isinstance(context_entity, dict)
-            and (
-                str(context_entity.get("conversation_domain") or "").casefold() == "project"
-                or str(context_entity.get("entity_type") or "").upper() == "PROJECT"
+        # Preserve explicit external/generic/historical scope even when an
+        # older project branch remains active in dialogue memory.
+        if scope in {
+            ProjectScope.EXTERNAL_PROJECT,
+            ProjectScope.GENERIC_PROJECT,
+            ProjectScope.HISTORICAL_PROJECT,
+        }:
+            return None
+        parsed_domain = str(
+            (parsed or {}).get("conversation_domain") or ""
+        ).casefold()
+        context_authorizes_project = (
+            parsed_domain == "project"
+            or (
+                isinstance(context_entity, dict)
+                and (
+                    str(context_entity.get("conversation_domain") or "").casefold() == "project"
+                    or str(context_entity.get("entity_type") or "").upper() == "PROJECT"
+                )
             )
-        ):
+        )
+        if scope != ProjectScope.CURRENT_PROJECT and context_authorizes_project:
             scope = ProjectScope.CURRENT_PROJECT
         if scope != ProjectScope.CURRENT_PROJECT:
             return None
