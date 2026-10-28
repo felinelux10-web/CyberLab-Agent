@@ -182,18 +182,27 @@ def search_sessions(query: str = "", *, status: str | None = None,
 
 
 def get_session_by_id(session_id: str) -> dict:
-    """Return the full selected session, never a different current session."""
+    """Resolve one saved session by exact identity; reject mismatched detail payloads."""
     wanted = str(session_id or "").strip()
     if not wanted:
         return {}
     current = load_session()
-    if isinstance(current, dict) and current.get("session_id") == wanted:
+    if isinstance(current, dict) and str(current.get("session_id") or "").strip() == wanted:
         return current
+
+    # A detail file is named by session ID, but legacy/corrupt files can contain
+    # a different embedded ID. The filename alone is not proof of identity.
     detail = _load_session_detail(wanted)
-    if detail:
+    if (
+        isinstance(detail, dict)
+        and str(detail.get("session_id") or "").strip() == wanted
+    ):
         return detail
+
+    # Fall back only to the matching compact index entry, never to a mismatched
+    # detail record or the current session.
     for item in get_session_index():
-        if item.get("session_id") == wanted:
+        if isinstance(item, dict) and str(item.get("session_id") or "").strip() == wanted:
             return item
     return {}
 
