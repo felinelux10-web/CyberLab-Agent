@@ -204,3 +204,66 @@ def test_explicit_technical_continuation_keeps_authorized_technical_history():
     assert result is not None
     assert "اشرح Buffer Overflow" in result["text"]
     assert "تجاوز البيانات حدود الذاكرة" in result["text"]
+
+def test_social_only_history_reopens_friendly_dialogue_instead_of_echoing_greetings():
+    history = [
+        {
+            "role": "user",
+            "content": "لنتحدث قليلا",
+            "conversation_domain": "social",
+            "context_kind": "social",
+        },
+        {
+            "role": "assistant",
+            "content": "يمكننا اختيار موضوع خفيف ثم تطوير النقاش بحسب ما يثير اهتمامك. هل تفضل الفن؟",
+            "conversation_domain": "social",
+            "context_kind": "dialogue",
+        },
+        {
+            "role": "user",
+            "content": "كيف الحال",
+            "conversation_domain": "social",
+            "context_kind": "social",
+        },
+        {
+            "role": "assistant",
+            "content": "أنا بخير، شكرًا لسؤالك. كيف حالك أنت؟",
+            "conversation_domain": "social",
+            "context_kind": "dialogue",
+        },
+    ]
+
+    result = answer_local_response(
+        "اكمل",
+        {"intent": "personal_chat", "conversation_act": "CONVERSATION_CONTINUATION"},
+        {"conversation_act": "CONVERSATION_CONTINUATION", "conversation_domain": "general"},
+        history=history,
+    )
+
+    assert result is not None
+    assert result["status"] == "success"
+    assert result["local_strategy"] == "friendly_dialogue_reopen"
+    assert "لم نحدد موضوعًا" in result["text"]
+    assert "كيف الحال" not in result["text"]
+    assert "أنا بخير، شكرًا لسؤالك" not in result["text"]
+
+
+def test_social_only_history_is_not_treated_as_a_real_topic_anchor():
+    history = [
+        {"role": "user", "content": "مرحبا", "conversation_domain": "social", "context_kind": "social"},
+        {"role": "assistant", "content": "أهلًا بك. هل نتابع حديثًا سابقًا أم نبدأ من فكرة جديدة؟", "conversation_domain": "social", "context_kind": "dialogue"},
+        {"role": "user", "content": "كيف الحال", "conversation_domain": "social", "context_kind": "social"},
+        {"role": "assistant", "content": "أنا بخير، شكرًا لسؤالك. كيف حالك أنت؟", "conversation_domain": "social", "context_kind": "dialogue"},
+    ]
+
+    result = answer_local_response(
+        "أكمل من آخر نقطة",
+        {"intent": "personal_chat", "conversation_act": "CONVERSATION_CONTINUATION"},
+        {"conversation_act": "CONVERSATION_CONTINUATION", "conversation_domain": "general"},
+        history=history,
+    )
+
+    assert result["status"] == "success"
+    assert result["local_strategy"] == "friendly_dialogue_reopen"
+    assert "أنا بخير" not in result["text"]
+
