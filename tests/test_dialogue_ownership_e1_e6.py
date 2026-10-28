@@ -34,6 +34,9 @@ def test_dialogue_question_does_not_trigger_diagnostics_but_explicit_health_does
     dialogue = manager_.process("ما الاقتراح الاول؟")
     assert dialogue["intent"] == "personal_chat"
     assert dialogue["executed"] is False
+    assert dialogue["semantic_request"]["context_transition"] == "continue"
+    assert dialogue["semantic_request"]["target"] == "الفن التجريدي وتقنيات اللون"
+    assert memory.last_topic == "الفن التجريدي وتقنيات اللون"
     assert orchestrator.calls == []
 
     health = manager_.process("هل النظام سليم؟")
@@ -146,3 +149,33 @@ def test_targetless_topic_in_exchange_archive_is_enough_to_resume(monkeypatch):
     assert prompts
     assert "الفن التجريدي" in str(prompts[-1]) or "تقنيات اللون" in str(prompts[-1])
     assert orchestrator.calls == []
+
+def test_contextual_ordinal_follow_up_classifier_is_narrow():
+    for request in (
+        "ما الاقتراح الاول؟",
+        "ما هي الخطوة الثانية؟",
+        "ماذا كانت الفكرة الثالثة؟",
+        "ما اول مثال؟",
+        "ما الخيار 2؟",
+    ):
+        assert ConversationManager._is_contextual_ordinal_follow_up(request), request
+
+    for request in (
+        "اقترح حلًا لمشكلة حفظ علاقات الملفات",
+        "اشرح الاقتراح الأول في مشروع جديد بالتفصيل",
+        "موضوع جديد عن الفن",
+    ):
+        assert not ConversationManager._is_contextual_ordinal_follow_up(request), request
+
+
+def test_explicit_targeted_proposal_is_not_captured_by_dialogue_ordinal_guard(monkeypatch):
+    manager_, _, orchestrator, _ = manager(monkeypatch)
+    manager_.process("موضوع الفن التجريدي وتقنيات اللون")
+
+    result = manager_.process("اقترح حلًا لمشكلة حفظ علاقات الملفات")
+
+    assert result["intent"] == "propose_solution"
+    assert result["executed"] is True
+    assert orchestrator.calls
+    assert orchestrator.calls[-1][1]["intent"] == "propose_solution"
+
