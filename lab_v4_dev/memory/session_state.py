@@ -1165,7 +1165,7 @@ def _dialogue_assistant_insight(exchange: dict) -> str:
         .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
         .replace("ى", "ي").replace("ـ", "")
     )
-    normalized = re.sub(r"[\\u064b-\\u065f\\u0670]", "", normalized)
+    normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
     prefixes = (
         ("ناقشنا ", "تناول الحوار "),
         ("ناقشنا: ", "تناول الحوار "),
