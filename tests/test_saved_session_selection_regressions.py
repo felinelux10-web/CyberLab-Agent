@@ -889,3 +889,71 @@ def test_session_lookup_rejects_detail_file_with_mismatched_embedded_identity(mo
     assert result["session_id"] == "saved-session-requested"
     assert result["title"] == "الفن التجريدي"
     assert "dialogue_state" not in result
+
+def test_get_session_by_number_resolves_the_stable_index_identity(monkeypatch):
+    from lab_v4_dev.memory.session_state import get_session_by_number
+
+    sessions = [
+        {"session_id": "saved-dialogue-01", "session_type": "dialogue", "active_goal": "الفن"},
+        {"session_id": "saved-work-10", "session_type": "work", "active_goal": "اختبارات"},
+        {"session_id": "saved-dialogue-22", "session_type": "dialogue", "active_goal": "النحت"},
+    ]
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_index",
+        lambda: sessions,
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_by_id",
+        lambda session_id: next(
+            (item for item in sessions if item["session_id"] == session_id), {}
+        ),
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.load_session",
+        lambda: {"session_id": "unrelated-live-session", "session_type": "dialogue"},
+    )
+
+    assert get_session_by_number(1)["session_id"] == "saved-dialogue-01"
+    assert get_session_by_number(2)["session_id"] == "saved-work-10"
+    assert get_session_by_number(3)["session_id"] == "saved-dialogue-22"
+    assert get_session_by_number(0) == {}
+    assert get_session_by_number(4) == {}
+    assert get_session_by_number("not-a-number") == {}
+
+
+def test_dialogue_brief_summary_is_semantic_and_ignores_control_turn_as_topic():
+    from lab_v4_dev.memory.session_state import build_session_brief_summary
+
+    sid = "saved-art-semantic-01"
+    saved = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "active_goal": "حفظ سياق الحوار",
+        "dialogue_state": {
+            "session_id": sid,
+            "last_topic": "كيفك ايها الوكيل",
+            "exchange_archive": [
+                {
+                    "session_id": sid,
+                    "user": "كيفك ايها الوكيل",
+                    "assistant": "أنا بخير، شكرًا لسؤالك.",
+                    "target": "",
+                },
+                {
+                    "session_id": sid,
+                    "user": "ما الفرق بين النحت البارز والنحت الغائر؟",
+                    "assistant": "الفرق يرتبط ببروز الشكل عن سطح الخلفية.",
+                    "target": "النحت البارز والنحت الغائر",
+                },
+            ],
+        },
+    }
+
+    brief = build_session_brief_summary(saved)
+
+    assert brief["session_id"] == sid
+    assert brief["topic"] == "النحت البارز والنحت الغائر"
+    assert "الخلاصة الدلالية" in brief["summary"]
+    assert "ما الفرق بين النحت البارز والنحت الغائر؟" not in brief["summary"]
+    assert "أنا بخير" not in brief["summary"]
+
