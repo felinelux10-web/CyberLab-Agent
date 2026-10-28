@@ -473,3 +473,33 @@ def test_social_only_dialogue_summary_does_not_present_greetings_as_a_topic(monk
     assert "أنا بخير، شكرًا لسؤالك" not in result["text"]
     assert "لنتحدث قليلا" not in result["text"]
 
+def test_fragmentary_messages_do_not_inherit_or_mutate_the_active_dialogue():
+    manager, memory, orchestrator = _manager(None)
+    manager.process("اشرح SQL Injection")
+
+    previous_topic = memory.state.last_topic
+    previous_session_id = memory.state.session_id
+    previous_history = [dict(turn) for turn in memory.state.history]
+    previous_archive = [dict(item) for item in memory.state.exchange_archive]
+    previous_calls = len(orchestrator.calls)
+
+    for fragment in ("ظ", "م", "ث", "تز"):
+        result = manager.process(fragment)
+        assert result["status"] == "needs_clarification"
+        assert result["source"] == "conversation_manager"
+        assert result["executed"] is False
+        assert "مبتورة" in result["text"]
+        assert memory.state.last_topic == previous_topic
+        assert memory.state.session_id == previous_session_id
+        assert memory.state.history == previous_history
+        assert memory.state.exchange_archive == previous_archive
+        assert len(orchestrator.calls) == previous_calls
+
+
+def test_fragment_guard_keeps_valid_short_arabic_words():
+    assert ConversationManager._is_fragmentary_turn("ظ")
+    assert ConversationManager._is_fragmentary_turn("تز")
+    assert not ConversationManager._is_fragmentary_turn("لا")
+    assert not ConversationManager._is_fragmentary_turn("من")
+    assert not ConversationManager._is_fragmentary_turn("هل")
+
