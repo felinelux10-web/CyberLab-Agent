@@ -11,8 +11,27 @@ PIE-002C — Graph Query Engine
 - إنشاء علاقات جديدة.
 """
 
-from .knowledge_store import DB_FILE
+from .knowledge_store import DB_FILE, canonical_file_path
+import os
 import sqlite3
+
+
+def _canonical_source_path(value):
+    """Normalize path-like source identifiers to the store identity."""
+    text = str(value or "").strip()
+    if not text:
+        return text
+    if text.endswith(".py") or "/" in text or "\\" in text or os.path.isabs(text):
+        return canonical_file_path(text)
+    return text
+
+
+def _module_name(path):
+    """Convert a canonical Python path to its import-module spelling."""
+    text = str(path or "")
+    if text.endswith(".py"):
+        text = text[:-3]
+    return text.replace("/", ".").replace("\\", ".")
 
 
 def get_neighbors(target):
@@ -20,6 +39,7 @@ def get_neighbors(target):
     يعيد العناصر المرتبطة بعنصر معين.
     """
 
+    normalized_target = _canonical_source_path(target)
     conn = sqlite3.connect(DB_FILE)
 
     try:
@@ -35,7 +55,7 @@ def get_neighbors(target):
             WHERE source_file = ?
                OR target_name = ?
             """,
-            (target, target)
+            (normalized_target, target)
         )
 
         return cur.fetchall()
@@ -54,13 +74,10 @@ def get_importers(target):
     try:
         cur = conn.cursor()
 
-        # تحويل المسار إلى صيغة module: lab_v4_dev/core/agent.py → lab_v4_dev.core.agent
-        def _to_module(p):
-            if p.endswith(".py"):
-                p = p[:-3]
-            return p.replace("/", ".").replace("\\", ".")
-        
-        target_module = _to_module(target) if "/" in target or "\\" in target else target
+        # Accept a project-relative path, absolute path inside the project,
+        # or an import/module name while querying the same canonical store.
+        normalized_target = _canonical_source_path(target)
+        target_module = _module_name(normalized_target) if normalized_target.endswith(".py") else target
         
         cur.execute(
             """
@@ -71,7 +88,7 @@ def get_importers(target):
                OR target_name = ?
             ORDER BY source_file
             """,
-            (target, target_module)
+            (normalized_target, target_module)
         )
 
         return [
@@ -88,6 +105,7 @@ def get_dependencies_of(source):
     يعيد ما يستخدمه ملف معين.
     """
 
+    normalized_source = _canonical_source_path(source)
     conn = sqlite3.connect(DB_FILE)
 
     try:
@@ -101,7 +119,7 @@ def get_dependencies_of(source):
             WHERE source_file = ?
             ORDER BY target_name
             """,
-            (source,)
+            (normalized_source,)
         )
 
         return [
