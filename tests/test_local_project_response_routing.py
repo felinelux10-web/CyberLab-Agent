@@ -305,3 +305,48 @@ def test_explicitly_general_follow_up_is_not_captured_by_stale_project_context(m
         {"entity": "CyberLab Agent", "entity_type": "PROJECT", "conversation_domain": "project"},
     )
     assert result is None
+
+def test_project_inventory_question_is_not_stolen_by_dialogue_history_owner(monkeypatch):
+    monkeypatch.setattr(
+        "lab_v4_dev.awareness.project_knowledge.get_project_state",
+        lambda: {
+            "version": "5.9.13-dev",
+            "current_focus": "توحيد طبقة كتابة المعرفة",
+            "last_goal": "منع الكتابات غير الموحدة",
+            "last_step": "إكمال Event System في Project Knowledge Engine",
+            "active": ["توحيد نقاط الكتابة المتبقية", "ربط أحداث المعرفة"],
+            "planned": ["اختبار مسارات القراءة والكتابة"],
+            "completed_count": 8,
+        },
+    )
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("project progress must not fall through to generic dialogue/provider routing")
+        ),
+    )
+    orchestrator = LocalOnlyOrchestrator()
+    memory = DialogueMemory(orchestrator.context)
+    memory.state.last_topic = "CyberLab Agent"
+    memory.state.last_entity_type = "PROJECT"
+    memory.state.last_intent = Intent.CYBER_EXPLAIN
+    memory.state.exchange_archive = [{
+        "session_id": memory.state.session_id,
+        "user": "أين توقف العمل في مشروع CyberLab Agent؟",
+        "assistant": "التركيز المسجل هو توحيد طبقة كتابة المعرفة.",
+        "target": "CyberLab Agent",
+        "intent": "cyber_explain",
+        "conversation_domain": "project",
+        "context_kind": "project",
+    }]
+    manager = ConversationManager(orchestrator, memory)
+
+    result = manager.process("ما هي الطبقات أو الوظائف التي كنا نطورها؟")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_project_knowledge"
+    assert "توحيد طبقة كتابة المعرفة" in result["text"]
+    assert "إكمال Event System" in result["text"]
+    assert "Presentation/Business Logic/Data Access" not in result["text"]
+    assert orchestrator.calls == []

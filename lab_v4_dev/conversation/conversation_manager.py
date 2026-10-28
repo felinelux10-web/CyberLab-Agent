@@ -152,6 +152,28 @@ class ConversationManager:
         ):
             return None
 
+        if self.dialogue_memory:
+            get_active_context = getattr(
+                self.dialogue_memory, "active_context_entity", None
+            )
+            active_context = get_active_context() if callable(get_active_context) else None
+            active_is_project = (
+                isinstance(active_context, dict)
+                and str(active_context.get("entity_type") or "").upper() == "PROJECT"
+            )
+            passed_is_project = (
+                isinstance(context_entity, dict)
+                and (
+                    str(context_entity.get("entity_type") or "").upper() == "PROJECT"
+                    or str(context_entity.get("conversation_domain") or "").casefold() == "project"
+                )
+            )
+            if active_is_project and not passed_is_project:
+                # The project branch itself is the authorization anchor for
+                # "what were we developing?" questions. Do not trust a fresh
+                # generic/unknown lexical target over the active project owner.
+                context_entity = active_context
+
         context_parts = [str(text or "")]
         if isinstance(parsed, dict):
             context_parts.extend((
@@ -1721,6 +1743,44 @@ class ConversationManager:
                     "semantic_request": semantic.as_dict(),
                 }
 
+        # Strong project-progress requests must be resolved before broad
+        # dialogue-history rules see words such as "كنا". This is still a
+        # project-state read, not a dialogue-memory summary. Explicit saved
+        # session restores and explicitly requested general scopes keep their
+        # existing owners.
+        # Project progress is a local knowledge request, not generic chat or dialogue recall.
+        # Resolve scope from the current turn plus an already-authorized active branch.
+        local_project_answer = self._local_project_progress_answer(
+            user_input, parsed, context_entity
+        )
+        if local_project_answer is not None and not saved_session_request and not _restore_context:
+            # Anchor the saved branch to the actual project, not a stale technical target
+            # inherited by a parser fallback on a short continuation.
+            from dataclasses import replace as dataclass_replace
+            project_parsed = dict(parsed or {})
+            project_parsed.update({
+                "target": "CyberLab Agent",
+                "entity_type": "PROJECT",
+                "conversation_domain": "project",
+            })
+            project_semantic = dataclass_replace(
+                semantic,
+                conversation_domain="project",
+                context_kind="project",
+                target="CyberLab Agent",
+            )
+            local_project_answer["semantic_request"] = project_semantic.as_dict()
+            local_project_answer = self._finalize_local_dialogue_result(
+                local_project_answer, mode, project_parsed, project_semantic
+            )
+            if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
+                self.dialogue_memory.update(
+                    user_input, local_project_answer, mode=mode, parsed=project_parsed,
+                    context_transition=transition,
+                )
+            return local_project_answer
+
+
         # Ownership is decided before any generic/local responder. A history
         # query must never fall through to clarification, social chat, generic
         # topic resolution, or the LLM merely because the memory renderer has
@@ -1760,38 +1820,6 @@ class ConversationManager:
             # Retrieval is read-only: do not archive the retrieval request as a
             # new dialogue exchange or make it the next active topic.
             return history_result
-
-        # Project progress is a local knowledge request, not generic chat or dialogue recall.
-        # Resolve scope from the current turn plus an already-authorized active branch.
-        local_project_answer = self._local_project_progress_answer(
-            user_input, parsed, context_entity
-        )
-        if local_project_answer is not None:
-            # Anchor the saved branch to the actual project, not a stale technical target
-            # inherited by a parser fallback on a short continuation.
-            from dataclasses import replace as dataclass_replace
-            project_parsed = dict(parsed or {})
-            project_parsed.update({
-                "target": "CyberLab Agent",
-                "entity_type": "PROJECT",
-                "conversation_domain": "project",
-            })
-            project_semantic = dataclass_replace(
-                semantic,
-                conversation_domain="project",
-                context_kind="project",
-                target="CyberLab Agent",
-            )
-            local_project_answer["semantic_request"] = project_semantic.as_dict()
-            local_project_answer = self._finalize_local_dialogue_result(
-                local_project_answer, mode, project_parsed, project_semantic
-            )
-            if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
-                self.dialogue_memory.update(
-                    user_input, local_project_answer, mode=mode, parsed=project_parsed,
-                    context_transition=transition,
-                )
-            return local_project_answer
 
         # Keep the unified responder scoped to greetings and closings.
         # Social openings, casual dialogue, acknowledgements, continuations, and
