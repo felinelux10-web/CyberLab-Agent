@@ -78,9 +78,79 @@ def _is_social_reset_turn(value: Any, *, role: str = "user") -> bool:
     return False
 
 
+_LOW_INFORMATION_USER_TURNS = {
+    normalize_text(value)
+    for value in (
+        "كيف الحال", "كيفك", "كيف حالك", "كيف حالك اليوم", "ما أخبارك",
+        "أخبارك", "كيف كان نهارك", "كيف قضيت يومك", "كيف داز نهارك",
+        "نعم", "أجل", "بلى", "لا", "كلا", "حسنًا", "تمام", "شكرًا",
+        "مرخبا", "ماذا", "لا أعرف ماذا أقول",
+        "أكمل", "كمل", "تابع", "واصل", "نكمل", "أكمل الحوار",
+        "أكمل الحديث", "سياق الحوار", "سياق العمل",
+    )
+}
+_LOW_INFORMATION_ASSISTANT_PREFIXES = tuple(
+    normalize_text(value)
+    for value in (
+        "أنا بخير، شكرًا لسؤالك",
+        "لا أعيش يومًا بالمعنى البشري",
+        "أنا جاهز لمناقشة طلبك",
+        "حسنًا، أخبرني بما تريد متابعته",
+        "حسنًا، لنتحدث بشكل ودي بعيدًا عن العمل والمهام",
+        "يمكننا اختيار موضوع خفيف ثم تطوير النقاش بحسب ما يثير اهتمامك",
+        "أهلًا بك. هل نتابع حديثًا سابقًا",
+        "مرحبًا. أخبرني بما يشغل اهتمامك الآن",
+        "وعليكم السلام، كيف أساعدك",
+    )
+)
+
+
+def _is_non_substantive_turn(value: Any, *, role: str = "user") -> bool:
+    """Identify greetings/fillers that cannot serve as the topic to resume."""
+    normalized = normalize_text(_clean(value, 420))
+    if not normalized or _is_social_reset_turn(value, role=role):
+        return True
+    if role == "user":
+        return normalized in _LOW_INFORMATION_USER_TURNS or normalized in _NON_TOPIC_ANCHORS
+    if role == "assistant":
+        return any(
+            normalized.startswith(prefix)
+            for prefix in _LOW_INFORMATION_ASSISTANT_PREFIXES
+        )
+    return False
+
+
+def _has_social_only_history(history: list | None) -> bool:
+    """Return true only when authorized history exists but contains no topic."""
+    eligible = []
+    excluded_domains = {"work", "system", "execution", "project", "technical"}
+    for turn in history or []:
+        if not isinstance(turn, dict):
+            continue
+        role = str(turn.get("role") or "").casefold()
+        if role not in {"user", "assistant"}:
+            continue
+        content = _clean(turn.get("content"), 420)
+        if not content:
+            continue
+        kind = str(turn.get("context_kind") or "").casefold()
+        domain = str(turn.get("conversation_domain") or "").casefold()
+        if kind in excluded_domains or domain in excluded_domains:
+            return False
+        eligible.append((content, role))
+    return bool(eligible) and all(
+        _is_non_substantive_turn(content, role=role)
+        for content, role in eligible
+    )
+
+
 def _is_substantive_anchor(value: Any) -> bool:
     normalized = normalize_text(_clean(value, 420))
-    if not normalized or normalized in _SOCIAL_RESET_TURNS | _NON_TOPIC_ANCHORS:
+    if (
+        not normalized
+        or normalized in _SOCIAL_RESET_TURNS | _NON_TOPIC_ANCHORS
+        or _is_non_substantive_turn(value, role="user")
+    ):
         return False
     return len(normalized) > 2
 
@@ -116,10 +186,15 @@ def _history_parts(
                 # branch; older topic turns must not leak into its continuation.
                 pending_user = ""
                 last_pair = ("", "")
+            elif _is_non_substantive_turn(content, role="user"):
+                # Greetings, state questions and bare acknowledgements are not
+                # meaningful topic anchors. Keep any earlier substantive pair
+                # within the current branch instead of replacing it with small talk.
+                pending_user = ""
             else:
                 pending_user = content
         elif role == "assistant":
-            if pending_user and not _is_social_reset_turn(content, role="assistant"):
+            if pending_user and not _is_non_substantive_turn(content, role="assistant"):
                 last_pair = (pending_user, content)
             elif _is_social_reset_turn(content, role="assistant"):
                 last_pair = ("", "")
@@ -305,6 +380,15 @@ def answer_local_response(
 
     if act in {"CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY", "TOPIC_RETURN"}:
         if not last_user and not last_assistant and not topic:
+            if _has_social_only_history(history):
+                result = _result(
+                    "كنا نتبادل التحية ونسأل باختصار عن الحال، لكننا لم نحدد موضوعًا للنقاش بعد. "
+                    "يمكننا بدء حديث خفيف عن الفن أو الحياة اليومية، أو أخبرني بما يشغلك.",
+                    parsed,
+                    "local_social_engine",
+                )
+                result["local_strategy"] = "friendly_dialogue_reopen"
+                return result
             return {
                 **_result(
                     "لا أجد في السياق المتاح نقطة سابقة موثوقة أتابع منها. اذكر الموضوع أو أرسل جزءًا من الحوار المقصود.",
