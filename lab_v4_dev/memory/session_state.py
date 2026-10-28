@@ -207,6 +207,36 @@ def get_session_by_id(session_id: str) -> dict:
     return {}
 
 
+def get_session_by_number(number: int) -> dict:
+    """Resolve the stable user-visible session number to one exact indexed record."""
+    try:
+        number = int(number)
+    except (TypeError, ValueError, OverflowError):
+        return {}
+    if number < 1:
+        return {}
+
+    # Use the same stable index and 1-based numbering contract as the startup UI.
+    index = get_session_index()
+    if number > len(index):
+        return {}
+    selected = index[number - 1]
+    if not isinstance(selected, dict):
+        return {}
+    session_id = str(selected.get("session_id") or "").strip()
+    if not session_id:
+        return {}
+
+    # Resolve by identity and verify the returned record. Never silently fall
+    # back to load_session() or a different session if detail/index data disagree.
+    resolved = get_session_by_id(session_id)
+    if not isinstance(resolved, dict):
+        return {}
+    if str(resolved.get("session_id") or "").strip() != session_id:
+        return {}
+    return resolved
+
+
 def get_latest_session_by_type(session_type: str) -> dict:
     """Return the newest persisted session of exactly the requested type."""
     wanted = str(session_type or "").strip().casefold()
@@ -1353,13 +1383,22 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
 
     if is_dialogue:
         exchanges = _dialogue_exchanges(session)
+        meaningful_exchanges = [
+            item for item in exchanges
+            if not _is_dialogue_control_exchange(item)
+        ]
         topic_candidates = (
             dialogue.get("last_topic"),
-            next((item.get("target") for item in reversed(exchanges) if item.get("target")), ""),
+            next((item.get("target") for item in reversed(meaningful_exchanges) if item.get("target")), ""),
+            next((item.get("user") for item in meaningful_exchanges if item.get("user")), ""),
             report.get("topic"), session.get("title"), session.get("active_goal"),
         )
         topic = next(
-            (clean(value, 100) for value in topic_candidates if useful_topic(value)),
+            (
+                clean(value, 100)
+                for value in topic_candidates
+                if useful_topic(value) and not _is_dialogue_control_text(value)
+            ),
             "",
         )
         control_phrases = {
@@ -1383,6 +1422,7 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
                 "صباح الخير", "مساء الخير",
             }:
                 greeting_seen = True
+            if _is_dialogue_control_exchange(exchange):
                 continue
             if normalized_user in control_phrases:
                 continue
@@ -1397,9 +1437,22 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
         if not topic and meaningful_users:
             topic = clean(meaningful_users[0], 100)
         topic = topic or "حوار بلا موضوع محدد"
-        if meaningful_users:
-            excerpts = [f"«{clean(value, 92)}»" for value in meaningful_users[-2:]]
-            summary = "مضمون الحوار من الرسائل المحفوظة: " + "؛ ".join(excerpts) + "."
+        # Summaries describe the meaning of saved exchanges; verbatim messages
+        # remain available only through the explicit transcript report mode.
+        insights = []
+        for exchange in meaningful_exchanges:
+            for insight in _dialogue_exchange_insights(exchange):
+                if insight and insight not in insights:
+                    insights.append(insight)
+        if insights:
+            summary = "الخلاصة الدلالية للحوار: " + "؛ ".join(
+                clean(value, 105) for value in insights[:2]
+            ) + "."
+        elif meaningful_users:
+            summary = (
+                f"تناول الحوار موضوع «{topic}»، لكن لا توجد بيانات محفوظة كافية "
+                "لاستخلاص تفاصيل أدق دون تخمين."
+            )
         elif greeting_seen:
             summary = "حوار افتتاحي للتحية والتعارف؛ لا تظهر في السجل تبادلات موضوعية أخرى مكتملة."
         else:
