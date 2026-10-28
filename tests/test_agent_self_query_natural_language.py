@@ -164,7 +164,8 @@ def test_conversation_manager_routes_agent_self_to_grounded_chat(
     assert len(gateway_calls) == 1
     system = gateway_calls[0][1]["system"]
     assert "حقائق الوكيل المناسبة للسؤال" in system
-    assert "تمييز" in system and "trace" in system.lower()
+    assert "ميّز بين CyberLab Agent والمزوّد" in system
+    assert "trace خاص بها" in system
     if expected in {Intent.AGENT_IDENTITY, Intent.AGENT_CAPABILITIES}:
         assert "جملتين أو ثلاث" in system
         assert "لا تسرد بنية المشروع" in system
@@ -218,7 +219,7 @@ def test_grounded_prompt_separates_architectural_facts_from_runtime_trace():
     system, _prompt = build_chat_prompt(
         "كيف تعالج رسالتي؟",
         agent_self_knowledge=knowledge,
-        conversation_semantics={"intent": Intent.AGENT_EXECUTION_FLOW.value},
+        conversation_semantics={"intent": Intent.AGENT_EXECUTION_FLOW},
     )
 
     assert "حقائق الوكيل المناسبة للسؤال" in system
@@ -236,12 +237,12 @@ def test_identity_and_capability_prompt_stays_brief_and_avoids_architecture_inve
     identity_system, _ = build_chat_prompt(
         "من أنت؟",
         agent_self_knowledge=identity,
-        conversation_semantics={"intent": Intent.AGENT_IDENTITY.value},
+        conversation_semantics={"intent": Intent.AGENT_IDENTITY},
     )
     capability_system, _ = build_chat_prompt(
         "ماذا تستطيع أن تفعل؟ تحدث بشكل ودي ولا تعرض بنية المشروع.",
         agent_self_knowledge=capabilities,
-        conversation_semantics={"intent": Intent.AGENT_CAPABILITIES.value},
+        conversation_semantics={"intent": Intent.AGENT_CAPABILITIES},
     )
 
     assert "جملتين أو ثلاث" in identity_system
