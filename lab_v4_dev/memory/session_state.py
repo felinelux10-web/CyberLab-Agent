@@ -1074,7 +1074,7 @@ def _is_dialogue_control_exchange(exchange: dict) -> bool:
 
 
 def _dialogue_exchange_insights(exchange: dict) -> list[str]:
-    """Build concise semantic notes from a saved exchange without copying the transcript."""
+    """Summarize one saved exchange from its meaning and answer, not as Q/A transcript."""
     insights = []
     for field in ("semantic_summary", "summary", "gist", "key_points", "main_points", "topics_discussed"):
         value = exchange.get(field)
@@ -1094,6 +1094,28 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     )
     normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
     topic = " ".join(str(exchange.get("target") or "").split()).strip()
+
+    # Offline synthesis cannot replace a language model, but it can preserve
+    # the answer's core fact while avoiding the original question/answer format.
+    answer = " ".join(str(exchange.get("assistant") or "").split()).strip()
+    answer = re.split(r"(?<=[.!?؟])\s+|[؛;]\s+", answer, maxsplit=1)[0].strip()
+    answer = answer.strip(" \t\r\n-•")
+    generic_answer_markers = (
+        "انا بخير", "أنا بخير", "كيف حالك", "هل في شيء تحب",
+        "هل ترغب في", "كيف يمكنني مساعدتك", "لا املك سجل",
+        "لا أملك سجل", "لم افهم", "لم أفهم",
+    )
+    if any(marker.casefold() in answer.casefold() for marker in generic_answer_markers):
+        answer = ""
+    answer = re.sub(
+        r"^(?:الفرق(?:\s+الاساسي)?\s+هو|الاختلاف\s+هو|الخلاصة\s*[:：]?|"
+        r"الاجابة\s+هي|ببساطة|بشكل\s+عام|باختصار)\s*",
+        "",
+        answer,
+        flags=re.IGNORECASE,
+    ).strip(" \t\r\n.,،؛:!?؟")
+    answer = answer[:240]
+
     comparison = re.search(
         r"(?:ما\s+)?(?:الفرق|الفروق|الاختلاف)\s+بين\s+(.+?)(?:[؟?!.،؛]|$)",
         normalized,
@@ -1101,30 +1123,35 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     if comparison:
         pair = " ".join(comparison.group(1).split()).strip(" \t\r\n.,،؛:!?؟")
         if pair:
+            if answer:
+                return [f"قارن الحوار بين «{pair[:160]}»؛ وخلص الرد إلى أن الفارق يتعلق بـ{answer}."]
             return [f"قارن الحوار بين «{pair[:160]}»."]
 
     if any(marker in normalized for marker in ("ما معنى", "معنى", "ما هو", "ما هي", "تعريف", "عرف")):
-        return [
-            f"تناول الحوار تعريف «{topic}» ومعناه."
-            if topic else "تناول الحوار سؤالًا تعريفيًا، لكن لا يوجد موضوع فرعي محفوظ بوضوح."
-        ]
+        prefix = f"تناول الحوار تعريف «{topic}» ومعناه" if topic else "تناول الحوار سؤالًا تعريفيًا"
+        return [f"{prefix}؛ والخلاصة الواردة في الرد: {answer}." if answer else f"{prefix}، دون خلاصة جواب كافية محفوظة."]
     if any(marker in normalized for marker in ("اقتراح", "اقترح", "ما الحل", "حل مناسب")):
-        return [f"تناول الحوار اقتراحات أو حلولًا مرتبطة بـ«{topic}»." if topic
-                else "تناول الحوار طلب اقتراحات أو حلول، دون حفظ موضوع محدد."]
+        prefix = f"تناول الحوار اقتراحات أو حلولًا مرتبطة بـ«{topic}»" if topic else "تناول الحوار اقتراحات أو حلولًا"
+        return [f"{prefix}؛ وأبرز ما ورد في الرد: {answer}." if answer else f"{prefix} دون حفظ خلاصة جواب واضحة."]
     if any(marker in normalized for marker in ("خطة", "خطوات", "الخطوة التالية", "الخطوه التاليه")):
-        return [f"تناول الحوار التخطيط والخطوات المرتبطة بـ«{topic}»." if topic
-                else "تناول الحوار التخطيط أو ترتيب الخطوات."]
+        prefix = f"تناول الحوار التخطيط والخطوات المرتبطة بـ«{topic}»" if topic else "تناول الحوار التخطيط أو ترتيب الخطوات"
+        return [f"{prefix}؛ والخلاصة المحفوظة: {answer}." if answer else f"{prefix} دون خطوات مفصلة محفوظة."]
     if any(marker in normalized for marker in ("لماذا", "ما السبب", "اسباب", "أسباب")):
-        return [f"ناقش الحوار أسبابًا مرتبطة بـ«{topic}»." if topic
-                else "ناقش الحوار سؤالًا عن الأسباب، دون موضوع فرعي محدد."]
+        prefix = f"ناقش الحوار أسبابًا مرتبطة بـ«{topic}»" if topic else "ناقش الحوار سؤالًا عن الأسباب"
+        return [f"{prefix}؛ والسبب المذكور في الرد: {answer}." if answer else f"{prefix} دون سبب محدد محفوظ."]
     if any(marker in normalized for marker in ("كيف", "الية", "آلية", "طريقة")):
-        return [f"ناقش الحوار كيفية التعامل مع «{topic}» أو فهمه." if topic
-                else "ناقش الحوار كيفية تنفيذ أمر أو فهمه، لكن الموضوع غير محدد في السجل."]
+        prefix = f"ناقش الحوار كيفية التعامل مع «{topic}» أو فهمه" if topic else "ناقش الحوار كيفية تنفيذ أمر أو فهمه"
+        return [f"{prefix}؛ وأشار الرد إلى {answer}." if answer else f"{prefix}، لكن لا توجد خلاصة جواب كافية محفوظة."]
     if any(marker in normalized for marker in ("ما رايك", "رأيك", "وجهة نظرك", "وجهة النظر")):
-        return [f"تناول الحوار وجهات نظر حول «{topic}»." if topic
-                else "تناول الحوار تبادل وجهات نظر دون موضوع فرعي محفوظ بوضوح."]
+        prefix = f"تناول الحوار وجهات نظر حول «{topic}»" if topic else "تناول الحوار تبادل وجهات نظر"
+        return [f"{prefix}؛ والرأي المسجل: {answer}." if answer else f"{prefix} دون رأي محدد محفوظ."]
+
+    if topic and answer:
+        return [f"ناقش الحوار «{topic}»؛ وأبرز ما ورد في الرد: {answer}."]
     if topic:
-        return [f"ناقش الحوار موضوع «{topic}»؛ لا توجد خلاصة دلالية إضافية محفوظة لهذا التبادل."]
+        return [f"ناقش الحوار موضوع «{topic}»؛ لا توجد خلاصة جواب إضافية محفوظة لهذا التبادل."]
+    if answer:
+        return [f"يتضمن السجل إجابة مفيدة: {answer}."]
     return ["يتضمن السجل تبادلًا حواريًا، لكن لا توجد بيانات دلالية كافية لتحديد موضوعه دون تخمين."]
 
 
