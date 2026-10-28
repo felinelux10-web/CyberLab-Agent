@@ -121,3 +121,45 @@ def test_general_scope_does_not_inject_project_knowledge(monkeypatch):
     assert captured["project_knowledge"] is None
     assert captured["agent_self_knowledge"] is None
     assert len(calls) == 1
+
+def test_social_opening_uses_dialogue_history_instead_of_one_generic_template(monkeypatch):
+    manager, calls = _manager(monkeypatch)
+    first = manager.process("أريد الحديث عن الفن التجريدي")
+    assert first["status"] == "success"
+    assert first["source"] == "llm"
+
+    result = manager.process("دعنا نتحدث قليلا")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_social_engine"
+    assert "الفن التجريدي" in result["text"] or "أريد الحديث عن الفن التجريدي" in result["text"]
+    assert len(calls) == 1, "a bounded social opening with available history should be handled locally"
+
+
+def test_provider_failure_uses_contextual_local_continuation(monkeypatch):
+    manager, calls = _manager(monkeypatch)
+    first = manager.process("فقط اريد الدردشة معك")
+    assert first["status"] == "success"
+    assert first["source"] == "llm"
+
+    def unavailable(*_args, **_kwargs):
+        return {
+            "status": "error",
+            "message": "offline",
+            "error": {"code": "NO_PROVIDER_AVAILABLE"},
+        }
+
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        unavailable,
+    )
+    result = manager.process(
+        "نعم سنكمل حوارنا في محادثة ودية كنا نقول ونريد ان ندردش قليلا"
+    )
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_dialogue_fallback"
+    assert "فقط اريد الدردشة معك" in result["text"]
+    assert "رد سياقي رقم 1" in result["text"]
+    assert "متابعة محلية" in result["text"]
+    assert calls, "the first turn should have used the configured provider"

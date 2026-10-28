@@ -1840,7 +1840,9 @@ class ConversationManager:
         local_social = (
             None
             if saved_session_request
-            else self._local_social_answer(user_input, parsed)
+            else self._local_social_answer(
+                user_input, parsed, history=chat_history
+            )
         )
         if local_social is not None:
             local_social["semantic_request"] = semantic.as_dict()
@@ -2691,7 +2693,11 @@ class ConversationManager:
         return "unknown"
 
     @staticmethod
-    def _local_social_answer(text: str, parsed: dict) -> dict | None:
+    def _local_social_answer(
+        text: str,
+        parsed: dict,
+        history: list | None = None,
+    ) -> dict | None:
         normalized = str(text or "").casefold()
         bare_confirmation = normalized.strip(" .!؟?")
         if (
@@ -2756,18 +2762,62 @@ class ConversationManager:
             # Use semantic act classification for social variants not covered by
             # the legacy phrase rules. Non-social acts still fall through.
             return answer_local_social(text, parsed)
+
+        def contextual_social_reply() -> dict | None:
+            candidate = dict(parsed or {})
+            act = str(candidate.get("conversation_act") or "").upper()
+            supported_acts = {
+                "SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION",
+                "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP",
+                "CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY",
+                "TOPIC_RETURN",
+            }
+            # This branch is entered only after a social-opening phrase was
+            # recognized. If the parser left the act unresolved, use that
+            # narrow conversational interpretation instead of the old one-line
+            # template; preserve any already-resolved continuation act.
+            if act not in supported_acts:
+                candidate["conversation_act"] = "SOCIAL_OPENING"
+                act = "SOCIAL_OPENING"
+            semantic_request = {
+                "conversation_act": act,
+                "conversation_domain": candidate.get("conversation_domain") or "general",
+                "target": candidate.get("target") or "",
+                "response_attributes": candidate.get("response_attributes") or {},
+            }
+            composed = answer_local_response(
+                text,
+                candidate,
+                semantic_request,
+                history=history,
+            )
+            if composed is None:
+                return None
+            composed = dict(composed)
+            composed["intent"] = candidate.get("intent") or Intent.PERSONAL_CHAT
+            composed["source"] = "local_social_engine"
+            composed["mode"] = "CHAT"
+            composed["executed"] = False
+            return composed
+
         if any(marker in normalized for marker in ("كيفك", "كيف الحال", "ماهو الحال")):
             reply = "أنا بخير، شكرًا لسؤالك. كيف حالك أنت؟"
         elif any(marker in normalized for marker in ("كيفاش داز نهارك", "كيف داز نهارك")):
             reply = "لا أعيش يومًا بالمعنى البشري، لكنني مستعد لمحادثتك. كيف كان يومك؟"
         elif "كيف كان نهارك" in normalized or "كيف قضيت يومك" in normalized:
-            reply = "كان يومي هادئًا، وأنا جاهز للدردشة. كيف كان يومك أنت؟"
+            reply = "لا أعيش يومًا بالمعنى البشري، لكنني جاهز للحديث معك. كيف كان يومك أنت؟"
         elif any(marker in normalized for marker in (
             "محادثة ودية", "محادثه وديه", "دردشة ودية", "دردشه وديه",
             "نريد أن نتحدث فقط", "نريد ان نتحدث فقط", "دردشة فقط",
         )):
+            composed = contextual_social_reply()
+            if composed is not None:
+                return composed
             reply = "حسنًا، لنتحدث بشكل ودي بعيدًا عن العمل والمهام. ما الذي يشغل بالك؟"
         else:
+            composed = contextual_social_reply()
+            if composed is not None:
+                return composed
             reply = "يمكننا مناقشة موضوع خفيف. ما الذي تود أن تحدثني عنه؟"
         return {
             "status": "success",
@@ -4051,6 +4101,56 @@ class ConversationManager:
                 if isinstance(result, dict)
                 else None
             )
+
+            # If generation is unavailable, use the bounded local composer for
+            # ordinary conversation continuations. It quotes only the authorized
+            # dialogue history and explicitly labels the result as local; it
+            # cannot answer project, operational, or unsupported factual turns.
+            local_intent = str(
+                getattr((parsed or {}).get("intent"), "value", (parsed or {}).get("intent")) or ""
+            ).casefold()
+            local_act = str((parsed or {}).get("conversation_act") or "").upper()
+            local_domain = str((parsed or {}).get("conversation_domain") or "general").casefold()
+            local_fallback_acts = {
+                "SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION",
+                "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP",
+                "CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY",
+                "TOPIC_RETURN",
+            }
+            if (
+                local_intent in {"personal_chat", "discussion", "chat"}
+                and local_domain in {"", "general", "social"}
+                and local_act in local_fallback_acts
+            ):
+                local_semantic = {
+                    "conversation_act": local_act,
+                    "conversation_domain": local_domain or "general",
+                    "target": (parsed or {}).get("target") or "",
+                    "response_attributes": (parsed or {}).get("response_attributes") or {},
+                }
+                local_result = answer_local_response(
+                    user_question or text,
+                    parsed,
+                    local_semantic,
+                    history=list(history or []),
+                )
+                if local_result is not None:
+                    local_result = dict(local_result)
+                    local_result["source"] = "local_dialogue_fallback"
+                    local_result["mode"] = mode
+                    local_result["executed"] = False
+                    local_result["recovery"] = "provider_unavailable_local_dialogue"
+                    local_result["provider_failure_code"] = (
+                        str(gateway_error.get("code") or "")
+                        if isinstance(gateway_error, dict)
+                        else ""
+                    )
+                    local_result["text"] = str(local_result.get("text") or "").rstrip() + (
+                        "\n\nملاحظة: تعذر الحصول على رد من المزود؛ هذه متابعة محلية "
+                        "مبنية على الحوار المحفوظ، وليست شرحًا جديدًا يعتمد على معرفة خارجية."
+                    )
+                    return local_result
+
             continuation = str((parsed or {}).get("conversation_act") or "").upper() in {
                 "CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY",
             }
