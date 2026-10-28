@@ -2247,7 +2247,7 @@ SOURCE CODE:
                 restored = bool(restore_context()) if callable(restore_context) else False
             summary += (
                 "\n\nنتيجة الاستعادة: "
-                + ("تم تحميل السياق المحفوظ بنجاح." if restored
+                + ("تم تحميل السياق المحفوظ بنجاح؛ تمت استعادته." if restored
                    else "عُرض التقرير، لكن تعذر تحميل السياق المحفوظ بالكامل.")
             )
             return {
