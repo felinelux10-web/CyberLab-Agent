@@ -1930,7 +1930,7 @@ SOURCE CODE:
                     return {
                         "status": "needs_clarification",
                         "intent": intent,
-                        "source": "saved_session_number_guard",
+                        "source": "saved_session_identity_guard",
                         "executed": False,
                         "text": (
                             f"تعذر التحقق من هوية الجلسة رقم {number}. "
