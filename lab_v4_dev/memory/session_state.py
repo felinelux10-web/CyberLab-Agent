@@ -308,13 +308,20 @@ def session_selector(raw: str) -> dict:
     ))
     if count_request and any(token in text for token in ("جلسة", "جلسات", "الجلسات")):
         return {"kind": "count", "report_mode": "compact"}
+    # Resolve an explicit session number before broad latest-session fallbacks.
+    # Allow descriptive words between "session" and its number, e.g.
+    # "ملخص الجلسة المحفوظة رقم 30"; otherwise the request silently selects latest.
     number_match = re.search(
-        r"(?:جلسة|الجلسة|جلسه|الجلسه|session)\s*(?:رقم\s*)?#?\s*(\d+)\b",
-        raw_text,
+        r"(?<!\w)(?:الجلسة|الجلسه|جلسة|جلسه|session)"
+        r"(?:\s+(?:(?!رقم\b)[\w-]+)){0,5}\s*(?:رقم\s*)?#?\s*(\d+)\b",
+        text,
         flags=re.IGNORECASE,
     )
     if number_match and any(token in text for token in (
-        "استرجع", "استعد", "استكمل", "استكمال", "اعرض", "ملخص", "restore", "resume",
+        "استرجع", "استعد", "استكمل", "استكمال", "اعرض", "اكتب", "اقرا", "حلل",
+        "ملخص", "تلخيص", "لخص", "مضمون", "محتوى", "تقرير", "ما الموضوع",
+        "ماذا كنا", "ما كنا", "ما الفرق", "restore", "resume", "summarize",
+        "summary", "report",
     )):
         return {
             "kind": "number",
@@ -984,6 +991,75 @@ def _dialogue_exchanges(data: dict) -> list[dict]:
     ]
 
 
+def _dialogue_exchange_insights(exchange: dict) -> list[str]:
+    """Build concise semantic notes from a saved exchange without copying the transcript."""
+    insights = []
+    for field in ("semantic_summary", "summary", "gist", "key_points", "main_points", "topics_discussed"):
+        value = exchange.get(field)
+        values = value if isinstance(value, (list, tuple, set)) else [value]
+        for candidate in values:
+            item = " ".join(str(candidate or "").split()).strip(" \t\r\n-•")
+            if item and item not in insights:
+                insights.append(item)
+    if insights:
+        return insights[:4]
+
+    user_text = " ".join(str(exchange.get("user") or "").split()).strip()
+    normalized = (
+        user_text.casefold()
+        .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        .replace("ى", "ي").replace("ـ", "")
+    )
+    normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
+    topic = " ".join(str(exchange.get("target") or "").split()).strip()
+    comparison = re.search(
+        r"(?:ما\s+)?(?:الفرق|الفروق|الاختلاف)\s+بين\s+(.+?)(?:[؟?!.،؛]|$)",
+        normalized,
+    )
+    if comparison:
+        pair = " ".join(comparison.group(1).split()).strip(" \t\r\n.,،؛:!?؟")
+        if pair:
+            return [f"قارن الحوار بين «{pair[:160]}»."]
+
+    if any(marker in normalized for marker in ("ما معنى", "معنى", "ما هو", "ما هي", "تعريف", "عرف")):
+        return [
+            f"تناول الحوار تعريف «{topic}» ومعناه."
+            if topic else "تناول الحوار سؤالًا تعريفيًا، لكن لا يوجد موضوع فرعي محفوظ بوضوح."
+        ]
+    if any(marker in normalized for marker in ("اقتراح", "اقترح", "ما الحل", "حل مناسب")):
+        return [f"تناول الحوار اقتراحات أو حلولًا مرتبطة بـ«{topic}»." if topic
+                else "تناول الحوار طلب اقتراحات أو حلول، دون حفظ موضوع محدد."]
+    if any(marker in normalized for marker in ("خطة", "خطوات", "الخطوة التالية", "الخطوه التاليه")):
+        return [f"تناول الحوار التخطيط والخطوات المرتبطة بـ«{topic}»." if topic
+                else "تناول الحوار التخطيط أو ترتيب الخطوات."]
+    if any(marker in normalized for marker in ("لماذا", "ما السبب", "اسباب", "أسباب")):
+        return [f"ناقش الحوار أسبابًا مرتبطة بـ«{topic}»." if topic
+                else "ناقش الحوار سؤالًا عن الأسباب، دون موضوع فرعي محدد."]
+    if any(marker in normalized for marker in ("كيف", "الية", "آلية", "طريقة")):
+        return [f"ناقش الحوار كيفية التعامل مع «{topic}» أو فهمه." if topic
+                else "ناقش الحوار كيفية تنفيذ أمر أو فهمه، لكن الموضوع غير محدد في السجل."]
+    if any(marker in normalized for marker in ("ما رايك", "رأيك", "وجهة نظرك", "وجهة النظر")):
+        return [f"تناول الحوار وجهات نظر حول «{topic}»." if topic
+                else "تناول الحوار تبادل وجهات نظر دون موضوع فرعي محفوظ بوضوح."]
+    if topic:
+        return [f"ناقش الحوار موضوع «{topic}»؛ لا توجد خلاصة دلالية إضافية محفوظة لهذا التبادل."]
+    return ["يتضمن السجل تبادلًا حواريًا، لكن لا توجد بيانات دلالية كافية لتحديد موضوعه دون تخمين."]
+
+
+def _dialogue_explicit_conclusions(exchanges: list[dict]) -> list[str]:
+    """Collect only conclusions/decisions explicitly stored as structured fields."""
+    items = []
+    for exchange in exchanges:
+        for field in ("decision", "decisions", "conclusion", "outcome", "takeaway", "key_takeaway"):
+            value = exchange.get(field)
+            values = value if isinstance(value, (list, tuple, set)) else [value]
+            for candidate in values:
+                item = " ".join(str(candidate or "").split()).strip(" \t\r\n-•")
+                if item and item not in items:
+                    items.append(item)
+    return items
+
+
 def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     """Summarize the selected dialogue and its stop point without mixing work state."""
     report = analyze_session(data)
@@ -1057,23 +1133,20 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
 
     topics = []
     for exchange in exchanges:
-        value = str(exchange.get("target") or "").strip()
+        value = " ".join(str(exchange.get("target") or "").split()).strip()
         if value and value not in topics:
             topics.append(value)
+
+    # Summarize the whole bounded archive semantically. Do not reproduce the
+    # user's questions or the assistant's responses as disguised transcript lines.
     content_lines = []
-    for exchange in exchanges[-8:]:
-        user = " ".join(str(exchange.get("user") or "").split()).strip()
-        assistant = " ".join(str(exchange.get("assistant") or "").split()).strip()
-        if not user and not assistant:
-            continue
-        exchange_topic = " ".join(str(exchange.get("target") or "").split()).strip()
-        prefix = f"حول «{exchange_topic}»: " if exchange_topic else ""
-        sentence = f"{prefix}المستخدم طرح: «{user[:220]}»"
-        if assistant:
-            sentence += f"، والوكيل أجاب: «{assistant[:260]}»."
-        else:
-            sentence += "."
-        content_lines.append(sentence)
+    for exchange in exchanges:
+        for insight in _dialogue_exchange_insights(exchange):
+            if insight not in content_lines:
+                content_lines.append(insight)
+    content_lines = content_lines[:12]
+    explicit_conclusions = _dialogue_explicit_conclusions(exchanges)
+
     lines = [
         "=== ملخص الحوار المحفوظ ===",
         f"معرّف الجلسة: {report['session_id']}",
@@ -1089,6 +1162,10 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     lines.extend(["", "الموضوعات المثبتة في سجل الحوار:"])
     lines.extend([f"- {item}" for item in topics] if topics else [
         "- لا توجد موضوعات فرعية محددة في البيانات المحفوظة."
+    ])
+    lines.extend(["", "الخلاصات والقرارات المسجلة صراحة:"])
+    lines.extend([f"- {item}" for item in explicit_conclusions] if explicit_conclusions else [
+        "- لا توجد خلاصات أو قرارات منفصلة محفوظة في الحقول المنظمة."
     ])
     lines.extend([
         "",
