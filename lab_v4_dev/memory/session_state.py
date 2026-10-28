@@ -1098,7 +1098,7 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     # Offline synthesis cannot replace a language model, but it can preserve
     # the answer's core fact while avoiding the original question/answer format.
     answer = " ".join(str(exchange.get("assistant") or "").split()).strip()
-    answer = re.split(r"(?<=[.!?؟])\s+|[؛;]\s+", answer, maxsplit=1)[0].strip()
+    answer = re.split(r"(?<=[.!?؟])\s+", answer, maxsplit=1)[0].strip()
     answer = answer.strip(" \t\r\n-•")
     generic_answer_markers = (
         "انا بخير", "أنا بخير", "كيف حالك", "هل في شيء تحب",
@@ -1124,7 +1124,7 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         pair = " ".join(comparison.group(1).split()).strip(" \t\r\n.,،؛:!?؟")
         if pair:
             if answer:
-                return [f"قارن الحوار بين «{pair[:160]}»؛ وخلص الرد إلى أن الفارق يتعلق بـ{answer}."]
+                return [f"قارن الحوار بين «{pair[:160]}»؛ ويوضح الرد أن {answer}."]
             return [f"قارن الحوار بين «{pair[:160]}»."]
 
     if any(marker in normalized for marker in ("ما معنى", "معنى", "ما هو", "ما هي", "تعريف", "عرف")):
