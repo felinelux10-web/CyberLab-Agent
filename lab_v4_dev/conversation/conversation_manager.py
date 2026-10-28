@@ -1568,6 +1568,7 @@ class ConversationManager:
             and transition.value in CONTEXTUAL_TRANSITIONS
             and not style_request
             and not unnamed_branch_return
+            and not self._is_explicit_targeted_proposal(user_input)
             and (
                 not candidate.get("target")
                 or str(candidate.get("entity_type", "")).upper()
