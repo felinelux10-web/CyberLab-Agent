@@ -991,6 +991,49 @@ def _dialogue_exchanges(data: dict) -> list[dict]:
     ]
 
 
+def _is_dialogue_control_text(value: object) -> bool:
+    """Identify session-management/meta turns that are not topic content."""
+    text = " ".join(str(value or "").split()).strip().casefold()
+    text = (
+        text.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        .replace("ى", "ي").replace("ـ", "")
+    )
+    text = re.sub(r"[\u064b-\u065f\u0670]", "", text)
+    text = re.sub(r"[^\w\s]", " ", text, flags=re.UNICODE)
+    text = " ".join(text.split())
+    if not text:
+        return True
+    if text in {
+        "مرحبا", "اهلا", "اهلا وسهلا", "السلام عليكم", "صباح الخير",
+        "مساء الخير", "كيفك ايها الوكيل", "كيف حالك", "جيد", "نعم",
+        "اجل", "حسنا", "تمام",
+    }:
+        return True
+    session_words = ("جلسة", "الجلسة", "جلسات", "الجلسات", "حوار", "الحوار")
+    management_words = (
+        "ملخص", "ملخصات", "لخص", "تلخيص", "تقرير", "استرجع", "استعد",
+        "استكمل", "استكمال", "اعرض", "اكتب", "احفظ", "حفظ", "ماذا كنا نقول",
+        "ما كنا نقول", "ماذا كنا نتحدث", "ما كنا نتحدث", "اين توقفنا",
+        "اكتب ملخص", "اكتب تقرير", "المضمون",
+    )
+    if any(word in text for word in management_words) and any(
+        word in text for word in session_words
+    ):
+        return True
+    if any(phrase in text for phrase in (
+        "ماذا كنا نقول في اخر جلسة", "ماذا كنا نقول في الجلسة السابقة",
+        "كنا نتحدث في الجلسة السابقة", "كنا نتحدث في اخر جلسة",
+        "ملخص هذه الجلسة", "ملخص الجلسة المحفوظة",
+    )):
+        return True
+    return False
+
+
+def _is_dialogue_control_exchange(exchange: dict) -> bool:
+    """A saved exchange can remain in transcripts but must not pollute summaries."""
+    return _is_dialogue_control_text(exchange.get("user"))
+
+
 def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     """Build concise semantic notes from a saved exchange without copying the transcript."""
     insights = []
@@ -1065,25 +1108,36 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     report = analyze_session(data)
     exchanges = _dialogue_exchanges(data)
     dialogue = data.get("dialogue_state") or {}
+    # Keep all exchanges for literal transcript mode, but exclude greetings and
+    # session-management commands from semantic topic extraction and summaries.
+    summary_exchanges = [
+        item for item in exchanges if not _is_dialogue_control_exchange(item)
+    ]
     stored_topic = str(
         dialogue.get("last_topic")
-        or next((item.get("target") for item in reversed(exchanges) if item.get("target")), "")
+        or next((item.get("target") for item in reversed(summary_exchanges) if item.get("target")), "")
         or report.get("topic")
     ).strip()
     generic_topics = {
         "حفظ سياق الحوار", "جلسة حوار", "حوار محفوظ", "غير محدد من سجل الحوار",
+        "حوار بلا موضوع محدد", "جلسة بلا عنوان",
     }
     content_topic = next(
         (
-            " ".join(str(item.get("user") or "").split())[:100]
-            for item in exchanges
-            if " ".join(str(item.get("user") or "").split()).strip()
+            " ".join(str(item.get("target") or item.get("user") or "").split())[:100]
+            for item in summary_exchanges
+            if " ".join(str(item.get("target") or item.get("user") or "").split()).strip()
         ),
         "",
     )
-    topic = stored_topic if stored_topic and stored_topic not in generic_topics else content_topic
-    topic = topic or "غير محدد من سجل الحوار"
-    last = exchanges[-1] if exchanges else {}
+    stored_topic_is_control = _is_dialogue_control_text(stored_topic)
+    topic = (
+        stored_topic
+        if stored_topic and stored_topic not in generic_topics and not stored_topic_is_control
+        else content_topic
+    )
+    topic = topic or "حوار افتتاحي أو إداري بلا موضوع معرف في السجل"
+    last = (summary_exchanges or exchanges)[-1] if (summary_exchanges or exchanges) else {}
     if last:
         stop_point = (
             "توقف الحوار بعد آخر تبادل مكتمل محفوظ؛ "
@@ -1132,20 +1186,20 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         ])
 
     topics = []
-    for exchange in exchanges:
+    for exchange in summary_exchanges:
         value = " ".join(str(exchange.get("target") or "").split()).strip()
-        if value and value not in topics:
+        if value and not _is_dialogue_control_text(value) and value not in topics:
             topics.append(value)
 
-    # Summarize the whole bounded archive semantically. Do not reproduce the
-    # user's questions or the assistant's responses as disguised transcript lines.
+    # Summarize the meaningful bounded archive semantically. Control turns stay
+    # available in transcript mode but cannot become the report's subject.
     content_lines = []
-    for exchange in exchanges:
+    for exchange in summary_exchanges:
         for insight in _dialogue_exchange_insights(exchange):
             if insight not in content_lines:
                 content_lines.append(insight)
     content_lines = content_lines[:12]
-    explicit_conclusions = _dialogue_explicit_conclusions(exchanges)
+    explicit_conclusions = _dialogue_explicit_conclusions(summary_exchanges)
 
     lines = [
         "=== ملخص الحوار المحفوظ ===",
