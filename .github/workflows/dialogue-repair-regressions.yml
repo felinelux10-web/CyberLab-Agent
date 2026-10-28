@@ -48,7 +48,8 @@ jobs:
             tests/test_agent_self_description.py \
             tests/test_g07_conversation_semantics.py \
             tests/test_p02_conversation_intent.py \
-            tests/test_gateway_fallback_contract.py
+            tests/test_gateway_fallback_contract.py \
+            tests/test_health_check_runtime_layout.py
 
   full-suite-advisory:
     runs-on: ubuntu-latest

@@ -2597,50 +2597,28 @@ SOURCE CODE:
 
         # ─── System Status Report ───
         elif intent == Intent.SYSTEM_STATUS:
-            from lab_v4_dev.core.project_context import get_active_project_root
-            script = os.path.join(get_active_project_root(), "project_status.py")
-            try:
-                result = self._submit_prepared_execution(
-                    intent={"intent": str(intent)},
-                    target=target,
-                    request_id=f"system-status-{uuid.uuid4().hex}",
-                    execution={
-                        "action": "run_command",
-                        "parameters": {
-                            "command": f"python3 {script}"
-                        },
-                        "health_check": False,
-                    },
-                )
+            # A status query is a read-only in-process diagnostic. Do not launch
+            # project_status.py through a shell: that script is tied to a local
+            # ~/cyberlab_agent path and its interpreter command can be blocked by
+            # the execution risk gate, turning a report request into a failure.
+            from lab_v4_dev.monitor.health_check import check_health
 
-                results = result.get("results", []) if isinstance(result, dict) else []
-                execution_result = results[0] if results else {}
-
-                output = (
-                    execution_result.get("stdout")
-                    or execution_result.get("stderr")
-                    or result.get("error")
-                    or "لا يوجد ناتج"
-                )
-
-                status = (
-                    "success"
-                    if execution_result.get("status") == "success"
-                    else "failed"
-                )
-
-                return {
-                    "status": status,
-                    "intent": intent,
-                    "text": output,
-                }
-
-            except Exception as e:
-                return {
-                    "status": "failed",
-                    "intent": intent,
-                    "text": f"فشل تشغيل التقرير: {e}",
-                }
+            health = check_health(self.agent.state)
+            lines = [
+                f"حالة النظام: {'سليم' if health.get('healthy') else 'يحتاج إلى مراجعة'}",
+                f"وضع التشغيل: {health.get('state_mode', 'غير معروف')}",
+                f"الذاكرة: {'سليمة' if health.get('ram_ok') else 'تجاوزت الحد'}"
+                + (f" ({health.get('ram_mb')} MB)" if health.get("ram_mb") is not None else ""),
+                f"قاعدة البيانات: {'سليمة' if health.get('db_ok') else 'مشكلة في الفحص'}",
+                f"السجل: {'سليم' if health.get('log_ok') else 'تجاوز الحد'}",
+                f"الشجرة القديمة stable: {health.get('stable_status', 'غير محددة')}",
+            ]
+            return {
+                "status": "success",
+                "intent": intent,
+                "text": "\n".join(lines),
+                "health": health,
+            }
 
 
         # ─── Delete File ───

@@ -152,9 +152,32 @@ def test_legacy_execution_plan_adapter_rejects_invalid_input():
         raise AssertionError("missing file must be rejected")
 
 
-def test_knowledge_router_can_bridge_legacy_change_plan_to_p10():
+def test_knowledge_router_can_bridge_legacy_change_plan_to_p10(monkeypatch):
+    # Test the legacy-plan adapter contract independently of generated index data.
+    from lab_v4_dev.project_knowledge.change_planner import ChangePlanner
     from lab_v4_dev.dni.knowledge_router import create_p10_plan_from_change
 
+    monkeypatch.setattr(
+        ChangePlanner,
+        "create_plan",
+        lambda self, target: {
+            "target": target,
+            "execution_plan": [
+                {
+                    "file": "lab_v4_dev/core/agent.py",
+                    "action": "modify",
+                    "priority": "critical",
+                    "reason": "direct impact",
+                },
+                {
+                    "file": "run.py",
+                    "action": "review",
+                    "priority": "high",
+                    "reason": "entry point impact",
+                },
+            ],
+        },
+    )
     plan = create_p10_plan_from_change(
         "lab_v4_dev/core/orchestrator.py",
         plan_id="p10-bridge-test",
