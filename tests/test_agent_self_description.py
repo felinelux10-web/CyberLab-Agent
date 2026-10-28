@@ -1,5 +1,6 @@
 import pytest
 
+from lab_v4_dev.awareness.agent_self_knowledge import build_agent_self_knowledge
 from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.conversation import conversation_manager as conversation_module
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
@@ -172,7 +173,7 @@ def test_self_description_is_grounded_and_uses_chat_not_orchestrator(
         gateway_calls.append((prompt, kwargs))
         return {
             "status": "success",
-            "text": "أنا CyberLab Agent، وهذه خلاصة البنية الموثقة.",
+            "text": "أنا CyberLab Agent، أساعدك في فهم طلبك ومتابعة العمل حين تكون الأدوات متاحة.",
             "provider_used": "test-provider",
         }
 
@@ -188,13 +189,29 @@ def test_self_description_is_grounded_and_uses_chat_not_orchestrator(
     assert len(gateway_calls) == 1
     assert gateway_calls[0][1]["max_tokens"] == 4000
     system = gateway_calls[0][1]["system"]
-    assert "حقائق self-knowledge الموثقة" in system
-    assert "lab_v4_dev/core/agent.py" in system
-    assert "PreparedExecutionRequest" in system
-    assert "المسار الوحيد لكل استدعاء EventLoop" in system
+    assert "حقائق الوكيل المناسبة للسؤال" in system
+    assert "جملتين أو ثلاث" in system
+    assert "لا تسرد بنية المشروع" in system
+    assert "PreparedExecutionRequest" not in system
+    assert "lab_v4_dev/core/agent.py" not in system
     assert "لا تستنتج وجود نموذج محلي" in system
     assert "Transformer" not in system
     assert "tokenizer" not in system
+
+
+def test_self_knowledge_scope_changes_with_question_type():
+    identity = build_agent_self_knowledge(Intent.AGENT_IDENTITY)
+    capabilities = build_agent_self_knowledge(Intent.AGENT_CAPABILITIES)
+    architecture = build_agent_self_knowledge(Intent.AGENT_ARCHITECTURE)
+    execution_flow = build_agent_self_knowledge(Intent.AGENT_EXECUTION_FLOW)
+
+    assert "أنا CyberLab Agent" in identity
+    assert "lab_v4_dev/" not in identity
+    assert "lab_v4_dev/" not in capabilities
+    assert "PreparedExecutionRequest" not in capabilities
+    assert "PreparedExecutionRequest" in architecture
+    assert "PreparedExecutionRequest" in execution_flow
+    assert "مصادر الشفرة:" in architecture
 
 
 def test_social_greeting_is_local_and_does_not_load_self_knowledge(
