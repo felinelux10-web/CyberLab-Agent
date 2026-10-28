@@ -473,8 +473,8 @@ def test_social_only_dialogue_summary_does_not_present_greetings_as_a_topic(monk
     assert "أنا بخير، شكرًا لسؤالك" not in result["text"]
     assert "لنتحدث قليلا" not in result["text"]
 
-def test_fragmentary_messages_do_not_inherit_or_mutate_the_active_dialogue():
-    manager, memory, orchestrator = _manager(None)
+def test_fragmentary_messages_do_not_inherit_or_mutate_the_active_dialogue(monkeypatch):
+    manager, memory, orchestrator = _manager(monkeypatch)
     manager.process("اشرح SQL Injection")
 
     previous_topic = memory.state.last_topic
