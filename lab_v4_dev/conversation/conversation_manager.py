@@ -955,7 +955,7 @@ class ConversationManager:
         } and not explicit_explanation and (
             not explicit_casual_opening
             or raw_act == "CONVERSATION_CONTINUATION"
-        ) and not named_return:
+        ) and not named_return and not self._is_explicit_targeted_proposal(user_input):
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.PERSONAL_CHAT,
