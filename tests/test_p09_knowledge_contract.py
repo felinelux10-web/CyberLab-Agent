@@ -419,8 +419,14 @@ def test_p09_relationship_reads_share_canonical_file_identity():
         relation_type="imports",
         target_kind="module",
     )
+    module_relationship = SimpleNamespace(
+        source=relative,
+        target="lab_v4_dev.core.agent",
+        relation_type="imports",
+        target_kind="module",
+    )
 
-    knowledge_store.save_relationships([relationship])
+    knowledge_store.save_relationships([relationship, module_relationship])
     try:
         assert knowledge_query.get_file_relationships(absolute) == [
             ("p09_identity_probe", "imports", "module")
@@ -429,7 +435,8 @@ def test_p09_relationship_reads_share_canonical_file_identity():
             ("p09_identity_probe", "imports", "module")
         ]
         assert graph_query.get_dependencies_of(absolute) == ["p09_identity_probe"]
-        assert graph_query.get_dependencies_of(relative) == ["p09_identity_probe"]
+        assert graph_query.get_dependencies_of(relative) == ["lab_v4_dev.core.agent", "p09_identity_probe"]
+        assert graph_query.get_importers("lab_v4_dev/core/agent") == [relative]
     finally:
         conn = knowledge_store.get_connection()
         try:
@@ -437,6 +444,10 @@ def test_p09_relationship_reads_share_canonical_file_identity():
             conn.execute(
                 "DELETE FROM relationships WHERE source_file=? AND target_name=? AND relation_type=?",
                 (relative, "p09_identity_probe", "imports"),
+            )
+            conn.execute(
+                "DELETE FROM relationships WHERE source_file=? AND target_name=? AND relation_type=?",
+                (relative, "lab_v4_dev.core.agent", "imports"),
             )
             conn.commit()
         except Exception:
