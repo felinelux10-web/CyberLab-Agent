@@ -372,7 +372,7 @@ def session_selector(raw: str) -> dict:
     # remains a live DialogueMemory request.
     last_session_dialogue_reference = bool(
         re.search(
-            r"(?:اخر|آخر)\\s+جلس(?:ة|ه)|(?:الجلسة|الجلسه)\\s+(?:ال)?اخير(?:ة|ه)",
+            r"(?:اخر|آخر)\s+جلس(?:ة|ه)|(?:الجلسة|الجلسه)\s+(?:ال)?اخير(?:ة|ه)",
             text,
         )
         and any(marker in text for marker in (
