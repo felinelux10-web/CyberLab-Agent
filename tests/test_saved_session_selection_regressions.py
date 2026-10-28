@@ -379,7 +379,8 @@ def test_dialogue_restore_summary_uses_saved_topic_and_stop_point():
     assert "النحت البارز" in summary
     assert "نقطة التوقف" in summary
     assert "ما نوقش فعليًا في الحوار" in summary
-    assert "قارن الحوار بين «النحت البارز والغائر»." in summary
+    assert "قارن الحوار بين «النحت البارز والغائر»" in summary
+    assert "اتجاه بروز الشكل عن السطح" in summary
     assert "ما الفرق بين النحت البارز والغائر؟" not in summary
     assert "الفرق هو اتجاه بروز الشكل عن السطح." not in summary
 
