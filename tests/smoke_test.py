@@ -3,8 +3,13 @@
 
 import sys
 import os
-sys.path.insert(0, os.path.expanduser("~/cyberlab_agent"))
-os.chdir(os.path.expanduser("~/cyberlab_agent"))
+from pathlib import Path
+
+# Resolve the checkout relative to this test file. A hard-coded Termux home
+# path made pytest collection fail on every other machine, including CI.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+os.chdir(REPO_ROOT)
 
 from lab_v4_dev.core.agent import Agent
 
