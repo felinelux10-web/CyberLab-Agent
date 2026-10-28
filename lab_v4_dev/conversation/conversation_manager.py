@@ -4283,6 +4283,11 @@ class ConversationManager:
                 project_knowledge=project_knowledge,
                 project_scope=project_scope,
                 conversation_semantics={
+                    "intent": getattr(
+                        (parsed or {}).get("intent"),
+                        "value",
+                        (parsed or {}).get("intent"),
+                    ),
                     "conversation_domain": (parsed or {}).get(
                         "conversation_domain", "general"
                     ),
