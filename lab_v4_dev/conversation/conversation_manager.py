@@ -976,7 +976,12 @@ class ConversationManager:
                     == "interrupted_branch"
                 )
             ):
-                active_context = self.dialogue_memory.active_context_entity()
+                get_active_context = getattr(
+                    self.dialogue_memory, "active_context_entity", None
+                )
+                active_context = (
+                    get_active_context() if callable(get_active_context) else None
+                )
                 if isinstance(active_context, dict) and active_context.get("entity"):
                     active_action = str(active_context.get("action") or "").casefold()
                     active_type = str(active_context.get("entity_type") or "CONCEPT").upper()
@@ -2670,11 +2675,11 @@ class ConversationManager:
             "العمل", "الملف", "المهمة", "جلسة", "مشروع", "work", "file", "task",
         )):
             return False
-        active = (
-            self.dialogue_memory.active_context_entity()
-            if self.dialogue_memory and hasattr(self.dialogue_memory, "active_context_entity")
-            else None
+        get_active_context = (
+            getattr(self.dialogue_memory, "active_context_entity", None)
+            if self.dialogue_memory else None
         )
+        active = get_active_context() if callable(get_active_context) else None
         if active:
             return False
 

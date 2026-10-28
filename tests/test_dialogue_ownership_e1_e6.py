@@ -95,9 +95,10 @@ def test_continuation_provider_failure_returns_safe_last_point(monkeypatch):
 
     result = manager_.process("اكمل الشرح")
 
-    assert result["status"] == "error"
+    assert result["status"] == "needs_clarification"
     assert result["executed"] is False
-    assert result["source"] == "fallback"
+    assert result["source"] == "dialogue_memory"
+    assert result["recovery"] == "provider_unavailable_preserved_dialogue"
     assert "آخر نقطة محفوظة" in result["text"]
     assert memory.last_topic == "الفن التجريدي وتقنيات اللون"
     assert orchestrator.calls == []

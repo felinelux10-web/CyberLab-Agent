@@ -527,3 +527,18 @@ def test_previous_topic_recall_cannot_be_downgraded_to_live_history(monkeypatch)
     parsed = calls[-1][1]
     assert parsed["intent"] == Intent.SESSION_RESTORE
     assert parsed["session_selector"]["kind"] == "previous_dialogue"
+
+def test_live_dialogue_recall_is_not_mistaken_for_a_saved_session():
+    for request in (
+        "ماذا كنا نقول؟",
+        "ماذا كنا نقول في الردود السابقة؟",
+        "اكتب ملخص الحوار السابق عن الموضوع",
+    ):
+        selected = session_selector(request)
+        assert selected["kind"] == "none", (request, selected)
+
+    # Explicit session identity still routes to persisted-dialogue restoration.
+    assert session_selector("ما مظمون الجلسة السابقة")["kind"] == "previous_dialogue"
+    assert session_selector(
+        "نعم اريد ان نتحدث عن موضوع في الجلسة السابقة"
+    )["kind"] == "previous_dialogue"

@@ -333,7 +333,7 @@ def ask(
                 model=request.model,
             )
 
-    if last_fallback is not None:
+    if last_fallback is not None and last_error is None:
         last_fallback.metadata = dict(last_fallback.metadata or {})
         last_fallback.metadata["provider_chain"] = providers
         last_fallback.metadata["provider_errors"] = provider_errors
