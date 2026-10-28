@@ -409,3 +409,18 @@ def test_explicit_saved_transcript_request_is_not_downgraded_to_live_dialogue():
     assert parsed["intent"] == Intent.SESSION_RESTORE
     assert parsed["session_selector"]["kind"] == "previous_dialogue"
     assert parsed["session_selector"]["report_mode"] == "transcript"
+
+def test_work_session_summary_request_selects_work_only_summaries():
+    selected = session_selector("ما مضمون جلسات العمل؟")
+    assert selected == {
+        "kind": "list",
+        "session_type": "work",
+        "report_mode": "summaries",
+    }
+
+
+def test_unspecified_previously_discussed_topic_selects_saved_dialogue():
+    selected = session_selector("ما الموضوع الذي ناقشناه سابقًا؟")
+    assert selected["kind"] == "previous_dialogue"
+    assert selected["report_mode"] == "standard"
+

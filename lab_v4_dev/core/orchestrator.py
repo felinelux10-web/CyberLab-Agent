@@ -1809,6 +1809,19 @@ SOURCE CODE:
                 return {"status": "success", "intent": intent, "text": "\n".join(lines), "sessions": candidates}
             if selector.get("kind") == "list":
                 candidates = get_session_index()
+                requested_session_type = str(selector.get("session_type") or "").casefold()
+                if requested_session_type == "work":
+                    # Work means every saved record except dialogue-only
+                    # checkpoints; legacy mixed checkpoints remain visible.
+                    candidates = [
+                        item for item in candidates
+                        if str(item.get("session_type") or "work").casefold() != "dialogue"
+                    ]
+                elif requested_session_type == "dialogue":
+                    candidates = [
+                        item for item in candidates
+                        if str(item.get("session_type") or "").casefold() == "dialogue"
+                    ]
                 if not candidates:
                     return {"status": "success", "intent": intent,
                             "text": "لا توجد جلسات محفوظة حاليًا."}

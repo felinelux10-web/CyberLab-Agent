@@ -241,6 +241,18 @@ def session_selector(raw: str) -> dict:
         marker in text
         for marker in ("ملخص", "تلخيص", "لخص", "مضمون", "محتوى", "المحتوى", "المضمون")
     )
+    # Requests specifically about work sessions must not be interpreted as a
+    # technical question about session hijacking or as a mixed-session report.
+    work_sessions_mentioned = bool(re.search(
+        r"(?:جلسات|الجلسات)\s+(?:العمل|العملية|العمليات)",
+        text,
+    ))
+    if work_sessions_mentioned and asks_for_summary:
+        return {
+            "kind": "list",
+            "session_type": "work",
+            "report_mode": "summaries",
+        }
     if collective_sessions and asks_for_summary:
         return {"kind": "list", "report_mode": "summaries"}
 
@@ -324,6 +336,10 @@ def session_selector(raw: str) -> dict:
         "سياق الجلسة السابقة", "سياق الجلسه السابقه",
         "عن اي موضوع كنا نتحدث في الجلسة المحفوظة",
         "عن أي موضوع كنا نتحدث في الجلسة المحفوظة",
+        "الموضوع الذي ناقشناه سابقا", "الموضوع الذي ناقشناه سابقًا",
+        "ما الموضوع الذي ناقشناه", "موضوع ناقشناه سابقا",
+        "موضوع ناقشناه سابقًا", "الموضوع الذي تحدثنا عنه سابقا",
+        "الموضوع الذي تحدثنا عنه سابقًا",
     )
     if any(token in text for token in previous_dialogue_markers) and any(
         token in text for token in ("حوار", "الحوار", "كنا", "موضوع", "نقاش", "نتحدث", "نقول", "سياق", "تقرير", "استرجع", "استرجاع", "تذكر", "تتذكر", "ملخص")
