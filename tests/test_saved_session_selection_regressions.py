@@ -851,3 +851,41 @@ def test_literal_transcript_keeps_control_turns_while_semantic_summary_filters_t
     assert "اعرض ملخص الجلسة المحفوظة" not in semantic
     assert "اعرض ملخص الجلسة المحفوظة" in transcript
     assert "دعنا نتحدث عن الرسم" in transcript
+
+
+def test_session_lookup_rejects_detail_file_with_mismatched_embedded_identity(monkeypatch):
+    from lab_v4_dev.memory.session_state import get_session_by_id
+
+    wanted = {
+        "session_id": "saved-session-requested",
+        "session_type": "dialogue",
+        "title": "الفن التجريدي",
+        "summary": "حوار عن الفن التجريدي",
+    }
+    wrong_detail = {
+        "session_id": "live-current-session",
+        "session_type": "dialogue",
+        "title": "التحية الحالية",
+        "dialogue_state": {
+            "session_id": "live-current-session",
+            "last_topic": "التحية الحالية",
+        },
+    }
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.load_session",
+        lambda: wrong_detail,
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state._load_session_detail",
+        lambda _session_id: wrong_detail,
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_index",
+        lambda: [wanted],
+    )
+
+    result = get_session_by_id("saved-session-requested")
+
+    assert result["session_id"] == "saved-session-requested"
+    assert result["title"] == "الفن التجريدي"
+    assert "dialogue_state" not in result
