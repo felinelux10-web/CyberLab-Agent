@@ -1797,7 +1797,10 @@ class ConversationManager:
             or named_topic_return
         )
         if (
-            raw_act == "CONVERSATION_HISTORY_QUERY"
+            (
+                raw_act == "CONVERSATION_HISTORY_QUERY"
+                or self._dialogue_recall_requested(user_input, parsed)
+            )
             and not specific_dialogue_return
             and not saved_session_request
         ):
@@ -3849,7 +3852,10 @@ class ConversationManager:
         if transition in {ContextTransition.RESTORE, ContextTransition.EXPLICIT_SWITCH}:
             topic = (parsed or {}).get("target")
         elif transition.value in CONTEXTUAL_TRANSITIONS:
-            active = self.dialogue_memory.active_context_entity()
+            get_active_context = getattr(
+                self.dialogue_memory, "active_context_entity", None
+            )
+            active = get_active_context() if callable(get_active_context) else None
             topic = active.get("entity") if isinstance(active, dict) else None
 
         if transition == ContextTransition.AMBIGUOUS and is_social_act(
@@ -4158,10 +4164,20 @@ class ConversationManager:
                 "SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION",
                 "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP",
             }
+            local_history = list(history or [])
+            local_history_is_dialogue = bool(local_history) and all(
+                isinstance(turn, dict)
+                and str(turn.get("conversation_domain") or "general").casefold()
+                    in {"", "general", "social"}
+                and str(turn.get("context_kind") or "dialogue").casefold()
+                    not in {"work", "system", "execution"}
+                for turn in local_history
+            )
             if (
                 local_intent in {"personal_chat", "discussion", "chat"}
                 and local_domain in {"", "general", "social"}
                 and local_act in local_fallback_acts
+                and local_history_is_dialogue
             ):
                 local_semantic = {
                     "conversation_act": local_act,

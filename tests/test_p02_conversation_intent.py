@@ -122,7 +122,8 @@ def test_non_executable_chat_does_not_reach_orchestrator(monkeypatch):
     result = manager.process("مرحبا")
 
     assert len(orchestrator.calls) == 0
-    assert result["source"] == "llm"
+    assert result["status"] == "success"
+    assert result["source"] in {"local_unified_response", "local_social_engine", "local_social"}
 
 
 def test_parser_remains_single_semantic_authority():

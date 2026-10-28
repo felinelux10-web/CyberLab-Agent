@@ -197,7 +197,7 @@ def test_self_description_is_grounded_and_uses_chat_not_orchestrator(
     assert "tokenizer" not in system
 
 
-def test_social_chat_keeps_standard_budget_without_self_knowledge(
+def test_social_greeting_is_local_and_does_not_load_self_knowledge(
     isolated_parser, monkeypatch
 ):
     monkeypatch.setattr(conversation_module, "detect_mode", lambda _text: "CHAT")
@@ -215,9 +215,9 @@ def test_social_chat_keeps_standard_budget_without_self_knowledge(
     result = manager.process("مرحبًا")
 
     assert result["status"] == "success"
-    assert len(gateway_calls) == 1
-    assert gateway_calls[0][1]["max_tokens"] == 1600
-    assert "حقائق self-knowledge الموثقة" not in gateway_calls[0][1]["system"]
+    assert gateway_calls == [], "a plain greeting should be handled locally"
+    assert result.get("source") in {"local_unified_response", "local_social_engine", "local_social"}
+    assert "حقائق self-knowledge الموثقة" not in result.get("text", "")
 
 
 def test_self_knowledge_builder_rejects_non_self_intents():

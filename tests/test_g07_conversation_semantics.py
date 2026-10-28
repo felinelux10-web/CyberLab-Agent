@@ -193,7 +193,7 @@ def test_explicit_technical_topic_with_style_reaches_orchestrator_and_formats_re
     assert "صياغة أكاديمية" in ask_calls[0][1]["system"]
 
 
-def test_social_turn_preserves_active_topic_and_reaches_chat_gateway(
+def test_social_turn_preserves_active_topic_and_stays_local(
     isolated_nlu, monkeypatch
 ):
     orchestrator = RecordingOrchestrator()
@@ -220,7 +220,8 @@ def test_social_turn_preserves_active_topic_and_reaches_chat_gateway(
     assert social["status"] == "success"
     assert social["semantic_request"]["conversation_act"] == "SOCIAL_GREETING"
     assert len(orchestrator.calls) == 1
-    assert len(gateway_calls) == 1
+    assert gateway_calls == [], "a social greeting must not invoke the provider"
+    assert social.get("source") in {"local_unified_response", "local_social_engine", "local_social"}
     assert memory.active_context_entity() == active_before
     assert memory.last_topic == "SQL Injection"
     assert dni.analyses[-1]["conversation_act"] == "SOCIAL_GREETING"

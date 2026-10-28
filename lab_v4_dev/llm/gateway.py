@@ -211,6 +211,7 @@ def ask(
     providers = _provider_chain(active, fallback)
 
     last_error = None
+    last_fallback = None
     provider_errors = []
 
     for name in providers:
@@ -278,6 +279,10 @@ def ask(
             # that explains why no usable answer was produced.
             if not result.ok:
                 if result.status == "fallback":
+                    # Preserve the diagnostic fallback contract if no real
+                    # provider succeeds. It remains status="fallback", never
+                    # status="success", and cannot hide a later real completion.
+                    last_fallback = result
                     provider_errors.append({
                         "provider": name,
                         "code": "FALLBACK_NOT_ACCEPTED",
@@ -327,6 +332,13 @@ def ask(
                 provider=name,
                 model=request.model,
             )
+
+    if last_fallback is not None:
+        last_fallback.metadata = dict(last_fallback.metadata or {})
+        last_fallback.metadata["provider_chain"] = providers
+        last_fallback.metadata["provider_errors"] = provider_errors
+        last_fallback.fallback_used = True
+        return _response_to_dict(last_fallback)
 
     if last_error is not None:
         last_error.metadata = dict(last_error.metadata or {})
