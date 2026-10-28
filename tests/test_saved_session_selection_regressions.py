@@ -482,3 +482,48 @@ def test_work_session_summary_lists_work_records_without_dialogues(monkeypatch):
     assert "الرسم والنحت" not in result["text"]
     assert len(result["sessions"]) == 1
 
+def test_prior_session_content_questions_select_saved_dialogue_semantically():
+    for request in (
+        "نعم اريد ان نتحدث عن موضوع في الجلسة السابقة",
+        "ما مظمون الجلسة السابقة",
+        "ماذا كنا نقول في اخر جلسة اكتب ملخص الجلسة السابقة",
+        "ماهو اخر موضوع ناقشناه سابقا",
+    ):
+        selected = session_selector(request)
+        assert selected["kind"] == "previous_dialogue", (request, selected)
+
+    # A generic restore command remains deliberately ambiguous without a
+    # content question; do not silently change its established meaning.
+    assert session_selector("استرجع الجلسة السابقة")["kind"] == "latest"
+
+
+def test_previous_topic_recall_cannot_be_downgraded_to_live_history(monkeypatch):
+    calls = []
+    orchestrator = SimpleNamespace(
+        context=ContextStore(),
+        handle=lambda text, parsed=None, **kwargs: (
+            calls.append((text, parsed))
+            or {"status": "success", "text": "SAVED DIALOGUE OWNER"}
+        ),
+    )
+    memory = DialogueMemory(orchestrator.context)
+    # A populated live archive used to trigger a second routing decision that
+    # stole this already-classified saved-dialogue request.
+    memory.state.exchange_archive = [
+        {
+            "session_id": memory.state.session_id,
+            "user": "نتحدث الآن عن التحية",
+            "assistant": "هذا تبادل من الحوار الحي",
+            "target": "التحية",
+            "context_kind": "dialogue",
+        }
+    ]
+    manager = ConversationManager(orchestrator, memory)
+    result = manager.process("ماهو اخر موضوع ناقشناه سابقا")
+
+    assert result["status"] == "success"
+    assert result["text"] == "SAVED DIALOGUE OWNER"
+    assert calls, "previous saved-dialogue requests must reach the session restore owner"
+    parsed = calls[-1][1]
+    assert parsed["intent"] == Intent.SESSION_RESTORE
+    assert parsed["session_selector"]["kind"] == "previous_dialogue"

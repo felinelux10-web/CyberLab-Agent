@@ -609,26 +609,19 @@ class ConversationManager:
                 or getattr(live_state, "last_topic", None)
             )
         )
-        # The bare "restore the previous session" wording is ambiguous when
-        # the current dialogue already has a live archive. In that context it
-        # means recall the dialogue branch; explicit "what were we saying in
-        # the last session" remains a persisted-session request.
+        # The session selector is authoritative once it has identified a
+        # previous saved dialogue. Reclassifying that decision as live-history
+        # retrieval based on missing phrase markers made equivalent questions
+        # ("آخر موضوع ناقشناه سابقًا", "ماذا كنا نقول في الجلسة السابقة")
+        # select different memory owners. Only the intentionally ambiguous
+        # generic "استرجع الجلسة السابقة" selector may prefer live continuity.
         prefer_live_dialogue = (
-            (
-                selected_session.get("kind") == "previous_dialogue"
-                and not any(marker in normalized_session_request for marker in (
-                    "اخر جلسة", "الجلسة السابقة", "جلسة محفوظة", "الجلسه المحفوظه",
-                    "الحوار المحفوظ", "نص الحوار المحفوظ", "سجل الحوار المحفوظ",
-                ))
-            )
-            or (
-                selected_session.get("kind") == "latest"
-                and live_dialogue_archive
-                and "استرجع الجلسة السابقة" in normalized_session_request
-                and not any(marker in normalized_session_request for marker in (
-                    "ملخص", "تقرير", "سياق", "حالة",
-                ))
-            )
+            selected_session.get("kind") == "latest"
+            and live_dialogue_archive
+            and "استرجع الجلسة السابقة" in normalized_session_request
+            and not any(marker in normalized_session_request for marker in (
+                "ملخص", "تقرير", "سياق", "حالة",
+            ))
         )
         # Explicit saved-session language has precedence over the generic
         # dialogue-history act. Otherwise phrases such as "what were we saying

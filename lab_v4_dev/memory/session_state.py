@@ -223,6 +223,7 @@ def session_selector(raw: str) -> dict:
         text.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
         .replace("ى", "ي").replace("ـ", "")
         .replace("ملهص", "ملخص").replace("نلخص", "ملخص")
+        .replace("مظمون", "مضمون")
         .replace("جنيع", "جميع").replace("جميغ", "جميع")
     )
     text = re.sub(r"[\u064b-\u065f\u0670]", "", text)
@@ -324,6 +325,28 @@ def session_selector(raw: str) -> dict:
         return {"kind": "status", "status": "paused", "report_mode": report_mode}
     if "قارن" in text and any(token in text for token in ("الجلسات", "جلستين", "جلسة")):
         return {"kind": "compare", "report_mode": "full"}
+    # A question about the content/topic of a temporally referenced session
+    # denotes saved-dialogue recall, not the generic latest-work checkpoint.
+    # Use the relationship between a prior-session reference and a content
+    # question rather than requiring one exact sentence template.
+    prior_session_content_reference = bool(
+        re.search(
+            r"(?:الجلسة|الجلسه|جلسة|جلسه|الجلسات|جلسات|الحوار|حوار|الدردشة|دردشة)"
+            r"\s+(?:ال)?(?:سابقة|سابقه|سابق|ماضية|ماضيه|ماضي|اخيرة|اخيره|اخير|محفوظة|محفوظه|محفوظ)",
+            text,
+        )
+        and (
+            asks_for_summary
+            or any(marker in text for marker in (
+                "موضوع", "مضمون", "محتوى", "كنا نقول", "كنا نتحدث",
+                "كنا نتكلم", "كنا نناقش", "ناقشنا", "تحدثنا",
+                "نتحدث", "نتكلم", "نتناقش", "ماذا قلنا", "ما قلنا",
+            ))
+        )
+    )
+    if prior_session_content_reference:
+        return {"kind": "previous_dialogue", "report_mode": report_mode}
+
     # Distinguish a prior saved dialogue from the generic latest session/work report.
     # This is intentionally checked before broad "استرجع الجلسة" -> latest matching.
     previous_dialogue_markers = (
