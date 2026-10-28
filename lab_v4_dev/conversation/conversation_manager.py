@@ -1527,6 +1527,7 @@ class ConversationManager:
             and parsed_intent_value in {"cyber_explain", "plan", "propose_solution", "lab_plan"}
             and not self._explicit_explanation_topic(user_input)
             and not self._is_explicit_topic_switch(user_input)
+            and not self._is_explicit_targeted_proposal(user_input)
         ):
             parsed = dict(parsed or {})
             parsed.update({
@@ -2483,6 +2484,18 @@ class ConversationManager:
             rf"(?:ما|ماذا|اي|اية)\s+(?:(?:هو|هي|كان|كانت)\s+)?(?:ال)?{ordinals}\s+(?:ال)?{nouns}",
         )
         return any(re.fullmatch(pattern, normalized) for pattern in patterns)
+
+    @classmethod
+    def _is_explicit_targeted_proposal(cls, text: str) -> bool:
+        """Keep a concrete proposal request operational despite an active dialogue branch."""
+        normalized = cls._normalize_transition_text(text).strip()
+        if not normalized.startswith(("اقترح ", "اقترحي ", "اقترحوا ", "قدم اقتراح", "اعطني اقتراح")):
+            return False
+        proposal_cues = (
+            "حل", "طريقه", "خطه", "اسلوب", "معالجه", "اصلاح",
+            "بديل", "تصميم", "استراتيجيه", "آليه",
+        )
+        return any(cue in normalized for cue in proposal_cues) and len(normalized.split()) >= 4
 
     @classmethod
     def _is_explicit_topic_switch(cls, text: str) -> bool:
