@@ -1446,6 +1446,27 @@ class ConversationManager:
         parsed_intent_value = str(
             getattr(parsed.get("intent"), "value", parsed.get("intent")) or ""
         ).casefold()
+        # A short ordinal question (e.g. "ما الاقتراح الأول؟") is a contextual
+        # dialogue reference only when a dialogue branch is already active.
+        # Do not let a targetless proposal parser turn it into a new operation.
+        if (
+            branch_is_dialogue
+            and self._is_contextual_ordinal_follow_up(user_input)
+            and not self._is_explicit_topic_switch(user_input)
+        ):
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": active_branch.get("entity") or "",
+                "entity_type": active_branch.get("entity_type", "REFERENCE"),
+                "conversation_domain": "general",
+                "conversation_act": "TOPIC_CONTINUATION_QUERY",
+                "response_attributes": {},
+                "semantic_pattern": "DIALOGUE_ORDINAL_FOLLOW_UP",
+            })
+            transition = ContextTransition.CONTINUE
+            parsed_intent_value = "personal_chat"
+
         diagnostic_intents = {"health", "self_diagnose", "full_diagnose", "run_diagnostics"}
         if (
             branch_is_dialogue
@@ -2444,6 +2465,24 @@ class ConversationManager:
             .replace("فبل", "قبل")
             .split()
         )
+
+    @classmethod
+    def _is_contextual_ordinal_follow_up(cls, text: str) -> bool:
+        """Recognize a short ordinal question only for an active dialogue branch."""
+        normalized = cls._normalize_transition_text(text).strip(" .,،؛:!?؟")
+        if not normalized:
+            return False
+        nouns = r"(?:اقتراح|حل|فكرة|نقطة|موضوع|مثال|سبب|خطوة|ملاحظة|خيار|نتيجة)"
+        ordinals = (
+            r"(?:اول(?:ى)?|اولي|ثان(?:ي|ية|يه)?|ثالث(?:ة|ه)?|رابع(?:ة|ه)?|"
+            r"خامس(?:ة|ه)?|سادس(?:ة|ه)?|سابع(?:ة|ه)?|ثامن(?:ة|ه)?|"
+            r"تاسع(?:ة|ه)?|عاشر(?:ة|ه)?|[0-9٠-٩]+)"
+        )
+        patterns = (
+            rf"(?:ما|ماذا|اي|اية)\\s+(?:(?:هو|هي|كان|كانت)\\s+)?(?:ال)?{nouns}\\s+(?:ال)?{ordinals}",
+            rf"(?:ما|ماذا|اي|اية)\\s+(?:(?:هو|هي|كان|كانت)\\s+)?(?:ال)?{ordinals}\\s+(?:ال)?{nouns}",
+        )
+        return any(re.fullmatch(pattern, normalized) for pattern in patterns)
 
     @classmethod
     def _is_explicit_topic_switch(cls, text: str) -> bool:
