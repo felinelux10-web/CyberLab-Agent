@@ -15,6 +15,7 @@ from .knowledge_store import (
     get_file,
     get_symbols,
     get_dependencies,
+    canonical_file_path,
 )
 
 
@@ -151,6 +152,9 @@ def get_file_relationships(path):
     import sqlite3
     from .knowledge_store import DB_FILE
 
+    # Relationship rows use the same canonical project-relative path identity
+    # as file rows. Normalize absolute and relative inputs at this boundary.
+    canonical_path = canonical_file_path(path)
     conn = sqlite3.connect(DB_FILE)
 
     try:
@@ -166,7 +170,7 @@ def get_file_relationships(path):
             WHERE source_file=?
             ORDER BY target_name
             """,
-            (path,)
+            (canonical_path,)
         )
 
         return cur.fetchall()
