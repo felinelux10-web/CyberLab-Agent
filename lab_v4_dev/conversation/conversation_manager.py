@@ -1723,6 +1723,34 @@ class ConversationManager:
         ):
             parsed["conversation_domain"] = "general"
 
+        # Explicit targeted proposals are independent requests. Reassert this
+        # ownership after legacy context/continuation overrides so the active
+        # social branch cannot rewrite a concrete proposal as casual dialogue.
+        if self._is_explicit_targeted_proposal(user_input):
+            normalized_proposal = self._normalize_transition_text(user_input)
+            target_match = re.search(
+                r"(?:لمشكلة|بخصوص|حول|عن)\\s+(.+)$",
+                normalized_proposal,
+            )
+            proposal_target = (
+                str((target_match.group(1) if target_match else "") or "").strip()
+                or str((parsed or {}).get("target") or "").strip()
+                or str(user_input or "").strip()
+            )
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.PROPOSE_SOLUTION,
+                "target": proposal_target,
+                "entity_type": "CONCEPT",
+                "conversation_domain": "technical",
+                "conversation_act": "NONE",
+                "semantic_pattern": "EXPLICIT_TARGETED_PROPOSAL",
+                "source": "explicit_targeted_proposal",
+            })
+            transition = ContextTransition.NEW_INDEPENDENT
+            context_entity = None
+            chat_history = []
+
         # Canonical semantic request follows the context-authorized parse and
         # is established before selecting the execution owner.
         semantic = build_semantic_request(
