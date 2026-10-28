@@ -1729,7 +1729,7 @@ class ConversationManager:
         if self._is_explicit_targeted_proposal(user_input):
             normalized_proposal = self._normalize_transition_text(user_input)
             target_match = re.search(
-                r"(?:لمشكلة|بخصوص|حول|عن)\\s+(.+)$",
+                r"(?:لمشكلة|بخصوص|حول|عن)\s+(.+)$",
                 normalized_proposal,
             )
             proposal_target = (
