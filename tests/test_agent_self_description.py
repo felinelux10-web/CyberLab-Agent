@@ -273,3 +273,49 @@ def test_self_query_starts_independent_of_previous_technical_topic(
     assert len(orchestrator.calls) == 1
     assert len(gateway_calls) == 1
     assert "SQL Injection" not in gateway_calls[0][0]
+
+def test_self_description_output_guard_removes_unrequested_architecture_dump():
+    generated = (
+        "أنا CyberLab Agent وأساعدك في فهم الطلب. "
+        "يعتمد الرد على ConversationManager ثم DialogueMemory. "
+        "تستخدم بعض المسارات PreparedExecutionRequest وEventLoop. "
+        "الملف lab_v4_dev/core/agent.py يهيئ أجزاء النظام. "
+        "أستطيع شرح حدودي بوضوح عندما تحتاج ذلك."
+    )
+
+    bounded = ConversationManager._bound_agent_self_reply(
+        generated,
+        Intent.AGENT_CAPABILITIES,
+        "ماذا تستطيع أن تفعل؟ لا تعرض بنية المشروع، اشرح بشكل ودي.",
+        fallback="أنا CyberLab Agent وأساعدك بحسب الأدوات المتاحة.",
+    )
+
+    assert "ConversationManager" not in bounded
+    assert "DialogueMemory" not in bounded
+    assert "PreparedExecutionRequest" not in bounded
+    assert "EventLoop" not in bounded
+    assert "lab_v4_dev/" not in bounded
+    assert len(bounded) <= 620
+    assert "أساعدك" in bounded
+
+
+def test_self_description_output_guard_preserves_requested_architecture_detail():
+    generated = (
+        "تبدأ الرسالة من ConversationManager. "
+        "ثم يمر الطلب إلى PreparedExecutionRequest قبل EventLoop. "
+        "لا تُنفذ هذه الطبقات كل رسالة بالطريقة نفسها. "
+        "وتُستخدم DialogueMemory لحفظ سياق الحوار."
+    )
+
+    bounded = ConversationManager._bound_agent_self_reply(
+        generated,
+        Intent.AGENT_CAPABILITIES,
+        "اشرح المكونات البرمجية ومسار التنفيذ بالتفصيل.",
+        fallback="",
+    )
+
+    assert "ConversationManager" in bounded
+    assert "PreparedExecutionRequest" in bounded
+    assert "EventLoop" in bounded
+    assert len(bounded) <= 900
+
