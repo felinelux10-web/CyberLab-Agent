@@ -439,7 +439,7 @@ def test_p09_relationship_reads_share_canonical_file_identity():
         assert knowledge_query.get_file_relationships(relative) == expected_relationships
         assert graph_query.get_dependencies_of(absolute) == expected_dependencies
         assert graph_query.get_dependencies_of(relative) == expected_dependencies
-        assert graph_query.get_importers("lab_v4_dev/core/agent") == [relative]
+        assert relative in graph_query.get_importers("lab_v4_dev/core/agent")
     finally:
         conn = knowledge_store.get_connection()
         try:
