@@ -424,3 +424,61 @@ def test_unspecified_previously_discussed_topic_selects_saved_dialogue():
     assert selected["kind"] == "previous_dialogue"
     assert selected["report_mode"] == "standard"
 
+def test_work_session_summary_lists_work_records_without_dialogues(monkeypatch):
+    sessions = [
+        {
+            "session_id": "dialogue-art-filter",
+            "session_type": "dialogue",
+            "status": "completed",
+            "active_goal": "الرسم والنحت",
+            "dialogue_state": {
+                "session_id": "dialogue-art-filter",
+                "last_topic": "الرسم والنحت",
+                "history": [],
+                "exchange_archive": [],
+            },
+        },
+        {
+            "session_id": "work-project-filter",
+            "session_type": "work",
+            "status": "paused",
+            "active_goal": "إصلاح الاختبارات",
+            "next_step": "تشغيل الاختبارات المستهدفة",
+            "context_state": {"subject": "إصلاح الاختبارات"},
+        },
+    ]
+    agent = SimpleNamespace(
+        restore_session_snapshot=lambda _data: True,
+        restore_session_context=lambda: False,
+        runtime=None,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    orchestrator = Orchestrator(agent)
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_index",
+        lambda: sessions,
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_by_id",
+        lambda session_id: next(
+            (item for item in sessions if item["session_id"] == session_id), {}
+        ),
+    )
+
+    request = "ما مضمون جلسات العمل؟"
+    result = orchestrator.handle(
+        request,
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "target": "",
+            "context": "system",
+            "session_selector": session_selector(request),
+        },
+    )
+
+    assert result["status"] == "success"
+    assert "إصلاح الاختبارات" in result["text"]
+    assert "تشغيل الاختبارات المستهدفة" in result["text"]
+    assert "الرسم والنحت" not in result["text"]
+    assert len(result["sessions"]) == 1
+
