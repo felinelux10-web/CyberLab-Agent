@@ -1934,8 +1934,16 @@ SOURCE CODE:
                         "executed": False,
                         "text": (
                             f"تعذر التحقق من هوية الجلسة رقم {number}. "
-                            "لم أستخدم الجلسة الحالية بديلًا عنها."
+                            "لم أستبدلها بالجلسة الحالية أو بسجل آخر."
                         ),
+                        "requested_session_id": str(
+                            (candidates[number - 1] or {}).get("session_id") or ""
+                        ).strip(),
+                        "resolved_session_id": str(
+                            (get_session_by_id(
+                                (candidates[number - 1] or {}).get("session_id")
+                            ) or {}).get("session_id") or ""
+                        ).strip() or None,
                     }
             if selector.get("kind") == "latest":
                 index = sorted(
