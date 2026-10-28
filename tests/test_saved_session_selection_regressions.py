@@ -380,7 +380,7 @@ def test_dialogue_restore_summary_uses_saved_topic_and_stop_point():
     assert "نقطة التوقف" in summary
     assert "ما نوقش فعليًا في الحوار" in summary
     assert "قارن الحوار بين «النحت البارز والغائر»" in summary
-    assert "اتجاه بروز الشكل عن السطح" in summary
+    assert "يوضح الرد أن اتجاه بروز الشكل عن السطح" in summary
     assert "ما الفرق بين النحت البارز والغائر؟" not in summary
     assert "الفرق هو اتجاه بروز الشكل عن السطح." not in summary
 
@@ -957,4 +957,17 @@ def test_dialogue_brief_summary_is_semantic_and_ignores_control_turn_as_topic():
     assert "الخلاصة الدلالية" in brief["summary"]
     assert "ما الفرق بين النحت البارز والنحت الغائر؟" not in brief["summary"]
     assert "أنا بخير" not in brief["summary"]
+
+def test_offline_dialogue_insights_preserve_both_sides_of_comparison():
+    from lab_v4_dev.memory.session_state import _dialogue_exchange_insights
+
+    insights = _dialogue_exchange_insights({
+        "user": "ما الفرق بين القائمة والقاموس؟",
+        "assistant": "القائمة تحفظ ترتيب العناصر؛ القاموس يربط المفاتيح بالقيم.",
+        "target": "هياكل البيانات في Python",
+    })
+    combined = " ".join(insights)
+    assert "القائمة تحفظ ترتيب العناصر" in combined
+    assert "القاموس يربط المفاتيح بالقيم" in combined
+    assert "ما الفرق بين القائمة والقاموس؟" not in combined
 
