@@ -1749,7 +1749,8 @@ SOURCE CODE:
             from lab_v4_dev.memory.session_state import (
                 load_session, recoverable_work_checkpoint,
                 build_session_restore_summary, build_session_brief_summary,
-                analyze_session, get_session_by_id, get_session_index, search_sessions,
+                analyze_session, get_session_by_id, get_session_by_number,
+                get_session_index, search_sessions,
             )
             selector = session_selector or {}
             selected_id = None
@@ -1921,7 +1922,21 @@ SOURCE CODE:
                 if number < 1 or number > len(candidates):
                     return {"status": "needs_clarification", "intent": intent,
                             "text": f"لا توجد جلسة محفوظة بالرقم {number}. اختر رقمًا من 1 إلى {len(candidates)}."}
-                selected_id = candidates[number - 1].get("session_id")
+                numbered_session = get_session_by_number(number)
+                selected_id = str(
+                    (numbered_session or {}).get("session_id") or ""
+                ).strip()
+                if not selected_id:
+                    return {
+                        "status": "needs_clarification",
+                        "intent": intent,
+                        "source": "saved_session_number_guard",
+                        "executed": False,
+                        "text": (
+                            f"تعذر التحقق من هوية الجلسة رقم {number}. "
+                            "لم أستخدم الجلسة الحالية بديلًا عنها."
+                        ),
+                    }
             if selector.get("kind") == "latest":
                 index = sorted(
                     get_session_index(),
