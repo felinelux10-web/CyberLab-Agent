@@ -775,3 +775,79 @@ def test_explicit_session_number_never_falls_back_to_current_when_identity_misma
     assert result["resolved_session_id"] == "live-current-session"
     assert "لم أستبدلها" in result["text"]
     assert "التحية الحالية" not in result["text"]
+
+
+def test_semantic_dialogue_summary_excludes_greetings_and_session_commands():
+    from lab_v4_dev.memory.session_state import build_session_restore_summary
+
+    sid = "dialogue-summary-control-filter"
+    saved = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "last_topic": "حفظ سياق الحوار",
+            "exchange_archive": [
+                {
+                    "session_id": sid,
+                    "user": "كيفك ايها الوكيل",
+                    "assistant": "أنا بخير، شكرًا لسؤالك.",
+                    "target": "حفظ سياق الحوار",
+                },
+                {
+                    "session_id": sid,
+                    "user": "دعنا نتحدث عن الفن التجريدي وتقنيات اللون",
+                    "assistant": "يمكن تناول الفن التجريدي من خلال اللون والتكوين.",
+                    "target": "الفن التجريدي وتقنيات اللون",
+                },
+                {
+                    "session_id": sid,
+                    "user": "اكتب ملخص الجلسة المحفوظة رقم 1",
+                    "assistant": "سأراجع الجلسة المحددة.",
+                    "target": "حفظ سياق الحوار",
+                },
+            ],
+        },
+    }
+
+    summary = build_session_restore_summary(saved)
+
+    assert "الفن التجريدي وتقنيات اللون" in summary
+    assert "كيفك ايها الوكيل" not in summary
+    assert "اكتب ملخص الجلسة المحفوظة رقم 1" not in summary
+    assert "نص الحوار المحفوظ حرفيًا" not in summary
+
+
+def test_literal_transcript_keeps_control_turns_while_semantic_summary_filters_them():
+    from lab_v4_dev.memory.session_state import build_session_restore_summary
+
+    sid = "dialogue-summary-vs-transcript"
+    saved = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "last_topic": "الرسم",
+            "exchange_archive": [
+                {
+                    "session_id": sid,
+                    "user": "اعرض ملخص الجلسة المحفوظة",
+                    "assistant": "سأحلل الجلسة.",
+                    "target": "حفظ سياق الحوار",
+                },
+                {
+                    "session_id": sid,
+                    "user": "دعنا نتحدث عن الرسم",
+                    "assistant": "الرسم يستخدم الخط واللون والتكوين.",
+                    "target": "الرسم",
+                },
+            ],
+        },
+    }
+
+    semantic = build_session_restore_summary(saved)
+    transcript = build_session_restore_summary(saved, report_mode="transcript")
+
+    assert "اعرض ملخص الجلسة المحفوظة" not in semantic
+    assert "اعرض ملخص الجلسة المحفوظة" in transcript
+    assert "دعنا نتحدث عن الرسم" in transcript
