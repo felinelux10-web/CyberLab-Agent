@@ -244,12 +244,13 @@ def test_identity_and_capability_prompt_stays_brief_and_avoids_architecture_inve
         conversation_semantics={"intent": Intent.AGENT_CAPABILITIES.value},
     )
 
+    assert "جملتين أو ثلاث" in identity_system
+    assert "لا تسرد بنية المشروع" in identity_system
+    assert "طلب الأسلوب في الرسالة الحالية" in capability_system
+    assert "دون عرض بنية المشروع أو أسماء مكوّناته" in capability_system
     for system in (identity_system, capability_system):
-        assert "جملتين أو ثلاث" in system or "طلب الأسلوب في الرسالة الحالية" in system
-        assert "لا تعرض بنية المشروع" in system or "لا تسرد بنية المشروع" in system
         assert "PreparedExecutionRequest" not in system
         assert "lab_v4_dev/core/agent.py" not in system
-    assert "لا تعرض بنية المشروع أو أسماء مكوّناته" in capability_system
 
 
 @pytest.mark.parametrize(
