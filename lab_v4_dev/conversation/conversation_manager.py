@@ -2460,6 +2460,7 @@ class ConversationManager:
         if (
             intent in {Intent.PROPOSE_SOLUTION, Intent.PLAN}
             and not explicit_target
+            and not self._is_explicit_targeted_proposal(text)
             and str((parsed or {}).get("conversation_domain") or "general")
             not in {"technical", "project", "system"}
         ):
