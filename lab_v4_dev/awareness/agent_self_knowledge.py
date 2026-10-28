@@ -162,15 +162,61 @@ _FACTS = (
 )
 
 
+# Natural identity/capability answers are intentionally kept separate from
+# architecture inventories. The source paths are still checked before these
+# statements are released, but are not injected into a simple conversational
+# answer where they tend to be repeated verbatim.
+_USER_FACING_SELF_FACTS = {
+    "agent_identity": (
+        "أنا CyberLab Agent، وكيل برمجي داخل هذا المشروع يساعدك في الحوار وفهم "
+        "الطلب وتوجيهه إلى المسار المناسب. أشرح ما تثبته الشفرة، ولا أدّعي أن "
+        "عملية نُفذت إلا إذا أكدت ذلك نتيجة فعلية.",
+        (
+            "run.py",
+            "lab_v4_dev/core/agent.py",
+            "lab_v4_dev/conversation/conversation_manager.py",
+        ),
+    ),
+    "agent_capabilities": (
+        "أساعد في الحوار وشرح المفاهيم، وتحليل ملفات المشروع أو تعديلها وتشغيل "
+        "الاختبارات عندما يدعم المسار ذلك وتكون الأدوات والصلاحيات متاحة. "
+        "أميّز بين اقتراح خطوة وبين عملية ثبت تنفيذها بالفعل.",
+        (
+            "lab_v4_dev/intent/intent_parser.py",
+            "lab_v4_dev/core/orchestrator.py",
+            "lab_v4_dev/executor/executor.py",
+            "lab_v4_dev/llm/gateway.py",
+        ),
+    ),
+}
+
+_FACTS_BY_INTENT = {
+    # Keep each explanation bounded to facts that answer that question.
+    "agent_architecture": {1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13},
+    "agent_execution_flow": {0, 2, 3, 4, 7, 9, 11, 12, 13},
+    "agent_limits": {7, 9, 10, 11, 12, 13},
+}
+
+
 def build_agent_self_knowledge(intent: str) -> str:
-    """Return only reviewed, source-backed project facts for self questions."""
+    """Return a concise, intent-scoped view of source-backed agent facts."""
     value = getattr(intent, "value", intent)
     value = str(value or "").casefold()
     if value not in _AGENT_SELF_INTENTS:
         return ""
 
+    if value in _USER_FACING_SELF_FACTS:
+        statement, sources = _USER_FACING_SELF_FACTS[value]
+        # These summaries are emitted only when every grounding source exists.
+        if all((_REPO_ROOT / source).is_file() for source in sources):
+            return statement
+        return ""
+
+    selected_indexes = _FACTS_BY_INTENT.get(value, set())
     lines = []
-    for statement, sources in _FACTS:
+    for index, (statement, sources) in enumerate(_FACTS):
+        if index not in selected_indexes:
+            continue
         existing = [
             source for source in sources
             if (_REPO_ROOT / source).is_file()
