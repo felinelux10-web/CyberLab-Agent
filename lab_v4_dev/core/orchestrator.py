@@ -2871,7 +2871,7 @@ SOURCE CODE:
     def get_history(self) -> list: return self.history
 
     def summary(self) -> dict:
-intents = {}
+        intents = {}
         statuses = {}
         for h in self.history:
             i = h.get("intent", "?")
