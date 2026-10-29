@@ -225,7 +225,7 @@ def test_grounded_prompt_separates_architectural_facts_from_runtime_trace():
     assert "حقائق الوكيل المناسبة للسؤال" in system
     assert "مصادر الشفرة:" in system
     assert "lab_v4_dev/intent/intents.py" in system
-    assert "التمييز بين الحقائق المعمارية وأثر التشغيل" in system
+    assert "وصف المعمارية لا يثبت مسار التنفيذ الفعلي" in system
     assert "لا تدّعِ أن الرسالة الحالية سلكت مسارًا بعينه دون trace خاص بها" in system
     assert "أربعة إلى ستة بنود" in system
 
