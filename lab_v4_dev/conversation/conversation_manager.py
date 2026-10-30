@@ -4784,7 +4784,7 @@ class ConversationManager:
                     )
                 else:
                     if last_point:
-                        details.append(f"آخر مضمون محفوظ في هذا الفرع: {last_point}")
+                        details.append(f"آخر نقطة محفوظة في هذا الفرع: {last_point}")
                     details.append(
                         "تعذر توليد شرح جديد لأن المزود غير متاح في هذه المحاولة. "
                         "حافظت على حدود السجل ولم أختلق محتوى جديدًا. "
