@@ -532,7 +532,7 @@ def session_selector(raw: str) -> dict:
     topic_filter = None
     topic_match = re.search(
         r"(?:ملخص|لخص|تلخيص)?\s*(?:عن|حول|موضوع(?:\s+(?:عن|حول))?)\s+"
-        r"(.+?)(?=\\s+(?:في|ضمن)\\s+(?:الجلسة|الحوار)|$)",
+        r"(.+?)(?=\s+(?:في|ضمن)\s+(?:الجلسة|الحوار)|$)",
         text,
     )
     if topic_match:
