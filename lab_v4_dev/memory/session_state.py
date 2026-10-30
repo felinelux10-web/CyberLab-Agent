@@ -521,7 +521,7 @@ def session_selector(raw: str) -> dict:
 
     capability_request = bool(
         re.search(
-            r"(?:هل\\s+)?(?:تستطيع|يمكنك|تقدر|بامكانك|بإمكانك).{0,35}"
+            r"(?:هل\s+)?(?:تستطيع|يمكنك|تقدر|بامكانك|بإمكانك).{0,35}"
             r"(?:استرجاع|استعادة|استرداد).{0,25}جلس",
             text,
         )
@@ -531,14 +531,14 @@ def session_selector(raw: str) -> dict:
 
     topic_filter = None
     topic_match = re.search(
-        r"(?:ملخص|لخص|تلخيص)?\\s*(?:عن|حول|موضوع(?:\\s+(?:عن|حول))?)\\s+"
+        r"(?:ملخص|لخص|تلخيص)?\s*(?:عن|حول|موضوع(?:\s+(?:عن|حول))?)\s+"
         r"(.+?)(?=\\s+(?:في|ضمن)\\s+(?:الجلسة|الحوار)|$)",
         text,
     )
     if topic_match:
-        candidate_topic = topic_match.group(1).strip(" \\t\\r\\n.,،؛:!?؟")
+        candidate_topic = topic_match.group(1).strip(" \t\r\n.,،؛:!?؟")
         if candidate_topic and not re.search(
-            r"^(?:الجلسة|الحوار|الجلسات|الحوارات)(?:\\s|$)", candidate_topic
+            r"^(?:الجلسة|الحوار|الجلسات|الحوارات)(?:\s|$)", candidate_topic
         ):
             topic_filter = candidate_topic
 
