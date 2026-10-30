@@ -3548,16 +3548,15 @@ class ConversationManager:
         explicit_transcript_request = is_explicit_transcript_request(text)
         if explicit_transcript_request:
             response_mode = "transcript"
+        elif any(marker in normalized_query for marker in (
+            "ملخص", "لخص", "تلخيص", "مضمون الحوار", "مضمون الجلسة",
+        )):
+            response_mode = "summary"
         elif response_mode == "transcript":
             response_mode = "summary"
         elif (
             not response_mode
-            and (
-                history_act in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
-                or any(marker in normalized_query for marker in (
-                    "ملخص", "لخص", "تلخيص", "مضمون الحوار", "مضمون الجلسة",
-                ))
-            )
+            and history_act in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
         ):
             response_mode = "summary"
 
