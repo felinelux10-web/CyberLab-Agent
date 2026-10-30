@@ -20,6 +20,7 @@ from lab_v4_dev.awareness.knowledge_retriever import resolve_project_scope
 from lab_v4_dev.config.provider_config import get_active_provider
 import os
 import re
+_re_module = re
 import shutil
 import uuid
 import inspect
@@ -2299,7 +2300,7 @@ SOURCE CODE:
                         # role-labelled dialogue dumps even if the model ignored
                         # the summary/report contract; the grounded local report
                         # remains the deterministic fallback.
-                        if synthesized_text and re.search(
+                        if synthesized_text and _re_module.search(
                             r"(?m)^\s*(?:[-*]\s*)?(?:المستخدم|الوكيل|رسالة المستخدم|رد الوكيل)\s*:",
                             synthesized_text,
                         ):
