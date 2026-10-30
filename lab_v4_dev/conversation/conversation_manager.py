@@ -1002,6 +1002,22 @@ class ConversationManager:
                 ),
             }
 
+        # Capability questions are answered from the local session-store
+        # contract. They must not trigger a restore, a transcript, or a provider.
+        if selected_session.get("output_kind") == "capability":
+            return {
+                "status": "success",
+                "intent": Intent.AGENT_CAPABILITIES,
+                "source": "local_session_store",
+                "output_kind": "capability",
+                "executed": False,
+                "text": (
+                    "نعم، أستطيع تحديد جلسة محفوظة من فهرسها وقراءة سجلها. "
+                    "اذكر رقم الجلسة أو معرّفها أو موضوعها؛ ولن أعرض النص الحرفي "
+                    "للحوار إلا إذا طلبته صراحة."
+                ),
+            }
+
         # Broad memory-inventory questions are read from local memory owners.
         # Explicit saved-session selectors keep their dedicated report path.
         if (
