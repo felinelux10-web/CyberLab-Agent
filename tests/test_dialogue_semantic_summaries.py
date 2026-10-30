@@ -311,7 +311,7 @@ def test_positive_acknowledgement_does_not_become_a_fake_dialogue_topic():
         {"role": "user", "content": "كيف الحال", "conversation_domain": "social", "context_kind": "social"},
         {"role": "assistant", "content": "أنا بخير، شكرًا لسؤالك. كيف حالك أنت؟", "conversation_domain": "social", "context_kind": "dialogue"},
         {"role": "user", "content": "جيد", "conversation_domain": "social", "context_kind": "social"},
-        {"role": "assistant", "content": "سعيد بأنك بخير.", "conversation_domain": "social", "context_kind": "dialogue"},
+        {"role": "assistant", "content": "أنا بخير، شكرًا لسؤالك. كيف حالك أنت؟", "conversation_domain": "social", "context_kind": "dialogue"},
     ]
 
     result = answer_local_response(
