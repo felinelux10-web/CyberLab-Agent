@@ -3411,6 +3411,7 @@ class ConversationManager:
             "موضوعين", "الموضوعين", "موضوعات", "المواضيع", "آخر موضوع",
             "اخر موضوع", "ماذا شرح", "ماذا شرحت", "شرحنا", "تكلمنا",
             "ناقشنا", "سجل المحادث", "تاريخ المحادث",
+            "ملخص", "لخص", "تلخيص", "مضمون الحوار", "مضمون الجلسة",
         )
         if (
             history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
@@ -3464,6 +3465,25 @@ class ConversationManager:
             )
         ):
             response_mode = "summary"
+        # A role-labelled transcript is a privileged output format. Parser
+        # hints and generic history wording cannot enable it: the current user
+        # turn must explicitly ask for literal/original messages.
+        explicit_transcript_request = bool(re.search(
+            r"(?:حرفيا|حرفيًا|الرسائل\s+الاصليه|الرسائل\s+الأصلية|"
+            r"النص\s+الاصلي|النص\s+الأصلي|اعرض\s+(?:لي\s+)?نص\s+الحوار|"
+            r"اعرض\s+(?:لي\s+)?سجل\s+الحوار|كما\s+قيلت)",
+            normalized_query,
+        ))
+        if explicit_transcript_request:
+            response_mode = "transcript"
+        elif response_mode == "transcript":
+            response_mode = "summary"
+        elif (
+            not response_mode
+            and history_act in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
+        ):
+            response_mode = "summary"
+
         if response_mode in {"summary", "last_question", "answer", "transcript"}:
             result = self._answer_dialogue_history(text, response_mode, exchanges)
             response_attributes["dialogue_response_mode"] = response_mode
@@ -3498,14 +3518,12 @@ class ConversationManager:
                 else self._latest_dialogue_branch(dialogue_candidates)[-6:]
             )
             if dialogue_exchanges:
-                return {
-                    "status": "success", "intent": Intent.MEMORY_DUMP,
-                    "source": "dialogue_memory",
-                    "text": "في الحوار السابق دار التبادل التالي:\n"
-                    + "\n".join(self._format_dialogue_exchanges(dialogue_exchanges)),
-                    "dialogue_turns": dialogue_exchanges,
-                    "executed": False,
-                }
+                # A history/summary request reads exchanges as evidence but
+                # never renders role-labelled pairs unless transcript mode
+                # was explicitly selected above.
+                return self._answer_dialogue_history(
+                    text, "summary", dialogue_exchanges
+                )
             if history_act == "TOPIC_RETURN":
                 return {
                     "status": "needs_clarification",
@@ -3537,9 +3555,14 @@ class ConversationManager:
                     or any(str(topic).casefold() in str(item.get("user", "")).casefold() for topic in topics)
                 )
             ][-6:]
-            text += "\n\nالتبادل الأخير:\n" + "\n".join(
-                self._format_dialogue_exchanges(selected)
+            from lab_v4_dev.memory.session_state import summarize_dialogue_exchanges
+            semantic = summarize_dialogue_exchanges(
+                selected, topic="موضوعات الحوار المسجلة", limit=6
             )
+            if semantic.get("insights"):
+                text += "\n\nمضمون ما ناقشناه:\n" + "\n".join(
+                    f"- {item}" for item in semantic["insights"]
+                )
         return {
             "status": "success", "intent": Intent.MEMORY_DUMP,
             "source": "dialogue_memory",
@@ -3811,11 +3834,22 @@ class ConversationManager:
                     "status": "needs_clarification",
                     "text": "لا أجد في سجل الحوار المحفوظ تفاصيل موثوقة عن هذا الموضوع؛ لن أخمّن.",
                 }
+            recorded_answers = [
+                " ".join(str(item.get("assistant") or "").split())
+                for item in selected
+                if " ".join(str(item.get("assistant") or "").split())
+            ]
+            if not recorded_answers:
+                return {
+                    **base,
+                    "status": "needs_clarification",
+                    "text": "وجدت التبادل المرتبط بالموضوع، لكن لا يوجد رد محفوظ يمكن استعادته بثقة.",
+                }
             return {
                 **base,
-                "text": "بحسب سجل الحوار المحفوظ:\n"
-                + "\n".join(self._format_dialogue_exchanges(selected)),
-                "dialogue_turns": selected,
+                "text": "بحسب الإجابات المسجلة في الحوار:\n"
+                + "\n".join(f"- {answer[:1200]}" for answer in recorded_answers),
+                "recorded_answer_count": len(recorded_answers),
             }
 
         if response_mode == "summary":
