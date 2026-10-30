@@ -88,6 +88,9 @@ class ConversationManager:
         self.orchestrator = orchestrator
         self.dialogue_memory = dialogue_memory
         self.dni = dni
+        # A read-only saved-session report owns short follow-up turns until
+        # the user starts a different request or selects another session.
+        self.active_report_session_id = None
 
     @staticmethod
     def _is_project_progress_request(text: str) -> bool:
@@ -785,6 +788,7 @@ class ConversationManager:
         # Session boundaries take precedence over pending clarifications and all
         # NLU/context resolution. A new dialogue must never inherit old state.
         if self._is_new_dialogue_session_request(user_input):
+            self.active_report_session_id = None
             reset = getattr(self.orchestrator, "reset_conversation_context", None)
             if callable(reset):
                 reset()
@@ -805,6 +809,28 @@ class ConversationManager:
             }
 
         selected_saved_session_id = None
+        active_report_followup = False
+        active_report_id = str(self.active_report_session_id or "").strip()
+        if active_report_id:
+            from lab_v4_dev.memory.session_state import session_selector
+            explicit_session_selector = session_selector(user_input)
+            normalized_followup = normalize_text(user_input)
+            active_report_followup = (
+                explicit_session_selector.get("kind") == "none"
+                and any(marker in normalized_followup for marker in (
+                    "اختصر", "اختصار", "لخص", "تلخيص", "ملخص",
+                    "بسط", "بشكل مبسط", "بطريقه مبسطه", "بطريقة مبسطة",
+                    "اشرح", "وضح", "ما علاقه", "ما علاقة", "كيف يرتبط",
+                    "ماذا عن", "تابع", "اكمل", "أكمل",
+                ))
+            )
+            if active_report_followup:
+                selected_saved_session_id = active_report_id
+            elif explicit_session_selector.get("kind") == "none":
+                # An unrelated new request releases the report lock. Explicit
+                # saved-session selection will replace it after resolution.
+                self.active_report_session_id = None
+
         # Resolve saved-session ambiguity before NLU sees this turn.
         if self.dialogue_memory:
             state = getattr(self.dialogue_memory, "state", None)
@@ -964,7 +990,16 @@ class ConversationManager:
             selected_session = {
                 "kind": "id",
                 "session_id": selected_saved_session_id,
-                "report_mode": "standard",
+                "report_mode": "summary" if active_report_followup else "standard",
+                "output_kind": "summary" if active_report_followup else "report",
+                "topic_filter": (
+                    user_input
+                    if active_report_followup and any(
+                        marker in normalize_text(user_input)
+                        for marker in ("ما علاقه", "ما علاقة", "كيف يرتبط")
+                    )
+                    else None
+                ),
             }
 
         # Broad memory-inventory questions are read from local memory owners.
@@ -2358,6 +2393,13 @@ class ConversationManager:
             chat_history=chat_history,
             context_transition=transition.value,
         )
+        if (
+            result.get("context_action") == "read_only_report"
+            and str(result.get("session_id") or "").strip()
+        ):
+            self.active_report_session_id = str(result["session_id"]).strip()
+        elif not active_report_followup and result.get("status") == "success":
+            self.active_report_session_id = None
 
         # Project-list clarification is conversation-owned state.
         if self.dialogue_memory:
