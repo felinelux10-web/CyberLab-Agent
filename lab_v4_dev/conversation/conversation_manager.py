@@ -1032,6 +1032,8 @@ class ConversationManager:
         # rendering, but both share the same output-kind decision.
         candidate = dict(candidate or {})
         candidate["output_kind"] = str(selected_session.get("output_kind") or "chat")
+        if selected_session.get("topic_filter"):
+            candidate["topic_filter"] = selected_session["topic_filter"]
         if selected_session.get("kind") != "none":
             candidate["session_selector"] = dict(selected_session)
 
@@ -3551,6 +3553,35 @@ class ConversationManager:
         response_mode = str(
             response_attributes.get("dialogue_response_mode", "")
         ).casefold()
+        topic_filter = str((parsed or {}).get("topic_filter") or "").strip()
+        if (
+            topic_filter
+            and str((parsed or {}).get("output_kind") or "").casefold()
+                in {"topic_summary", "report"}
+        ):
+            normalized_topic = self._normalize_transition_text(topic_filter)
+            topic_exchanges = [
+                item for item in exchanges
+                if normalized_topic
+                and (
+                    normalized_topic in self._normalize_transition_text(item.get("target") or "")
+                    or normalized_topic in self._normalize_transition_text(item.get("user") or "")
+                )
+            ]
+            if not topic_exchanges:
+                return {
+                    "status": "needs_clarification",
+                    "intent": Intent.MEMORY_DUMP,
+                    "source": "dialogue_memory",
+                    "output_kind": str((parsed or {}).get("output_kind") or "topic_summary"),
+                    "text": (
+                        f"لا أجد في الحوار الجاري تبادلات موثقة عن «{topic_filter}». "
+                        "لم أوسّع الملخص إلى موضوعات أخرى."
+                    ),
+                    "executed": False,
+                }
+            exchanges = topic_exchanges
+            response_mode = "summary"
         if not response_mode and live_previous_session_recall:
             response_mode = "summary"
         elif not response_mode and any(
