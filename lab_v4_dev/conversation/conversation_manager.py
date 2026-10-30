@@ -3603,7 +3603,11 @@ class ConversationManager:
             if boundary(item)
         ]
         if not boundaries:
-            return substantive[-1:]
+            # No recorded transition means there is no evidence that the
+            # dialogue changed branches. Keep the complete current-session
+            # sequence; dropping everything except the last exchange would
+            # erase earlier topics from an ordinary live-dialogue summary.
+            return substantive
 
         latest_index, latest_kind = boundaries[-1]
         if latest_kind == "restore":
