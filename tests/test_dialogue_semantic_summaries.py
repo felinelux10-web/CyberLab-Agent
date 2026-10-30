@@ -282,3 +282,20 @@ def test_memory_inventory_request_is_answered_before_provider_dispatch(monkeypat
     assert result["status"] == "success"
     assert result["source"] == "local_memory_inventory"
     assert calls == ["local"]
+
+
+
+def test_provider_cannot_replace_cyberlab_identity_with_host_product_identity():
+    fallback = "أنا CyberLab Agent داخل هذا المشروع."
+    reply = (
+        "أنا ChatGPT من OpenAI، وأخضع لسياسات OpenAI."
+    )
+
+    bounded = ConversationManager._bound_agent_self_reply(
+        reply,
+        "agent_identity",
+        "من أنت؟",
+        fallback=fallback,
+    )
+
+    assert bounded == fallback
