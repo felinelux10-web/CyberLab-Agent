@@ -1450,14 +1450,26 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
             if progress_summary["meaningful_exchange_count"]
             else "اختيار موضوع واضح للبدء؛ السجل الحالي لا يثبت وجود نقاش موضوعي سابق."
         )
-        return "\n".join([
+        progress_insights = progress_summary["insights"]
+        progress_lines = [
             "=== ملخص الحوار ونقطة التوقف ===",
             f"الموضوع: {progress_summary['topic'] or topic}",
             f"التبادلات المكتملة المحفوظة: {len(exchanges)}",
+            "",
+            "ما ناقشناه فعليًا:",
+        ]
+        progress_lines.extend(
+            [f"- {insight}" for insight in progress_insights]
+            if progress_insights
+            else ["- لا يتضمن السجل مضمونًا موضوعيًا كافيًا لتلخيصه."]
+        )
+        progress_lines.extend([
+            "",
             f"نقطة التوقف: {progress_stop_point}",
             f"الخطوة التالية: {progress_next_step}",
             "لم يتم تنفيذ أي خطوة جديدة أثناء الاستعادة.",
         ])
+        return "\\n".join(progress_lines)
 
     topics = []
     for exchange in summary_exchanges:
