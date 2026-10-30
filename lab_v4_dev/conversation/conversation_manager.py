@@ -2434,6 +2434,9 @@ class ConversationManager:
             chat_history=chat_history,
             context_transition=transition.value,
         )
+        selected_output_kind = (parsed.get("session_selector") or {}).get("output_kind")
+        if selected_output_kind:
+            result["output_kind"] = selected_output_kind
         if (
             result.get("context_action") == "read_only_report"
             and str(result.get("session_id") or "").strip()
