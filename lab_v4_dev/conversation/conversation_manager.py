@@ -3850,17 +3850,21 @@ class ConversationManager:
                 else self._latest_dialogue_branch(relevant)[-5:]
             )
             from lab_v4_dev.memory.session_state import summarize_dialogue_exchanges
-            active_topic = str(
-                getattr(state, "last_topic", None)
-                or next(
-                    (
-                        str(item.get("target") or "").strip()
-                        for item in reversed(branch)
-                        if str(item.get("target") or "").strip()
-                    ),
-                    "",
-                )
-            ).strip()
+            active_topic = (
+                "موضوعات متعددة نوقشت بالترتيب"
+                if whole_dialogue_summary
+                else str(
+                    getattr(state, "last_topic", None)
+                    or next(
+                        (
+                            str(item.get("target") or "").strip()
+                            for item in reversed(branch)
+                            if str(item.get("target") or "").strip()
+                        ),
+                        "",
+                    )
+                ).strip()
+            )
             report = summarize_dialogue_exchanges(
                 branch,
                 topic=active_topic,
