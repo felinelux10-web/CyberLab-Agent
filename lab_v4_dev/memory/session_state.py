@@ -311,8 +311,9 @@ def session_selector(raw: str) -> dict:
     report_mode = "standard"
     if any(token in text for token in (
         "نص الحوار حرفيا", "نص الحوار حرفيًا", "الحوار المحفوظ حرفيا",
-        "الحوار المحفوظ حرفيًا", "اعرض الرسائل الأصلية", "اعرض نص الحوار",
-        "سجل الحوار حرفيا", "سجل الحوار حرفيًا",
+        "الحوار المحفوظ حرفيًا", "اعرض الرسائل الأصلية", "اعرض الرسائل الاصليه",
+        "اعرض نص الحوار", "اعرض سجل الحوار",
+        "سجل الحوار حرفيا", "سجل الحوار حرفيًا", "المحادثة كما هي",
     )):
         report_mode = "transcript"
     elif any(token in text for token in ("فقط", "المعرف والحالة", "المعرّف والموضوع والحالة")):
@@ -336,11 +337,14 @@ def session_selector(raw: str) -> dict:
     )):
         report_mode = "summaries"
     elif any(token in text for token in (
+        "تقرير", "تقريرا", "تقريرًا", "تقرير مفصل", "تقرير مفصل",
         "تقرير كامل", "تقريرًا كاملًا", "تقريرا كاملا",
-        "اكتب ملخص الجلسة المحفوظة", "اكتب تقرير الجلسة المحفوظة",
-        "تقرير الجلسة المحفوظة", "ملخص الجلسة المحفوظة",
     )):
         report_mode = "full"
+    elif asks_for_summary:
+        # A single-session summary is a distinct output contract from a
+        # detailed report and from the all-sessions summaries list.
+        report_mode = "summary"
     id_match = re.search(r"(?:معرّف|معرف|id)\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9_.-]{5,})", raw_text, flags=re.IGNORECASE)
     if id_match and any(token in text for token in ("جلسة", "استعد", "استرجع", "ابحث")):
         return {"kind": "id", "session_id": id_match.group(1), "report_mode": report_mode}
@@ -1611,6 +1615,29 @@ def build_session_restore_summary(data: dict | None = None, *, report_mode: str 
     report = analyze_session(session)
     def bullets(items, empty="غير محدد من البيانات المتاحة"):
         return [f"- {item}" for item in (items or [empty])]
+    if report_mode == "summary":
+        summary_lines = [
+            "=== ملخص جلسة العمل ===",
+            f"معرّف الجلسة: {report['session_id']}",
+            f"الموضوع: {report['topic']}",
+            f"الهدف: {report['active_goal']}",
+            "",
+            "ما أُنجز وثبت في السجل:",
+            *bullets(report["confirmed_achievements"], "لا توجد إنجازات مؤكدة مسجلة."),
+            "",
+            "الحالة ونقطة التوقف:",
+            f"- الحالة: {report['status']}",
+            f"- آخر خطوة مؤكدة: {report['last_completed_step']}",
+            "",
+            "الأعمال المتبقية:",
+            *bullets(report["pending_tasks"], "لا توجد أعمال متبقية محددة في السجل."),
+            f"- الخطوة التالية: {report['next_step']}",
+            "",
+            "الملفات والقرارات:",
+            "الملفات: " + ("، ".join(report["relevant_files"]) if report["relevant_files"] else "لا توجد ملفات موثقة."),
+            "القرارات: " + ("؛ ".join(report["decisions"]) if report["decisions"] else "لا توجد قرارات منفصلة موثقة."),
+        ]
+        return "\n".join(summary_lines)
     if report_mode == "compact":
         return "\n".join([
             "=== بيانات الجلسة ===",
