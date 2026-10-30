@@ -1224,14 +1224,6 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
                 f"قارن الحوار بين «{pair[:150]}»"
                 + (f"؛ وتركز التوضيح على {answer}." if answer else ".")
             ]
-    if comparison:
-        pair = " ".join(comparison.group(1).split()).strip(" \t\r\n.,،؛:!?؟")
-        if pair:
-            return [
-                f"قارن الحوار بين «{pair[:150]}»"
-                + (f"؛ وتركز التوضيح على {answer}." if answer else ".")
-            ]
-
     if any(marker in normalized for marker in ("ما معنى", "معنى", "ما هو", "ما هي", "تعريف", "عرف", "اشرح", "وضح")):
         if not topic:
             match = re.search(
