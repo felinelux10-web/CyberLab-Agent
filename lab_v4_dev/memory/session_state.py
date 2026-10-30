@@ -1044,9 +1044,14 @@ def _is_dialogue_control_text(value: object) -> bool:
         return True
     if text in {
         "مرحبا", "اهلا", "اهلا وسهلا", "السلام عليكم", "صباح الخير",
-        "مساء الخير", "كيفك ايها الوكيل", "كيف حالك", "جيد", "نعم",
-        "اجل", "حسنا", "تمام",
-    }:
+        "مساء الخير", "كيفك ايها الوكيل", "كيف حالك", "كيف الحال",
+        "كيف حالك اليوم", "كيف حال الوكيل", "كيف داز نهارك",
+        "ميف الحال", "انا بخير", "بخير", "جيد", "نعم", "اجل",
+        "حسنا", "تمام",
+    } or re.fullmatch(
+        r"(?:كيف|ميف)\s+(?:الحال|حالك|حالكم|حال الوكيل)(?:\s+اليوم)?",
+        text,
+    ):
         return True
     session_words = ("جلسة", "الجلسة", "جلسات", "الجلسات", "حوار", "الحوار")
     management_words = (
@@ -1074,9 +1079,16 @@ def _is_dialogue_control_exchange(exchange: dict) -> bool:
 
 
 def _dialogue_exchange_insights(exchange: dict) -> list[str]:
-    """Summarize one saved exchange from its meaning and answer, not as Q/A transcript."""
+    """Extract a grounded semantic point from one exchange, never a raw Q/A line."""
+    user_text = " ".join(str(exchange.get("user") or "").split()).strip()
+    if not user_text or _is_dialogue_control_text(user_text):
+        return []
+
     insights = []
-    for field in ("semantic_summary", "summary", "gist", "key_points", "main_points", "topics_discussed"):
+    for field in (
+        "semantic_summary", "summary", "gist", "key_points",
+        "main_points", "topics_discussed",
+    ):
         value = exchange.get(field)
         values = value if isinstance(value, (list, tuple, set)) else [value]
         for candidate in values:
@@ -1086,7 +1098,6 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     if insights:
         return insights[:4]
 
-    user_text = " ".join(str(exchange.get("user") or "").split()).strip()
     normalized = (
         user_text.casefold()
         .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
@@ -1094,28 +1105,14 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     )
     normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
     topic = " ".join(str(exchange.get("target") or "").split()).strip()
-    narrative_prefixes = (
-        ("تحدثنا عن ", "تناول الحوار موضوع "),
-        ("ناقشنا ", "تناول الحوار موضوع "),
-        ("ثم انتقلنا الى ", "انتقل النقاش إلى "),
-        ("انتقلنا الى ", "انتقل النقاش إلى "),
-        ("تطرقنا الى ", "تناول الحوار موضوع "),
-    )
-    for prefix, replacement in narrative_prefixes:
-        if normalized.startswith(prefix):
-            remainder = user_text[len(prefix):].strip(" .،؛:!?؟")
-            if remainder:
-                return [replacement + "«" + remainder[:160] + "»."]
-
-    # Offline synthesis cannot replace a language model, but it can preserve
-    # the answer's core fact while avoiding the original question/answer format.
     answer = " ".join(str(exchange.get("assistant") or "").split()).strip()
     answer = re.split(r"(?<=[.!?؟])\s+", answer, maxsplit=1)[0].strip()
     answer = answer.strip(" \t\r\n-•")
     generic_answer_markers = (
-        "انا بخير", "أنا بخير", "كيف حالك", "هل في شيء تحب",
-        "هل ترغب في", "كيف يمكنني مساعدتك", "لا املك سجل",
-        "لا أملك سجل", "لم افهم", "لم أفهم",
+        "انا بخير", "أنا بخير", "كيف حالك", "كيف الحال",
+        "هل في شيء تحب", "هل ترغب في", "كيف يمكنني مساعدتك",
+        "لا املك سجل", "لا أملك سجل", "لم افهم", "لم أفهم",
+        "انا جاهز", "أنا جاهز", "اخبرني بما تريد",
     )
     if any(marker.casefold() in answer.casefold() for marker in generic_answer_markers):
         answer = ""
@@ -1126,7 +1123,7 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         answer,
         flags=re.IGNORECASE,
     ).strip(" \t\r\n.,،؛:!?؟")
-    answer = answer[:240]
+    answer = answer[:200]
 
     comparison = re.search(
         r"(?:ما\s+)?(?:الفرق|الفروق|الاختلاف)\s+بين\s+(.+?)(?:[؟?!.،؛]|$)",
@@ -1135,40 +1132,89 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     if comparison:
         pair = " ".join(comparison.group(1).split()).strip(" \t\r\n.,،؛:!?؟")
         if pair:
-            if answer:
-                return [f"قارن الحوار بين «{pair[:160]}»؛ ويوضح الرد أن {answer}."]
-            return [f"قارن الحوار بين «{pair[:160]}»."]
+            return [
+                f"قارن الحوار بين «{pair[:150]}»"
+                + (f"؛ وتركز التوضيح على {answer}." if answer else ".")
+            ]
 
-    if any(marker in normalized for marker in ("ما معنى", "معنى", "ما هو", "ما هي", "تعريف", "عرف")):
-        prefix = f"تناول الحوار تعريف «{topic}» ومعناه" if topic else "تناول الحوار سؤالًا تعريفيًا"
-        return [f"{prefix}؛ والخلاصة الواردة في الرد: {answer}." if answer else f"{prefix}، دون خلاصة جواب كافية محفوظة."]
+    if any(marker in normalized for marker in ("ما معنى", "معنى", "ما هو", "ما هي", "تعريف", "عرف", "اشرح", "وضح")):
+        if not topic:
+            match = re.search(
+                r"(?:ما معنى|معنى|ما هو|ما هي|تعريف|عرف|اشرح|وضح)\s+(.+?)(?:[؟?!.،؛]|$)",
+                user_text,
+            )
+            topic = (match.group(1).strip() if match else "")
+        prefix = f"تناول الحوار مفهوم «{topic}» وشرحه" if topic else "تناول الحوار سؤالًا تعريفيًا أو تفسيريًا"
+        return [
+            f"{prefix}؛ وتركز التوضيح على {answer}."
+            if answer else f"{prefix}، دون خلاصة جواب كافية محفوظة."
+        ]
+
     if any(marker in normalized for marker in ("اقتراح", "اقترح", "ما الحل", "حل مناسب")):
         prefix = f"تناول الحوار اقتراحات أو حلولًا مرتبطة بـ«{topic}»" if topic else "تناول الحوار اقتراحات أو حلولًا"
-        return [f"{prefix}؛ وأبرز ما ورد في الرد: {answer}." if answer else f"{prefix} دون حفظ خلاصة جواب واضحة."]
+        return [
+            f"{prefix}؛ وأبرز ما ورد في الرد: {answer}."
+            if answer else f"{prefix} دون حفظ خلاصة جواب واضحة."
+        ]
+
     if any(marker in normalized for marker in ("خطة", "خطوات", "الخطوة التالية", "الخطوه التاليه")):
         prefix = f"تناول الحوار التخطيط والخطوات المرتبطة بـ«{topic}»" if topic else "تناول الحوار التخطيط أو ترتيب الخطوات"
-        return [f"{prefix}؛ والخلاصة المحفوظة: {answer}." if answer else f"{prefix} دون خطوات مفصلة محفوظة."]
+        return [
+            f"{prefix}؛ والخلاصة المحفوظة: {answer}."
+            if answer else f"{prefix} دون خطوات مفصلة محفوظة."
+        ]
+
     if any(marker in normalized for marker in ("لماذا", "ما السبب", "اسباب", "أسباب")):
         prefix = f"ناقش الحوار أسبابًا مرتبطة بـ«{topic}»" if topic else "ناقش الحوار سؤالًا عن الأسباب"
-        return [f"{prefix}؛ والسبب المذكور في الرد: {answer}." if answer else f"{prefix} دون سبب محدد محفوظ."]
-    if any(marker in normalized for marker in ("كيف", "الية", "آلية", "طريقة")):
-        prefix = f"ناقش الحوار كيفية التعامل مع «{topic}» أو فهمه" if topic else "ناقش الحوار كيفية تنفيذ أمر أو فهمه"
-        return [f"{prefix}؛ وأشار الرد إلى {answer}." if answer else f"{prefix}، لكن لا توجد خلاصة جواب كافية محفوظة."]
-    if any(marker in normalized for marker in ("ما رايك", "رأيك", "وجهة نظرك", "وجهة النظر")):
+        return [
+            f"{prefix}؛ والسبب المذكور في الرد: {answer}."
+            if answer else f"{prefix} دون سبب محدد محفوظ."
+        ]
+
+    # Do not classify every sentence beginning with "كيف" as a procedure.
+    # Greetings such as "كيف الحال؟" were filtered above; only explicit
+    # process/method wording qualifies for a how-to summary.
+    procedural_how = any(marker in normalized for marker in (
+        "كيف يتم", "كيف تعمل", "كيف يعمل", "كيف يمكن", "كيف استخدم",
+        "كيف نستخدم", "كيف يحدث", "كيف يحدث", "كيفية", "ما طريقه",
+        "ما طريقة", "كيفيه",
+    ))
+    if procedural_how:
+        prefix = f"ناقش الحوار آلية «{topic}» أو طريقة التعامل معها" if topic else "ناقش الحوار طريقة أو آلية محددة"
+        return [
+            f"{prefix}؛ وأشار الرد إلى {answer}."
+            if answer else f"{prefix}، لكن لا توجد خطوات كافية محفوظة."
+        ]
+
+    if any(marker in normalized for marker in ("ما رايك", "رايك", "وجهة نظرك", "وجهة النظر")):
         prefix = f"تناول الحوار وجهات نظر حول «{topic}»" if topic else "تناول الحوار تبادل وجهات نظر"
-        return [f"{prefix}؛ والرأي المسجل: {answer}." if answer else f"{prefix} دون رأي محدد محفوظ."]
+        return [
+            f"{prefix}؛ والرأي المسجل: {answer}."
+            if answer else f"{prefix} دون رأي محدد محفوظ."
+        ]
+
+    if not topic:
+        topic_match = re.search(
+            r"(?:ماذا تعرف عن|ما الذي تعرفه عن|حدثني عن|تحدث عن|ما حالة|حالة)\s+(.+?)(?:[؟?!.،؛]|$)",
+            user_text,
+        )
+        if topic_match:
+            topic = topic_match.group(1).strip()
+        elif normalized.startswith(("ماذا تستطيع فعله", "ما الذي تستطيع فعله", "ما قدراتك")):
+            topic = "قدرات الوكيل"
 
     if topic and answer:
-        return [f"ناقش الحوار «{topic}»؛ وأبرز ما ورد في الرد: {answer}."]
+        return [f"ناقش الحوار «{topic}»؛ وقدم الرد توضيحًا موجزًا بشأن {answer}."]
     if topic:
-        return [f"ناقش الحوار موضوع «{topic}»؛ لا توجد خلاصة جواب إضافية محفوظة لهذا التبادل."]
+        return [f"تناول الحوار موضوع «{topic}»؛ ولا تتوفر خلاصة جواب إضافية محفوظة لهذا التبادل."]
     if answer:
-        return [f"يتضمن السجل إجابة مفيدة: {answer}."]
-    return ["يتضمن السجل تبادلًا حواريًا، لكن لا توجد بيانات دلالية كافية لتحديد موضوعه دون تخمين."]
-
+        return [f"تضمن الحوار توضيحًا لموضوع ورد في السؤال؛ وخلاصة الرد: {answer}."]
+    return ["يتضمن السجل تبادلًا حواريًا، لكن لا توجد بيانات دلالية كافية لتحديد مضمونه دون تخمين."]
 
 def _dialogue_assistant_insight(exchange: dict) -> str:
     """Extract a concise grounded insight from an assistant turn without quoting the turn."""
+    if _is_dialogue_control_exchange(exchange):
+        return ""
     text = " ".join(str(exchange.get("assistant") or "").split()).strip()
     if not text:
         return ""
@@ -1223,6 +1269,89 @@ def _dialogue_explicit_conclusions(exchanges: list[dict]) -> list[str]:
                     items.append(item)
     return items
 
+
+
+
+def summarize_dialogue_exchanges(
+    exchanges: list[dict] | None,
+    *,
+    topic: str = "",
+    limit: int = 6,
+) -> dict:
+    """Build a concise narrative summary from the meaning of bounded exchanges."""
+    records = [
+        item for item in (exchanges or [])
+        if isinstance(item, dict)
+        and str(item.get("user") or "").strip()
+        and str(item.get("assistant") or "").strip()
+        and not item.get("recall_only")
+        and not item.get("state_boundary_only")
+        and not item.get("response_failed")
+    ]
+    meaningful = [
+        item for item in records
+        if not _is_dialogue_control_exchange(item)
+    ]
+
+    selected_topic = " ".join(str(topic or "").split()).strip()
+    if not selected_topic or _is_dialogue_control_text(selected_topic):
+        selected_topic = next(
+            (
+                " ".join(str(item.get("target") or "").split()).strip()
+                for item in reversed(meaningful)
+                if str(item.get("target") or "").strip()
+                and not _is_dialogue_control_text(item.get("target"))
+            ),
+            "",
+        )
+
+    insights = []
+    for exchange in meaningful:
+        for insight in (
+            *_dialogue_exchange_insights(exchange),
+            _dialogue_assistant_insight(exchange),
+        ):
+            insight = " ".join(str(insight or "").split()).strip()
+            if insight and insight not in insights:
+                insights.append(insight)
+    insights = insights[:max(1, int(limit))]
+
+    if not selected_topic and meaningful:
+        selected_topic = next(
+            (
+                " ".join(str(item.get("target") or "").split()).strip()
+                for item in meaningful
+                if str(item.get("target") or "").strip()
+            ),
+            "",
+        )
+    if not selected_topic and insights:
+        selected_topic = insights[0][:100].rstrip(" .،؛:")
+    if not selected_topic and records:
+        selected_topic = "حوار افتتاحي عن التحية والتعارف"
+
+    last = meaningful[-1] if meaningful else {}
+    last_target = " ".join(str(last.get("target") or "").split()).strip()
+    last_insights = _dialogue_exchange_insights(last) if last else []
+    if not meaningful:
+        stop_point = "لم يتجاوز السجل تبادل التحية أو الحديث الاجتماعي القصير؛ لم يُسجّل موضوع نقاش فعلي."
+    elif last_target and not _is_dialogue_control_text(last_target):
+        stop_point = f"توقف الحوار عند مناقشة «{last_target}»؛ ولا توجد متابعة محفوظة بعد آخر تبادل مكتمل."
+    elif last_insights:
+        stop_point = f"آخر مضمون موثق في السجل: {last_insights[0]}"
+    elif insights:
+        stop_point = f"آخر نقطة يمكن إثباتها من السجل: {insights[-1]}"
+    else:
+        stop_point = "توجد تبادلات محفوظة، لكن لا تكفي بياناتها لتحديد نقطة توقف موضوعية دون تخمين."
+
+    return {
+        "topic": selected_topic,
+        "insights": insights,
+        "stop_point": stop_point,
+        "exchange_count": len(records),
+        "meaningful_exchange_count": len(meaningful),
+        "has_substantive_content": bool(meaningful and insights),
+    }
 
 def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     """Summarize the selected dialogue and its stop point without mixing work state."""
@@ -1314,15 +1443,12 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
 
     # Summarize the meaningful bounded archive semantically. Control turns stay
     # available in transcript mode but cannot become the report's subject.
-    content_lines = []
-    for exchange in summary_exchanges:
-        for insight in (
-            *_dialogue_exchange_insights(exchange),
-            _dialogue_assistant_insight(exchange),
-        ):
-            if insight and insight not in content_lines:
-                content_lines.append(insight)
-    content_lines = content_lines[:12]
+    semantic_summary = summarize_dialogue_exchanges(
+        summary_exchanges,
+        topic=topic,
+        limit=12,
+    )
+    content_lines = semantic_summary["insights"]
     explicit_conclusions = _dialogue_explicit_conclusions(summary_exchanges)
 
     lines = [
@@ -1348,7 +1474,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     lines.extend([
         "",
         "نقطة التوقف:",
-        stop_point,
+        semantic_summary["stop_point"],
         "",
         "الخطوة التالية المقترحة:",
         next_step,
@@ -1523,14 +1649,12 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
         topic = topic or "حوار بلا موضوع محدد"
         # Summaries describe the meaning of saved exchanges; verbatim messages
         # remain available only through the explicit transcript report mode.
-        insights = []
-        for exchange in meaningful_exchanges:
-            for insight in (
-                *_dialogue_exchange_insights(exchange),
-                _dialogue_assistant_insight(exchange),
-            ):
-                if insight and insight not in insights:
-                    insights.append(insight)
+        semantic_summary = summarize_dialogue_exchanges(
+            meaningful_exchanges,
+            topic=topic,
+            limit=4,
+        )
+        insights = semantic_summary["insights"]
         if insights:
             summary = "الخلاصة الدلالية للحوار: " + "؛ ".join(
                 clean(value, 105) for value in insights[:2]
