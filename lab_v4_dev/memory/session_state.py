@@ -294,7 +294,7 @@ def session_selector(raw: str) -> dict:
             "report_mode": "summaries",
         }
     sessions_with_all_suffix = re.search(
-        r"(?:الجلسات|جلسات)(?:\\s+(?:المحفوظة|السابقة|القديمة))?\\s+(?:كلها|جميعها|كافه)",
+        r"(?:الجلسات|جلسات)(?:\s+(?:المحفوظة|السابقة|القديمة))?\s+(?:كلها|جميعها|كافه)",
         text,
     )
     if (collective_sessions or sessions_with_all_suffix) and asks_for_summary:
