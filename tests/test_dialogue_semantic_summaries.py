@@ -308,6 +308,14 @@ def test_provider_cannot_replace_cyberlab_identity_with_host_product_identity():
 
     assert bounded == fallback
 
+    capability_reply = ConversationManager._bound_agent_self_reply(
+        "As ChatGPT, I can help with many tasks.",
+        "agent_capabilities",
+        "ما قدراتك؟",
+        fallback=fallback,
+    )
+    assert capability_reply == fallback
+
 
 
 def test_positive_acknowledgement_does_not_become_a_fake_dialogue_topic():
