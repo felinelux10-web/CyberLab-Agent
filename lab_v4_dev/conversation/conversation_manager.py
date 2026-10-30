@@ -815,8 +815,8 @@ class ConversationManager:
         active_report_followup = False
         active_report_id = str(self.active_report_session_id or "").strip()
         if active_report_id:
-            from lab_v4_dev.memory.session_state import session_selector
-            explicit_session_selector = session_selector(user_input)
+            from lab_v4_dev.memory.session_state import session_route_contract
+            explicit_session_selector = session_route_contract(user_input)
             normalized_followup = normalize_text(user_input)
             active_report_followup = (
                 explicit_session_selector.get("kind") == "none"
@@ -989,8 +989,8 @@ class ConversationManager:
         # pass can disagree with the canonical parse and let a later branch
         # steal ownership of the response.
         raw_signal = self._semantic_signal_from_parsed(candidate)
-        from lab_v4_dev.memory.session_state import session_selector
-        selected_session = session_selector(user_input)
+        from lab_v4_dev.memory.session_state import session_route_contract
+        selected_session = session_route_contract(user_input)
         if selected_saved_session_id:
             inherited_report_mode = str(
                 pending_saved_session_selection.get("report_mode") or ""
