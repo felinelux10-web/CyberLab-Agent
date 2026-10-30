@@ -586,7 +586,9 @@ def session_selector(raw: str) -> dict:
 
     if (
         topic_filter
-        and selection.get("kind") in {"previous_dialogue", "search"}
+        and selection.get("kind") in {
+            "previous_dialogue", "search", "number", "id", "latest",
+        }
         and selection.get("report_mode", "standard") == "standard"
     ):
         selection["report_mode"] = "summary"
