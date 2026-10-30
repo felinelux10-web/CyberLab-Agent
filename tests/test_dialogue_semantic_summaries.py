@@ -142,3 +142,26 @@ def test_live_dialogue_summary_is_narrative_not_a_message_dump():
     assert "الوكيل:" not in result["text"]
     assert "نقطة التوقف:" in result["text"]
     assert "النقش البارز" in result["text"]
+
+
+
+def test_natural_dialogue_continuations_are_classified_without_template_wording():
+    from lab_v4_dev.nlu.conversation_semantics import classify_conversation_semantics
+
+    for phrase in (
+        "لنكمل حوارنا",
+        "هيا نكمل حديثنا",
+        "حسنا هيا نكمل حديثنا",
+        "دعنا نواصل حديثنا",
+    ):
+        result = classify_conversation_semantics(phrase)
+        assert result["conversation_act"] == "CONVERSATION_CONTINUATION", (phrase, result)
+
+
+def test_last_dialogue_stopping_point_question_routes_to_local_summary():
+    from lab_v4_dev.nlu.conversation_semantics import classify_conversation_semantics
+
+    result = classify_conversation_semantics("ماهي اخر نقطة توقف فيها الحوار")
+
+    assert result["conversation_act"] == "CONVERSATION_HISTORY_QUERY"
+    assert result["response_attributes"]["dialogue_response_mode"] == "summary"
