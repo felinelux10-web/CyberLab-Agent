@@ -569,7 +569,16 @@ def session_selector(raw: str) -> dict:
         ):
             topic_filter = candidate_topic
 
-    if topic_filter and selection.get("kind") == "previous_dialogue":
+    if topic_filter and (
+        selection.get("kind") == "previous_dialogue"
+        or (
+            selection.get("kind") == "none"
+            and any(marker in text for marker in (
+                "الجلسة المحفوظة", "جلسة محفوظة", "الجلسة السابقة",
+                "جلسة سابقة", "الحوار المحفوظ",
+            ))
+        )
+    ):
         # A named topic inside saved-session language requires content search,
         # not an unconditional choice of the newest saved dialogue.
         selection["kind"] = "search"
