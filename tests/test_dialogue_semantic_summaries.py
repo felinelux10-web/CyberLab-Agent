@@ -165,3 +165,16 @@ def test_last_dialogue_stopping_point_question_routes_to_local_summary():
 
     assert result["conversation_act"] == "CONVERSATION_HISTORY_QUERY"
     assert result["response_attributes"]["dialogue_response_mode"] == "summary"
+
+
+
+def test_all_saved_dialogue_summaries_are_not_downgraded_to_live_dialogue():
+    from lab_v4_dev.memory.session_state import session_selector
+
+    for phrase in (
+        "اكتب ملخص الجلسات كلها",
+        "ملخص الجلسات المحفوظة كلها",
+        "اعرض ملخص الجلسات كلها",
+    ):
+        selected = session_selector(phrase)
+        assert selected == {"kind": "list", "report_mode": "summaries"}, (phrase, selected)
