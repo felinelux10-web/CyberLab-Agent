@@ -3625,10 +3625,9 @@ class ConversationManager:
             }
 
         if response_mode == "summary":
-            # Requests explicitly asking what was said in previous replies need
-            # the recent recorded exchanges, not only the active branch. The
-            # branch-only view remains appropriate for a plain current-state
-            # summary, where mixing independent topics would be misleading.
+            # Summary mode is an extractive semantic report, not a role-labelled
+            # transcript. Use the same bounded summarizer as persisted sessions
+            # so online/offline behavior shares one meaning and one evidence set.
             normalized_query = normalize_text(text)
             whole_dialogue_summary = any(marker in normalized_query for marker in (
                 "منذ البداية", "منذ بدايه", "من بداية الحوار", "من بداية النقاش",
@@ -3647,73 +3646,50 @@ class ConversationManager:
                 recall_recent_exchanges = True
             branch = (
                 relevant[-12:]
-                if whole_dialogue_summary
-                else (
-                    relevant[-12:]
-                    if recall_recent_exchanges
-                    else self._latest_dialogue_branch(relevant)[-5:]
-                )
+                if whole_dialogue_summary or recall_recent_exchanges
+                else self._latest_dialogue_branch(relevant)[-5:]
             )
-            if recall_recent_exchanges:
-                meaningful_branch = [
-                    item for item in branch
-                    if not self._is_social_filler_exchange(item)
-                ]
-                if meaningful_branch:
-                    branch = meaningful_branch[-6:]
-                elif branch:
-                    return {
-                        **base,
-                        "text": (
-                            "سجل الحوار المتاح هنا يتكون من تحيات وتبادل قصير عن الحال؛ "
-                            "لم نحدد موضوعًا فعليًا للنقاش بعد."
-                        ),
-                        "dialogue_turns": [],
-                    }
-                lines = []
-                for item in branch:
-                    user = " ".join(str(item.get("user") or "").split())
-                    assistant = " ".join(str(item.get("assistant") or "").split())
-                    if not user and not assistant:
-                        continue
-                    # Compact each exchange into its subject and recorded
-                    # takeaway; do not render a role-labelled transcript.
-                    line = f"- ناقشنا: {user[:130]}"
-                    if assistant:
-                        takeaway = assistant.split("。", 1)[0].split(". ", 1)[0].strip()
-                        if len(takeaway) > 160:
-                            takeaway = takeaway[:157].rstrip() + "..."
-                        line += f"؛ الخلاصة المسجلة: {takeaway}"
-                    lines.append(line)
-                return {
-                    **base,
-                    "text": "ملخص موثّق للحوار المسجّل:\n" + "\n".join(lines),
-                    "dialogue_turns": branch[-6:],
-                }
-
-            last = branch[-1] if branch else {}
+            from lab_v4_dev.memory.session_state import summarize_dialogue_exchanges
             active_topic = str(
                 getattr(state, "last_topic", None)
-                or last.get("target")
-                or ""
+                or next(
+                    (
+                        str(item.get("target") or "").strip()
+                        for item in reversed(branch)
+                        if str(item.get("target") or "").strip()
+                    ),
+                    "",
+                )
             ).strip()
-            summary_lines = []
-            if active_topic:
-                summary_lines.append(f"- الموضوع النشط: {active_topic}")
+            report = summarize_dialogue_exchanges(
+                branch,
+                topic=active_topic,
+                limit=4,
+            )
+            lines = [
+                f"الموضوع: {report['topic'] or 'لم يُسجّل موضوع محدد.'}",
+                "",
+                "ماذا تناول الحوار:",
+            ]
+            if report["insights"]:
+                lines.extend(
+                    "- " + str(item)[:145].rstrip()
+                    for item in report["insights"][:4]
+                )
+            elif report["meaningful_exchange_count"] == 0:
+                lines.append("- اقتصر السجل على التحية والتعارف؛ لم يبدأ نقاش موضوعي.")
             else:
-                summary_lines.append("- الموضوع النشط: حوار عام؛ لم يُسجّل له عنوان مستقل.")
-            user = " ".join(str(last.get("user") or "").split())
-            assistant = " ".join(str(last.get("assistant") or "").split())
-            if user:
-                excerpt = user[:180] + ("…" if len(user) > 180 else "")
-                summary_lines.append(f"- آخر رسالة واردة: {excerpt}")
-            if assistant:
-                excerpt = assistant[:220] + ("…" if len(assistant) > 220 else "")
-                summary_lines.append(f"- نقطة التوقف: {excerpt}")
+                lines.append("- لا توجد تفاصيل دلالية كافية في التبادلات المحفوظة لاستخلاص مضمون أدق.")
+            lines.extend([
+                "",
+                "نقطة التوقف:",
+                report["stop_point"],
+            ])
             return {
                 **base,
-                "text": "ملخص الحوار الحالي:\n" + "\n".join(summary_lines),
+                "text": "ملخص الحوار الحالي:\n" + "\n".join(lines),
                 "dialogue_turns": branch,
+                "summary_fallback": True,
             }
 
         task = (
