@@ -388,3 +388,16 @@ def test_saved_dialogue_progress_report_uses_semantic_stop_point():
     assert "المستخدم:" not in report
     assert "الوكيل:" not in report
     assert "حسنا اكمل" not in report
+
+
+
+def test_explicit_resume_topic_is_extracted_instead_of_inheriting_old_topic():
+    assert ConversationManager._explicit_resume_topic(
+        "اكمل الحديث عن موضوع الفضاء"
+    ) == "الفضاء"
+    assert ConversationManager._explicit_resume_topic(
+        "حسنا تابع النقاش حول الفن التجريدي"
+    ) == "الفن التجريدي"
+    assert ConversationManager._explicit_resume_topic(
+        "لنكمل حوارنا"
+    ) is None
