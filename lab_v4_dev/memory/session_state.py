@@ -1450,7 +1450,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
             if progress_summary["meaningful_exchange_count"]
             else "اختيار موضوع واضح للبدء؛ السجل الحالي لا يثبت وجود نقاش موضوعي سابق."
         )
-        return "\\n".join([
+        return "\n".join([
             "=== ملخص الحوار ونقطة التوقف ===",
             f"الموضوع: {progress_summary['topic'] or topic}",
             f"التبادلات المكتملة المحفوظة: {len(exchanges)}",
