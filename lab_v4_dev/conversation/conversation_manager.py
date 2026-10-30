@@ -809,6 +809,7 @@ class ConversationManager:
             }
 
         selected_saved_session_id = None
+        pending_saved_session_selection = {}
         active_report_followup = False
         active_report_id = str(self.active_report_session_id or "").strip()
         if active_report_id:
@@ -836,6 +837,7 @@ class ConversationManager:
             state = getattr(self.dialogue_memory, "state", None)
             pending = getattr(state, "pending_clarification", None)
             if isinstance(pending, dict) and pending.get("kind") == "saved_session_choice":
+                pending_saved_session_selection = dict(pending)
                 from lab_v4_dev.memory.session_state import resolve_saved_session_choice
                 candidates = pending.get("candidates") or []
                 selected_saved_session_id = resolve_saved_session_choice(user_input, candidates)
@@ -987,18 +989,34 @@ class ConversationManager:
         from lab_v4_dev.memory.session_state import session_selector
         selected_session = session_selector(user_input)
         if selected_saved_session_id:
+            inherited_report_mode = str(
+                pending_saved_session_selection.get("report_mode") or ""
+            ).strip()
+            inherited_output_kind = str(
+                pending_saved_session_selection.get("output_kind") or ""
+            ).strip()
+            inherited_topic_filter = pending_saved_session_selection.get("topic_filter")
             selected_session = {
                 "kind": "id",
                 "session_id": selected_saved_session_id,
-                "report_mode": "summary" if active_report_followup else "standard",
-                "output_kind": "summary" if active_report_followup else "report",
+                "report_mode": (
+                    inherited_report_mode
+                    or ("summary" if active_report_followup else "standard")
+                ),
+                "output_kind": (
+                    inherited_output_kind
+                    or ("summary" if active_report_followup else "report")
+                ),
                 "topic_filter": (
-                    user_input
-                    if active_report_followup and any(
-                        marker in normalize_text(user_input)
-                        for marker in ("ما علاقه", "ما علاقة", "كيف يرتبط")
+                    inherited_topic_filter
+                    or (
+                        user_input
+                        if active_report_followup and any(
+                            marker in normalize_text(user_input)
+                            for marker in ("ما علاقه", "ما علاقة", "كيف يرتبط")
+                        )
+                        else None
                     )
-                    else None
                 ),
             }
 
