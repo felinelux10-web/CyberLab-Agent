@@ -1149,6 +1149,10 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     if discussion_subject:
         subject = discussion_subject.group(1).strip(" \t\r\n.,،؛:!?؟")
         if subject:
+            if answer:
+                return [
+                    f"تناول الحوار {subject}؛ ويتضمن السجل ردًا من الوكيل مضمونه: {answer}."
+                ]
             return [f"تناول الحوار {subject}؛ وتبادل الطرفان ردًا حواريًا حوله."]
 
     comparison = re.search(
