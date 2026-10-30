@@ -293,7 +293,11 @@ def session_selector(raw: str) -> dict:
             "session_type": "work",
             "report_mode": "summaries",
         }
-    if collective_sessions and asks_for_summary:
+    sessions_with_all_suffix = re.search(
+        r"(?:الجلسات|جلسات)(?:\\s+(?:المحفوظة|السابقة|القديمة))?\\s+(?:كلها|جميعها|كافه)",
+        text,
+    )
+    if (collective_sessions or sessions_with_all_suffix) and asks_for_summary:
         return {"kind": "list", "report_mode": "summaries"}
 
     # A deictic request is not a safe selector for the latest saved checkpoint.
@@ -470,8 +474,9 @@ def session_selector(raw: str) -> dict:
         query = re.sub(r"^(?:جلسة|الجلسة|جلسه|الجلسه)\s+", "", query, flags=re.IGNORECASE).strip()
         return {"kind": "search", "query": query, "report_mode": report_mode}
     list_markers = (
-        "جميع الجلسات", "كل الجلسات", "كل الجلسات المحفوظة",
-        "جميع الجلسات المحفوظة", "ملخصات الجلسات", "ملخصات جميع الجلسات",
+        "جميع الجلسات", "كل الجلسات", "الجلسات كلها", "جلساتنا كلها",
+        "كل الجلسات المحفوظة", "جميع الجلسات المحفوظة",
+        "الجلسات المحفوظة كلها", "ملخصات الجلسات", "ملخصات جميع الجلسات",
         "ملخصات كل الجلسات", "جميع الملخصات", "كل الملخصات",
         "ملخص عن كل الجلسات", "ملخص لكل الجلسات", "لخص كل الجلسات",
         "لخص جميع الجلسات", "ملخصات الجلسات المحفوظة",
