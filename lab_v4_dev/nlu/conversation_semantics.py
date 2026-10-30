@@ -629,12 +629,19 @@ def classify_conversation_semantics(
             "conversational": True,
         }
     asks_stopping_point = (
-        _has_any(bases, {"اين", "وين", "where"})
-        and _has_any(bases, {
-            "توقفنا", "توقف", "وصلنا", "وقفنا", "نقطه", "النقطه",
-        })
-        and not _has_any(bases, work_context_markers)
-    )
+        (
+            _has_any(bases, {"اين", "وين", "where"})
+            and _has_any(bases, {
+                "توقفنا", "توقف", "وصلنا", "وقفنا", "نقطه", "النقطه",
+            })
+        )
+        or (
+            _has_any(bases, {"ما", "ماذا", "ماهي", "ماهو"})
+            and _has_any(bases, {"اخر", "آخر", "اخير"})
+            and _has_any(bases, {"نقطه", "توقف", "وقفنا"})
+            and _has_any(bases, {"حوار", "الحوار", "حديث", "نقاش"})
+        )
+    ) and not _has_any(bases, work_context_markers)
     if asks_stopping_point:
         return {
             "conversation_domain": "general",
@@ -699,6 +706,10 @@ def classify_conversation_semantics(
         "اكمل", "كمل", "تابع", "واصل", "استكمل", "نكمل", "نواصل",
         "اكمل الحوار", "اكمل النقاش", "تابع الحوار", "واصل الحديث",
         "اكمل الشرح", "كمل الشرح", "تابع الشرح", "واصل الشرح",
+        "لنكمل حوارنا", "لنواصل حوارنا", "هيا نكمل حديثنا",
+        "حسنا هيا نكمل حديثنا", "دعنا نكمل حوارنا",
+        "دعنا نواصل حديثنا", "هيا نتابع حوارنا",
+        "لنستكمل حديثنا", "لنستكمل حوارنا",
     }
     if explicit_same_point_continuation or bare_dialogue_continuation:
         return {
