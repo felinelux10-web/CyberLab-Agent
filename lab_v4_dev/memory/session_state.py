@@ -253,7 +253,7 @@ def get_latest_session_by_type(session_type: str) -> dict:
     return {}
 
 
-def _session_selector_details(raw: str) -> dict:
+def session_selector(raw: str) -> dict:
     """Classify explicit session selection/report language without an LLM."""
     raw_text = str(raw or "").strip()
     text = raw_text.casefold()
@@ -332,14 +332,11 @@ def _session_selector_details(raw: str) -> dict:
     )):
         report_mode = "summaries"
     elif any(token in text for token in (
-        "تقرير", "تقريرا", "تقريرًا", "تقرير مفصل", "تقرير مفصل",
         "تقرير كامل", "تقريرًا كاملًا", "تقريرا كاملا",
+        "اكتب ملخص الجلسة المحفوظة", "اكتب تقرير الجلسة المحفوظة",
+        "تقرير الجلسة المحفوظة", "ملخص الجلسة المحفوظة",
     )):
         report_mode = "full"
-    elif asks_for_summary:
-        # A single-session summary is a distinct output contract from a
-        # detailed report and from the all-sessions summaries list.
-        report_mode = "summary"
     id_match = re.search(r"(?:معرّف|معرف|id)\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9_.-]{5,})", raw_text, flags=re.IGNORECASE)
     if id_match and any(token in text for token in ("جلسة", "استعد", "استرجع", "ابحث")):
         return {"kind": "id", "session_id": id_match.group(1), "report_mode": report_mode}
@@ -535,7 +532,7 @@ def is_explicit_transcript_request(raw: str) -> bool:
     return positive and not negative
 
 
-def session_selector(raw: str) -> dict:
+def session_route_contract(raw: str) -> dict:
     """Return the canonical local output contract for a saved-session request."""
     raw_text = str(raw or "").strip()
     text = (
@@ -553,7 +550,7 @@ def session_selector(raw: str) -> dict:
             text,
         )
     )
-    selection = _session_selector_details(raw_text)
+    selection = session_selector(raw_text)
     selection = dict(selection or {"kind": "none"})
 
     topic_filter = None
@@ -584,12 +581,35 @@ def session_selector(raw: str) -> dict:
         selection["kind"] = "search"
         selection["query"] = topic_filter
 
+    explicit_report_request = any(marker in text for marker in (
+        "تقرير", "تقريرا", "تقريرًا", "تقرير مفصل", "تقرير كامل",
+    ))
+    asks_for_summary = any(marker in text for marker in (
+        "ملخص", "تلخيص", "لخص", "مضمون", "محتوى", "المحتوى", "المضمون",
+    ))
+
     if (
         topic_filter
         and selection.get("kind") in {
             "previous_dialogue", "search", "number", "id", "latest",
         }
+        and not explicit_report_request
+    ):
+        selection["report_mode"] = "summary"
+    elif (
+        asks_for_summary
+        and selection.get("kind") in {
+            "number", "id", "latest", "previous_dialogue", "search",
+        }
+        and not explicit_report_request
+    ):
+        # Preserve the legacy selector API while making the actual execution
+        # route use a dedicated single-session summary mode.
+        selection["report_mode"] = "summary"
+    elif (
+        selection.get("kind") in {"previous_dialogue", "search"}
         and selection.get("report_mode", "standard") == "standard"
+        and not explicit_report_request
     ):
         selection["report_mode"] = "summary"
 
@@ -601,14 +621,16 @@ def session_selector(raw: str) -> dict:
         output_kind = "transcript"
     elif selection.get("report_mode") == "progress":
         output_kind = "progress"
-    elif selection.get("report_mode") == "full":
+    elif explicit_report_request or selection.get("report_mode") == "full":
         output_kind = "report"
-    elif selection.get("report_mode") == "summary" or selection.get("kind") in {
+    elif asks_for_summary or selection.get("kind") in {
         "previous_dialogue", "search",
     }:
         output_kind = "topic_summary" if topic_filter else "summary"
     elif selection.get("kind") in {"number", "id", "latest"}:
         output_kind = "report"
+    elif selection.get("kind") == "reference":
+        output_kind = "summary" if asks_for_summary else "chat"
     else:
         output_kind = "chat"
 
