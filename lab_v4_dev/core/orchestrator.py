@@ -2323,6 +2323,7 @@ SOURCE CODE:
                     "context_action": "read_only_report",
                     "context_restored": None,
                     "session_id": str(s.get("session_id") or selected_id or ""),
+                    "selected_session_id": str(s.get("session_id") or selected_id or ""),
                     "output_kind": selector.get("output_kind") or (
                         "transcript" if report_mode == "transcript"
                         else "progress" if report_mode == "progress"
