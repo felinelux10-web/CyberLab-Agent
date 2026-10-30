@@ -870,6 +870,15 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
         "هل النظام يعمل": Intent.HEALTH,
         "ما حالة الوكيل": Intent.STATUS,
         "ما حاله الوكيل": Intent.STATUS,
+        "ماهي حالة الوكيل": Intent.STATUS,
+        "ما هي حالة الوكيل": Intent.STATUS,
+        "ماهي حاله الوكيل": Intent.STATUS,
+        "ما هي حاله الوكيل": Intent.STATUS,
+        "ماهي حالة النظام": Intent.SYSTEM_STATUS,
+        "ما هي حالة النظام": Intent.SYSTEM_STATUS,
+        "ماهي حاله النظام": Intent.SYSTEM_STATUS,
+        "ما هي حاله النظام": Intent.SYSTEM_STATUS,
+        "كيف حال النظام": Intent.SYSTEM_STATUS,
         "الرام": Intent.UNSUPPORTED,
     }
     if normalized_request in explicit_operational:
