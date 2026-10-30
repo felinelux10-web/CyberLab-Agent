@@ -498,7 +498,7 @@ class ConversationManager:
 
         normalized = normalize_text(str(user_input or ""))
         normalized_reply = normalize_text(str(reply or ""))
-        if value == "agent_identity" and any(marker in normalized_reply for marker in (
+        if value in {"agent_identity", "agent_capabilities"} and any(marker in normalized_reply for marker in (
             "chatgpt", "openai", "شات جي بي تي", "تشات جي بي تي",
             "سياسات openai", "سياسات الخصوصيه",
         )):
