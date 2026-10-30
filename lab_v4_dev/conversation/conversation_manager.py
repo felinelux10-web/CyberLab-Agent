@@ -3825,8 +3825,6 @@ class ConversationManager:
                     "من اول الحوار", "من أول الحوار", "منذ أول الحوار",
                     "الموضوعين", "موضوعين", "بالترتيب", "من البداية حتى الآن",
                     "هذا الحوار", "لهذا الحوار", "الحوار الحالي بالكامل",
-                    "ملخص الحوار", "لخص الحوار", "ملخص الحديث", "لخص الحديث",
-                    "ملخص النقاش", "لخص النقاش", "الحوار الحالي",
                 ))
                 or ("منذ" in normalized_query and "بدايه" in normalized_query)
             )
@@ -3916,7 +3914,11 @@ class ConversationManager:
             ])
             return {
                 **base,
-                "text": "ملخص موثّق للحوار المسجّل:\n" + "\n".join(lines),
+                "text": (
+                    "ملخص موثّق للحوار المسجّل:\n"
+                    if recall_recent_exchanges or whole_dialogue_summary
+                    else "ملخص الحوار الحالي:\n"
+                ) + "\n".join(lines),
                 "dialogue_turns": branch,
                 "summary_fallback": True,
             }
