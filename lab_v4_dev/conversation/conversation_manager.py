@@ -3868,10 +3868,35 @@ class ConversationManager:
                     "- " + str(item)[:145].rstrip()
                     for item in report["insights"][:4]
                 )
-            elif report["meaningful_exchange_count"] == 0:
-                lines.append("- اقتصر السجل على التحية والتعارف؛ لم يبدأ نقاش موضوعي.")
             else:
-                lines.append("- لا توجد تفاصيل دلالية كافية في التبادلات المحفوظة لاستخلاص مضمون أدق.")
+                lines.append("- لا توجد خلاصة مكتملة من التبادلات الناجحة.")
+
+            # Failed compound prompts are intentionally retained as recall-only
+            # evidence. They are not completed exchanges and must not be fed to
+            # the ordinary semantic summarizer, but their numbered subjects
+            # remain recoverable when the user asks about that compound test.
+            failed_compound_prompts = [
+                item for item in branch
+                if item.get("recall_only")
+                and item.get("response_failed")
+                and str(item.get("user") or "").strip()
+                and re.search(r"(?m)^\\s*\\d+[.)、]\\s*\\S", str(item.get("user") or ""))
+            ]
+            if failed_compound_prompts:
+                lines.extend([
+                    "",
+                    "أجزاء الطلب المركب المحفوظة للاسترجاع (لم يكتمل الرد بسبب تعذر المزوّد):",
+                ])
+                seen_parts = set()
+                for saved_prompt in failed_compound_prompts:
+                    for part in re.findall(
+                        r"(?m)^\\s*\\d+[.)、]\\s*(.+?)\\s*$",
+                        str(saved_prompt.get("user") or ""),
+                    ):
+                        part = " ".join(part.split()).strip()
+                        if part and part.casefold() not in seen_parts:
+                            seen_parts.add(part.casefold())
+                            lines.append("- " + part[:180])
             lines.extend([
                 "",
                 "نقطة التوقف:",
