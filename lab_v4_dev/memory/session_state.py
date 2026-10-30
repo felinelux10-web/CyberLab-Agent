@@ -630,9 +630,17 @@ def session_route_contract(raw: str) -> dict:
         output_kind = "capability"
     elif selection.get("kind") in {"list", "count"}:
         output_kind = "list"
+    elif is_explicit_transcript_request(raw_text):
+        # Transcript is a privileged output and must be selected explicitly,
+        # including when the target is the live dialogue rather than a saved session.
+        output_kind = "transcript"
     elif selection.get("report_mode") == "transcript":
         output_kind = "transcript"
-    elif selection.get("report_mode") == "progress":
+    elif selection.get("report_mode") == "progress" or any(
+        marker in text for marker in (
+            "اين توقفنا", "الخطوه التاليه", "ما الذي انجز", "اين وصلنا",
+        )
+    ):
         output_kind = "progress"
     elif explicit_report_request or selection.get("report_mode") == "full":
         output_kind = "report"
