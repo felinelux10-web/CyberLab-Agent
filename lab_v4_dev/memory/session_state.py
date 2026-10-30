@@ -1138,6 +1138,60 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     ).strip(" \t\r\n.,،؛:!?؟")
     answer = answer[:200]
 
+    # Preserve concise social proposal requests as their subject, not as
+    # an unclassified generic exchange. The phrase is embedded in a narrative
+    # insight rather than rendered as a user/assistant transcript line.
+    suggestion_request = re.match(
+        r"^(?:ماذا|ما)\\s+تقترح\\s+(?:انت|أنت)[؟?!.،؛]*$",
+        user_text,
+        flags=re.IGNORECASE,
+    )
+    if suggestion_request:
+        return [
+            f"تناول الحوار طلب اقتراح من الوكيل بصيغة «{user_text}»؛ "
+            + (f"وكان الرد: {answer}." if answer else "دون حفظ اقتراح محدد.")
+        ]
+
+    # Recover a user-stated concern as a topic even when it is phrased as a
+    # personal observation rather than an explicit question or target.
+    learning_concern = re.match(
+        r"^أشعر\\s+أن\\s+(.+?)\\s+ولا\\s+أعرف\\s+ماذا\\s+أتعلم[.!؟?]*$",
+        user_text,
+        flags=re.IGNORECASE,
+    )
+    if learning_concern:
+        subject = learning_concern.group(1).strip()
+        return [
+            f"ناقش الحوار تسارع «{subject}» وما يمكن تعلمه؛ "
+            + (f"واقترح الرد {answer}." if answer else "دون توصية محفوظة.")
+        ]
+
+    # Explicit general-topic declarations and conversational topic openings
+    # carry usable subject evidence even when the parser supplied no target.
+    declared_topic = re.match(
+        r"^(?:موضوع|فكرة)\\s+(?:عام(?:ة)?\\s+)?(?:عن|حول)\\s+(.+?)[.!؟?،؛]*$",
+        user_text,
+        flags=re.IGNORECASE,
+    )
+    if declared_topic:
+        subject = declared_topic.group(1).strip(" \\t\\r\\n.,،؛:!?؟")
+        return [
+            f"ناقش الحوار موضوعًا عامًا عن «{subject}»؛ "
+            + (f"وقدم الرد توضيحًا موجزًا بشأن {answer}." if answer else "دون خلاصة جواب محفوظة.")
+        ]
+
+    conversational_topic = re.match(
+        r"^(?:نتحدث|نتكلم|نتحاور)\\s+(?:عن|حول)\\s+(.+?)[.!؟?،؛]*$",
+        user_text,
+        flags=re.IGNORECASE,
+    )
+    if conversational_topic:
+        subject = conversational_topic.group(1).strip(" \\t\\r\\n.,،؛:!?؟")
+        return [
+            f"كان محور الحوار الذي حدده المستخدم «{user_text}»؛ "
+            + (f"وتناول الرد موضوع «{subject}» بإيجاز: {answer}." if answer else f"وكان موضوعه «{subject}».")
+        ]
+
     # A user may state the discussion subject directly rather than ask a
     # question ("ناقشنا موضوعًا اجتماعيًا"). Preserve that semantic subject
     # in the summary instead of reducing the exchange to the assistant reply.
