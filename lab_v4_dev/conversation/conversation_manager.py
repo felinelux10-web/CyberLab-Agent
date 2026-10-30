@@ -3845,6 +3845,11 @@ class ConversationManager:
             "intent": Intent.MEMORY_DUMP,
             "source": "dialogue_memory",
             "executed": False,
+            "output_kind": (
+                "transcript" if response_mode == "transcript"
+                else "summary" if response_mode == "summary"
+                else "chat"
+            ),
             "dialogue_response_mode": response_mode,
         }
         if response_mode == "last_question":
