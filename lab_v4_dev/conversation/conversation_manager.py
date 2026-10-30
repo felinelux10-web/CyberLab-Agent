@@ -938,6 +938,15 @@ class ConversationManager:
                 "session_id": selected_saved_session_id,
                 "report_mode": "standard",
             }
+
+        # Broad memory-inventory questions are read from local memory owners.
+        # Explicit saved-session selectors keep their dedicated report path.
+        if (
+            selected_session.get("kind") == "none"
+            and self._is_memory_inventory_request(user_input)
+        ):
+            return self._local_memory_inventory_answer()
+
         normalized_session_request = self._normalize_transition_text(user_input).strip(
             " .,،؛:!?؟"
         )
