@@ -3526,12 +3526,8 @@ class ConversationManager:
         # A role-labelled transcript is a privileged output format. Parser
         # hints and generic history wording cannot enable it: the current user
         # turn must explicitly ask for literal/original messages.
-        explicit_transcript_request = bool(re.search(
-            r"(?:حرفيا|حرفيًا|الرسائل\s+الاصليه|الرسائل\s+الأصلية|"
-            r"النص\s+الاصلي|النص\s+الأصلي|اعرض\s+(?:لي\s+)?نص\s+الحوار|"
-            r"اعرض\s+(?:لي\s+)?سجل\s+الحوار|كما\s+قيلت)",
-            normalized_query,
-        ))
+        from lab_v4_dev.memory.session_state import is_explicit_transcript_request
+        explicit_transcript_request = is_explicit_transcript_request(text)
         if explicit_transcript_request:
             response_mode = "transcript"
         elif response_mode == "transcript":
