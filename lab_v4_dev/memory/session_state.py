@@ -309,12 +309,7 @@ def _session_selector_details(raw: str) -> dict:
         return {"kind": "reference", "report_mode": "standard"}
 
     report_mode = "standard"
-    if any(token in text for token in (
-        "نص الحوار حرفيا", "نص الحوار حرفيًا", "الحوار المحفوظ حرفيا",
-        "الحوار المحفوظ حرفيًا", "اعرض الرسائل الأصلية", "اعرض الرسائل الاصليه",
-        "اعرض نص الحوار", "اعرض سجل الحوار",
-        "سجل الحوار حرفيا", "سجل الحوار حرفيًا", "المحادثة كما هي",
-    )):
+    if is_explicit_transcript_request(raw_text):
         report_mode = "transcript"
     elif any(token in text for token in ("فقط", "المعرف والحالة", "المعرّف والموضوع والحالة")):
         report_mode = "compact"
@@ -506,6 +501,42 @@ def _session_selector_details(raw: str) -> dict:
     )):
         return {"kind": "latest", "report_mode": report_mode}
     return {"kind": "none"}
+
+
+def is_explicit_transcript_request(raw: str) -> bool:
+    """Return true only for an affirmative request to display original messages."""
+    text = (
+        str(raw or "").casefold()
+        .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        .replace("ى", "ي")
+    )
+    text = re.sub(r"[\u064b-\u065f\u0670]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    transcript_terms = (
+        "نص الحوار", "سجل الحوار", "الحوار المحفوظ",
+        "الرسائل الاصليه", "الرسائل الأصلية", "المحادثة كما هي",
+    )
+    positive = bool(
+        re.search(
+            r"(?:اعرض|اظهر|اطبع|انسخ|اعطني|ارني).{0,45}"
+            r"(?:نص الحوار|سجل الحوار|الحوار المحفوظ|الرسائل\\s+الاصليه|"
+            r"الرسائل\\s+الأصلية|المحادثة كما هي)",
+            text,
+        )
+        or re.search(
+            r"(?:نص الحوار|سجل الحوار|الحوار المحفوظ|الرسائل\\s+الاصليه|"
+            r"الرسائل\\s+الأصلية).{0,25}(?:حرفيا|كما هي|الأصلية)",
+            text,
+        )
+    )
+    negative = bool(
+        re.search(
+            r"(?:لا|بدون|دون|ليس|لا اريد|لا اريد ان).{0,35}"
+            r"(?:نص الحوار|سجل الحوار|الحوار المحفوظ|الرسائل)",
+            text,
+        )
+    )
+    return positive and not negative
 
 
 def session_selector(raw: str) -> dict:
