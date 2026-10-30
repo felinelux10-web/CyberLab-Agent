@@ -1836,7 +1836,15 @@ SOURCE CODE:
                     "=== ملخصات الجلسات المحفوظة ==="
                     if detailed_summaries else "=== الجلسات المحفوظة ==="
                 ]
-                for number, item in enumerate(candidates, 1):
+                # Visible numbering is the global stable index contract used
+                # by get_session_by_number, even when the list is type-filtered.
+                stable_numbers = {
+                    str(entry.get("session_id") or ""): index + 1
+                    for index, entry in enumerate(get_session_index())
+                    if isinstance(entry, dict) and str(entry.get("session_id") or "").strip()
+                }
+                for item in candidates:
+                    number = stable_numbers.get(str(item.get("session_id") or ""), "?")
                     report = analyze_session(get_session_by_id(item.get("session_id")) or item)
                     session_type = str(item.get("session_type") or report.get("session_type") or "work").casefold()
                     label = "حوار" if session_type == "dialogue" else "عمل"
