@@ -581,9 +581,15 @@ def session_route_contract(raw: str) -> dict:
         selection["kind"] = "search"
         selection["query"] = topic_filter
 
-    explicit_report_request = any(marker in text for marker in (
-        "تقرير", "تقريرا", "تقريرًا", "تقرير مفصل", "تقرير كامل",
-    ))
+    explicit_report_request = (
+        any(marker in text for marker in (
+            "تقرير", "تقريرا", "تقريرًا", "تقرير مفصل", "تقرير كامل",
+        ))
+        and not bool(re.search(
+            r"(?:لا|بدون|دون|ليس|لا اريد).{0,25}تقرير",
+            text,
+        ))
+    )
     asks_for_summary = any(marker in text for marker in (
         "ملخص", "تلخيص", "لخص", "مضمون", "محتوى", "المحتوى", "المضمون",
     ))
