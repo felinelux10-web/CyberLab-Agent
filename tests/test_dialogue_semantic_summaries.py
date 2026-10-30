@@ -190,3 +190,95 @@ def test_fused_arabic_status_questions_reach_operational_status_handlers():
 
     for phrase in ("ماهي حالة النظام", "ما هي حالة النظام"):
         assert parse(phrase)["intent"] == Intent.SYSTEM_STATUS
+
+
+
+def test_broad_memory_inventory_request_is_distinct_from_topic_recall():
+    assert ConversationManager._is_memory_inventory_request(
+        "ماذا تتذكر من خلال كل شيء تعرفه ومحفوظ عندك"
+    )
+    assert ConversationManager._is_memory_inventory_request("اعرض كل ما تتذكره")
+    assert not ConversationManager._is_memory_inventory_request("هل تتذكر موضوع الفضاء؟")
+
+
+def test_memory_inventory_is_local_and_reads_separate_memory_owners(monkeypatch):
+    from lab_v4_dev.memory import session_state
+    from lab_v4_dev.awareness import project_knowledge
+
+    sessions = [
+        {"session_id": "dialogue-1", "session_type": "dialogue"},
+        {"session_id": "work-1", "session_type": "work"},
+    ]
+    monkeypatch.setattr(session_state, "get_session_index", lambda: sessions)
+    monkeypatch.setattr(session_state, "get_recent_sessions", lambda: sessions)
+    monkeypatch.setattr(
+        session_state,
+        "get_session_by_id",
+        lambda session_id: {"session_id": session_id, "session_type": "dialogue" if session_id == "dialogue-1" else "work"},
+    )
+    monkeypatch.setattr(
+        session_state,
+        "build_session_brief_summary",
+        lambda data: {
+            "topic": "الفن" if data["session_type"] == "dialogue" else "إصلاح المشروع",
+            "summary": "مناقشة فنية محفوظة" if data["session_type"] == "dialogue" else "تقدم عمل محفوظ",
+            "session_type": data["session_type"],
+        },
+    )
+    monkeypatch.setattr(
+        project_knowledge,
+        "get_project_state",
+        lambda: {
+            "version": "test-v1",
+            "current_focus": "توحيد الذاكرة",
+            "completed_count": 3,
+            "last_goal": "إصلاح الاسترجاع",
+            "last_step": "اختبار التلخيص",
+            "active": ["تحسين الحوار"],
+            "planned": ["تطوير Context API"],
+        },
+    )
+
+    context = ContextStore()
+    memory_store = SimpleNamespace(
+        task_status_counts=lambda: {"done": 2},
+        all_lessons=lambda: [{"lesson": "lesson-1"}],
+    )
+    orchestrator = SimpleNamespace(
+        context=context,
+        agent=SimpleNamespace(memory=memory_store),
+    )
+    manager = ConversationManager(orchestrator, DialogueMemory(context))
+
+    result = manager._local_memory_inventory_answer()
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_memory_inventory"
+    assert "الجلسات المحفوظة: 2" in result["text"]
+    assert "حوارات: 1" in result["text"]
+    assert "عمل: 1" in result["text"]
+    assert "الفن: مناقشة فنية محفوظة" in result["text"]
+    assert "توحيد الذاكرة" in result["text"]
+    assert "عدد الدروس المحفوظة: 1" in result["text"]
+
+
+def test_memory_inventory_request_is_answered_before_provider_dispatch(monkeypatch):
+    context = ContextStore()
+    manager = ConversationManager(SimpleNamespace(context=context), DialogueMemory(context))
+    calls = []
+    monkeypatch.setattr(
+        manager,
+        "_local_memory_inventory_answer",
+        lambda: calls.append("local") or {
+            "status": "success",
+            "intent": "memory_dump",
+            "source": "local_memory_inventory",
+            "text": "LOCAL MEMORY INVENTORY",
+        },
+    )
+
+    result = manager.process("ماذا تتذكر من خلال كل شيء تعرفه ومحفوظ عندك")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_memory_inventory"
+    assert calls == ["local"]
