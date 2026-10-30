@@ -299,3 +299,30 @@ def test_provider_cannot_replace_cyberlab_identity_with_host_product_identity():
     )
 
     assert bounded == fallback
+
+
+
+def test_positive_acknowledgement_does_not_become_a_fake_dialogue_topic():
+    from lab_v4_dev.conversation.unified_local_response import answer_local_response
+
+    history = [
+        {"role": "user", "content": "مرحبا", "conversation_domain": "social", "context_kind": "social"},
+        {"role": "assistant", "content": "أهلًا بك. هل نبدأ من فكرة جديدة؟", "conversation_domain": "social", "context_kind": "dialogue"},
+        {"role": "user", "content": "كيف الحال", "conversation_domain": "social", "context_kind": "social"},
+        {"role": "assistant", "content": "أنا بخير، شكرًا لسؤالك. كيف حالك أنت؟", "conversation_domain": "social", "context_kind": "dialogue"},
+        {"role": "user", "content": "جيد", "conversation_domain": "social", "context_kind": "social"},
+        {"role": "assistant", "content": "سعيد بأنك بخير.", "conversation_domain": "social", "context_kind": "dialogue"},
+    ]
+
+    result = answer_local_response(
+        "لنكمل حوارنا",
+        {"intent": "personal_chat", "conversation_act": "CONVERSATION_CONTINUATION"},
+        {"conversation_act": "CONVERSATION_CONTINUATION", "conversation_domain": "general"},
+        history=history,
+    )
+
+    assert result is not None
+    assert result["status"] == "success"
+    assert result["local_strategy"] == "friendly_dialogue_reopen"
+    assert "لم نحدد موضوعًا" in result["text"]
+    assert "جيد" not in result["text"]
