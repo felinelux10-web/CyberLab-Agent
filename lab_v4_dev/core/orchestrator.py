@@ -19,6 +19,7 @@ from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
 from lab_v4_dev.awareness.knowledge_retriever import resolve_project_scope
 from lab_v4_dev.config.provider_config import get_active_provider
 import os
+import re
 import shutil
 import uuid
 import inspect
