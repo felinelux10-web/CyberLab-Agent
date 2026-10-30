@@ -929,6 +929,22 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
             "created_at": now,
         }
     topic = str(state.get("last_topic") or state.get("pending_topic") or "").strip()
+    if not topic:
+        # Derive a useful title from the first substantive exchange rather
+        # than naming every otherwise untitled dialogue "حفظ سياق الحوار".
+        first_substantive = next(
+            (
+                item for item in exchanges
+                if not _is_dialogue_control_exchange(item)
+            ),
+            None,
+        )
+        if isinstance(first_substantive, dict):
+            topic = str(first_substantive.get("target") or "").strip()
+            if not topic:
+                first_insights = _dialogue_exchange_insights(first_substantive)
+                topic = str(first_insights[0] if first_insights else "").strip()
+            topic = " ".join(topic.split())[:100].strip(" .،؛:")
     data.update({
         "schema_version": data.get("schema_version", SESSION_SCHEMA_VERSION),
         "session_id": session_id,
