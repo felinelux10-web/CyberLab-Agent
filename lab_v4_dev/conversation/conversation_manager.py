@@ -326,11 +326,11 @@ class ConversationManager:
 
     @staticmethod
     def _explicit_resume_topic(text: str) -> str | None:
-        """Extract a named subject from an explicit request to continue talking about it."""
-        value = normalize_text(str(text or "")).strip()
+        """Extract an explicit resume subject without altering its spelling."""
+        value = str(text or "").strip()
         match = re.match(
-            r"^(?:(?:حسنا|تمام|طيب)\s+)?"
-            r"(?:اكمل|كمل|تابع|واصل|استكمل|لنواصل|لنكمل)\s+"
+            r"^(?:(?:حسنا|حسنًا|تمام|طيب)\s+)?"
+            r"(?:[اأإآ]?كمل|كمل|تابع|واصل|استكمل|إستكمل|لنواصل|لنكمل)\s+"
             r"(?:الحديث|الحوار|النقاش|الكلام)\s+"
             r"(?:عن|حول)\s+(?:موضوع\s+)?(.+?)\s*$",
             value,
