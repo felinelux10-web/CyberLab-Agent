@@ -595,6 +595,13 @@ def session_route_contract(raw: str) -> dict:
     ))
 
     if (
+        explicit_report_request
+        and selection.get("kind") in {
+            "number", "id", "latest", "previous_dialogue", "search",
+        }
+    ):
+        selection["report_mode"] = "full"
+    elif (
         topic_filter
         and selection.get("kind") in {
             "previous_dialogue", "search", "number", "id", "latest",
