@@ -1053,6 +1053,14 @@ def _is_dialogue_control_text(value: object) -> bool:
         "كيف حالك اليوم", "كيف حال الوكيل", "كيف داز نهارك",
         "ميف الحال", "انا بخير", "بخير", "جيد", "نعم", "اجل",
         "حسنا", "تمام",
+        # Standalone dialogue-control turns are not subject matter. A request
+        # carrying an explicit topic (for example, "اكمل عن الفضاء") remains
+        # eligible for semantic extraction.
+        "حسنا اكمل", "حسنا نكمل", "اكمل", "اكمل الحديث",
+        "لنكمل حوارنا", "هيا نكمل حديثنا", "دعنا نواصل حديثنا",
+        "دعنا نتحدث قليلا", "دعنا نتكلم قليلا", "تابع الشرح",
+        "واصل الشرح", "ماهي اخر نقطة توقف فيها الحوار",
+        "ما هي اخر نقطة توقف فيها الحوار",
     } or re.fullmatch(
         r"(?:كيف|ميف)\s+(?:الحال|حالك|حالكم|حال الوكيل)(?:\s+اليوم)?",
         text,
@@ -1431,12 +1439,23 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
             f"عدد التبادلات المكتملة: {len(exchanges)}",
         ])
     if report_mode == "progress":
-        return "\n".join([
+        progress_summary = summarize_dialogue_exchanges(
+            summary_exchanges,
+            topic=topic,
+            limit=12,
+        )
+        progress_stop_point = progress_summary["stop_point"]
+        progress_next_step = (
+            f"استكمال النقاش من آخر مضمون موثق حول «{progress_summary['topic']}»."
+            if progress_summary["meaningful_exchange_count"]
+            else "اختيار موضوع واضح للبدء؛ السجل الحالي لا يثبت وجود نقاش موضوعي سابق."
+        )
+        return "\\n".join([
             "=== ملخص الحوار ونقطة التوقف ===",
-            f"الموضوع: {topic}",
+            f"الموضوع: {progress_summary['topic'] or topic}",
             f"التبادلات المكتملة المحفوظة: {len(exchanges)}",
-            f"نقطة التوقف: {stop_point}",
-            f"الخطوة التالية: {next_step}",
+            f"نقطة التوقف: {progress_stop_point}",
+            f"الخطوة التالية: {progress_next_step}",
             "لم يتم تنفيذ أي خطوة جديدة أثناء الاستعادة.",
         ])
 
