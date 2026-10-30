@@ -641,7 +641,7 @@ def session_route_contract(raw: str) -> dict:
         output_kind = "chat"
 
     selection["output_kind"] = output_kind
-    if topic_filter and output_kind in {"summary", "topic_summary"}:
+    if topic_filter and output_kind in {"summary", "topic_summary", "report"}:
         selection["topic_filter"] = topic_filter
     return selection
 
