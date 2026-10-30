@@ -628,6 +628,24 @@ def classify_conversation_semantics(
             "response_attributes": {"dialogue_response_mode": "summary"},
             "conversational": True,
         }
+    # An explicit request to recover a discussion interrupted by a topic
+    # switch is a continuation/routing instruction, not a request to summarize
+    # the latest dialogue branch. Give this more specific act precedence over
+    # the generic "last stopping point" history-query detector.
+    interrupted_discussion = (
+        _has_any(bases, {"استرجع", "استرجاع", "استعادة", "استرد", "واصل", "تابع", "اكمل", "استكمل", "نكمل"})
+        and _has_any(bases, {"نقاش", "حوار", "محادثه", "حديث", "موضوع", "جلسه"})
+        and _has_any(bases, {"انقطع", "توقفنا", "توقف", "انتقلنا", "اخر", "آخر", "نقطه", "نقطة", "واصل", "تابع"})
+    )
+    if interrupted_discussion:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "confidence": 0.97,
+            "response_attributes": {"dialogue_recovery": "interrupted_branch"},
+            "conversational": True,
+        }
+
     asks_stopping_point = (
         (
             _has_any(bases, {"اين", "وين", "where"})
