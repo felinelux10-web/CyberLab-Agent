@@ -1176,7 +1176,7 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     if declared_topic:
         subject = declared_topic.group(1).strip(" \t\r\n.,،؛:!?؟")
         return [
-            f"ناقش الحوار موضوعًا عامًا عن «{subject}»؛ "
+            f"تناول الحوار طرح المستخدم «{user_text}» بوصفه موضوعًا عامًا؛ "
             + (f"وقدم الرد توضيحًا موجزًا بشأن {answer}." if answer else "دون خلاصة جواب محفوظة.")
         ]
 
@@ -1209,10 +1209,21 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
                 ]
             return [f"تناول الحوار {subject}؛ وتبادل الطرفان ردًا حواريًا حوله."]
 
+    # Extract the compared concepts from the original user wording. The
+    # normalized form is useful for matching, but must not replace the user's
+    # actual subject with a canonical target such as "list و dict".
     comparison = re.search(
         r"(?:ما\s+)?(?:الفرق|الفروق|الاختلاف)\s+بين\s+(.+?)(?:[؟?!.،؛]|$)",
-        normalized,
+        user_text,
+        flags=re.IGNORECASE,
     )
+    if comparison:
+        pair = " ".join(comparison.group(1).split()).strip(" \\t\\r\\n.,،؛:!?؟")
+        if pair:
+            return [
+                f"قارن الحوار بين «{pair[:150]}»"
+                + (f"؛ وتركز التوضيح على {answer}." if answer else ".")
+            ]
     if comparison:
         pair = " ".join(comparison.group(1).split()).strip(" \t\r\n.,،؛:!?؟")
         if pair:
