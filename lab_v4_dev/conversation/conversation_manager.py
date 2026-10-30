@@ -1027,6 +1027,14 @@ class ConversationManager:
                 ),
             }
 
+        # Every turn receives one local output contract before any response
+        # owner runs. Saved-session selection remains separate from live-dialogue
+        # rendering, but both share the same output-kind decision.
+        candidate = dict(candidate or {})
+        candidate["output_kind"] = str(selected_session.get("output_kind") or "chat")
+        if selected_session.get("kind") != "none":
+            candidate["session_selector"] = dict(selected_session)
+
         # Capability questions are answered from the local session-store
         # contract. They must not trigger a restore, a transcript, or a provider.
         if selected_session.get("output_kind") == "capability":
@@ -1094,6 +1102,7 @@ class ConversationManager:
                 "target": "",
                 "context": "system",
                 "session_selector": selected_session,
+                "output_kind": selected_session.get("output_kind", "report"),
                 "conversation_domain": "system",
                 "conversation_act": "ASSISTANT_STATE_QUERY",
                 "source": "session_selector",
@@ -2434,7 +2443,10 @@ class ConversationManager:
             chat_history=chat_history,
             context_transition=transition.value,
         )
-        selected_output_kind = (parsed.get("session_selector") or {}).get("output_kind")
+        selected_output_kind = (
+            (parsed.get("session_selector") or {}).get("output_kind")
+            or parsed.get("output_kind")
+        )
         if selected_output_kind:
             result["output_kind"] = selected_output_kind
         if (
@@ -2540,6 +2552,9 @@ class ConversationManager:
     ) -> dict:
         """Apply the shared presentation and analysis contract to local dialogue replies."""
         result = dict(result)
+        output_kind = str((parsed or {}).get("output_kind") or "").strip()
+        if output_kind:
+            result.setdefault("output_kind", output_kind)
         response_attributes = dict(
             result.get("response_attributes")
             or getattr(semantic, "response_attributes", {})
