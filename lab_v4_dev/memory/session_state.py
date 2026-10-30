@@ -1218,7 +1218,7 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         flags=re.IGNORECASE,
     )
     if comparison:
-        pair = " ".join(comparison.group(1).split()).strip(" \\t\\r\\n.,،؛:!?؟")
+        pair = " ".join(comparison.group(1).split()).strip(" \t\r\n.,،؛:!?؟")
         if pair:
             return [
                 f"قارن الحوار بين «{pair[:150]}»"
