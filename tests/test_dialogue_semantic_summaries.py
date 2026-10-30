@@ -124,6 +124,12 @@ def test_live_dialogue_summary_is_narrative_not_a_message_dump():
             "تظهر عناصره فوق خلفية منخفضة، فينشأ اختلاف محسوس في الارتفاع.",
             "النقش البارز",
         ),
+        _exchange(
+            session_id,
+            "وما علاقة الفضاء بالفنون؟",
+            "يمكن للفنانين استلهام اتساع الفضاء وأجرامه في التكوينات البصرية.",
+            "الفضاء والفنون",
+        ),
     ]
     manager = ConversationManager(SimpleNamespace(context=context), memory)
 
@@ -142,6 +148,7 @@ def test_live_dialogue_summary_is_narrative_not_a_message_dump():
     assert "الوكيل:" not in result["text"]
     assert "نقطة التوقف:" in result["text"]
     assert "النقش البارز" in result["text"]
+    assert "الفضاء والفنون" in result["text"]
 
 
 
