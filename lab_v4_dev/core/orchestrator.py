@@ -2323,6 +2323,13 @@ SOURCE CODE:
                     "context_action": "read_only_report",
                     "context_restored": None,
                     "session_id": str(s.get("session_id") or selected_id or ""),
+                    "output_kind": selector.get("output_kind") or (
+                        "transcript" if report_mode == "transcript"
+                        else "progress" if report_mode == "progress"
+                        else "report" if report_mode == "full"
+                        else "summary"
+                    ),
+                    "topic_filter": selector.get("topic_filter"),
                     "text": summary,
                     "session_summary": summary,
                 }
