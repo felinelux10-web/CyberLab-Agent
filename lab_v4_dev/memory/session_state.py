@@ -1142,12 +1142,12 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     # question ("ناقشنا موضوعًا اجتماعيًا"). Preserve that semantic subject
     # in the summary instead of reducing the exchange to the assistant reply.
     discussion_subject = re.match(
-        r"^(?:ناقشنا|ناقش\\s+الحوار|تحدثنا\\s+عن|تناولنا|دار\\s+حديثنا\\s+عن)\\s+(.+?)[؟?!.،؛]*$",
+        r"^(?:ناقشنا|ناقش\s+الحوار|تحدثنا\s+عن|تناولنا|دار\s+حديثنا\s+عن)\s+(.+?)[؟?!.،؛]*$",
         user_text,
         flags=re.IGNORECASE,
     )
     if discussion_subject:
-        subject = discussion_subject.group(1).strip(" \\t\\r\\n.,،؛:!?؟")
+        subject = discussion_subject.group(1).strip(" \t\r\n.,،؛:!?؟")
         if subject:
             return [f"تناول الحوار {subject}؛ وتبادل الطرفان ردًا حواريًا حوله."]
 
