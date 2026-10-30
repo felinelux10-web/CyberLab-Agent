@@ -3880,7 +3880,7 @@ class ConversationManager:
                 if item.get("recall_only")
                 and item.get("response_failed")
                 and str(item.get("user") or "").strip()
-                and re.search(r"(?m)^\\s*\\d+[.)、]\\s*\\S", str(item.get("user") or ""))
+                and re.search(r"(?m)^\s*\d+[.)、]\s*\S", str(item.get("user") or ""))
             ]
             if failed_compound_prompts:
                 lines.extend([
@@ -3890,7 +3890,7 @@ class ConversationManager:
                 seen_parts = set()
                 for saved_prompt in failed_compound_prompts:
                     for part in re.findall(
-                        r"(?m)^\\s*\\d+[.)、]\\s*(.+?)\\s*$",
+                        r"(?m)^\s*\d+[.)、]\s*(.+?)\s*$",
                         str(saved_prompt.get("user") or ""),
                     ):
                         part = " ".join(part.split()).strip()
