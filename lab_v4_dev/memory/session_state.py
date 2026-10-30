@@ -253,7 +253,7 @@ def get_latest_session_by_type(session_type: str) -> dict:
     return {}
 
 
-def session_selector(raw: str) -> dict:
+def _session_selector_details(raw: str) -> dict:
     """Classify explicit session selection/report language without an LLM."""
     raw_text = str(raw or "").strip()
     text = raw_text.casefold()
@@ -506,6 +506,65 @@ def session_selector(raw: str) -> dict:
     )):
         return {"kind": "latest", "report_mode": report_mode}
     return {"kind": "none"}
+
+
+def session_selector(raw: str) -> dict:
+    """Return the canonical local output contract for a saved-session request."""
+    raw_text = str(raw or "").strip()
+    text = (
+        raw_text.casefold()
+        .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        .replace("ى", "ي").replace("ـ", "")
+    )
+    text = re.sub(r"[\u064b-\u065f\u0670]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    capability_request = bool(
+        re.search(
+            r"(?:هل\\s+)?(?:تستطيع|يمكنك|تقدر|بامكانك|بإمكانك).{0,35}"
+            r"(?:استرجاع|استعادة|استرداد).{0,25}جلس",
+            text,
+        )
+    )
+    selection = _session_selector_details(raw_text)
+    selection = dict(selection or {"kind": "none"})
+
+    topic_filter = None
+    topic_match = re.search(
+        r"(?:ملخص|لخص|تلخيص)?\\s*(?:عن|حول|موضوع(?:\\s+(?:عن|حول))?)\\s+"
+        r"(.+?)(?=\\s+(?:في|ضمن)\\s+(?:الجلسة|الحوار)|$)",
+        text,
+    )
+    if topic_match:
+        candidate_topic = topic_match.group(1).strip(" \\t\\r\\n.,،؛:!?؟")
+        if candidate_topic and not re.search(
+            r"^(?:الجلسة|الحوار|الجلسات|الحوارات)(?:\\s|$)", candidate_topic
+        ):
+            topic_filter = candidate_topic
+
+    if capability_request:
+        output_kind = "capability"
+    elif selection.get("kind") in {"list", "count"}:
+        output_kind = "list"
+    elif selection.get("report_mode") == "transcript":
+        output_kind = "transcript"
+    elif selection.get("report_mode") == "progress":
+        output_kind = "progress"
+    elif selection.get("report_mode") == "full":
+        output_kind = "report"
+    elif selection.get("report_mode") == "summary" or selection.get("kind") in {
+        "previous_dialogue", "search",
+    }:
+        output_kind = "topic_summary" if topic_filter else "summary"
+    elif selection.get("kind") in {"number", "id", "latest"}:
+        output_kind = "report"
+    else:
+        output_kind = "chat"
+
+    selection["output_kind"] = output_kind
+    if topic_filter and output_kind in {"summary", "topic_summary"}:
+        selection["topic_filter"] = topic_filter
+    return selection
 
 
 def resolve_saved_session_choice(raw: str, candidates: list[dict]) -> str | None:
