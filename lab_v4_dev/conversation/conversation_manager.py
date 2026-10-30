@@ -480,6 +480,17 @@ class ConversationManager:
             return str(reply or "").strip()
 
         normalized = normalize_text(str(user_input or ""))
+        normalized_reply = normalize_text(str(reply or ""))
+        if value == "agent_identity" and any(marker in normalized_reply for marker in (
+            "chatgpt", "openai", "شات جي بي تي", "تشات جي بي تي",
+            "سياسات openai", "سياسات الخصوصيه",
+        )):
+            # The local agent identity is source-backed. Do not let a provider
+            # replace it with the host product's identity or policy language.
+            return str(fallback or "").strip() or (
+                "أنا CyberLab Agent داخل هذا المشروع. أجيب عن هويتي ووظائفي "
+                "استنادًا إلى الشفرة المحلية، ولا أقدّم نفسي بوصف ChatGPT."
+            )
         no_internals = any(marker in normalized for marker in (
             "لا تعرض بنية", "ليس تعرض بنية", "لا تشرح بنية",
             "لا تعرض تفاصيل المشروع", "لا تذكر الملفات",
