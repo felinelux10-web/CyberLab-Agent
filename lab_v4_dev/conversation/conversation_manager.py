@@ -600,6 +600,159 @@ class ConversationManager:
         })
         return has_dialogue_object and has_new_marker and has_start_marker
 
+
+
+    @staticmethod
+    def _is_memory_inventory_request(text: str) -> bool:
+        """Recognize broad requests to inspect the agent's locally persisted memory."""
+        normalized = ConversationManager._normalize_transition_text(text)
+        memory_cues = (
+            "تتذكر", "اتذكر", "تذكره", "ذاكره", "ذاكرة",
+            "محفوظ", "المحفوظ", "تعرفه", "اعرفه",
+        )
+        broad_scope = (
+            "كل شيء", "كل شي", "كل ما", "جميع ما",
+            "منذ البدايه", "من البدايه", "من خلال كل",
+            "كل المعلومات", "كل ما تعرفه", "كل ما هو محفوظ",
+        )
+        return (
+            any(marker in normalized for marker in memory_cues)
+            and any(marker in normalized for marker in broad_scope)
+        )
+
+    def _local_memory_inventory_answer(self) -> dict:
+        """Read local memory owners and report their contents without a provider."""
+        lines = ["ملخص الذاكرة المحلية المتاحة في CyberLab Agent:"]
+        session_count = 0
+        session_type_counts = {"dialogue": 0, "work": 0, "other": 0}
+        recent_summaries = []
+        try:
+            from lab_v4_dev.memory.session_state import (
+                get_session_index,
+                get_recent_sessions,
+                get_session_by_id,
+                build_session_brief_summary,
+            )
+            index = get_session_index()
+            session_count = len(index)
+            for item in index:
+                kind = str(item.get("session_type") or "").casefold()
+                if kind in {"dialogue", "work"}:
+                    session_type_counts[kind] += 1
+                else:
+                    session_type_counts["other"] += 1
+            for item in get_recent_sessions()[:5]:
+                session_id = str(item.get("session_id") or "")
+                detail = get_session_by_id(session_id) if session_id else {}
+                brief = build_session_brief_summary(detail or item)
+                topic = str(brief.get("topic") or "جلسة بلا عنوان موثوق").strip()
+                summary = str(brief.get("summary") or "").strip()
+                recent_summaries.append((topic, summary, brief.get("session_type")))
+        except Exception:
+            index = []
+
+        lines.append(
+            f"- الجلسات المحفوظة: {session_count} "
+            f"(حوارات: {session_type_counts['dialogue']}، "
+            f"عمل: {session_type_counts['work']}، "
+            f"غير مصنفة: {session_type_counts['other']})."
+        )
+        if recent_summaries:
+            lines.append("- أحدث الجلسات المحفوظة ومضمونها:")
+            for topic, summary, _kind in recent_summaries:
+                lines.append(f"  • {topic}: {summary or 'لا تتوفر تفاصيل كافية في سجل الجلسة.'}")
+
+        # The live dialogue is a separate owner from persisted sessions.
+        try:
+            state = getattr(self.dialogue_memory, "state", None)
+            live_exchanges = list(getattr(state, "exchange_archive", []) or [])
+            session_id = str(getattr(state, "session_id", "") or "")
+            live_exchanges = [
+                item for item in live_exchanges
+                if isinstance(item, dict)
+                and (not session_id or str(item.get("session_id") or "") == session_id)
+                and str(item.get("context_kind") or "").casefold()
+                    not in {"work", "system", "execution"}
+                and str(item.get("conversation_domain") or "").casefold()
+                    not in {"work", "system", "execution"}
+            ]
+            from lab_v4_dev.memory.session_state import summarize_dialogue_exchanges
+            live_report = summarize_dialogue_exchanges(
+                live_exchanges,
+                topic=str(getattr(state, "last_topic", "") or ""),
+                limit=3,
+            )
+            if live_report["exchange_count"]:
+                lines.append("- الحوار الجاري (منفصل عن الجلسات المحفوظة):")
+                if live_report["meaningful_exchange_count"]:
+                    lines.append(f"  • الموضوع: {live_report['topic'] or 'غير محدد'}.")
+                    lines.extend(f"  • {item}" for item in live_report["insights"][:3])
+                    lines.append(f"  • نقطة التوقف: {live_report['stop_point']}")
+                else:
+                    lines.append("  • سجل حالي يقتصر على التحية والتعارف، دون موضوع نقاش فعلي.")
+        except Exception:
+            lines.append("- تعذر قراءة سجل الحوار الجاري في هذه المحاولة.")
+
+        # Project Knowledge is not the dialogue archive or the execution context.
+        try:
+            from lab_v4_dev.awareness import project_knowledge
+            project_state = project_knowledge.get_project_state()
+            project_facts = []
+            version = str(project_state.get("version") or "").strip()
+            focus = str(project_state.get("current_focus") or "").strip()
+            last_goal = str(project_state.get("last_goal") or "").strip()
+            last_step = str(project_state.get("last_step") or "").strip()
+            if version and version != "?":
+                project_facts.append(f"الإصدار المسجل: {version}")
+            if focus and focus != "?":
+                project_facts.append(f"التركيز الحالي: {focus}")
+            if project_state.get("completed_count") is not None:
+                project_facts.append(f"عدد العناصر المكتملة المسجلة: {project_state['completed_count']}")
+            if last_goal and last_goal != "?":
+                project_facts.append(f"آخر هدف عمل محفوظ: {last_goal}")
+            if last_step and last_step != "?":
+                project_facts.append(f"الخطوة التالية المسجلة: {last_step}")
+            active = [str(value).strip() for value in (project_state.get("active") or []) if str(value).strip()]
+            planned = [str(value).strip() for value in (project_state.get("planned") or []) if str(value).strip()]
+            if active:
+                project_facts.append("عناصر العمل النشطة: " + "؛ ".join(active[:4]))
+            if planned:
+                project_facts.append("العناصر المخططة: " + "؛ ".join(planned[:4]))
+            if project_facts:
+                lines.append("- معرفة المشروع المحفوظة:")
+                lines.extend(f"  • {fact}" for fact in project_facts)
+        except Exception:
+            lines.append("- تعذر قراءة Project Knowledge في هذه المحاولة.")
+
+        # MemoryStore owns task history and lessons, not dialogue or project knowledge.
+        agent = getattr(self.orchestrator, "agent", None)
+        memory = getattr(agent, "memory", None)
+        if memory is not None:
+            try:
+                counts = memory.task_status_counts()
+                lessons = memory.all_lessons()
+                if counts or lessons:
+                    lines.append("- سجل المهام والدروس:")
+                    if counts:
+                        lines.append(f"  • حالات المهام المسجلة: {counts}")
+                    lines.append(f"  • عدد الدروس المحفوظة: {len(lessons or [])}")
+            except Exception:
+                lines.append("- تعذر قراءة سجل المهام والدروس في هذه المحاولة.")
+
+        lines.append(
+            "هذه قراءة لمصادر محلية محددة؛ لا تعني أن كل محتوى كل جلسة قد عُرض هنا. "
+            "يمكن استخراج تقرير مستقل لأي جلسة برقمها، أو عرض ملخصات جميع الجلسات."
+        )
+        return {
+            "status": "success",
+            "intent": Intent.MEMORY_DUMP,
+            "source": "local_memory_inventory",
+            "text": "\n".join(lines),
+            "executed": False,
+            "memory_sources": [
+                "saved_sessions", "live_dialogue", "project_knowledge", "task_history",
+            ],
+        }
     def process(self, user_input: str, *, _restore_context: dict | None = None) -> dict:
         # Session boundaries take precedence over pending clarifications and all
         # NLU/context resolution. A new dialogue must never inherit old state.
