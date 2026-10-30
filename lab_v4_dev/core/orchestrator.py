@@ -2279,8 +2279,9 @@ SOURCE CODE:
                                 ),
                                 system=(
                                     "أنت محلل حوارات ومحرر تقارير. التزم بالعربية الفصحى. "
-                                    "لخّص المعنى والمناقشات والنتائج من السجل المرفق وحده، "
-                                    "ولا تنسخ transcript ولا تخلط أي سياق خارجي أو حالي."
+                                    "قدّم ملخصًا موجزًا أو تقريرًا منظمًا بحسب المطلوب، "
+                                    "واشتق كل نقطة من السجل المرفق وحده. "
+                                    "لا تنسخ transcript ولا تخلط أي سياق خارجي أو حالي."
                                 ),
                                 max_tokens=700,
                                 temperature=0.2,
@@ -2307,7 +2308,11 @@ SOURCE CODE:
                             last_exchange = completed_exchanges[-1]
                             last_topic = str(last_exchange.get("target") or topic).strip()
                             summary = "\n".join([
-                                "=== الملخص التحليلي للحوار المحفوظ ===",
+                                (
+                                    "=== التقرير التحليلي للحوار المحفوظ ==="
+                                    if report_mode == "full"
+                                    else "=== الملخص التحليلي للحوار المحفوظ ==="
+                                ),
                                 f"معرّف الجلسة: {str(s.get('session_id') or selected_id or '')}",
                                 f"الموضوع المسجل: {topic}",
                                 f"عدد التبادلات المكتملة المستخدمة: {len(completed_exchanges)}",
