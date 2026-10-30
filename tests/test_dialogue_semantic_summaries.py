@@ -178,3 +178,15 @@ def test_all_saved_dialogue_summaries_are_not_downgraded_to_live_dialogue():
     ):
         selected = session_selector(phrase)
         assert selected == {"kind": "list", "report_mode": "summaries"}, (phrase, selected)
+
+
+
+def test_fused_arabic_status_questions_reach_operational_status_handlers():
+    from lab_v4_dev.intent.intent_parser import parse
+    from lab_v4_dev.intent.intents import Intent
+
+    for phrase in ("ماهي حالة الوكيل", "ما هي حالة الوكيل"):
+        assert parse(phrase)["intent"] == Intent.STATUS
+
+    for phrase in ("ماهي حالة النظام", "ما هي حالة النظام"):
+        assert parse(phrase)["intent"] == Intent.SYSTEM_STATUS
