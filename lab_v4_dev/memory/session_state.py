@@ -1469,7 +1469,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
             f"الخطوة التالية: {progress_next_step}",
             "لم يتم تنفيذ أي خطوة جديدة أثناء الاستعادة.",
         ])
-        return "\\n".join(progress_lines)
+        return "\n".join(progress_lines)
 
     topics = []
     for exchange in summary_exchanges:
