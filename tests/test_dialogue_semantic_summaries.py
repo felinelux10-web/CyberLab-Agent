@@ -326,3 +326,58 @@ def test_positive_acknowledgement_does_not_become_a_fake_dialogue_topic():
     assert result["local_strategy"] == "friendly_dialogue_reopen"
     assert "لم نحدد موضوعًا" in result["text"]
     assert "جيد" not in result["text"]
+
+
+
+def test_standalone_dialogue_controls_do_not_pollute_saved_session_summary():
+    from lab_v4_dev.memory.session_state import _is_dialogue_control_text
+
+    for phrase in (
+        "حسنا اكمل",
+        "لنكمل حوارنا",
+        "هيا نكمل حديثنا",
+        "دعنا نتحدث قليلا",
+        "تابع الشرح",
+    ):
+        assert _is_dialogue_control_text(phrase), phrase
+
+    # A continuation that names its subject carries real dialogue content.
+    assert not _is_dialogue_control_text("اكمل الحديث عن موضوع الفضاء")
+
+
+def test_saved_dialogue_progress_report_uses_semantic_stop_point():
+    from lab_v4_dev.memory.session_state import build_session_restore_summary
+
+    exchanges = [
+        _exchange(
+            "dialogue-state-1",
+            "مرحبا",
+            "أهلا بك.",
+            "",
+        ),
+        _exchange(
+            "dialogue-state-1",
+            "ما الفرق بين الفن التجريدي والنقش البارز؟",
+            "الفن التجريدي يوظف الأشكال والألوان للتعبير، بينما يعتمد النقش البارز على تشكيل عناصر مرتفعة عن الخلفية.",
+            "الفن التجريدي والنقش البارز",
+        ),
+        _exchange(
+            "dialogue-state-1",
+            "حسنا اكمل",
+            "يمكننا متابعة الحديث من النقطة السابقة.",
+            "الفن التجريدي والنقش البارز",
+        ),
+    ]
+    report = build_session_restore_summary(
+        _saved_dialogue(
+            exchanges,
+            topic="الفن التجريدي والنقش البارز",
+        ),
+        report_mode="progress",
+    )
+
+    assert "الفن التجريدي والنقش البارز" in report
+    assert "قارن الحوار بين" in report
+    assert "المستخدم:" not in report
+    assert "الوكيل:" not in report
+    assert "حسنا اكمل" not in report
