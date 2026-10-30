@@ -710,6 +710,8 @@ def classify_conversation_semantics(
         "حسنا هيا نكمل حديثنا", "دعنا نكمل حوارنا",
         "دعنا نواصل حديثنا", "هيا نتابع حوارنا",
         "لنستكمل حديثنا", "لنستكمل حوارنا",
+        "حسنا اكمل", "حسنا كمل", "حسنا تابع", "حسنا واصل",
+        "تمام اكمل", "تمام تابع", "طيب نكمل",
     }
     if explicit_same_point_continuation or bare_dialogue_continuation:
         return {
