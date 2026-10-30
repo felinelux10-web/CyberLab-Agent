@@ -542,6 +542,12 @@ def session_selector(raw: str) -> dict:
         ):
             topic_filter = candidate_topic
 
+    if topic_filter and selection.get("kind") == "previous_dialogue":
+        # A named topic inside saved-session language requires content search,
+        # not an unconditional choice of the newest saved dialogue.
+        selection["kind"] = "search"
+        selection["query"] = topic_filter
+
     if capability_request:
         output_kind = "capability"
     elif selection.get("kind") in {"list", "count"}:
