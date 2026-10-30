@@ -159,6 +159,7 @@ def test_natural_dialogue_continuations_are_classified_without_template_wording(
         "لنكمل حوارنا",
         "هيا نكمل حديثنا",
         "حسنا هيا نكمل حديثنا",
+        "حسنا اكمل",
         "دعنا نواصل حديثنا",
     ):
         result = classify_conversation_semantics(phrase)
