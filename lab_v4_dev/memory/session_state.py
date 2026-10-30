@@ -1726,32 +1726,51 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     content_lines = semantic_summary["insights"]
     explicit_conclusions = _dialogue_explicit_conclusions(summary_exchanges)
 
+    detailed_report = report_mode == "full"
     lines = [
-        "=== ملخص الحوار المحفوظ ===",
+        (
+            "=== التقرير الدلالي للحوار المحفوظ ==="
+            if detailed_report else "=== ملخص الحوار المحفوظ ==="
+        ),
         f"معرّف الجلسة: {report['session_id']}",
         f"آخر تحديث: {report['last_updated']}",
-        f"الموضوع الحالي داخل هذا الحوار: {topic}",
+        (
+            f"1) الموضوع والنطاق: {topic}"
+            if detailed_report
+            else f"الموضوع الحالي داخل هذا الحوار: {topic}"
+        ),
         f"عدد التبادلات المكتملة المحفوظة: {len(exchanges)}",
         "",
-        "ما نوقش فعليًا في الحوار:",
+        (
+            "2) ما نوقش فعليًا في الحوار:"
+            if detailed_report else "ما نوقش فعليًا في الحوار:"
+        ),
     ]
     lines.extend([f"- {item}" for item in content_lines] if content_lines else [
         "- لا توجد تبادلات مكتملة ذات مضمون قابل للتلخيص في البيانات المحفوظة."
     ])
-    lines.extend(["", "الموضوعات المثبتة في سجل الحوار:"])
+    lines.extend([
+        "",
+        "3) الموضوعات المثبتة في سجل الحوار:"
+        if detailed_report else "الموضوعات المثبتة في سجل الحوار:",
+    ])
     lines.extend([f"- {item}" for item in topics] if topics else [
         "- لا توجد موضوعات فرعية محددة في البيانات المحفوظة."
     ])
-    lines.extend(["", "الخلاصات والقرارات المسجلة صراحة:"])
+    lines.extend([
+        "",
+        "4) الخلاصات والقرارات المسجلة صراحة:"
+        if detailed_report else "الخلاصات والقرارات المسجلة صراحة:",
+    ])
     lines.extend([f"- {item}" for item in explicit_conclusions] if explicit_conclusions else [
         "- لا توجد خلاصات أو قرارات منفصلة محفوظة في الحقول المنظمة."
     ])
     lines.extend([
         "",
-        "نقطة التوقف:",
+        "5) نقطة التوقف:" if detailed_report else "نقطة التوقف:",
         semantic_summary["stop_point"],
         "",
-        "الخطوة التالية المقترحة:",
+        "6) الخطوة التالية:" if detailed_report else "الخطوة التالية المقترحة:",
         next_step,
         "",
         "حدود الاستعادة: هذا ملخص للسجل المحدد فقط؛ لم تُدمج معه الجلسة الحية أو جلسة العمل. لم يُنشأ أي رد جديد.",
