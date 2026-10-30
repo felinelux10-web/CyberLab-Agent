@@ -2204,8 +2204,16 @@ SOURCE CODE:
                             filtered_session = dict(s)
                             filtered_dialogue_state = dict(dialogue_state)
                             filtered_dialogue_state["exchange_archive"] = completed_exchanges
-                            filtered_dialogue_state["last_topic"] = topic_filter
+                            filtered_dialogue_state["last_topic"] = next(
+                                (
+                                    str(item.get("target") or "").strip()
+                                    for item in reversed(completed_exchanges)
+                                    if str(item.get("target") or "").strip()
+                                ),
+                                topic_filter,
+                            )
                             filtered_session["dialogue_state"] = filtered_dialogue_state
+                            dialogue_state = filtered_dialogue_state
                             summary = build_session_restore_summary(
                                 filtered_session, report_mode=report_mode
                             )
