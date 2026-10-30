@@ -3819,14 +3819,17 @@ class ConversationManager:
             # transcript. Use the same bounded summarizer as persisted sessions
             # so online/offline behavior shares one meaning and one evidence set.
             normalized_query = normalize_text(text)
-            whole_dialogue_summary = any(marker in normalized_query for marker in (
-                "منذ البداية", "منذ بدايه", "من بداية الحوار", "من بداية النقاش",
-                "من اول الحوار", "من أول الحوار", "منذ أول الحوار",
-                "الموضوعين", "موضوعين", "بالترتيب", "من البداية حتى الآن",
-                "هذا الحوار", "لهذا الحوار", "الحوار الحالي بالكامل",
-                "ملخص الحوار", "لخص الحوار", "ملخص الحديث", "لخص الحديث",
-                "ملخص النقاش", "لخص النقاش", "الحوار الحالي",
-            ))
+            whole_dialogue_summary = (
+                any(marker in normalized_query for marker in (
+                    "منذ البداية", "منذ بدايه", "من بداية الحوار", "من بداية النقاش",
+                    "من اول الحوار", "من أول الحوار", "منذ أول الحوار",
+                    "الموضوعين", "موضوعين", "بالترتيب", "من البداية حتى الآن",
+                    "هذا الحوار", "لهذا الحوار", "الحوار الحالي بالكامل",
+                    "ملخص الحوار", "لخص الحوار", "ملخص الحديث", "لخص الحديث",
+                    "ملخص النقاش", "لخص النقاش", "الحوار الحالي",
+                ))
+                or ("منذ" in normalized_query and "بدايه" in normalized_query)
+            )
             recall_recent_exchanges = whole_dialogue_summary or any(marker in normalized_query for marker in (
                 "الردود السابقة", "الردود السابقه", "قبل قليل",
                 "ماذا كنا نقول", "ماذا قلنا", "ما كنا نقول",
@@ -3836,9 +3839,14 @@ class ConversationManager:
             ))
             if normalized_query.strip() in {"اكتب ملخص", "اكتب ملخصا", "لخص", "ملخص"}:
                 recall_recent_exchanges = True
+            # "Since the beginning" means the complete bounded archive, not
+            # merely the latest twelve exchanges. Recent recall stays bounded;
+            # active-branch summaries remain isolated from earlier branches.
             branch = (
-                relevant[-12:]
-                if whole_dialogue_summary or recall_recent_exchanges
+                relevant
+                if whole_dialogue_summary
+                else relevant[-12:]
+                if recall_recent_exchanges
                 else self._latest_dialogue_branch(relevant)[-5:]
             )
             from lab_v4_dev.memory.session_state import summarize_dialogue_exchanges
@@ -3904,7 +3912,7 @@ class ConversationManager:
             ])
             return {
                 **base,
-                "text": "ملخص الحوار الحالي:\n" + "\n".join(lines),
+                "text": "ملخص موثّق للحوار المسجّل:\n" + "\n".join(lines),
                 "dialogue_turns": branch,
                 "summary_fallback": True,
             }
