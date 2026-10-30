@@ -2007,6 +2007,9 @@ SOURCE CODE:
                             "kind": "saved_session_choice",
                             "query": str(selector.get("query") or raw),
                             "candidates": pending_candidates,
+                            "report_mode": report_mode,
+                            "output_kind": selector.get("output_kind"),
+                            "topic_filter": selector.get("topic_filter"),
                         }
                     return {
                         "status": "needs_clarification",
