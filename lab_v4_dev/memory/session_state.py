@@ -584,6 +584,13 @@ def session_selector(raw: str) -> dict:
         selection["kind"] = "search"
         selection["query"] = topic_filter
 
+    if (
+        topic_filter
+        and selection.get("kind") in {"previous_dialogue", "search"}
+        and selection.get("report_mode", "standard") == "standard"
+    ):
+        selection["report_mode"] = "summary"
+
     if capability_request:
         output_kind = "capability"
     elif selection.get("kind") in {"list", "count"}:
