@@ -2283,7 +2283,7 @@ SOURCE CODE:
                         # the summary/report contract; the grounded local report
                         # remains the deterministic fallback.
                         if synthesized_text and re.search(
-                            r"(?m)^\\s*(?:[-*]\\s*)?(?:المستخدم|الوكيل|رسالة المستخدم|رد الوكيل)\\s*:",
+                            r"(?m)^\s*(?:[-*]\s*)?(?:المستخدم|الوكيل|رسالة المستخدم|رد الوكيل)\s*:",
                             synthesized_text,
                         ):
                             synthesized_text = ""
