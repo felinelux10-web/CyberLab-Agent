@@ -3480,7 +3480,12 @@ class ConversationManager:
             response_mode = "summary"
         elif (
             not response_mode
-            and history_act in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
+            and (
+                history_act in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
+                or any(marker in normalized_query for marker in (
+                    "ملخص", "لخص", "تلخيص", "مضمون الحوار", "مضمون الجلسة",
+                ))
+            )
         ):
             response_mode = "summary"
 
