@@ -91,6 +91,7 @@ class ConversationManager:
         # A read-only saved-session report owns short follow-up turns until
         # the user starts a different request or selects another session.
         self.active_report_session_id = None
+        self.active_report_topic_filter = None
 
     @staticmethod
     def _is_project_progress_request(text: str) -> bool:
@@ -789,6 +790,7 @@ class ConversationManager:
         # NLU/context resolution. A new dialogue must never inherit old state.
         if self._is_new_dialogue_session_request(user_input):
             self.active_report_session_id = None
+            self.active_report_topic_filter = None
             reset = getattr(self.orchestrator, "reset_conversation_context", None)
             if callable(reset):
                 reset()
@@ -831,6 +833,7 @@ class ConversationManager:
                 # An unrelated new request releases the report lock. Explicit
                 # saved-session selection will replace it after resolution.
                 self.active_report_session_id = None
+                self.active_report_topic_filter = None
 
         # Resolve saved-session ambiguity before NLU sees this turn.
         if self.dialogue_memory:
@@ -1008,14 +1011,18 @@ class ConversationManager:
                     or ("summary" if active_report_followup else "report")
                 ),
                 "topic_filter": (
-                    inherited_topic_filter
-                    or (
-                        user_input
-                        if active_report_followup and any(
-                            marker in normalize_text(user_input)
-                            for marker in ("ما علاقه", "ما علاقة", "كيف يرتبط")
+                    user_input
+                    if active_report_followup and any(
+                        marker in normalize_text(user_input)
+                        for marker in ("ما علاقه", "ما علاقة", "كيف يرتبط")
+                    )
+                    else (
+                        inherited_topic_filter
+                        or (
+                            self.active_report_topic_filter
+                            if active_report_followup
+                            else None
                         )
-                        else None
                     )
                 ),
             }
@@ -2432,8 +2439,13 @@ class ConversationManager:
             and str(result.get("session_id") or "").strip()
         ):
             self.active_report_session_id = str(result["session_id"]).strip()
+            self.active_report_topic_filter = (
+                result.get("topic_filter")
+                or (parsed.get("session_selector") or {}).get("topic_filter")
+            )
         elif not active_report_followup and result.get("status") == "success":
             self.active_report_session_id = None
+            self.active_report_topic_filter = None
 
         # Project-list clarification is conversation-owned state.
         if self.dialogue_memory:
