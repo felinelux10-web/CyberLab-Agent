@@ -325,6 +325,23 @@ class ConversationManager:
         return normalized in direct_question or any(marker in normalized for marker in direct)
 
     @staticmethod
+    def _explicit_resume_topic(text: str) -> str | None:
+        """Extract a named subject from an explicit request to continue talking about it."""
+        value = normalize_text(str(text or "")).strip()
+        match = re.match(
+            r"^(?:(?:حسنا|تمام|طيب)\s+)?"
+            r"(?:اكمل|كمل|تابع|واصل|استكمل|لنواصل|لنكمل)\s+"
+            r"(?:الحديث|الحوار|النقاش|الكلام)\s+"
+            r"(?:عن|حول)\s+(?:موضوع\s+)?(.+?)\s*$",
+            value,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            return None
+        topic = match.group(1).strip(" \t\r\n.,،؛:!?؟")
+        return topic or None
+
+    @staticmethod
     def _explicit_dialogue_topic(text: str) -> str | None:
         """Extract the subject of an explicit independent dialogue opening."""
         import re
@@ -4693,22 +4710,61 @@ class ConversationManager:
             if self.dialogue_memory:
                 get_branch = getattr(self.dialogue_memory, "active_dialogue_branch", None)
                 branch = get_branch() if callable(get_branch) else None
-            if continuation and branch:
-                # Provider failure must not erase locally recoverable dialogue
-                # context. Return a memory-owned recovery response, not a fake
-                # generated continuation and not a generic provider error.
-                topic = str(branch.get("entity") or "").strip()
-                last_point = str(branch.get("reference_text") or "").strip()
+            explicit_resume_topic = self._explicit_resume_topic(text)
+            if continuation and (branch or explicit_resume_topic):
+                # Prefer a subject explicitly named in the current turn. A
+                # stale active branch must never replace "space" with a prior
+                # acknowledgement such as "good".
+                topic = explicit_resume_topic or str(branch.get("entity") or "").strip()
+                last_point = ""
+                matching_exchanges = []
+                if explicit_resume_topic and self.dialogue_memory:
+                    state = getattr(self.dialogue_memory, "state", None)
+                    session_id = str(getattr(state, "session_id", "") or "")
+                    normalized_topic = self._normalize_transition_text(explicit_resume_topic)
+                    matching_exchanges = [
+                        item for item in (getattr(state, "exchange_archive", []) or [])
+                        if isinstance(item, dict)
+                        and (not session_id or str(item.get("session_id") or "") == session_id)
+                        and not item.get("recall_only")
+                        and not item.get("state_boundary_only")
+                        and str(item.get("context_kind") or "").casefold()
+                            not in {"work", "system", "execution"}
+                        and (
+                            normalized_topic in self._normalize_transition_text(item.get("target") or "")
+                            or normalized_topic in self._normalize_transition_text(item.get("user") or "")
+                        )
+                    ]
+                if explicit_resume_topic and matching_exchanges:
+                    from lab_v4_dev.memory.session_state import summarize_dialogue_exchanges
+                    report = summarize_dialogue_exchanges(
+                        matching_exchanges[-4:],
+                        topic=explicit_resume_topic,
+                        limit=2,
+                    )
+                    last_point = report["insights"][-1] if report["insights"] else ""
+                elif not explicit_resume_topic and branch:
+                    last_point = str(branch.get("reference_text") or "").strip()
+
                 details = []
                 if topic:
-                    details.append(f"الموضوع المحفوظ: {topic}.")
-                if last_point:
-                    details.append(f"آخر نقطة محفوظة في هذا الفرع: {last_point}")
-                details.append(
-                    "تعذر توليد شرح جديد لأن المزود غير متاح في هذه المحاولة. "
-                    "حافظت على الفرع الحالي ولم أختلق محتوى جديدًا. "
-                    "يمكنك طلب تلخيص النقاط المحفوظة أو إعادة المحاولة لاحقًا."
-                )
+                    details.append(f"الموضوع المطلوب متابعته: {topic}.")
+                if explicit_resume_topic and not matching_exchanges:
+                    details.append(
+                        "لا توجد نقطة سابقة موثقة لهذا الموضوع في الحوار الجاري؛ "
+                        "لم أخلطه بموضوع آخر محفوظ."
+                    )
+                    details.append(
+                        "يمكنك بدء نقاش جديد حوله أو تحديد الجلسة المحفوظة التي تريد استرجاعها."
+                    )
+                else:
+                    if last_point:
+                        details.append(f"آخر مضمون محفوظ في هذا الفرع: {last_point}")
+                    details.append(
+                        "تعذر توليد شرح جديد لأن المزود غير متاح في هذه المحاولة. "
+                        "حافظت على حدود السجل ولم أختلق محتوى جديدًا. "
+                        "يمكنك طلب تلخيص النقاط المحفوظة أو إعادة المحاولة لاحقًا."
+                    )
                 return {
                     "status": "needs_clarification",
                     "intent": (parsed or {}).get("intent", mode.lower()),
@@ -4716,7 +4772,11 @@ class ConversationManager:
                     "mode": mode,
                     "source": "dialogue_memory",
                     "gateway_error": gateway_error,
-                    "recovery": "provider_unavailable_preserved_dialogue",
+                    "recovery": (
+                        "explicit_topic_not_in_live_dialogue"
+                        if explicit_resume_topic and not matching_exchanges
+                        else "provider_unavailable_preserved_dialogue"
+                    ),
                     "executed": False,
                 }
             error_code = (
