@@ -4172,7 +4172,18 @@ class ConversationManager:
                 topic=active_topic,
                 limit=12,
             )
-            if not report["has_substantive_content"]:
+            # Failed compound prompts are intentionally retained as recall-only
+            # evidence. They are not completed exchanges and must not be fed to
+            # the ordinary semantic summarizer, but their numbered subjects
+            # remain recoverable when the user asks about that compound test.
+            failed_compound_prompts = [
+                item for item in branch
+                if item.get("recall_only")
+                and item.get("response_failed")
+                and str(item.get("user") or "").strip()
+                and re.search(r"(?m)^\s*\d+[.)、]\s*\S", str(item.get("user") or ""))
+            ]
+            if not report["has_substantive_content"] and not failed_compound_prompts:
                 self.active_live_output_kind = "summary"
                 return {
                     **base,
@@ -4197,17 +4208,6 @@ class ConversationManager:
             else:
                 lines.append("- لا توجد خلاصة مكتملة من التبادلات الناجحة.")
 
-            # Failed compound prompts are intentionally retained as recall-only
-            # evidence. They are not completed exchanges and must not be fed to
-            # the ordinary semantic summarizer, but their numbered subjects
-            # remain recoverable when the user asks about that compound test.
-            failed_compound_prompts = [
-                item for item in branch
-                if item.get("recall_only")
-                and item.get("response_failed")
-                and str(item.get("user") or "").strip()
-                and re.search(r"(?m)^\s*\d+[.)、]\s*\S", str(item.get("user") or ""))
-            ]
             if failed_compound_prompts:
                 lines.extend([
                     "",
