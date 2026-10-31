@@ -2337,6 +2337,7 @@ class ConversationManager:
                 raw_act == "CONVERSATION_HISTORY_QUERY"
                 or self._dialogue_recall_requested(user_input, parsed)
             )
+            and not interrupted_recovery
             and not specific_dialogue_return
             and not saved_session_request
         ):
