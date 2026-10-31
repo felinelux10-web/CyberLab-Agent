@@ -3560,12 +3560,24 @@ class ConversationManager:
                 in {"topic_summary", "report"}
         ):
             normalized_topic = self._normalize_transition_text(topic_filter)
+            topic_terms = [
+                term[1:] if term.startswith(("و", "ب", "ل")) and len(term) > 4 else term
+                for term in normalized_topic.split()
+                if term not in {
+                    "ما", "ماذا", "عن", "حول", "في", "من", "بين",
+                    "موضوع", "الموضوع", "ملخص", "لخص", "تلخيص",
+                    "الجلسة", "الحوار", "السابق", "سابقا", "سابقًا",
+                }
+            ]
             topic_exchanges = [
                 item for item in exchanges
-                if normalized_topic
-                and (
-                    normalized_topic in self._normalize_transition_text(item.get("target") or "")
-                    or normalized_topic in self._normalize_transition_text(item.get("user") or "")
+                if topic_terms
+                and any(
+                    term in self._normalize_transition_text(" ".join(
+                        str(item.get(field) or "")
+                        for field in ("target", "user", "assistant")
+                    ))
+                    for term in topic_terms
                 )
             ]
             if not topic_exchanges:
