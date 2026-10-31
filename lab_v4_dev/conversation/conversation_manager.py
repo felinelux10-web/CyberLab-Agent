@@ -92,6 +92,7 @@ class ConversationManager:
         # the user starts a different request or selects another session.
         self.active_report_session_id = None
         self.active_report_topic_filter = None
+        self.active_live_output_kind = None
 
     @staticmethod
     def _is_project_progress_request(text: str) -> bool:
@@ -1114,7 +1115,13 @@ class ConversationManager:
         # not to the latest persisted checkpoint. A reference-only selector is
         # deliberately not a saved-session selection and must not reach the
         # orchestrator's load_session() fallback.
-        if selected_session.get("kind") == "reference" and selected_session.get("output_kind") == "summary":
+        if (
+            selected_session.get("kind") == "reference"
+            and selected_session.get("output_kind") in {
+                "brief", "summary", "topic_summary", "report",
+            }
+        ):
+            live_output_kind = str(selected_session.get("output_kind") or "summary")
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.MEMORY_DUMP,
@@ -1122,14 +1129,19 @@ class ConversationManager:
                 "context": "general",
                 "conversation_domain": "general",
                 "conversation_act": "CONVERSATION_HISTORY_QUERY",
-                "response_attributes": {"dialogue_response_mode": "summary"},
+                "output_kind": live_output_kind,
+                "response_attributes": {
+                    "dialogue_response_mode": live_output_kind,
+                },
                 "source": "live_dialogue_reference",
             })
             raw_signal = dict(raw_signal or {})
             raw_signal.update({
                 "conversation_domain": "general",
                 "conversation_act": "CONVERSATION_HISTORY_QUERY",
-                "response_attributes": {"dialogue_response_mode": "summary"},
+                "response_attributes": {
+                    "dialogue_response_mode": live_output_kind,
+                },
                 "conversational": True,
             })
 
@@ -3566,6 +3578,8 @@ class ConversationManager:
             "اخر موضوع", "ماذا شرح", "ماذا شرحت", "شرحنا", "تكلمنا",
             "ناقشنا", "سجل المحادث", "تاريخ المحادث",
             "ملخص", "لخص", "تلخيص", "مضمون الحوار", "مضمون الجلسة",
+            "تقرير", "موجز", "باختصار شديد", "هل هذا هو التقرير",
+            "هل هذا التقرير",
         )
         if (
             history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
@@ -3599,6 +3613,9 @@ class ConversationManager:
         response_mode = str(
             response_attributes.get("dialogue_response_mode", "")
         ).casefold()
+        requested_output_kind = str((parsed or {}).get("output_kind") or "").casefold()
+        if requested_output_kind in {"brief", "summary", "topic_summary", "report"}:
+            response_mode = requested_output_kind
         topic_filter = str((parsed or {}).get("topic_filter") or "").strip()
         if (
             topic_filter
@@ -3642,6 +3659,21 @@ class ConversationManager:
             response_mode = "summary"
         if not response_mode and live_previous_session_recall:
             response_mode = "summary"
+        if (
+            not response_mode
+            and any(marker in normalized_query for marker in (
+                "هل هذا هو التقرير", "هل هذا التقرير", "هذا هو التقرير",
+            ))
+            and self.active_live_output_kind == "report"
+        ):
+            return {
+                "status": "success",
+                "intent": Intent.MEMORY_DUMP,
+                "source": "dialogue_memory",
+                "output_kind": "report",
+                "executed": False,
+                "text": "نعم، هذا تقرير مستخرج من التبادلات المحفوظة في الحوار الحالي. لم أضف وقائع من خارج السجل.",
+            }
         elif not response_mode and any(
             marker in normalized_query
             for marker in (
@@ -3679,7 +3711,7 @@ class ConversationManager:
         ):
             response_mode = "summary"
 
-        if response_mode in {"summary", "last_question", "answer", "transcript"}:
+        if response_mode in {"brief", "summary", "topic_summary", "report", "last_question", "answer", "transcript"}:
             result = self._answer_dialogue_history(text, response_mode, exchanges)
             response_attributes["dialogue_response_mode"] = response_mode
             result["response_attributes"] = response_attributes
@@ -3954,7 +3986,7 @@ class ConversationManager:
             "executed": False,
             "output_kind": (
                 "transcript" if response_mode == "transcript"
-                else "summary" if response_mode == "summary"
+                else response_mode if response_mode in {"brief", "summary", "topic_summary", "report"}
                 else "chat"
             ),
             "dialogue_response_mode": response_mode,
@@ -4052,7 +4084,7 @@ class ConversationManager:
                 "recorded_answer_count": len(recorded_answers),
             }
 
-        if response_mode == "summary":
+        if response_mode in {"brief", "summary", "topic_summary"}:
             # Summary mode is an extractive semantic report, not a role-labelled
             # transcript. Use the same bounded summarizer as persisted sessions
             # so online/offline behavior shares one meaning and one evidence set.
@@ -4150,14 +4182,83 @@ class ConversationManager:
                 "نقطة التوقف:",
                 report["stop_point"],
             ])
+            if response_mode == "brief":
+                compact_insights = report["insights"][:2]
+                narrative = " ".join(str(item).rstrip(" .،؛:") for item in compact_insights)
+                if not narrative:
+                    narrative = "لا يتضمن السجل مضمونًا موضوعيًا كافيًا يمكن إثباته."
+                brief_text = (
+                    f"دار الحوار حول {report['topic'] or 'موضوع لم يُحدَّد في السجل'}. "
+                    f"{narrative}. {report['stop_point']}"
+                )
+                self.active_live_output_kind = "brief"
+                return {
+                    **base,
+                    "output_kind": "brief",
+                    "text": brief_text,
+                    "dialogue_turns": branch,
+                    "summary_fallback": True,
+                }
+
+            if response_mode in {"summary", "topic_summary"}:
+                self.active_live_output_kind = "summary"
+                return {
+                    **base,
+                    "output_kind": response_mode,
+                    "text": (
+                        "ملخص موثّق للحوار المسجّل:\n"
+                        if recall_recent_exchanges or whole_dialogue_summary
+                        else "ملخص الحوار الحالي:\n"
+                    ) + "\n".join(lines),
+                    "dialogue_turns": branch,
+                    "summary_fallback": True,
+                }
+
+        if response_mode == "report":
+            from lab_v4_dev.memory.session_state import (
+                summarize_dialogue_exchanges,
+                _dialogue_explicit_conclusions,
+            )
+            report_data = summarize_dialogue_exchanges(
+                relevant,
+                topic=str(getattr(state, "last_topic", None) or ""),
+                limit=12,
+            )
+            insights = report_data.get("insights") or []
+            conclusions = _dialogue_explicit_conclusions(relevant)
+            report_lines = [
+                "=== تقرير الحوار الحالي ===",
+                f"الموضوع: {report_data.get('topic') or 'لم يُحدَّد موضوع موثّق.'}",
+                "نطاق التقرير: الحوار الحي الحالي فقط",
+                f"التبادلات المكتملة المستخدمة: {report_data.get('exchange_count', len(relevant))}",
+                "",
+                "1) مجريات الحوار ومحاوره:",
+            ]
+            if insights:
+                report_lines.extend(f"- {item}" for item in insights)
+            else:
+                report_lines.append("- لا توجد تفاصيل موضوعية كافية في التبادلات المكتملة.")
+            report_lines.extend(["", "2) استنتاجات أو قرارات مثبتة:"])
+            if conclusions:
+                report_lines.extend(f"- {item}" for item in conclusions)
+            else:
+                report_lines.append(
+                    "- لم تُسجّل قرارات صريحة في حقول الجلسة؛ لذلك لا أنسب قرارًا إلى الحوار."
+                )
+            report_lines.extend([
+                "",
+                "3) نقاط بقيت مفتوحة:",
+                "- لا توجد أسئلة مفتوحة منظّمة محفوظة؛ لا يمكن الجزم بوجود قرار نهائي.",
+                "",
+                "4) نقطة التوقف:",
+                str(report_data.get("stop_point") or "لا يمكن تحديدها من السجل."),
+            ])
+            self.active_live_output_kind = "report"
             return {
                 **base,
-                "text": (
-                    "ملخص موثّق للحوار المسجّل:\n"
-                    if recall_recent_exchanges or whole_dialogue_summary
-                    else "ملخص الحوار الحالي:\n"
-                ) + "\n".join(lines),
-                "dialogue_turns": branch,
+                "output_kind": "report",
+                "text": "\n".join(report_lines),
+                "dialogue_turns": relevant,
                 "summary_fallback": True,
             }
 
