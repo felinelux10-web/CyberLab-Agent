@@ -159,7 +159,7 @@ def _session_text(item: dict) -> str:
     return " ".join(str(item.get(field, "")) for field in fields).casefold()
 
 
-def _saved_dialogue_search_content(item: dict) -> str:
+def _saved_dialogue_search_content(item: dict) -> list[str]:
     """Read searchable topic evidence from the exact saved dialogue detail record."""
     session_id = str(item.get("session_id") or "").strip()
     if not session_id:
@@ -191,16 +191,23 @@ def _saved_dialogue_search_content(item: dict) -> str:
             continue
         if _is_dialogue_control_exchange(exchange):
             continue
+        exchange_parts = []
         for field in (
             "target", "user", "assistant", "semantic_summary", "summary",
             "gist", "key_points", "main_points", "topics_discussed",
         ):
             value = exchange.get(field)
             if isinstance(value, (list, tuple, set)):
-                parts.extend(str(entry) for entry in value if entry)
+                exchange_parts.extend(str(entry) for entry in value if entry)
             elif value:
-                parts.append(str(value))
-    return " ".join(part.strip() for part in parts if str(part or "").strip())
+                exchange_parts.append(str(value))
+        if exchange_parts:
+            parts.append(" ".join(exchange_parts))
+    return [
+        part.strip()
+        for part in parts
+        if str(part or "").strip()
+    ]
 
 
 def search_sessions(query: str = "", *, status: str | None = None,
@@ -622,6 +629,11 @@ def session_route_contract(raw: str) -> dict:
         candidate_topic,
         maxsplit=1,
     )[0].strip(" \t\r\n.,،؛:!?؟")
+    candidate_topic = re.sub(
+        r"^(?:موضوع|الموضوع|فكرة)\s+(?:عن\s+)?",
+        "",
+        candidate_topic,
+    ).strip()
     if candidate_topic and not re.search(
         r"^(?:ال?جلسة|ال?حوار|ال?جلسات|ال?حوارات|الذي|التي|ناقشناه|تحدثنا|سابقا|سابقًا)(?:\s|$)",
         candidate_topic,
