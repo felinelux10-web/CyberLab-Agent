@@ -618,12 +618,26 @@ def session_route_contract(raw: str) -> dict:
         r"(.+?)(?=\s+(?:في|ضمن)\s+(?:الجلسة|الحوار)|$)",
         text,
     )
-    if topic_match:
-        candidate_topic = topic_match.group(1).strip(" \t\r\n.,،؛:!?؟")
-        if candidate_topic and not re.search(
-            r"^(?:الجلسة|الحوار|الجلسات|الحوارات)(?:\s|$)", candidate_topic
-        ):
-            topic_filter = candidate_topic
+    candidate_topic = topic_match.group(1) if topic_match else ""
+    if not candidate_topic:
+        # Recognize direct named subjects such as "موضوع الفن التجريدي".
+        named_topic = re.search(
+            r"(?:^|\s)(?:موضوع|فكرة)\s+(?!ال?(?:جلسة|حوار|جلسات|حوارات)\b)(.+?)"
+            r"(?=\s+(?:الذي|التي|الذين|ناقشناه|ناقشناها|تحدثنا|تكلمنا|في\s+(?:الجلسة|الحوار))|$)",
+            text,
+        )
+        if named_topic:
+            candidate_topic = named_topic.group(1)
+    candidate_topic = re.split(
+        r"\s+(?:الذي|التي|الذين|ناقشناه|ناقشناها|تحدثنا|تكلمنا|سابقا|سابقًا|في\s+(?:الجلسة|الحوار))\b",
+        candidate_topic,
+        maxsplit=1,
+    )[0].strip(" \t\r\n.,،؛:!?؟")
+    if candidate_topic and not re.search(
+        r"^(?:ال?جلسة|ال?حوار|ال?جلسات|ال?حوارات|الذي|التي|ناقشناه|تحدثنا|سابقا|سابقًا)(?:\s|$)",
+        candidate_topic,
+    ):
+        topic_filter = candidate_topic
 
     if topic_filter and (
         selection.get("kind") == "previous_dialogue"
