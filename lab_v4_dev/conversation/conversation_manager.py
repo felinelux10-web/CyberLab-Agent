@@ -1116,8 +1116,17 @@ class ConversationManager:
         # not to the latest persisted checkpoint. A reference-only selector is
         # deliberately not a saved-session selection and must not reach the
         # orchestrator's load_session() fallback.
+        live_topic_summary = (
+            selected_session.get("kind") == "none"
+            and live_dialogue_archive
+            and selected_session.get("output_kind") in {"brief", "topic_summary"}
+            and bool(str(selected_session.get("topic_filter") or "").strip())
+        )
         if (
-            selected_session.get("kind") == "reference"
+            (
+                selected_session.get("kind") == "reference"
+                or live_topic_summary
+            )
             and selected_session.get("output_kind") in {
                 "brief", "summary", "topic_summary", "report",
             }
