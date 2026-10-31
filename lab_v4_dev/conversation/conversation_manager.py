@@ -824,7 +824,10 @@ class ConversationManager:
                     "اختصر", "اختصار", "لخص", "تلخيص", "ملخص",
                     "بسط", "بشكل مبسط", "بطريقه مبسطه", "بطريقة مبسطة",
                     "اشرح", "وضح", "ما علاقه", "ما علاقة", "كيف يرتبط",
-                    "ماذا عن",
+                    "ماذا عن", "تقرير", "تقريرا", "تقريرًا",
+                    "الموضوعات", "موضوعات", "الافكار", "الأفكار",
+                    "ماذا ناقشنا", "ما ناقشنا", "النتائج", "النقاط المتبقية",
+                    "ذلك الحوار", "هذا الحوار", "الحوار السابق", "ذلك النقاش",
                 ))
             )
             if active_report_followup:
@@ -1034,7 +1037,7 @@ class ConversationManager:
         candidate["output_kind"] = str(selected_session.get("output_kind") or "chat")
         if selected_session.get("topic_filter"):
             candidate["topic_filter"] = selected_session["topic_filter"]
-        if selected_session.get("kind") != "none":
+        if selected_session.get("kind") not in {"none", "reference"}:
             candidate["session_selector"] = dict(selected_session)
 
         # Capability questions are answered from the local session-store
@@ -1087,6 +1090,29 @@ class ConversationManager:
                 "ملخص", "تقرير", "سياق", "حالة",
             ))
         )
+        # "هذه الجلسة" / "الحوار الحالي" refers to the live DialogueMemory,
+        # not to the latest persisted checkpoint. A reference-only selector is
+        # deliberately not a saved-session selection and must not reach the
+        # orchestrator's load_session() fallback.
+        if selected_session.get("kind") == "reference" and selected_session.get("output_kind") == "summary":
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.MEMORY_DUMP,
+                "target": "",
+                "context": "general",
+                "conversation_domain": "general",
+                "conversation_act": "CONVERSATION_HISTORY_QUERY",
+                "response_attributes": {"dialogue_response_mode": "summary"},
+                "source": "live_dialogue_reference",
+            })
+            raw_signal = dict(raw_signal or {})
+            raw_signal.update({
+                "conversation_domain": "general",
+                "conversation_act": "CONVERSATION_HISTORY_QUERY",
+                "response_attributes": {"dialogue_response_mode": "summary"},
+                "conversational": True,
+            })
+
         # Explicit saved-session language has precedence over the generic
         # dialogue-history act. Otherwise phrases such as "what were we saying
         # in the previous session?" are answered from the live dialogue and the
@@ -1094,7 +1120,7 @@ class ConversationManager:
         # is deliberately phrase-based and returns "none" for ordinary history
         # questions, so those remain in the dialogue-memory path.
         if (
-            selected_session.get("kind") != "none"
+            selected_session.get("kind") not in {"none", "reference"}
             and not prefer_live_dialogue
             and not _restore_context
         ):
@@ -1110,7 +1136,7 @@ class ConversationManager:
                 "source": "session_selector",
             })
         saved_session_request = (
-            selected_session.get("kind") != "none"
+            selected_session.get("kind") not in {"none", "reference"}
             and not prefer_live_dialogue
             and not _restore_context
         )
@@ -1763,7 +1789,7 @@ class ConversationManager:
                     candidate["intent"] = Intent.PERSONAL_CHAT
                     candidate["conversation_domain"] = "social"
         if (
-            selected_session.get("kind") != "none"
+            selected_session.get("kind") not in {"none", "reference"}
             and not prefer_live_dialogue
             and not _restore_context
         ):
