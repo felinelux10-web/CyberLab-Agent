@@ -1445,7 +1445,6 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         "لا املك سجل", "لا أملك سجل", "لم افهم", "لم أفهم",
         "انا جاهز", "أنا جاهز", "اخبرني بما تريد",
         "حسنًا، أخبرني", "اخبرني بما يشغلك", "ما الذي تود",
-        "نعم", "لا", "تمام", "حسنا", "حسنًا", "شكرا", "شكرًا",
     )
     useful_answers = [
         sentence for sentence in answer_candidates
