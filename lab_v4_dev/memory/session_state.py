@@ -346,25 +346,6 @@ def session_selector(raw: str) -> dict:
         any(marker in text for marker in ("تقرير", "تقريرا", "تقريرًا", "تقرير مفصل", "تقرير كامل"))
         and not bool(re.search(r"(?:لا|بدون|دون|ليس|لا اريد).{0,25}تقرير", text))
     )
-    live_dialogue_reference = bool(re.search(
-        r"(?:هذه الجلسة|هذا الحوار|هذه المحادثة|هذا النقاش|الحوار الحالي|"
-        r"الجلسة الحالية|المحادثة الحالية|الحوار الذي نتحدث فيه|هذه الجلسه|هذا الحوار الحالي)",
-        text,
-    ))
-    mentions_current_dialogue = bool(re.search(
-        r"(?:جلسة|الجلسة|حوار|الحوار|محادثة|المحادثة)", text
-    ))
-    explicit_saved_reference = any(marker in text for marker in (
-        "المحفوظة", "المحفوظ", "السابقة", "السابقه", "رقم ", "معرف ",
-        "معرّف ", "استرجع الجلسة", "استعد الجلسة",
-    ))
-    if (
-        selection.get("kind") == "none"
-        and mentions_current_dialogue
-        and not explicit_saved_reference
-        and (live_dialogue_reference or explicit_report_request or asks_for_summary or asks_for_brief)
-    ):
-        selection = {"kind": "reference", "report_mode": "standard"}
     # Requests specifically about work sessions must not be interpreted as a
     # technical question about session hijacking or as a mixed-session report.
     work_sessions_mentioned = bool(re.search(
@@ -651,6 +632,43 @@ def session_route_contract(raw: str) -> dict:
     )
     selection = session_selector(raw_text)
     selection = dict(selection or {"kind": "none"})
+
+    # Output intent belongs to the route contract, which owns the selection.
+    asks_for_summary = any(
+        marker in text
+        for marker in (
+            "ملخص", "تلخيص", "لخص", "مضمون", "محتوى", "المحتوى", "المضمون",
+            "موجز", "موجزا", "موجزًا", "باختصار شديد",
+        )
+    )
+    asks_for_brief = any(marker in text for marker in (
+        "موجز", "موجزا", "موجزًا", "باختصار شديد", "اختصر جدا", "اختصر جدًا",
+    ))
+    explicit_report_request = (
+        any(marker in text for marker in (
+            "تقرير", "تقريرا", "تقريرًا", "تقرير مفصل", "تقرير كامل",
+        ))
+        and not bool(re.search(r"(?:لا|بدون|دون|ليس|لا اريد).{0,25}تقرير", text))
+    )
+    live_dialogue_reference = bool(re.search(
+        r"(?:هذه الجلسة|هذا الحوار|هذه المحادثة|هذا النقاش|الحوار الحالي|"
+        r"الجلسة الحالية|المحادثة الحالية|الحوار الذي نتحدث فيه|هذه الجلسه|هذا الحوار الحالي)",
+        text,
+    ))
+    mentions_current_dialogue = bool(re.search(
+        r"(?:جلسة|الجلسة|حوار|الحوار|محادثة|المحادثة)", text
+    ))
+    explicit_saved_reference = any(marker in text for marker in (
+        "المحفوظة", "المحفوظ", "السابقة", "السابقه", "رقم ", "معرف ",
+        "معرّف ", "استرجع الجلسة", "استعد الجلسة",
+    ))
+    if (
+        selection.get("kind") == "none"
+        and mentions_current_dialogue
+        and not explicit_saved_reference
+        and (live_dialogue_reference or explicit_report_request or asks_for_summary or asks_for_brief)
+    ):
+        selection = {"kind": "reference", "report_mode": "standard"}
 
     topic_filter = None
     topic_match = re.search(
@@ -1431,9 +1449,9 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     useful_answers = [
         sentence for sentence in answer_candidates
         if not any(marker.casefold() in sentence.casefold() for marker in generic_answer_markers)
-        and len(sentence) > 28
+        and len(sentence) > 12
     ]
-    answer = " ".join(useful_answers[:3]).strip()
+    answer = " ".join(useful_answers[:1]).strip()
     answer = answer[:420].rstrip(" \t\r\n-•")
     answer = re.sub(
         r"^(?:الفرق(?:\s+الاساسي)?\s+هو|الاختلاف\s+هو|الخلاصة\s*[:：]?|"
