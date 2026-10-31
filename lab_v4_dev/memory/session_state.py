@@ -169,13 +169,13 @@ def _saved_dialogue_search_content(item: dict) -> list[str]:
         not isinstance(detail, dict)
         or str(detail.get("session_id") or "").strip() != session_id
     ):
-        return ""
+        return []
     dialogue = detail.get("dialogue_state")
     if not isinstance(dialogue, dict):
-        return ""
+        return []
     dialogue_id = str(dialogue.get("session_id") or "").strip()
     if dialogue_id and dialogue_id != session_id:
-        return ""
+        return []
     parts = [
         str(dialogue.get("last_topic") or ""),
         str(detail.get("title") or ""),
