@@ -818,8 +818,15 @@ class ConversationManager:
             from lab_v4_dev.memory.session_state import session_route_contract
             explicit_session_selector = session_route_contract(user_input)
             normalized_followup = normalize_text(user_input)
+            followup_references_active_report = any(marker in normalized_followup for marker in (
+                "ذلك الحوار", "هذا الحوار", "الحوار السابق", "ذلك النقاش",
+                "هذا النقاش", "هذه الجلسة", "الجلسة المحفوظة الخاصة بذلك الحوار",
+            ))
             active_report_followup = (
-                explicit_session_selector.get("kind") == "none"
+                (
+                    explicit_session_selector.get("kind") == "none"
+                    or followup_references_active_report
+                )
                 and any(marker in normalized_followup for marker in (
                     "اختصر", "اختصار", "لخص", "تلخيص", "ملخص",
                     "بسط", "بشكل مبسط", "بطريقه مبسطه", "بطريقة مبسطة",
@@ -1007,11 +1014,25 @@ class ConversationManager:
                 "session_id": selected_saved_session_id,
                 "report_mode": (
                     inherited_report_mode
-                    or ("summary" if active_report_followup else "standard")
+                    or (
+                        "full"
+                        if active_report_followup and any(
+                            marker in normalize_text(user_input)
+                            for marker in ("تقرير", "تقريرا", "تقريرًا")
+                        )
+                        else "summary" if active_report_followup else "standard"
+                    )
                 ),
                 "output_kind": (
                     inherited_output_kind
-                    or ("summary" if active_report_followup else "report")
+                    or (
+                        "report"
+                        if active_report_followup and any(
+                            marker in normalize_text(user_input)
+                            for marker in ("تقرير", "تقريرا", "تقريرًا")
+                        )
+                        else "summary" if active_report_followup else "report"
+                    )
                 ),
                 "topic_filter": (
                     user_input
