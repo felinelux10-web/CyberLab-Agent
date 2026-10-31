@@ -819,8 +819,7 @@ class ConversationManager:
             explicit_session_selector = session_route_contract(user_input)
             normalized_followup = normalize_text(user_input)
             followup_references_active_report = any(marker in normalized_followup for marker in (
-                "ذلك الحوار", "هذا الحوار", "الحوار السابق", "ذلك النقاش",
-                "هذا النقاش", "هذه الجلسة", "الجلسة المحفوظة الخاصة بذلك الحوار",
+                "ذلك الحوار", "ذلك النقاش", "الجلسة المحفوظة الخاصة بذلك الحوار",
             ))
             active_report_followup = (
                 (
