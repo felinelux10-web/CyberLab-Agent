@@ -4119,7 +4119,7 @@ class ConversationManager:
             )
             from lab_v4_dev.memory.session_state import summarize_dialogue_exchanges
             active_topic = (
-                "موضوعات متعددة نوقشت بالترتيب"
+                ""
                 if whole_dialogue_summary
                 else str(
                     getattr(state, "last_topic", None)
