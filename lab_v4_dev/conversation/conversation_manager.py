@@ -3656,7 +3656,6 @@ class ConversationManager:
                     "executed": False,
                 }
             exchanges = topic_exchanges
-            response_mode = "summary"
         if not response_mode and live_previous_session_recall:
             response_mode = "summary"
         if (
