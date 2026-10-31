@@ -1119,7 +1119,7 @@ class ConversationManager:
         live_topic_summary = (
             selected_session.get("kind") == "none"
             and live_dialogue_archive
-            and selected_session.get("output_kind") in {"brief", "topic_summary"}
+            and selected_session.get("output_kind") in {"brief", "topic_summary", "report"}
             and bool(str(selected_session.get("topic_filter") or "").strip())
         )
         if (
