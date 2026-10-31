@@ -2170,7 +2170,7 @@ SOURCE CODE:
                         and not item.get("response_failed")
                         and str(item.get("user") or "").strip()
                         and str(item.get("assistant") or "").strip()
-                    ][-24:]
+                    ]
 
                     # A topic-scoped follow-up remains owned by this saved
                     # report. Filter its evidence before local summarization
