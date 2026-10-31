@@ -542,31 +542,20 @@ def session_selector(raw: str) -> dict:
     if any(token in text for token in (
         "لخص ما فعلناه", "ملخص الجلسة", "ملخص جلسة", "استكمل الجلسة",
         "استرجع الجلسة", "استعد الجلسة", "استكمال الجلسة", "أين توقفنا",
-        "اين توقفنا", "ما مضمون الجلسة", "تقرير     topic_match = re.search(
-        r"(?:ملخص|لخص|تلخيص|تقرير|التقرير)?\\s*(?:عن|حول|موضوع\\s+(?:عن|حول))\\s+"
-        r"(.+?)(?=\\s+(?:في|ضمن)\\s+(?:الجلسة|الحوار)|$)",
-        text,
+        "اين توقفنا", "ما مضمون الجلسة", "تقرير كامل عن الجلسة", "أعطني تقرير كامل", "أعطني تقريرًا كاملًا",
+    )):
+        return {"kind": "latest", "report_mode": report_mode}
+    return {"kind": "none"}
+
+
+def is_explicit_transcript_request(raw: str) -> bool:
+    """Return true only for an affirmative request to display original messages."""
+    text = (
+        str(raw or "").casefold()
+        .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        .replace("ى", "ي")
     )
-    candidate_topic = topic_match.group(1) if topic_match else ""
-    if not candidate_topic:
-        # Recognize direct named subjects such as "موضوع الفن التجريدي".
-        named_topic = re.search(
-            r"(?:^|\\s)(?:موضوع|فكرة)\\s+(?!ال?(?:جلسة|حوار|جلسات|حوارات)\\b)(.+?)"
-            r"(?=\\s+(?:الذي|التي|الذين|ناقشناه|ناقشناها|تحدثنا|تكلمنا|في\\s+(?:الجلسة|الحوار))|$)",
-            text,
-        )
-        if named_topic:
-            candidate_topic = named_topic.group(1)
-    candidate_topic = re.split(
-        r"\\s+(?:الذي|التي|الذين|ناقشناه|ناقشناها|تحدثنا|تكلمنا|سابقا|سابقًا|في\\s+(?:الجلسة|الحوار))\\b",
-        candidate_topic,
-        maxsplit=1,
-    )[0].strip(" \\t\\r\\n.,،؛:!?؟")
-    if candidate_topic and not re.search(
-        r"^(?:ال?جلسة|ال?حوار|ال?جلسات|ال?حوارات|الذي|التي|ناقشناه|تحدثنا|سابقا|سابقًا)(?:\\s|$)",
-        candidate_topic,
-    ):
-        topic_filter = candidate_topicre.sub(r"[\u064b-\u065f\u0670]", "", text)
+    text = re.sub(r"[\u064b-\u065f\u0670]", "", text)
     text = re.sub(r"\s+", " ", text).strip()
     positive = bool(
         re.search(
