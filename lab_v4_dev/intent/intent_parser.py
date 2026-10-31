@@ -1614,6 +1614,10 @@ def parse(user_input, *, context_entity: dict | None = None):
         legacy["conversation_domain"] = signal.get("conversation_domain", "general")
         legacy["conversation_act"] = signal_act
         legacy["conversation_confidence"] = float(signal.get("confidence", 0.0))
+        # The semantic classifier owns response attributes for dialogue acts.
+        # Preserve recovery/summary modes even when the legacy parser supplied
+        # an empty dictionary; setdefault below must not erase this contract.
+        legacy["response_attributes"] = dict(signal.get("response_attributes") or {})
         legacy["semantic_pattern"] = "DIALOGUE_SEMANTIC_OVERRIDE"
     legacy.setdefault(
         "conversation_domain",
