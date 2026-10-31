@@ -1407,17 +1407,30 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     )
     normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
     topic = " ".join(str(exchange.get("target") or "").split()).strip()
-    answer = " ".join(str(exchange.get("assistant") or "").split()).strip()
-    answer = re.split(r"(?<=[.!?؟])\s+", answer, maxsplit=1)[0].strip()
-    answer = answer.strip(" \t\r\n-•")
+    assistant_text = str(exchange.get("assistant") or "").strip()
+    answer_candidates = []
+    for paragraph in re.split(r"\n+", assistant_text):
+        paragraph = " ".join(paragraph.split()).strip(" \t\r\n-•")
+        if not paragraph:
+            continue
+        for sentence in re.split(r"(?<=[.!?؟])\s+", paragraph):
+            sentence = sentence.strip(" \t\r\n-•")
+            if sentence:
+                answer_candidates.append(sentence)
     generic_answer_markers = (
         "انا بخير", "أنا بخير", "كيف حالك", "كيف الحال",
         "هل في شيء تحب", "هل ترغب في", "كيف يمكنني مساعدتك",
         "لا املك سجل", "لا أملك سجل", "لم افهم", "لم أفهم",
         "انا جاهز", "أنا جاهز", "اخبرني بما تريد",
+        "حسنًا، أخبرني", "اخبرني بما يشغلك", "ما الذي تود",
     )
-    if any(marker.casefold() in answer.casefold() for marker in generic_answer_markers):
-        answer = ""
+    useful_answers = [
+        sentence for sentence in answer_candidates
+        if not any(marker.casefold() in sentence.casefold() for marker in generic_answer_markers)
+        and len(sentence) > 28
+    ]
+    answer = " ".join(useful_answers[:3]).strip()
+    answer = answer[:420].rstrip(" \t\r\n-•")
     answer = re.sub(
         r"^(?:الفرق(?:\s+الاساسي)?\s+هو|الاختلاف\s+هو|الخلاصة\s*[:：]?|"
         r"الاجابة\s+هي|ببساطة|بشكل\s+عام|باختصار)\s*",
@@ -1580,12 +1593,20 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
             topic = "قدرات الوكيل"
 
     if topic and answer:
-        return [f"ناقش الحوار «{topic}»؛ وقدم الرد توضيحًا موجزًا بشأن {answer}."]
+        return [
+            f"تناول الحوار «{topic}»؛ وتركزت إجابة الوكيل على {answer}."
+        ]
     if topic:
-        return [f"تناول الحوار موضوع «{topic}»؛ ولا تتوفر خلاصة جواب إضافية محفوظة لهذا التبادل."]
+        return [
+            f"تناول الحوار موضوع «{topic}»؛ لكن الرد المحفوظ لا يتضمن تفاصيل كافية لاستخلاص نتيجة إضافية."
+        ]
     if answer:
-        return [f"تضمن الحوار توضيحًا لموضوع ورد في السؤال؛ وخلاصة الرد: {answer}."]
-    return ["يتضمن السجل تبادلًا حواريًا، لكن لا توجد بيانات دلالية كافية لتحديد مضمونه دون تخمين."]
+        return [
+            f"تركز مضمون الردود المسجلة على {answer}."
+        ]
+    return [
+        "لا يتضمن هذا التبادل حقولًا دلالية أو ردًا موضوعيًا كافيًا؛ لذلك لم أضف له مضمونًا تخمينيًا."
+    ]
 
 def _dialogue_assistant_insight(exchange: dict) -> str:
     """Extract a concise grounded insight from an assistant turn without quoting the turn."""
