@@ -4058,7 +4058,7 @@ class ConversationManager:
             report = summarize_dialogue_exchanges(
                 branch,
                 topic=active_topic,
-                limit=4,
+                limit=12,
             )
             lines = [
                 f"الموضوع: {report['topic'] or 'لم يُسجّل موضوع محدد.'}",
@@ -4067,8 +4067,8 @@ class ConversationManager:
             ]
             if report["insights"]:
                 lines.extend(
-                    "- " + str(item)[:145].rstrip()
-                    for item in report["insights"][:4]
+                    "- " + str(item)[:180].rstrip()
+                    for item in report["insights"][:12]
                 )
             else:
                 lines.append("- لا توجد خلاصة مكتملة من التبادلات الناجحة.")
