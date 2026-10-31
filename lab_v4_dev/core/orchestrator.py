@@ -2065,6 +2065,27 @@ SOURCE CODE:
                             "لن أستخدم الجلسة الحالية بديلًا عنه."
                         ),
                     }
+                if intent == Intent.SESSION_RESTORE and selector.get("kind") in {None, "none"}:
+                    normalized_restore_request = " ".join(
+                        str(raw or "").casefold()
+                        .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+                        .replace("ى", "ي").split()
+                    )
+                    if any(marker in normalized_restore_request for marker in (
+                        "ملخص", "تلخيص", "لخص", "تقرير", "مضمون", "محتوى",
+                        "الحوار السابق", "الجلسة السابقة", "هذه الجلسة",
+                    )):
+                        return {
+                            "status": "needs_clarification",
+                            "intent": intent,
+                            "source": "saved_session_selector",
+                            "executed": False,
+                            "text": (
+                                "لم يتم تحديد سجل محفوظ لهذا الطلب؛ لن أستخدم نقطة الحفظ الحالية "
+                                "بديلًا عن حوار سابق. حدّد رقم الجلسة أو موضوع الحوار، أو اطلب "
+                                "ملخص الحوار الحالي صراحة."
+                            ),
+                        }
                 s = load_session()
             if not s:
                 return {"status":"success","intent":intent,
