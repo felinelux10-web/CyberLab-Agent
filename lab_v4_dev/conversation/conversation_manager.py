@@ -1000,6 +1000,9 @@ class ConversationManager:
         # pass can disagree with the canonical parse and let a later branch
         # steal ownership of the response.
         raw_signal = self._semantic_signal_from_parsed(candidate)
+        semantic_interrupted_recovery = str(
+            (raw_signal.get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold() == "interrupted_branch"
         from lab_v4_dev.memory.session_state import session_route_contract
         selected_session = session_route_contract(user_input)
         if selected_saved_session_id:
@@ -1123,7 +1126,8 @@ class ConversationManager:
             and bool(str(selected_session.get("topic_filter") or "").strip())
         )
         if (
-            (
+            not semantic_interrupted_recovery
+            and (
                 selected_session.get("kind") == "reference"
                 or live_topic_summary
             )
