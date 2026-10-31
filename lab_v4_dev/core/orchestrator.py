@@ -2242,7 +2242,7 @@ SOURCE CODE:
                             f"رسالة المستخدم: {user_text}\n"
                             f"رد الوكيل المحفوظ: {assistant_text}"
                         )
-                    source_text = "\n\n".join(source_lines)[:10000]
+                    source_text = "\n\n".join(source_lines)[:42000]
                     if source_text:
                         topic = str(
                             dialogue_state.get("last_topic")
