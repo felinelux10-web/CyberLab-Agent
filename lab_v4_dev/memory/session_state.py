@@ -489,12 +489,12 @@ def session_selector(raw: str) -> dict:
     # Keep generic "ملخص الحوار السابق عن الموضوع" in the live-dialogue route;
     # the explicit "ناقشنا/تحدثنا فيه <topic>" construction is the discriminator.
     topic_qualified_previous_dialogue = re.search(
-        r"(?:الحوار|حوار)\\s+(?:ال)?سابق(?:ة|ه)?\\s+(?:الذي|التي)\\s+"
-        r"(?:ناقشنا|تحدثنا|تكلمنا)\\s+(?:فيه|عن|حول)\\s+(.+?)(?:[؟?،؛]|$)",
+        r"(?:الحوار|حوار)\s+(?:ال)?سابق(?:ة|ه)?\s+(?:الذي|التي)\s+"
+        r"(?:ناقشنا|تحدثنا|تكلمنا)\s+(?:فيه|عن|حول)\s+(.+?)(?:[؟?،؛]|$)",
         text,
     )
     if topic_qualified_previous_dialogue:
-        query = topic_qualified_previous_dialogue.group(1).strip(" \\t\\r\\n.,،؛:!?؟")
+        query = topic_qualified_previous_dialogue.group(1).strip(" \t\r\n.,،؛:!?؟")
         if query:
             return {"kind": "search", "query": query, "report_mode": report_mode}
 
@@ -631,8 +631,8 @@ def session_route_contract(raw: str) -> dict:
     candidate_topic = topic_match.group(1) if topic_match else ""
     if not candidate_topic:
         previous_topic_match = re.search(
-            r"(?:الحوار|حوار)\\s+(?:ال)?سابق(?:ة|ه)?\\s+(?:الذي|التي)\\s+"
-            r"(?:ناقشنا|تحدثنا|تكلمنا)\\s+(?:فيه|عن|حول)\\s+(.+?)(?:[؟?،؛]|$)",
+            r"(?:الحوار|حوار)\s+(?:ال)?سابق(?:ة|ه)?\s+(?:الذي|التي)\s+"
+            r"(?:ناقشنا|تحدثنا|تكلمنا)\s+(?:فيه|عن|حول)\s+(.+?)(?:[؟?،؛]|$)",
             text,
         )
         if previous_topic_match:
