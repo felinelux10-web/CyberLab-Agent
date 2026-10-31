@@ -484,6 +484,20 @@ def session_selector(raw: str) -> dict:
     if last_session_dialogue_reference:
         return {"kind": "previous_dialogue", "report_mode": report_mode}
 
+    # A topic-qualified reference to a previous dialogue is a saved-session
+    # search, even when the wording says "الحوار السابق" rather than "الجلسة السابقة".
+    # Keep generic "ملخص الحوار السابق عن الموضوع" in the live-dialogue route;
+    # the explicit "ناقشنا/تحدثنا فيه <topic>" construction is the discriminator.
+    topic_qualified_previous_dialogue = re.search(
+        r"(?:الحوار|حوار)\\s+(?:ال)?سابق(?:ة|ه)?\\s+(?:الذي|التي)\\s+"
+        r"(?:ناقشنا|تحدثنا|تكلمنا)\\s+(?:فيه|عن|حول)\\s+(.+?)(?:[؟?،؛]|$)",
+        text,
+    )
+    if topic_qualified_previous_dialogue:
+        query = topic_qualified_previous_dialogue.group(1).strip(" \\t\\r\\n.,،؛:!?؟")
+        if query:
+            return {"kind": "search", "query": query, "report_mode": report_mode}
+
     # Distinguish a prior saved dialogue from the generic latest session/work report.
     # This is intentionally checked before broad "استرجع الجلسة" -> latest matching.
     previous_dialogue_markers = (
@@ -615,6 +629,14 @@ def session_route_contract(raw: str) -> dict:
         text,
     )
     candidate_topic = topic_match.group(1) if topic_match else ""
+    if not candidate_topic:
+        previous_topic_match = re.search(
+            r"(?:الحوار|حوار)\\s+(?:ال)?سابق(?:ة|ه)?\\s+(?:الذي|التي)\\s+"
+            r"(?:ناقشنا|تحدثنا|تكلمنا)\\s+(?:فيه|عن|حول)\\s+(.+?)(?:[؟?،؛]|$)",
+            text,
+        )
+        if previous_topic_match:
+            candidate_topic = previous_topic_match.group(1)
     if not candidate_topic:
         # Recognize direct named subjects such as "موضوع الفن التجريدي".
         named_topic = re.search(
