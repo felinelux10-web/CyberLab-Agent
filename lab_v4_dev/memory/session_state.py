@@ -336,6 +336,32 @@ def session_selector(raw: str) -> dict:
         marker in text
         for marker in ("ملخص", "تلخيص", "لخص", "مضمون", "محتوى", "المحتوى", "المضمون")
     )
+    asks_for_brief = any(marker in text for marker in (
+        "موجز", "موجزا", "موجزًا", "باختصار شديد", "اختصر جدا", "اختصر جدًا",
+    ))
+    explicit_report_request = (
+        any(marker in text for marker in ("تقرير", "تقريرا", "تقريرًا", "تقرير مفصل", "تقرير كامل"))
+        and not bool(re.search(r"(?:لا|بدون|دون|ليس|لا اريد).{0,25}تقرير", text))
+    )
+    live_dialogue_reference = bool(re.search(
+        r"(?:هذه الجلسة|هذا الحوار|هذه المحادثة|هذا النقاش|الحوار الحالي|"
+        r"الجلسة الحالية|المحادثة الحالية|الحوار الذي نتحدث فيه|هذه الجلسه|هذا الحوار الحالي)",
+        text,
+    ))
+    mentions_current_dialogue = bool(re.search(
+        r"(?:جلسة|الجلسة|حوار|الحوار|محادثة|المحادثة)", text
+    ))
+    explicit_saved_reference = any(marker in text for marker in (
+        "المحفوظة", "المحفوظ", "السابقة", "السابقه", "رقم ", "معرف ",
+        "معرّف ", "استرجع الجلسة", "استعد الجلسة",
+    ))
+    if (
+        selection.get("kind") == "none"
+        and mentions_current_dialogue
+        and not explicit_saved_reference
+        and (live_dialogue_reference or explicit_report_request or asks_for_summary or asks_for_brief)
+    ):
+        selection = {"kind": "reference", "report_mode": "standard"}
     # Requests specifically about work sessions must not be interpreted as a
     # technical question about session hijacking or as a mixed-session report.
     work_sessions_mentioned = bool(re.search(
@@ -677,26 +703,18 @@ def session_route_contract(raw: str) -> dict:
         selection["kind"] = "search"
         selection["query"] = topic_filter
 
-    explicit_report_request = (
-        any(marker in text for marker in (
-            "تقرير", "تقريرا", "تقريرًا", "تقرير مفصل", "تقرير كامل",
-        ))
-        and not bool(re.search(
-            r"(?:لا|بدون|دون|ليس|لا اريد).{0,25}تقرير",
-            text,
-        ))
-    )
-    asks_for_summary = any(marker in text for marker in (
-        "ملخص", "تلخيص", "لخص", "مضمون", "محتوى", "المحتوى", "المضمون",
-    ))
 
     if (
         explicit_report_request
         and selection.get("kind") in {
-            "number", "id", "latest", "previous_dialogue", "search",
+            "number", "id", "latest", "previous_dialogue", "search", "reference",
         }
     ):
         selection["report_mode"] = "full"
+    elif asks_for_brief and selection.get("kind") in {
+        "number", "id", "latest", "previous_dialogue", "search", "reference",
+    }:
+        selection["report_mode"] = "brief"
     elif (
         topic_filter
         and selection.get("kind") in {
@@ -738,6 +756,8 @@ def session_route_contract(raw: str) -> dict:
         )
     ):
         output_kind = "progress"
+    elif selection.get("report_mode") == "brief" or asks_for_brief:
+        output_kind = "brief"
     elif explicit_report_request or selection.get("report_mode") == "full":
         output_kind = "report"
     elif asks_for_summary or selection.get("kind") in {
@@ -1781,6 +1801,17 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
             f"الموضوع: {topic}",
             f"عدد التبادلات المكتملة: {len(exchanges)}",
         ])
+    if report_mode == "brief":
+        brief = summarize_dialogue_exchanges(summary_exchanges, topic=topic, limit=3)
+        details = "؛ ".join(brief["insights"][:2]) or (
+            "لا يتضمن السجل مضمونًا موضوعيًا كافيًا يمكن إثباته."
+        )
+        return "\n".join([
+            "=== موجز الحوار المحفوظ ===",
+            f"الموضوع: {brief['topic'] or topic}",
+            f"الخلاصة: {details}",
+            f"نقطة التوقف: {brief['stop_point']}",
+        ])
     if report_mode == "progress":
         progress_summary = summarize_dialogue_exchanges(
             summary_exchanges,
@@ -1899,6 +1930,13 @@ def build_session_restore_summary(data: dict | None = None, *, report_mode: str 
     report = analyze_session(session)
     def bullets(items, empty="غير محدد من البيانات المتاحة"):
         return [f"- {item}" for item in (items or [empty])]
+    if report_mode == "brief":
+        return "\n".join([
+            "=== موجز جلسة العمل ===",
+            f"الموضوع: {report['topic']}",
+            f"الهدف: {report['active_goal']}",
+            f"نقطة التوقف: {report['last_completed_step']}",
+        ])
     if report_mode == "summary":
         summary_lines = [
             "=== ملخص جلسة العمل ===",
