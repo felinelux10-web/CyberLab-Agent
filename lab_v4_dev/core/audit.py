@@ -13,6 +13,20 @@ from lab_v4_dev.core.logger import log
 
 CYBERLAB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 AUDIT_FILE = os.path.join(CYBERLAB_ROOT, "execution_audit.json")
+_DEFAULT_AUDIT_FILE = os.path.realpath(AUDIT_FILE)
+_TEST_RUNTIME_ENV = "CYBERLAB_TEST_RUNTIME_DIR"
+
+
+def _audit_path() -> str:
+    """Use an isolated audit file during pytest without changing production defaults.
+
+    Explicitly configured paths (including test monkeypatches) always take
+    precedence over the test-runtime fallback.
+    """
+    runtime_dir = os.environ.get(_TEST_RUNTIME_ENV)
+    if runtime_dir and os.path.realpath(AUDIT_FILE) == _DEFAULT_AUDIT_FILE:
+        return os.path.join(runtime_dir, "execution_audit.json")
+    return AUDIT_FILE
 
 
 @dataclass
@@ -46,14 +60,12 @@ def _load_audit_file(path: str) -> list:
             if isinstance(data, list):
                 return data
             log.warning("Audit file %s contains unexpected JSON (not a list); preserving and starting fresh", path)
-            # Move corrupt/unexpected file aside to avoid data loss
             try:
                 _move_corrupt(path)
             except Exception:
                 pass
             return []
     except Exception:
-        # If file is corrupted or unreadable, preserve it and don't crash the caller.
         log.exception("Failed to read audit file %s", path)
         try:
             _move_corrupt(path)
@@ -65,6 +77,7 @@ def _load_audit_file(path: str) -> list:
 def _write_audit_file(path: str, entries: list) -> None:
     tmp = path + ".tmp"
     try:
+        os.makedirs(os.path.dirname(path) or os.curdir, exist_ok=True)
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(entries, f, ensure_ascii=False, indent=2)
         os.replace(tmp, path)
@@ -81,16 +94,12 @@ def emit_event(event: str, source: str = "system", context: Optional[Dict[str, A
     """
     Emit a canonical audit/event record.
 
-    - Reuses the existing core logger for observability.
-    - Appends a stable event record shape to execution_audit.json when persist is True.
-
-    This function is intentionally small: it provides a single well-known path for
-    producing structured events without replacing other specialized audit mechanisms.
+    Structured events are persisted to the configured audit file during normal
+    operation. Under pytest, the default destination is redirected to the
+    temporary test runtime directory; explicit destinations remain respected.
     """
     context = context or {}
     details = details or {}
-
-    # Use timezone-aware UTC timestamp
     ts = datetime.now(timezone.utc).isoformat()
 
     rec = EventRecord(
@@ -101,15 +110,13 @@ def emit_event(event: str, source: str = "system", context: Optional[Dict[str, A
         details=dict(details),
     )
 
-    # Structured logging — reuse existing logger instead of creating a new system.
     try:
         log.info("EVENT %s | source=%s | details=%s", event, source, details)
     except Exception:
-        # Logging should never raise to callers
         pass
 
     if persist:
-        path = AUDIT_FILE
+        path = _audit_path()
         entries = _load_audit_file(path)
         entries.append(rec.to_dict())
         _write_audit_file(path, entries)
