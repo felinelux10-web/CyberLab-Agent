@@ -163,7 +163,7 @@ def _saved_dialogue_search_content(item: dict) -> list[str]:
     """Read searchable topic evidence from the exact saved dialogue detail record."""
     session_id = str(item.get("session_id") or "").strip()
     if not session_id:
-        return ""
+        return []
     detail = _load_session_detail(session_id)
     if (
         not isinstance(detail, dict)
