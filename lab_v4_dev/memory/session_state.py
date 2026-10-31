@@ -334,7 +334,10 @@ def session_selector(raw: str) -> dict:
     )
     asks_for_summary = any(
         marker in text
-        for marker in ("ملخص", "تلخيص", "لخص", "مضمون", "محتوى", "المحتوى", "المضمون")
+        for marker in (
+            "ملخص", "تلخيص", "لخص", "مضمون", "محتوى", "المحتوى", "المضمون",
+            "موجز", "موجزا", "موجزًا", "باختصار شديد",
+        )
     )
     asks_for_brief = any(marker in text for marker in (
         "موجز", "موجزا", "موجزًا", "باختصار شديد", "اختصر جدا", "اختصر جدًا",
@@ -439,7 +442,7 @@ def session_selector(raw: str) -> dict:
     )
     if number_match and any(token in text for token in (
         "استرجع", "استعد", "استكمل", "استكمال", "اعرض", "اكتب", "اقرا", "حلل",
-        "ملخص", "تلخيص", "لخص", "مضمون", "محتوى", "تقرير", "ما الموضوع",
+        "ملخص", "تلخيص", "لخص", "موجز", "باختصار", "مضمون", "محتوى", "تقرير", "ما الموضوع",
         "ماذا كنا", "ما كنا", "ما الفرق", "restore", "resume", "summarize",
         "summary", "report",
     )):
@@ -589,7 +592,8 @@ def session_selector(raw: str) -> dict:
     if any(token in text for token in (
         "لخص ما فعلناه", "ملخص الجلسة", "ملخص جلسة", "استكمل الجلسة",
         "استرجع الجلسة", "استعد الجلسة", "استكمال الجلسة", "أين توقفنا",
-        "اين توقفنا", "ما مضمون الجلسة", "تقرير كامل عن الجلسة", "أعطني تقرير كامل", "أعطني تقريرًا كاملًا",
+        "اين توقفنا", "ما مضمون الجلسة", "موجز الجلسة", "موجز الجلسة المحفوظة",
+        "تقرير كامل عن الجلسة", "أعطني تقرير كامل", "أعطني تقريرًا كاملًا",
     )):
         return {"kind": "latest", "report_mode": report_mode}
     return {"kind": "none"}
@@ -650,7 +654,7 @@ def session_route_contract(raw: str) -> dict:
 
     topic_filter = None
     topic_match = re.search(
-        r"(?:ملخص|لخص|تلخيص|تقرير|التقرير)?\s*(?:عن|حول|موضوع\s+(?:عن|حول))\s+"
+        r"(?:ملخص|لخص|تلخيص|موجز|تقرير|التقرير)?\s*(?:عن|حول|موضوع\s+(?:عن|حول))\s+"
         r"(.+?)(?=\s+(?:في|ضمن)\s+(?:الجلسة|الحوار)|$)",
         text,
     )
@@ -772,7 +776,7 @@ def session_route_contract(raw: str) -> dict:
         output_kind = "chat"
 
     selection["output_kind"] = output_kind
-    if topic_filter and output_kind in {"summary", "topic_summary", "report"}:
+    if topic_filter and output_kind in {"brief", "summary", "topic_summary", "report"}:
         selection["topic_filter"] = topic_filter
     return selection
 
