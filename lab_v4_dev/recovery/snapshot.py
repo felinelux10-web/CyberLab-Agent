@@ -12,6 +12,21 @@ from lab_v4_dev.core.audit import emit_event
 from lab_v4_dev.core.project_context import CYBERLAB_ROOT
 
 SNAPSHOTS_DIR = os.path.join(CYBERLAB_ROOT, "lab_v4_dev", "archives", "snapshots")
+_DEFAULT_SNAPSHOTS_DIR = os.path.realpath(SNAPSHOTS_DIR)
+_TEST_RUNTIME_ENV = "CYBERLAB_TEST_RUNTIME_DIR"
+
+
+def get_snapshots_dir(configured_dir: str = None) -> str:
+    """Resolve the archive destination, isolating only the default path in pytest.
+
+    A caller-supplied or monkeypatched directory is intentional and is never
+    replaced by the test-runtime fallback.
+    """
+    configured = SNAPSHOTS_DIR if configured_dir is None else configured_dir
+    runtime_dir = os.environ.get(_TEST_RUNTIME_ENV)
+    if runtime_dir and os.path.realpath(configured) == _DEFAULT_SNAPSHOTS_DIR:
+        return os.path.join(runtime_dir, "archives", "snapshots")
+    return configured
 
 
 def _snapshot_key(file_path: str) -> str:
@@ -39,11 +54,10 @@ def take(file_path: str) -> dict:
     kind = "file" if existed_before else "new"
     snapshot_name = f"{kind}__{_snapshot_key(file_path)}__{timestamp}.snap"
 
-    os.makedirs(SNAPSHOTS_DIR, exist_ok=True)
-    snapshot_path = os.path.join(SNAPSHOTS_DIR, snapshot_name)
+    snapshots_dir = get_snapshots_dir()
+    os.makedirs(snapshots_dir, exist_ok=True)
+    snapshot_path = os.path.join(snapshots_dir, snapshot_name)
 
-    # A missing target is represented by the snapshot's identity, not by an
-    # empty file that rollback would mistakenly copy into existence.
     if not existed_before:
         with open(snapshot_path, "w", encoding="utf-8") as handle:
             handle.write("")
@@ -59,7 +73,6 @@ def take(file_path: str) -> dict:
         return rec
 
     shutil.copy2(file_path, snapshot_path)
-
     rec = {
         "status": "ok",
         "original": file_path,
@@ -67,19 +80,19 @@ def take(file_path: str) -> dict:
         "hash": _hash_file(file_path),
         "timestamp": timestamp,
     }
-
     emit_event("snapshot.taken", source="snapshot", context={"file": file_path}, details={"snapshot": snapshot_path})
     return rec
 
 
 def list_snapshots(file_path: str) -> List[str]:
     file_path = canonical_path(file_path)
-    if not os.path.exists(SNAPSHOTS_DIR):
+    snapshots_dir = get_snapshots_dir()
+    if not os.path.exists(snapshots_dir):
         return []
     key = _snapshot_key(file_path)
     prefixes = (f"file__{key}__", f"new__{key}__")
     snaps = [
-        f for f in os.listdir(SNAPSHOTS_DIR)
+        f for f in os.listdir(snapshots_dir)
         if f.startswith(prefixes) and f.endswith(".snap")
     ]
     snaps = sorted(snaps)
