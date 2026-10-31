@@ -4,7 +4,12 @@
 import os
 import shutil
 from typing import Optional
-from lab_v4_dev.recovery.snapshot import list_snapshots, SNAPSHOTS_DIR, _snapshot_key
+from lab_v4_dev.recovery.snapshot import (
+    list_snapshots,
+    SNAPSHOTS_DIR,
+    _snapshot_key,
+    get_snapshots_dir,
+)
 from lab_v4_dev.core.audit import emit_event
 from lab_v4_dev.recovery.permissions import check_write
 from lab_v4_dev.recovery.path_policy import canonical_path, is_within
@@ -12,7 +17,7 @@ from lab_v4_dev.recovery.path_policy import canonical_path, is_within
 
 def _snapshot_matches_target(file_path: str, snapshot_path: str) -> bool:
     """Accept only archive snapshots whose filename identifies this target."""
-    archive_root = canonical_path(SNAPSHOTS_DIR)
+    archive_root = canonical_path(get_snapshots_dir(SNAPSHOTS_DIR))
     candidate = canonical_path(snapshot_path)
     if not is_within(candidate, archive_root) or candidate == archive_root:
         return False
@@ -29,18 +34,9 @@ def rollback(file_path: str, snapshot_path: Optional[str] = None, trusted: Optio
     Restore a file from a snapshot.
 
     Security boundary:
-    - If `trusted` is explicitly provided (True/False) it is honored as the caller's intent.
-    - If `trusted` is None (the default), we perform a lightweight stack inspection to
-      heuristically determine whether the caller appears to be internal to the
-      lab_v4_dev package. If an internal caller is detected, the operation is
-      treated as trusted; otherwise it is treated as untrusted and a permission
-      check (check_write) is enforced.
-
-    This keeps internal recovery paths working while preventing external callers
-    from using rollback as a permission bypass.
+    - Explicit trusted values remain API-compatible but do not bypass authorization.
+    - The write permission check is always enforced before restoring a target.
     """
-
-    # Keep trusted for API compatibility, but never let it bypass authorization.
     file_path = canonical_path(file_path)
     emit_event(
         "rollback.start",
@@ -49,13 +45,13 @@ def rollback(file_path: str, snapshot_path: Optional[str] = None, trusted: Optio
         details={"trusted_provided": trusted, "effective_trusted": False},
     )
 
-    # إذا لم يُحدد snapshot — خذ الأحدث
+    snapshots_dir = get_snapshots_dir(SNAPSHOTS_DIR)
     if not snapshot_path:
         snaps = list_snapshots(file_path)
         if not snaps:
             emit_event("rollback.failed", source="rollback", context={"file": file_path}, details={"reason": "no_snapshots_found"})
             return {"status": "failed", "reason": "no_snapshots_found"}
-        snapshot_path = os.path.join(SNAPSHOTS_DIR, snaps[-1])
+        snapshot_path = os.path.join(snapshots_dir, snaps[-1])
 
     snapshot_path = canonical_path(snapshot_path)
     if not os.path.exists(snapshot_path):
@@ -73,8 +69,6 @@ def rollback(file_path: str, snapshot_path: Optional[str] = None, trusted: Optio
         return {"status": "failed", "reason": str(e)}
 
     try:
-        # A "new" snapshot means the target did not exist before the
-        # transaction. Restoring it must restore absence, not create an empty file.
         if os.path.basename(snapshot_path).startswith(f"new__{_snapshot_key(file_path)}__"):
             if os.path.exists(file_path):
                 os.remove(file_path)
