@@ -1449,7 +1449,7 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     useful_answers = [
         sentence for sentence in answer_candidates
         if not any(marker.casefold() in sentence.casefold() for marker in generic_answer_markers)
-        and len(sentence) > 4
+        and len(sentence) > 5
     ]
     answer = " ".join(useful_answers[:1]).strip()
     answer = answer[:420].rstrip(" \t\r\n-•")
