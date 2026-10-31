@@ -1369,7 +1369,7 @@ def _is_dialogue_control_text(value: object) -> bool:
         # eligible for semantic extraction.
         "حسنا اكمل", "حسنا نكمل", "اكمل", "اكمل الحديث",
         "لنكمل حوارنا", "هيا نكمل حديثنا", "دعنا نواصل حديثنا",
-        "دعنا نتحدث قليلا", "دعنا نتكلم قليلا", "تابع الشرح",
+        "دعنا نتحدث قليلا", "دعنا نتكلم قليلا", "لنتحدث قليلا", "لنتكلم قليلا", "تابع الشرح",
         "واصل الشرح", "ماهي اخر نقطة توقف فيها الحوار",
         "ما هي اخر نقطة توقف فيها الحوار",
     } or re.fullmatch(
@@ -1445,11 +1445,12 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         "لا املك سجل", "لا أملك سجل", "لم افهم", "لم أفهم",
         "انا جاهز", "أنا جاهز", "اخبرني بما تريد",
         "حسنًا، أخبرني", "اخبرني بما يشغلك", "ما الذي تود",
+        "نعم", "لا", "تمام", "حسنا", "حسنًا", "شكرا", "شكرًا",
     )
     useful_answers = [
         sentence for sentence in answer_candidates
         if not any(marker.casefold() in sentence.casefold() for marker in generic_answer_markers)
-        and len(sentence) > 12
+        and len(sentence) > 4
     ]
     answer = " ".join(useful_answers[:1]).strip()
     answer = answer[:420].rstrip(" \t\r\n-•")
