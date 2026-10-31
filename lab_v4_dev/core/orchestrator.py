@@ -2265,7 +2265,14 @@ SOURCE CODE:
                             f"رد الوكيل المحفوظ: {assistant_text}"
                         )
                     source_text = "\n\n".join(source_lines)[:42000]
-                    if source_text:
+                    # Provider synthesis is opt-in only. The default report path
+                    # remains deterministic and grounded in the selected session's
+                    # stored exchanges; a successful provider response alone is not
+                    # evidence that every generated claim is present in the archive.
+                    allow_provider_synthesis = bool(
+                        getattr(self.agent, "allow_provider_session_synthesis", False)
+                    )
+                    if source_text and allow_provider_synthesis:
                         topic = str(
                             dialogue_state.get("last_topic")
                             or next(
