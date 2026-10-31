@@ -792,6 +792,7 @@ class ConversationManager:
         if self._is_new_dialogue_session_request(user_input):
             self.active_report_session_id = None
             self.active_report_topic_filter = None
+            self.active_live_output_kind = None
             reset = getattr(self.orchestrator, "reset_conversation_context", None)
             if callable(reset):
                 reset()
