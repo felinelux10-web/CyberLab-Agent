@@ -2438,7 +2438,12 @@ class ConversationManager:
         # المشروع أو مزود النموذج.
         conversation_history_answer = (
             None
-            if generic_topic or _restore_context or saved_session_request
+            if (
+                generic_topic
+                or _restore_context
+                or saved_session_request
+                or interrupted_recovery
+            )
             else self._conversation_history_answer(user_input, parsed)
         )
         recovery_mode = str(
