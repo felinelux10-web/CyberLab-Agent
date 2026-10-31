@@ -159,9 +159,53 @@ def _session_text(item: dict) -> str:
     return " ".join(str(item.get(field, "")) for field in fields).casefold()
 
 
+def _saved_dialogue_search_content(item: dict) -> str:
+    """Read searchable topic evidence from the exact saved dialogue detail record."""
+    session_id = str(item.get("session_id") or "").strip()
+    if not session_id:
+        return ""
+    detail = _load_session_detail(session_id)
+    if (
+        not isinstance(detail, dict)
+        or str(detail.get("session_id") or "").strip() != session_id
+    ):
+        return ""
+    dialogue = detail.get("dialogue_state")
+    if not isinstance(dialogue, dict):
+        return ""
+    dialogue_id = str(dialogue.get("session_id") or "").strip()
+    if dialogue_id and dialogue_id != session_id:
+        return ""
+    parts = [
+        str(dialogue.get("last_topic") or ""),
+        str(detail.get("title") or ""),
+        str(detail.get("active_goal") or ""),
+    ]
+    for exchange in dialogue.get("exchange_archive") or []:
+        if not isinstance(exchange, dict):
+            continue
+        exchange_id = str(exchange.get("session_id") or "").strip()
+        if exchange_id and exchange_id != session_id:
+            continue
+        if exchange.get("state_boundary_only") or exchange.get("recall_only"):
+            continue
+        if _is_dialogue_control_exchange(exchange):
+            continue
+        for field in (
+            "target", "user", "assistant", "semantic_summary", "summary",
+            "gist", "key_points", "main_points", "topics_discussed",
+        ):
+            value = exchange.get(field)
+            if isinstance(value, (list, tuple, set)):
+                parts.extend(str(entry) for entry in value if entry)
+            elif value:
+                parts.append(str(value))
+    return " ".join(part.strip() for part in parts if str(part or "").strip())
+
+
 def search_sessions(query: str = "", *, status: str | None = None,
                     project: str | None = None, limit: int = 10) -> list:
-    """Search the full saved-session index, then rank by content relevance."""
+    """Search session metadata and the full bounded content of saved dialogues."""
     from lab_v4_dev.memory.intelligence import rank_memory_records
     needle = str(query or "").strip()
     candidates = []
@@ -170,13 +214,17 @@ def search_sessions(query: str = "", *, status: str | None = None,
             continue
         if project and str(project).casefold() not in _session_text(item).casefold():
             continue
-        candidates.append(item)
+        candidate = dict(item)
+        if str(item.get("session_type") or "").casefold() == "dialogue":
+            candidate["_dialogue_content"] = _saved_dialogue_search_content(item)
+        candidates.append(candidate)
     if not needle:
         return sorted(candidates, key=_session_updated_key, reverse=True)[:max(1, int(limit))]
     return rank_memory_records(
         needle, candidates,
         fields=("title","project","topic","active_goal","summary","current_state","next_step",
-                "confirmed_achievements","completed_work","decisions","open_questions"),
+                "confirmed_achievements","completed_work","decisions","open_questions",
+                "_dialogue_content"),
         minimum_score=0.12, limit=max(1, int(limit)),
     )
 
@@ -494,20 +542,31 @@ def session_selector(raw: str) -> dict:
     if any(token in text for token in (
         "لخص ما فعلناه", "ملخص الجلسة", "ملخص جلسة", "استكمل الجلسة",
         "استرجع الجلسة", "استعد الجلسة", "استكمال الجلسة", "أين توقفنا",
-        "اين توقفنا", "ما مضمون الجلسة", "تقرير كامل عن الجلسة", "أعطني تقرير كامل", "أعطني تقريرًا كاملًا",
-    )):
-        return {"kind": "latest", "report_mode": report_mode}
-    return {"kind": "none"}
-
-
-def is_explicit_transcript_request(raw: str) -> bool:
-    """Return true only for an affirmative request to display original messages."""
-    text = (
-        str(raw or "").casefold()
-        .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
-        .replace("ى", "ي")
+        "اين توقفنا", "ما مضمون الجلسة", "تقرير     topic_match = re.search(
+        r"(?:ملخص|لخص|تلخيص|تقرير|التقرير)?\\s*(?:عن|حول|موضوع\\s+(?:عن|حول))\\s+"
+        r"(.+?)(?=\\s+(?:في|ضمن)\\s+(?:الجلسة|الحوار)|$)",
+        text,
     )
-    text = re.sub(r"[\u064b-\u065f\u0670]", "", text)
+    candidate_topic = topic_match.group(1) if topic_match else ""
+    if not candidate_topic:
+        # Recognize direct named subjects such as "موضوع الفن التجريدي".
+        named_topic = re.search(
+            r"(?:^|\\s)(?:موضوع|فكرة)\\s+(?!ال?(?:جلسة|حوار|جلسات|حوارات)\\b)(.+?)"
+            r"(?=\\s+(?:الذي|التي|الذين|ناقشناه|ناقشناها|تحدثنا|تكلمنا|في\\s+(?:الجلسة|الحوار))|$)",
+            text,
+        )
+        if named_topic:
+            candidate_topic = named_topic.group(1)
+    candidate_topic = re.split(
+        r"\\s+(?:الذي|التي|الذين|ناقشناه|ناقشناها|تحدثنا|تكلمنا|سابقا|سابقًا|في\\s+(?:الجلسة|الحوار))\\b",
+        candidate_topic,
+        maxsplit=1,
+    )[0].strip(" \\t\\r\\n.,،؛:!?؟")
+    if candidate_topic and not re.search(
+        r"^(?:ال?جلسة|ال?حوار|ال?جلسات|ال?حوارات|الذي|التي|ناقشناه|تحدثنا|سابقا|سابقًا)(?:\\s|$)",
+        candidate_topic,
+    ):
+        topic_filter = candidate_topicre.sub(r"[\u064b-\u065f\u0670]", "", text)
     text = re.sub(r"\s+", " ", text).strip()
     positive = bool(
         re.search(
