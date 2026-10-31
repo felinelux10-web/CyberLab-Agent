@@ -420,6 +420,10 @@ def _early_conversation_result(user_input: str) -> dict | None:
     if (
         deterministic.get("method") in {"exact", "word"}
         and deterministic.get("intent") not in _SOFT_CONVERSATION_INTENTS
+        and not (
+            deterministic.get("intent") == Intent.STOP
+            and normalized.strip() in {"مهلا", "تمهل"}
+        )
     ):
         return None
 
