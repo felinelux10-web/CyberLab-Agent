@@ -4025,7 +4025,7 @@ class ConversationManager:
                 if whole_dialogue_summary
                 else relevant[-12:]
                 if recall_recent_exchanges
-                else self._latest_dialogue_branch(relevant)[-5:]
+                else self._latest_dialogue_branch(relevant)
             )
             from lab_v4_dev.memory.session_state import summarize_dialogue_exchanges
             active_topic = (
