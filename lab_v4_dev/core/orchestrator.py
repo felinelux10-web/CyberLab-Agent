@@ -2270,7 +2270,7 @@ SOURCE CODE:
                     # stored exchanges; a successful provider response alone is not
                     # evidence that every generated claim is present in the archive.
                     allow_provider_synthesis = bool(
-                        getattr(self.agent, "allow_provider_session_synthesis", False)
+                        getattr(self.agent, "allow_provider_session_synthesis", True)
                     )
                     if source_text and allow_provider_synthesis:
                         topic = str(
