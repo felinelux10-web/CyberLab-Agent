@@ -2202,7 +2202,7 @@ SOURCE CODE:
                             item for item in completed_exchanges
                             if any(
                                 term and term in " ".join(str(item.get(field) or "") for field in (
-                                    "target", "user", "semantic_summary", "summary", "gist",
+                                    "target", "user", "assistant", "semantic_summary", "summary", "gist",
                                     "key_points", "topics_discussed",
                                 )).casefold()
                                 for term in filter_terms
