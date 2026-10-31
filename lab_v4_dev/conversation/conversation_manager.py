@@ -3620,7 +3620,7 @@ class ConversationManager:
         if (
             topic_filter
             and str((parsed or {}).get("output_kind") or "").casefold()
-                in {"topic_summary", "report"}
+                in {"brief", "topic_summary", "report"}
         ):
             normalized_topic = self._normalize_transition_text(topic_filter)
             topic_terms = [
