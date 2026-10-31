@@ -2136,7 +2136,8 @@ SOURCE CODE:
                 .split()
             )
             summary_language = any(marker in normalized_request for marker in (
-                "ملخص", "تلخيص", "لخص", "تقرير", "مضمون", "محتوى",
+                "ملخص", "تلخيص", "لخص", "موجز", "باختصار شديد",
+                "تقرير", "مضمون", "محتوى",
                 "المحتوى", "المضمون", "ماذا كنا نقول", "ما كنا نقول",
                 "ماذا كنا نتحدث", "ما كنا نتحدث", "عن اي موضوع",
                 "ما الموضوع الذي", "الموضوع الذي ناقشناه",
@@ -2153,7 +2154,7 @@ SOURCE CODE:
                 not explicit_context_restore
                 and (
                     summary_language
-                    or report_mode in {"summary", "full", "progress", "transcript"}
+                    or report_mode in {"brief", "summary", "full", "progress", "transcript"}
                     or selector.get("kind") in {"previous_dialogue", "search"}
                 )
             )
@@ -2285,8 +2286,12 @@ SOURCE CODE:
                                     "ونقطة التوقف، مع فصل ما ثبت عما لم يثبت."
                                     if report_mode == "full"
                                     else
+                                    "اكتب موجزًا من جملتين إلى أربع جمل يحدد موضوع الحوار "
+                                    "وأهم مضمونه ونقطة التوقف، دون تفاصيل ثانوية."
+                                    if report_mode == "brief"
+                                    else
                                     "حلّل السجل المحدد أدناه فقط واكتب ملخصًا عربيًا فصيحًا "
-                                    "موجزًا ودقيقًا، لا إعادة صياغة لكل سؤال وجواب."
+                                    "دقيقًا يغطي المحاور الفعلية، لا إعادة صياغة لكل سؤال وجواب."
                                 ),
                                 "المطلوب: الموضوع والنطاق، الأفكار الأساسية التي تناولها الحوار، "
                                 "ما انتهى إليه الحوار إن كان مثبتًا، وما بقي مفتوحًا، ونقطة التوقف.",
@@ -2370,6 +2375,7 @@ SOURCE CODE:
                     "output_kind": selector.get("output_kind") or (
                         "transcript" if report_mode == "transcript"
                         else "progress" if report_mode == "progress"
+                        else "brief" if report_mode == "brief"
                         else "report" if report_mode == "full"
                         else "summary"
                     ),
