@@ -228,7 +228,7 @@ class ConversationManager:
         )
 
         session_ref = None
-        if getattr(parsed.get("intent"), "value", parsed.get("intent")) == Intent.SESSION_RESTORE.value:
+        if getattr(parsed.get("intent"), "value", parsed.get("intent")) == getattr(Intent.SESSION_RESTORE, "value", Intent.SESSION_RESTORE):
             selector = parsed.get("session_selector")
             if not isinstance(selector, dict):
                 selector = session_selector(user_input)
@@ -270,7 +270,7 @@ class ConversationManager:
             self.dialogue_memory.update(user_input, result, mode=mode, parsed=parsed, context_transition=transition)
         return result
 
-    def _dispatch(self, text, mode, parsed, *, user_question=None, chat_history=None, route_decision=None):
+    def _dispatch(self, text, mode, parsed, *, user_question=None, chat_history=None, route_decision=None, context_transition=None):
         if route_decision is not None:
             return self._dispatch_by_route(text, mode, parsed, route_decision, user_question=user_question, chat_history=chat_history)
         intent = parsed.get("intent") if parsed else None
