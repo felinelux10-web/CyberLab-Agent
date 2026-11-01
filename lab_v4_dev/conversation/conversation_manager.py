@@ -2,6 +2,14 @@ from __future__ import annotations
 
 from lab_v4_dev.conversation.mode_detector import detect_mode
 from lab_v4_dev.conversation.assistant_style import format_response
+from lab_v4_dev.conversation.unified_local_response import answer_local_response
+from lab_v4_dev.memory.session_state import (
+    session_selector,
+    get_session_by_id,
+    get_session_by_number,
+    get_latest_session_by_type,
+    get_session_index,
+)
 from lab_v4_dev.conversation.semantic_contract import (
     CONTEXTUAL_TRANSITIONS,
     ContextTransition,
@@ -81,7 +89,12 @@ class ConversationManager:
         provider_allowed = False
         topic_filter = None
 
-        if intent in _AGENT_SELF_INTENTS:
+        selector = parsed.get("session_selector") or {}
+        if intent == Intent.SESSION_RESTORE:
+            route = "L-SESSION"
+            output_kind = "list" if selector.get("kind") == "list" else ("summary" if session_ref is not None else "none")
+            evidence_scope = "saved_session" if session_ref is not None else "none"
+        elif intent in _AGENT_SELF_INTENTS:
             route = "L-FACT"
             output_kind = "capability"
             evidence_scope = "project_state"
@@ -108,11 +121,17 @@ class ConversationManager:
             evidence_scope = "none"
 
         if session_ref is not None:
-            session_scope = "saved_number" if session_ref.number is not None else "saved_id"
+            selector_kind = selector.get("kind")
+            session_scope = (
+                "previous_saved" if selector_kind == "previous_dialogue"
+                else "saved_number" if session_ref.number is not None
+                else "saved_id"
+            )
             evidence_scope = "saved_session"
             if route in {"L-SOCIAL", "L-LIVE", "CLARIFY"}:
                 route = "L-SESSION"
-            output_kind = "summary" if route == "L-SESSION" and output_kind in {"brief", "none"} else output_kind
+            if route == "L-SESSION" and output_kind in {"brief", "none"}:
+                output_kind = "summary"
 
         if route == "L-SESSION" and session_ref is None:
             route = "CLARIFY"
@@ -208,7 +227,30 @@ class ConversationManager:
             context_transition=transition,
         )
 
-        session_ref = self._effective_session_ref()
+        session_ref = None
+        if getattr(parsed.get("intent"), "value", parsed.get("intent")) == Intent.SESSION_RESTORE.value:
+            selector = parsed.get("session_selector")
+            if not isinstance(selector, dict):
+                selector = session_selector(user_input)
+            parsed["session_selector"] = selector
+            selected = {}
+            kind = selector.get("kind")
+            if kind == "number":
+                selected = get_session_by_number(selector.get("number"))
+            elif kind == "id":
+                selected = get_session_by_id(selector.get("session_id"))
+            elif kind == "previous_dialogue":
+                selected = get_latest_session_by_type("dialogue")
+            elif kind == "latest":
+                records = get_session_index()
+                if records:
+                    latest = max(records, key=lambda item: str(item.get("updated_at") or item.get("timestamp") or item.get("created_at") or ""))
+                    selected = get_session_by_id(latest.get("session_id"))
+            if isinstance(selected, dict) and selected.get("session_id"):
+                session_ref = SessionRef(
+                    session_id=str(selected["session_id"]),
+                    number=int(selector["number"]) if kind == "number" else None,
+                )
         route_decision = self.finalize_route(user_input, parsed, mode, session_ref=session_ref, context_lock=self._context_lock_for(
             active=bool(context_entity and transition.value in CONTEXTUAL_TRANSITIONS),
             session_id=(getattr(session_ref, "session_id", None) if session_ref is not None else None),
@@ -259,7 +301,8 @@ class ConversationManager:
         if route == "L-LIVE":
             return self._handle_local_response(text, mode, parsed, route_decision, user_question=user_question, history=chat_history, output_kind=route_decision.output_kind)
         if route == "L-SESSION":
-            return self._handle_local_response(text, mode, parsed, route_decision, user_question=user_question, history=chat_history, output_kind=route_decision.output_kind)
+            result = self.orchestrator.handle(text, parsed=parsed, context_resolved=True)
+            return {**dict(result), "executed": False, "evidence_scope": route_decision.evidence_scope, "session_scope": route_decision.session_scope}
         if route == "L-FACT":
             return self._handle_local_response(text, mode, parsed, route_decision, user_question=user_question, history=chat_history, output_kind=route_decision.output_kind)
         if route == "P-TOOL":
@@ -269,6 +312,18 @@ class ConversationManager:
         return self._handle_local_response(text, mode, parsed, route_decision, user_question=user_question, history=chat_history, output_kind=route_decision.output_kind)
 
     def _handle_local_response(self, text, mode, parsed, route_decision, *, user_question=None, history=None, output_kind=None):
+        if route_decision is not None and route_decision.route in {"L-SOCIAL", "L-LIVE"}:
+            local = answer_local_response(
+                text,
+                parsed,
+                parsed,
+                history=history,
+                context_entity=(self.dialogue_memory.active_context_entity() if self.dialogue_memory and hasattr(self.dialogue_memory, "active_context_entity") else None),
+            )
+            if local is not None:
+                local["evidence_scope"] = route_decision.evidence_scope
+                local["provider_allowed"] = False
+                return local
         if route_decision is not None and not route_decision.provider_allowed:
             return self._local_policy_fallback(route_decision, text, mode, parsed, output_kind or route_decision.output_kind)
         if route_decision is not None and route_decision.provider_allowed:
@@ -297,7 +352,7 @@ class ConversationManager:
                 except Exception:
                     project_knowledge = None
             system, prompt = build_chat_prompt(text, list(history or []), agent_self_knowledge=self_knowledge, project_knowledge=project_knowledge, conversation_semantics={"conversation_domain": (parsed or {}).get("conversation_domain", "general"), "conversation_act": (parsed or {}).get("conversation_act", "NONE"), "response_attributes": (parsed or {}).get("response_attributes", {})})
-            result = gateway_ask(prompt, system=system, max_tokens=4000 if self_knowledge else 1600, temperature=0.7, routing_text=text)
+            result = gateway_ask(prompt, system=system, max_tokens=4000 if self_knowledge else 1600, temperature=0.7, routing_text=text, provider_allowed=(route_decision.provider_allowed if route_decision is not None else True))
             if result.get("status") != "success":
                 raise RuntimeError(result.get("message"))
             reply = result.get("text", "")
