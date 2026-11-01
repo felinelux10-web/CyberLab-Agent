@@ -33,7 +33,9 @@ unless the current turn explicitly requests an operation.
 """
 
 import re
+from dataclasses import asdict
 
+from lab_v4_dev.core.contracts import RouteDecision, SessionRef, ContextLock
 from lab_v4_dev.conversation.mode_detector import detect_mode
 from lab_v4_dev.conversation.assistant_style import format_response, single_question
 from lab_v4_dev.conversation.local_response_engine import answer_local_social
@@ -787,6 +789,158 @@ class ConversationManager:
             ],
         }
     def process(self, user_input: str, *, _restore_context: dict | None = None) -> dict:
+        """Run the legacy conversation flow and attach its frozen route contract.
+
+        This first integration phase is intentionally observational: it records
+        the route decision without changing the existing response owner or
+        execution behavior. The legacy implementation remains isolated below
+        until downstream consumers are migrated to RouteDecision.
+        """
+        result = self._process_legacy(
+            user_input,
+            _restore_context=_restore_context,
+        )
+        if not isinstance(result, dict):
+            return result
+        result = dict(result)
+        decision = self.finalize_route(result)
+        result["_route_decision"] = asdict(decision)
+        return result
+
+    def finalize_route(self, result: dict) -> RouteDecision:
+        """Issue a typed snapshot of the route selected by the legacy flow.
+
+        This method does not dispatch, select a provider, load a session, or
+        alter the result. It records the observed owner and evidence boundary
+        so the next migration phase can replace legacy ownership safely.
+        """
+        result = result if isinstance(result, dict) else {}
+        semantic = result.get("semantic_request")
+        semantic = semantic if isinstance(semantic, dict) else {}
+        attributes = semantic.get("response_attributes")
+        attributes = attributes if isinstance(attributes, dict) else {}
+
+        raw_intent = result.get("intent", semantic.get("intent"))
+        intent = getattr(raw_intent, "value", raw_intent)
+        intent = str(intent) if intent is not None else None
+
+        output_kind = (
+            result.get("output_kind")
+            or attributes.get("dialogue_response_mode")
+            or semantic.get("output_kind")
+            or "none"
+        )
+        output_kind = str(output_kind).strip().casefold()
+        if output_kind == "chat" or output_kind not in {
+            "none", "brief", "summary", "report", "topic_summary",
+            "transcript", "list", "continue_topic", "capability",
+        }:
+            output_kind = "none"
+
+        source = str(result.get("source") or "").strip().casefold()
+        session_id = str(
+            result.get("session_id")
+            or result.get("saved_session_id")
+            or ""
+        ).strip()
+        topic_filter = (
+            result.get("topic_filter")
+            or semantic.get("target")
+            or self.active_report_topic_filter
+        )
+        topic_filter = str(topic_filter).strip() if topic_filter else None
+
+        if session_id:
+            session_scope = "saved_id"
+            session_ref = SessionRef(session_id=session_id)
+            evidence_scope = "saved_session"
+        elif any(marker in source for marker in ("project", "knowledge")):
+            session_scope = "none"
+            session_ref = None
+            evidence_scope = "project_state"
+        elif any(marker in source for marker in ("work", "execution", "task")) or result.get("executed"):
+            session_scope = "none"
+            session_ref = None
+            evidence_scope = "work_state"
+        elif output_kind in {
+            "brief", "summary", "report", "topic_summary", "transcript",
+        } or "dialogue" in source or "memory" in source:
+            session_scope = "live_current"
+            session_ref = None
+            evidence_scope = "live_exchanges"
+        else:
+            session_scope = "none"
+            session_ref = None
+            evidence_scope = "none"
+
+        if result.get("status") == "needs_clarification":
+            route = "CLARIFY"
+        elif session_scope in {"saved_id", "saved_number", "previous_saved"}:
+            route = "L-SESSION"
+        elif evidence_scope == "project_state":
+            route = "L-FACT"
+        elif evidence_scope == "work_state":
+            route = "L-EXEC"
+        elif evidence_scope == "live_exchanges":
+            route = "L-LIVE"
+        elif intent in {
+            "agent_identity", "agent_capabilities", "agent_architecture",
+            "agent_execution_flow", "agent_limits", "personal_chat",
+        }:
+            route = "L-SOCIAL"
+        elif result.get("executed"):
+            route = "L-EXEC"
+        else:
+            route = "L-SOCIAL"
+
+        active_session_id = str(
+            self.active_report_session_id or session_id or ""
+        ).strip()
+        locked_output = output_kind if output_kind != "none" else None
+        context_lock = ContextLock(
+            active=bool(active_session_id or locked_output or topic_filter),
+            session_id=active_session_id or None,
+            topic=topic_filter,
+            output_kind=locked_output,
+            reason="legacy_context_observation" if (
+                active_session_id or locked_output or topic_filter
+            ) else None,
+        )
+
+        try:
+            confidence = float(
+                semantic.get("confidence", result.get("confidence", 0.0)) or 0.0
+            )
+        except (TypeError, ValueError):
+            confidence = 0.0
+        confidence = min(1.0, max(0.0, confidence))
+
+        return RouteDecision(
+            route=route,
+            session_scope=session_scope,
+            session_ref=session_ref,
+            output_kind=output_kind,
+            topic_filter=topic_filter,
+            context_lock=context_lock,
+            evidence_scope=evidence_scope,
+            provider_allowed=bool(
+                result.get("provider_allowed", result.get("provider_used", False))
+            ),
+            intent=intent,
+            confidence=confidence,
+            metadata={
+                "decision_phase": "legacy_observation",
+                "legacy_source": source or None,
+                "legacy_status": result.get("status"),
+            },
+        )
+
+    def _process_legacy(
+        self,
+        user_input: str,
+        *,
+        _restore_context: dict | None = None,
+    ) -> dict:
         # Session boundaries take precedence over pending clarifications and all
         # NLU/context resolution. A new dialogue must never inherit old state.
         if self._is_new_dialogue_session_request(user_input):
