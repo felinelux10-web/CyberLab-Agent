@@ -176,6 +176,7 @@ def ask(
     temperature=0.3,
     routing_text=None,
     timeout_ms=None,
+    provider_allowed: bool = True,
 ):
     """
     Canonical Gateway entry point.
@@ -189,6 +190,15 @@ def ask(
 
     Provider-specific implementation details must not escape here.
     """
+
+    if not provider_allowed:
+        return {
+            "status": "error",
+            "text": "تم منع استدعاء المزود لأن RouteDecision لم يمنح الإذن.",
+            "provider_used": None,
+            "provider_chain": [],
+            "error": {"code": "ROUTE_PROVIDER_DENIED", "message": "provider_allowed is false"},
+        }
 
     privacy_decision = _privacy_decision(prompt, system)
     if not privacy_decision["allow_external"]:
