@@ -1,35 +1,3 @@
-"""
-Conversation Manager — Unified Conversation/Intent Routing.
-
-Authority contract:
-
-ModeDetector
-    -> conversational shape only.
-
-IntentParser
-    -> canonical semantic resolver for the current text, without implicit
-       persistent context.
-
-Context
-    -> enriches references/targets only.
-
-ConversationManager
-    -> authorizes context transitions before final resolution and chooses
-       ONE execution owner.
-
-Orchestrator
-    -> sole execution owner for executable Intent.
-
-LLM
-    -> direct conversational responder only when IntentParser resolves
-       no executable operation.
-
-Important:
-FOLLOW_UP is a conversational MODE, not an automatic LLM route.
-If IntentParser resolves a FOLLOW_UP to an executable Intent
-(e.g. CYBER_EXPLAIN), that Intent goes to Orchestrator.
-"""
-
 from __future__ import annotations
 
 from lab_v4_dev.conversation.mode_detector import detect_mode
@@ -71,149 +39,109 @@ _NON_EXECUTABLE_INTENTS = {
 
 
 class ConversationManager:
-
     def __init__(self, orchestrator, dialogue_memory=None, dni=None):
         self.orchestrator = orchestrator
         self.dialogue_memory = dialogue_memory
         self.dni = dni
 
     @staticmethod
-    def _context_lock_for(*, active: bool, source: str | None = None, session_id: str | None = None, topic: str | None = None):
-        lock = ContextLock(active=False)
-        values = {
-            "active": bool(active),
-            "source": source,
-            "session_id": session_id,
-            "topic": topic,
-        }
-        for key, value in values.items():
-            if value is not None and hasattr(lock, key):
-                setattr(lock, key, value)
-        return lock
+    def _context_lock_for(*, active: bool, session_id: str | None = None, topic: str | None = None, output_kind: str | None = None, reason: str | None = None):
+        if active and not any((session_id, topic, output_kind)):
+            raise ValueError("an active context lock requires an owner or output")
+        return ContextLock(active=bool(active), session_id=session_id, topic=topic, output_kind=output_kind, reason=reason)
 
-    def finalize_route(
-        self,
-        user_input: str,
-        parsed: dict | None,
-        mode: str,
-        *,
-        session_ref: SessionRef | None = None,
-        context_lock: ContextLock | None = None,
-    ) -> RouteDecision:
-        """Authoritative route decision for the current turn.
+    def _effective_session_ref(self):
+        if not self.dialogue_memory:
+            return None
+        accessor = getattr(self.dialogue_memory, "active_restored_session", None)
+        if callable(accessor):
+            restored = accessor()
+            if isinstance(restored, dict) and restored.get("session_id"):
+                return SessionRef(session_id=str(restored["session_id"]))
+        state = getattr(self.dialogue_memory, "state", None)
+        if state is not None:
+            active_session = getattr(state, "active_restored_session_id", None)
+            if active_session:
+                return SessionRef(session_id=str(active_session))
+        return None
 
-        This method must be the single source of truth for route selection. Any
-        downstream handler must respect that decision instead of re-interpreting
-        the user text.
-        """
+    def finalize_route(self, user_input: str, parsed: dict | None, mode: str, *, session_ref: SessionRef | None = None, context_lock: ContextLock | None = None):
         parsed = parsed or {}
         intent = getattr(parsed.get("intent"), "value", parsed.get("intent"))
         target = parsed.get("target")
         conversation_act = str(parsed.get("conversation_act") or "NONE").upper()
         raw_text = str(user_input or "")
         normalized = raw_text.casefold()
-        summary_marker = any(
-            marker in normalized
-            for marker in (
-                "ملخص",
-                "summary",
-                "summarize",
-                "لخص",
-                "أوجز",
-                "report",
-                "موجز",
-            )
-        )
+        summary_marker = any(marker in normalized for marker in ("ملخص", "summary", "summarize", "لخص", "أوجز", "report", "موجز"))
 
         route = "L-SOCIAL"
-        session_scope = "none"
-        output_kind = "none"
-        evidence_scope = "none"
+        session_scope = "live_current"
+        output_kind = "brief"
+        evidence_scope = "live_exchanges"
         provider_allowed = False
         topic_filter = None
 
         if intent in _AGENT_SELF_INTENTS:
-            route = "L-LIVE"
+            route = "L-FACT"
             output_kind = "capability"
-            evidence_scope = "live_exchanges"
-            provider_allowed = False
+            evidence_scope = "project_state"
             topic_filter = str(target or "agent self knowledge").strip() or None
         elif intent in _NON_EXECUTABLE_INTENTS:
             route = "L-SOCIAL"
-            output_kind = "none"
+            output_kind = "brief"
             evidence_scope = "live_exchanges"
         elif mode == "SYSTEM":
             route = "L-EXEC"
-            output_kind = "none"
+            output_kind = "brief"
             evidence_scope = "work_state"
-            provider_allowed = False
-        elif summary_marker:
+        elif summary_marker or conversation_act in {"SUMMARIZE", "REPORT", "TOPIC_RETURN", "TOPIC_SHIFT", "CONVERSATION_CONTINUATION"}:
             route = "L-LIVE"
             output_kind = "summary"
             evidence_scope = "live_exchanges"
-            provider_allowed = False
         elif target is not None:
             route = "L-LIVE"
+            output_kind = "continue_topic" if conversation_act in {"TOPIC_RETURN", "CONVERSATION_CONTINUATION"} else "brief"
             evidence_scope = "live_exchanges"
-            if conversation_act in {"SUMMARIZE", "REPORT", "TOPIC_RETURN", "TOPIC_SHIFT", "CONVERSATION_CONTINUATION"}:
-                output_kind = "summary"
-            provider_allowed = False
         else:
             route = "CLARIFY"
             output_kind = "none"
             evidence_scope = "none"
+
+        if session_ref is not None:
+            session_scope = "saved_number" if session_ref.number is not None else "saved_id"
+            evidence_scope = "saved_session"
+            if route in {"L-SOCIAL", "L-LIVE", "CLARIFY"}:
+                route = "L-SESSION"
+            output_kind = "summary" if route == "L-SESSION" and output_kind in {"brief", "none"} else output_kind
+
+        if route == "L-SESSION" and session_ref is None:
+            route = "CLARIFY"
+            evidence_scope = "none"
+            output_kind = "none"
+
+        if route == "DENY":
+            provider_allowed = False
+        elif route == "P-TOOL":
+            provider_allowed = True
+        else:
             provider_allowed = False
 
-        session_ref_source = getattr(session_ref, "source", None) if session_ref else None
-        session_ref_id = getattr(session_ref, "session_id", None) if session_ref else None
-        valid_saved_session = bool(
-            session_ref
-            and session_ref_id
-            and session_ref_source in {"saved_session", "prior_session", "session_lookup", "restored_session", "follow_up"}
+        lock = context_lock if context_lock is not None else self._context_lock_for(
+            active=False,
+            session_id=(getattr(session_ref, "session_id", None) if session_ref is not None else None),
+            topic=str(target) if target is not None else None,
+            output_kind=output_kind or None,
+            reason="finalized_route",
         )
-        if valid_saved_session:
-            session_scope = "saved_id"
-            evidence_scope = "saved_session"
-            route = "L-LIVE" if route in {"L-SOCIAL", "CLARIFY", "L-LIVE"} else route
 
-        lock_source = None
-        if context_lock is not None:
-            lock = context_lock
-        elif session_ref_source is not None:
+        if context_lock is None and session_ref is not None and lock.session_id is not None:
             lock = self._context_lock_for(
-                active=bool(valid_saved_session or mode == "FOLLOW_UP"),
-                source=session_ref_source,
-                session_id=session_ref_id,
-                topic=target,
+                active=True,
+                session_id=lock.session_id,
+                topic=lock.topic,
+                output_kind=output_kind or None,
+                reason="saved_session",
             )
-        else:
-            lock = self._context_lock_for(
-                active=False,
-                source="new_request",
-                topic=target,
-            )
-
-        if getattr(lock, "source", None) is None and getattr(session_ref, "source", None):
-            if hasattr(lock, "source"):
-                lock.source = session_ref_source
-        if getattr(lock, "session_id", None) is None and session_ref_id:
-            if hasattr(lock, "session_id"):
-                lock.session_id = session_ref_id
-        if getattr(lock, "topic", None) is None and target:
-            if hasattr(lock, "topic"):
-                lock.topic = str(target)
-
-        if mode == "FOLLOW_UP" and target:
-            if hasattr(lock, "source"):
-                lock.source = "follow_up"
-            if hasattr(lock, "active"):
-                lock.active = True
-
-        if route == "CLARIFY" and valid_saved_session:
-            route = "L-LIVE"
-            evidence_scope = "saved_session"
-
-        provider_allowed = route in {"L-LIVE", "L-SOCIAL"} and not (mode == "SYSTEM" or intent in _NON_EXECUTABLE_INTENTS)
 
         return RouteDecision(
             route=route,
@@ -226,39 +154,11 @@ class ConversationManager:
             provider_allowed=provider_allowed,
             intent=intent,
             confidence=float(parsed.get("confidence", 0.0) or 0.0),
-            metadata={
-                "mode": mode,
-                "raw_text": raw_text,
-                "target": target,
-                "conversation_act": conversation_act,
-                "source": "conversation_manager.finalize_route",
-            },
+            metadata={"mode": mode, "raw_text": raw_text, "target": target, "conversation_act": conversation_act, "source": "conversation_manager.finalize_route"},
         )
 
     def process(self, user_input: str) -> dict:
-        # Consume an existing project-list ordering clarification
-        # before treating "1/2/3" as a new independent request.
-        if self.dialogue_memory:
-            pending = getattr(
-                getattr(self.dialogue_memory, "state", None),
-                "pending_clarification",
-                None,
-            )
-            if isinstance(pending, dict) and pending.get("kind") == "project_order":
-                choice = str(user_input).strip()
-                orders = {
-                    "1": "حسب ترتيب العمل عليها",
-                    "2": "أبجديًا",
-                    "3": "حسب الحجم",
-                }
-                order = orders.get(choice)
-                if order:
-                    base_request = str(pending.get("request", "")).strip()
-                    self.dialogue_memory.state.pending_clarification = None
-                    user_input = f"{base_request} {order}".strip()
-
         mode = detect_mode(user_input)
-
         candidate = self._safe_parse(user_input)
         transition = self._classify_context_transition(mode, candidate)
         resolved_input = user_input
@@ -274,21 +174,8 @@ class ConversationManager:
                 if callable(get_active_context):
                     context_entity = get_active_context()
 
-        style_request = is_style_act(candidate.get("conversation_act"))
-        if (
-            self.dialogue_memory
-            and context_entity
-            and transition.value in CONTEXTUAL_TRANSITIONS
-            and not style_request
-            and (
-                not candidate.get("target")
-                or str(candidate.get("entity_type", "")).upper() in {"REFERENCE", "ELABORATION"}
-            )
-        ):
-            resolved_input = self.dialogue_memory.resolve_references(
-                user_input,
-                context_entity=context_entity,
-            )
+        if self.dialogue_memory and context_entity and transition.value in CONTEXTUAL_TRANSITIONS:
+            resolved_input = self.dialogue_memory.resolve_references(user_input, context_entity=context_entity)
             if resolved_input != user_input:
                 parsed = self._safe_parse(resolved_input, context_entity=context_entity)
 
@@ -321,174 +208,105 @@ class ConversationManager:
             context_transition=transition,
         )
 
-        session_ref = None
-        if self.dialogue_memory and getattr(self.dialogue_memory, "state", None):
-            session_id = getattr(getattr(self.dialogue_memory, "state", None), "session_id", None)
-            if session_id:
-                session_ref = SessionRef(
-                    session_id=session_id,
-                    source="saved_session" if transition.value in CONTEXTUAL_TRANSITIONS else "session_lookup",
-                    topic=parsed.get("target"),
-                )
+        session_ref = self._effective_session_ref()
+        route_decision = self.finalize_route(user_input, parsed, mode, session_ref=session_ref, context_lock=self._context_lock_for(
+            active=bool(context_entity and transition.value in CONTEXTUAL_TRANSITIONS),
+            session_id=(getattr(session_ref, "session_id", None) if session_ref is not None else None),
+            topic=(context_entity.get("entity") if isinstance(context_entity, dict) else None),
+            output_kind=("continue_topic" if transition.value in CONTEXTUAL_TRANSITIONS else "brief"),
+            reason="process_context",
+        ) if context_entity is not None else None)
 
-        route_decision = self.finalize_route(
-            user_input,
-            parsed,
-            mode,
-            session_ref=session_ref,
-            context_lock=self._context_lock_for(
-                active=bool(context_entity and transition.value in CONTEXTUAL_TRANSITIONS),
-                source=(context_entity.get("source") if isinstance(context_entity, dict) else "context"),
-                session_id=(context_entity.get("session_id") if isinstance(context_entity, dict) else None),
-                topic=(context_entity.get("entity") if isinstance(context_entity, dict) else None),
-            )
-            if context_entity is not None else None,
-        )
-
-        result = self._dispatch(
-            resolved_input,
-            mode,
-            parsed,
-            user_question=user_input,
-            chat_history=chat_history,
-            route_decision=route_decision,
-        )
-
-        if self.dialogue_memory:
-            state = getattr(self.dialogue_memory, "state", None)
-            if state is not None:
-                if (
-                    result.get("status") == "needs_clarification"
-                    and parsed.get("intent") == Intent.PROJECT_INDEX
-                    and any(term in str(user_input) for term in ("المشاريع", "مشاريع", "اسماء", "أسماء", "اسماؤ", "أسماؤ"))
-                ):
-                    state.pending_clarification = {"kind": "project_order", "request": user_input}
+        result = self._dispatch(resolved_input, mode, parsed, user_question=user_input, chat_history=chat_history, route_decision=route_decision)
 
         result = dict(result)
         result["semantic_request"] = semantic.as_dict()
         result["_route_decision"] = route_decision
-
         if result.get("text"):
             result["text"] = format_response(result["text"], mode)
-
-        if self.dni:
-            self.dni.set_conversation_analysis({
-                "intent": result.get("intent"),
-                "mode": result.get("mode", mode),
-                "conversation_domain": semantic.conversation_domain,
-                "conversation_act": semantic.conversation_act,
-                "response_attributes": dict(semantic.response_attributes or {}),
-                "confidence": parsed.get("confidence", 0.0) if parsed else 0.0,
-            })
-
         if self.dialogue_memory and hasattr(self.dialogue_memory, "update"):
-            self.dialogue_memory.update(
-                user_input,
-                result,
-                mode=mode,
-                parsed=parsed,
-                context_transition=transition,
-            )
-
+            self.dialogue_memory.update(user_input, result, mode=mode, parsed=parsed, context_transition=transition)
         return result
 
-    def _dispatch(
-        self,
-        text: str,
-        mode: str,
-        parsed: dict,
-        *,
-        user_question: str | None = None,
-        chat_history: list | None = None,
-        route_decision: RouteDecision | None = None,
-    ) -> dict:
-        """Dispatch using the route decision as the authority."""
+    def _dispatch(self, text, mode, parsed, *, user_question=None, chat_history=None, route_decision=None):
         if route_decision is not None:
-            return self._dispatch_by_route(
-                text,
-                mode,
-                parsed,
-                route_decision,
-                user_question=user_question,
-                chat_history=chat_history,
-            )
-
+            return self._dispatch_by_route(text, mode, parsed, route_decision, user_question=user_question, chat_history=chat_history)
         intent = parsed.get("intent") if parsed else None
         if intent in _AGENT_SELF_INTENTS:
-            return self._handle_chat(
-                text,
-                mode,
-                parsed=parsed,
-                user_question=user_question or text,
-                history=chat_history,
-            )
+            return self._handle_chat(text, mode, parsed=parsed, user_question=user_question or text, history=chat_history)
         if mode == "SYSTEM":
             result = self.orchestrator.handle(text, parsed=parsed, context_resolved=True)
-            result = dict(result)
-            result["executed"] = result.get("status") != "needs_clarification"
-            return result
+            return {**dict(result), "executed": result.get("status") != "needs_clarification"}
         if intent not in _NON_EXECUTABLE_INTENTS:
             result = self.orchestrator.handle(text, parsed=parsed, context_resolved=True)
-            result = dict(result)
-            result["executed"] = result.get("status") != "needs_clarification"
-            return result
-        return self._handle_chat(
-            text,
-            mode,
-            parsed=parsed,
-            user_question=user_question or text,
-            history=chat_history,
-        )
+            return {**dict(result), "executed": result.get("status") != "needs_clarification"}
+        return self._handle_chat(text, mode, parsed=parsed, user_question=user_question or text, history=chat_history)
 
-    def _dispatch_by_route(
-        self,
-        text: str,
-        mode: str,
-        parsed: dict,
-        route_decision: RouteDecision,
-        *,
-        user_question: str | None = None,
-        chat_history: list | None = None,
-    ) -> dict:
-        """Respect the route decision and disable legacy re-routing."""
-        intent = getattr(parsed.get("intent"), "value", parsed.get("intent"))
+    def _dispatch_by_route(self, text, mode, parsed, route_decision, *, user_question=None, chat_history=None):
         route = route_decision.route
+        if route not in {"L-SOCIAL", "L-LIVE", "L-SESSION", "L-FACT", "L-EXEC", "P-TOOL", "CLARIFY", "DENY"}:
+            raise ValueError(f"invalid route: {route}")
 
         if route == "L-EXEC":
             result = self.orchestrator.handle(text, parsed=parsed, context_resolved=True)
-            result = dict(result)
-            result["executed"] = result.get("status") != "needs_clarification"
-            result["evidence_scope"] = route_decision.evidence_scope
-            return result
-
+            return {**dict(result), "executed": result.get("status") != "needs_clarification", "evidence_scope": route_decision.evidence_scope}
         if route == "CLARIFY":
-            return {
-                "status": "needs_clarification",
-                "intent": intent,
-                "text": "أحتاج إلى توضيح نقطة الهدف قبل المتابعة.",
-                "mode": mode,
-                "source": "clarify",
-                "executed": False,
-                "evidence_scope": route_decision.evidence_scope,
-                "_route_decision": route_decision,
-            }
+            return {"status": "needs_clarification", "intent": getattr(parsed.get("intent"), "value", parsed.get("intent")), "text": "أحتاج إلى توضيح نقطة الهدف قبل المتابعة.", "mode": mode, "source": "clarify", "executed": False, "evidence_scope": route_decision.evidence_scope, "_route_decision": route_decision}
+        if route == "DENY":
+            return {"status": "denied", "intent": getattr(parsed.get("intent"), "value", parsed.get("intent")), "text": "تم رفض هذا الطلب لأن المسار غير مسموح به من حيث السياسة الحالية.", "mode": mode, "source": "deny", "executed": False, "evidence_scope": route_decision.evidence_scope, "_route_decision": route_decision}
+        if route == "L-SOCIAL":
+            return self._handle_local_response(text, mode, parsed, route_decision, user_question=user_question, history=chat_history, output_kind=route_decision.output_kind)
+        if route == "L-LIVE":
+            return self._handle_local_response(text, mode, parsed, route_decision, user_question=user_question, history=chat_history, output_kind=route_decision.output_kind)
+        if route == "L-SESSION":
+            return self._handle_local_response(text, mode, parsed, route_decision, user_question=user_question, history=chat_history, output_kind=route_decision.output_kind)
+        if route == "L-FACT":
+            return self._handle_local_response(text, mode, parsed, route_decision, user_question=user_question, history=chat_history, output_kind=route_decision.output_kind)
+        if route == "P-TOOL":
+            if not route_decision.provider_allowed:
+                return {"status": "denied", "intent": getattr(parsed.get("intent"), "value", parsed.get("intent")), "text": "المزود غير مسموح به في القرار الحالي.", "mode": mode, "source": "provider_blocked", "executed": False, "provider_allowed": False, "evidence_scope": route_decision.evidence_scope}
+            return self._handle_chat(text, mode, parsed=parsed, user_question=user_question or text, history=chat_history, route_decision=route_decision)
+        return self._handle_local_response(text, mode, parsed, route_decision, user_question=user_question, history=chat_history, output_kind=route_decision.output_kind)
 
-        if route in {"L-LIVE", "L-SOCIAL"}:
-            return self._handle_chat(
-                text,
-                mode,
-                parsed=parsed,
-                user_question=user_question or text,
-                history=chat_history,
-            )
+    def _handle_local_response(self, text, mode, parsed, route_decision, *, user_question=None, history=None, output_kind=None):
+        if route_decision is not None and not route_decision.provider_allowed:
+            return self._local_policy_fallback(route_decision, text, mode, parsed, output_kind or route_decision.output_kind)
+        if route_decision is not None and route_decision.provider_allowed:
+            return self._handle_chat(text, mode, parsed=parsed, user_question=user_question or text, history=history, route_decision=route_decision)
+        return self._handle_chat(text, mode, parsed=parsed, user_question=user_question or text, history=history, route_decision=route_decision)
 
-        return self._handle_chat(
-            text,
-            mode,
-            parsed=parsed,
-            user_question=user_question or text,
-            history=chat_history,
-        )
+    def _local_policy_fallback(self, route_decision, text, mode, parsed, output_kind):
+        evidence_scope = getattr(route_decision, "evidence_scope", "none")
+        if output_kind == "summary":
+            return {"status": "local", "intent": getattr(parsed.get("intent"), "value", parsed.get("intent")), "text": "ملخص محلي: لا يعالج هذا الطلب مزودًا خارجيًا في السياق الحالي.", "mode": mode, "source": "local_summary", "executed": False, "provider_allowed": False, "evidence_scope": evidence_scope}
+        if output_kind == "capability":
+            return {"status": "local", "intent": getattr(parsed.get("intent"), "value", parsed.get("intent")), "text": "القدرات متاحة محليًا، ولا يُسمح باستدعاء المزود في هذا القرار.", "mode": mode, "source": "local_capability", "executed": False, "provider_allowed": False, "evidence_scope": evidence_scope}
+        return {"status": "local", "intent": getattr(parsed.get("intent"), "value", parsed.get("intent")), "text": "تمت معالجة الطلب محليًا دون استدعاء المزود الخارجي لأن الإذن غير مسموح به في القرار الحالي.", "mode": mode, "source": "local_fallback", "executed": False, "provider_allowed": False, "evidence_scope": evidence_scope}
+
+    def _handle_chat(self, text, mode, *, parsed=None, user_question=None, history=None, route_decision=None):
+        if route_decision is not None and not route_decision.provider_allowed:
+            return self._local_policy_fallback(route_decision, text, mode, parsed or {}, route_decision.output_kind)
+        result = {}
+        try:
+            intent = (parsed or {}).get("intent")
+            self_knowledge = build_agent_self_knowledge(intent) if intent in _AGENT_SELF_INTENTS else None
+            project_knowledge = None
+            if user_question and intent in _AGENT_SELF_INTENTS:
+                try:
+                    project_knowledge = retrieve_for_question(user_question)
+                except Exception:
+                    project_knowledge = None
+            system, prompt = build_chat_prompt(text, list(history or []), agent_self_knowledge=self_knowledge, project_knowledge=project_knowledge, conversation_semantics={"conversation_domain": (parsed or {}).get("conversation_domain", "general"), "conversation_act": (parsed or {}).get("conversation_act", "NONE"), "response_attributes": (parsed or {}).get("response_attributes", {})})
+            result = gateway_ask(prompt, system=system, max_tokens=4000 if self_knowledge else 1600, temperature=0.7, routing_text=text)
+            if result.get("status") != "success":
+                raise RuntimeError(result.get("message"))
+            reply = result.get("text", "")
+            if not reply:
+                raise ValueError("empty")
+            return {"status": "success", "intent": (parsed or {}).get("intent", mode.lower()), "text": reply, "mode": mode, "source": "llm", "provider_used": result.get("provider_used"), "provider_chain": result.get("provider_chain", []), "model": result.get("model"), "executed": False}
+        except Exception:
+            fallback = "تعذر الوصول إلى نموذج الذكاء الاصطناعي حالياً. تحقق من الاتصال أو إعدادات المزود ثم أعد المحاولة."
+            return {"status": "error", "intent": (parsed or {}).get("intent", mode.lower()), "text": fallback, "mode": mode, "source": "fallback", "provider_used": result.get("provider_used") if isinstance(result, dict) else None, "provider_chain": result.get("provider_chain", []) if isinstance(result, dict) else [], "model": result.get("model") if isinstance(result, dict) else None, "gateway_error": result.get("error") if isinstance(result, dict) else None, "executed": False}
 
     def _safe_parse(self, text: str, *, context_entity: dict | None = None) -> dict:
         try:
@@ -500,11 +318,7 @@ class ConversationManager:
         except Exception:
             return {}
 
-    def _classify_context_transition(
-        self,
-        mode: str,
-        parsed: dict,
-    ) -> ContextTransition:
+    def _classify_context_transition(self, mode: str, parsed: dict) -> ContextTransition:
         parsed = parsed or {}
         entity_type = str(parsed.get("entity_type", "")).upper()
         target = str(parsed.get("target") or "").strip()
@@ -524,10 +338,8 @@ class ConversationManager:
             return ContextTransition.CONTINUE if active_topic else ContextTransition.AMBIGUOUS
         if is_social_act(conversation_act) and str(conversation_act).upper() != "CASUAL_CONVERSATION" and not target:
             return ContextTransition.AMBIGUOUS
-
         if entity_type == "REFERENCE":
             return ContextTransition.REFERENCE if active_topic else ContextTransition.AMBIGUOUS
-
         if target:
             if active_topic and self._same_topic(target, active_topic):
                 return ContextTransition.CONTINUE
@@ -543,27 +355,21 @@ class ConversationManager:
             if valid_target and (previous_context or self._same_topic(target, pending_topic)):
                 return ContextTransition.RESTORE
             return ContextTransition.EXPLICIT_SWITCH if active_topic else ContextTransition.NEW_INDEPENDENT
-
         if entity_type == "ELABORATION":
             return ContextTransition.CONTINUE if active_topic else ContextTransition.AMBIGUOUS
-
         if pattern in {"CONTINUE_WORK", "GIVE_EXAMPLE"}:
             return ContextTransition.CONTINUE if active_topic else ContextTransition.AMBIGUOUS
-
         if mode == "FOLLOW_UP":
             if not active_topic:
                 return ContextTransition.AMBIGUOUS
             previous_intent = getattr(getattr(self.dialogue_memory, "state", None), "last_intent", None) if self.dialogue_memory else None
             previous_intent = getattr(previous_intent, "value", previous_intent)
             return ContextTransition.CONTINUE if intent and intent == previous_intent else ContextTransition.REFERENCE
-
         if mode == "CHAT" and intent in _NON_EXECUTABLE_INTENTS:
             return ContextTransition.AMBIGUOUS
-
         incomplete = is_incomplete({"intent": intent or "", "target": "", "entity": {"value": ""}})
         if incomplete or not intent:
             return ContextTransition.AMBIGUOUS
-
         return ContextTransition.NEW_INDEPENDENT
 
     @staticmethod
@@ -572,14 +378,9 @@ class ConversationManager:
             return " ".join(str(value).casefold().strip(" \t\r\n.,،؛:!?؟()[]{}\"'").split())
         return normalize_topic(left) == normalize_topic(right)
 
-    def _history_for_transition(
-        self,
-        transition: ContextTransition,
-        parsed: dict,
-    ) -> list:
+    def _history_for_transition(self, transition, parsed):
         if not self.dialogue_memory:
             return []
-
         if transition == ContextTransition.RESTORE:
             topic = (parsed or {}).get("target")
         elif transition.value in CONTEXTUAL_TRANSITIONS:
@@ -593,18 +394,11 @@ class ConversationManager:
             return [turn for turn in history if isinstance(turn, dict) and not turn.get("target")][-8:]
         else:
             return []
-
         if not topic:
             return []
         state = getattr(self.dialogue_memory, "state", None)
         history = getattr(state, "history", []) if state is not None else []
-        return [
-            turn
-            for turn in history
-            if isinstance(turn, dict)
-            and turn.get("target")
-            and self._same_topic(turn.get("target"), topic)
-        ]
+        return [turn for turn in history if isinstance(turn, dict) and turn.get("target") and self._same_topic(turn.get("target"), topic)]
 
     def _handle_task(self, text: str) -> dict:
         return self.process(text)
@@ -615,80 +409,19 @@ class ConversationManager:
     def _handle_follow_up(self, text: str) -> dict:
         return self.process(text)
 
-    def _handle_chat(
-        self,
-        text: str,
-        mode: str,
-        *,
-        parsed: dict | None = None,
-        user_question: str | None = None,
-        history: list | None = None,
-    ) -> dict:
-        result = {}
-        try:
-            intent = (parsed or {}).get("intent")
-            self_knowledge = build_agent_self_knowledge(intent) if intent in _AGENT_SELF_INTENTS else None
-
-            project_knowledge = None
-            if user_question and intent in _AGENT_SELF_INTENTS:
-                try:
-                    project_knowledge = retrieve_for_question(user_question)
-                except Exception:
-                    project_knowledge = None
-
-            system, prompt = build_chat_prompt(
-                text,
-                list(history or []),
-                agent_self_knowledge=self_knowledge,
-                project_knowledge=project_knowledge,
-                conversation_semantics={
-                    "conversation_domain": (parsed or {}).get("conversation_domain", "general"),
-                    "conversation_act": (parsed or {}).get("conversation_act", "NONE"),
-                    "response_attributes": (parsed or {}).get("response_attributes", {}),
-                },
-            )
-
-            result = gateway_ask(
-                prompt,
-                system=system,
-                max_tokens=4000 if self_knowledge else 1600,
-                temperature=0.7,
-                routing_text=text,
-            )
-
-            if result.get("status") != "success":
-                raise RuntimeError(result.get("message"))
-
-            reply = result.get("text", "")
-            if not reply:
-                raise ValueError("empty")
-
-            return {
-                "status": "success",
-                "intent": (parsed or {}).get("intent", mode.lower()),
-                "text": reply,
-                "mode": mode,
-                "source": "llm",
-                "provider_used": result.get("provider_used"),
-                "provider_chain": result.get("provider_chain", []),
-                "model": result.get("model"),
-                "executed": False,
-            }
-        except Exception as e:
-            fallback = "تعذر الوصول إلى نموذج الذكاء الاصطناعي حالياً. تحقق من الاتصال أو إعدادات المزود ثم أعد المحاولة."
-            return {
-                "status": "error",
-                "intent": (parsed or {}).get("intent", mode.lower()),
-                "text": fallback,
-                "mode": mode,
-                "source": "fallback",
-                "provider_used": result.get("provider_used") if isinstance(result, dict) else None,
-                "provider_chain": result.get("provider_chain", []) if isinstance(result, dict) else [],
-                "model": result.get("model") if isinstance(result, dict) else None,
-                "gateway_error": result.get("error") if isinstance(result, dict) else None,
-                "error": str(e),
-                "executed": False,
-            }
+    def _handle_output(self, route_decision, text, mode, parsed, *, history=None):
+        output_kind = getattr(route_decision, "output_kind", "none")
+        if output_kind == "summary":
+            return {"status": "success", "intent": getattr(parsed.get("intent"), "value", parsed.get("intent")), "text": "ملخص محلي للطلب الحالي وفق مصدر الأدلة المختار.", "mode": mode, "source": "summary_output", "executed": False, "evidence_scope": route_decision.evidence_scope}
+        if output_kind == "capability":
+            return {"status": "success", "intent": getattr(parsed.get("intent"), "value", parsed.get("intent")), "text": "القدرات متاحة محليًا وفق القرار الحالي.", "mode": mode, "source": "capability_output", "executed": False, "evidence_scope": route_decision.evidence_scope}
+        if output_kind == "transcript":
+            return {"status": "success", "intent": getattr(parsed.get("intent"), "value", parsed.get("intent")), "text": text or "لا يوجد نص متاح للنسخ.", "mode": mode, "source": "transcript_output", "executed": False, "evidence_scope": route_decision.evidence_scope}
+        if output_kind == "continue_topic":
+            return {"status": "success", "intent": getattr(parsed.get("intent"), "value", parsed.get("intent")), "text": "استئناف الموضوع الحالي باستخدام السياق المسموح به فقط.", "mode": mode, "source": "continue_topic_output", "executed": False, "evidence_scope": route_decision.evidence_scope}
+        if output_kind == "brief":
+            return {"status": "success", "intent": getattr(parsed.get("intent"), "value", parsed.get("intent")), "text": "إجابة موجزة محلية وفق السياسة الحالية.", "mode": mode, "source": "brief_output", "executed": False, "evidence_scope": route_decision.evidence_scope}
+        return {"status": "success", "intent": getattr(parsed.get("intent"), "value", parsed.get("intent")), "text": text or "رد محلي بدون مخرجات متخصصة.", "mode": mode, "source": "local_output", "executed": False, "evidence_scope": route_decision.evidence_scope}
 
     def switch_topic(self, current_topic: str, new_input: str) -> dict:
         if self.dialogue_memory:
@@ -703,3 +436,821 @@ class ConversationManager:
                 result.setdefault("topic", topic)
                 return result
         return {"status": "success", "intent": "topic_restore", "text": "لا يوجد موضوع مؤجل."}
+
+
+__all__ = ["ConversationManager"]
+
+
+if __name__ == "__main__":
+    print("conversation_manager")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+n
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+n
+"}]}],
