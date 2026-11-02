@@ -1429,11 +1429,11 @@ class ConversationManager:
             return self._finalize_direct_result({
                 "status": "success", "intent": Intent.MEMORY_DUMP,
                 "source": "saved_dialogue_topic_analysis",
-                "output_kind": "report", "evidence_scope": "saved_session",
+                "output_kind": "list", "evidence_scope": "none", "evidence_collection": "saved_dialogues",
                 "executed": False, "text": "\n".join(lines),
                 "repeated_topics": repeated_topics,
             }, intent=Intent.MEMORY_DUMP, route="L-SESSION",
-               selected_session={"kind": "collection"}, saved_session_request=True)
+               selected_session={"kind": "collection", "output_kind": "list"}, saved_session_request=True)
 
         if active_report_continue and selected_saved_session_id:
             continuation = self._continue_saved_dialogue(
@@ -1549,7 +1549,7 @@ class ConversationManager:
             return self._finalize_direct_result(
                 self._local_memory_inventory_answer(),
                 intent=Intent.MEMORY_DUMP, route="L-SESSION",
-                selected_session={"kind": "collection"}, saved_session_request=True,
+                selected_session={"kind": "collection", "output_kind": "list"}, saved_session_request=True,
             )
 
         normalized_session_request = self._normalize_transition_text(user_input).strip(
