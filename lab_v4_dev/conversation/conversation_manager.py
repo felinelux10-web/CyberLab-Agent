@@ -1299,7 +1299,17 @@ class ConversationManager:
             selected_session.get("kind") in {"none", "reference"}
             and self._is_current_project_identity_request(user_input)
         ):
-            return self._local_current_project_identity_answer()
+            result = self._local_current_project_identity_answer()
+            decision = self.finalize_route(
+                parsed={"intent": Intent.CYBER_EXPLAIN, "conversation_domain": "project"},
+                selected_session={"kind": "none"},
+                saved_session_request=False,
+                selected_saved_session_id=None,
+                transition=ContextTransition.NEW_INDEPENDENT,
+            )
+            result["route_decision"] = decision
+            self.context_lock = decision.context_lock
+            return result
 
         normalized_repeated_topic_query = normalize_text(user_input)
         repeated_topic_request = any(marker in normalized_repeated_topic_query for marker in (
@@ -1335,6 +1345,18 @@ class ConversationManager:
                 user_input, selected_saved_session_id,
             )
             if continuation is not None:
+                decision = self.finalize_route(
+                    parsed={"intent": Intent.PERSONAL_CHAT, "conversation_domain": "general"},
+                    selected_session={
+                        "kind": "id", "session_id": selected_saved_session_id,
+                        "output_kind": "continue_topic",
+                    },
+                    saved_session_request=True,
+                    selected_saved_session_id=selected_saved_session_id,
+                    transition=ContextTransition.NEW_INDEPENDENT,
+                )
+                continuation["route_decision"] = decision
+                self.context_lock = decision.context_lock
                 self.active_report_session_id = selected_saved_session_id
                 return continuation
 
@@ -1401,9 +1423,18 @@ class ConversationManager:
         # Capability questions are answered from the local session-store
         # contract. They must not trigger a restore, a transcript, or a provider.
         if selected_session.get("output_kind") == "capability":
+            decision = self.finalize_route(
+                parsed={"intent": Intent.AGENT_CAPABILITIES, "conversation_domain": "agent_self"},
+                selected_session=selected_session,
+                saved_session_request=False,
+                selected_saved_session_id=None,
+                transition=ContextTransition.NEW_INDEPENDENT,
+            )
+            self.context_lock = decision.context_lock
             return {
                 "status": "success",
                 "intent": Intent.AGENT_CAPABILITIES,
+                "route_decision": decision,
                 "source": "local_session_store",
                 "output_kind": "capability",
                 "executed": False,
