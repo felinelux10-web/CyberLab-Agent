@@ -2173,7 +2173,17 @@ def analyze_repeated_dialogue_topics(*, limit: int = 8) -> list[dict]:
         )
         normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
         tokens = re.findall(r"[a-z0-9]+|[\u0621-\u064a]+", normalized)
-        return {token for token in tokens if len(token) > 2 and token not in stop_words}
+        normalized_tokens = set()
+        for token in tokens:
+            # Normalize common Arabic clitics so "والنقش" and "النقش"
+            # resolve to the same topic term across differently phrased sessions.
+            if len(token) > 3 and token[0] in {"و", "ف"}:
+                token = token[1:]
+            if len(token) > 3 and token.startswith("ال"):
+                token = token[2:]
+            if len(token) > 2 and token not in stop_words:
+                normalized_tokens.add(token)
+        return normalized_tokens
 
     index = get_session_index()
     for number, item in enumerate(index, 1):
