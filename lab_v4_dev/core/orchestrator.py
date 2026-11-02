@@ -80,9 +80,29 @@ class Orchestrator:
         request = Request.from_input(request)
         raw_request = request.raw_text
 
-        # DNI-10: ربط task_chain.py (كان معزولاً تماماً — صفر استدعاء في كل المشروع)
+        if route_decision is not None:
+            authorized_route = str(getattr(route_decision, "route", ""))
+            if authorized_route not in {"L-EXEC", "L-SESSION", "L-FACT", "P-TOOL"}:
+                return {
+                    "status": "denied",
+                    "intent": (parsed or {}).get("intent"),
+                    "source": "route_decision_handle_guard",
+                    "executed": False,
+                    "text": "قرار التوجيه لا يمنح Orchestrator ملكية هذا الطلب.",
+                }
+            if authorized_route == "L-SESSION" and (parsed or {}).get("intent") not in (Intent.SESSION_RESTORE, Intent.RESUME):
+                return {
+                    "status": "denied",
+                    "intent": (parsed or {}).get("intent"),
+                    "source": "route_decision_session_guard",
+                    "executed": False,
+                    "text": "الطلب لا يطابق مسار استعادة الجلسة الذي أجازه قرار التوجيه.",
+                }
+
+        # DNI-10: task chains are executable work and may run only when the
+        # immutable route explicitly grants execution ownership.
         from lab_v4_dev.core.task_chain import is_chain, detect_chain, execute_chain
-        if is_chain(raw_request):
+        if (route_decision is None or getattr(route_decision, "route", None) == "L-EXEC") and is_chain(raw_request):
             steps = detect_chain(raw_request)
             if len(steps) > 1:
                 return execute_chain(steps, self)
