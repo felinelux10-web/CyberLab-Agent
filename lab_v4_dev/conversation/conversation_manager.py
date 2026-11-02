@@ -2068,6 +2068,9 @@ class ConversationManager:
                 "semantic_pattern": "ORDINAL_DIALOGUE_TOPIC_RETURN",
                 "source": "ordinal_dialogue_topic_return",
             })
+            # An ordinal exchange reference is an explicit branch restore,
+            # not a generic continuation from the latest active topic.
+            transition = ContextTransition.RESTORE
         generic_social_topic_return = False
         normalized_return_request = self._normalize_transition_text(user_input)
         explicit_topic_return = any(marker in normalized_return_request for marker in (
