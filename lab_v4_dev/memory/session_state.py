@@ -1096,23 +1096,26 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
             "session_id": f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid.uuid4().hex[:8]}",
             "created_at": now,
         }
-    topic = str(state.get("last_topic") or state.get("pending_topic") or "").strip()
+    # The latest substantive exchange is a stronger title source than
+    # DialogueState.last_topic: social openers and session-control turns can
+    # temporarily become last_topic without changing the actual discussion.
+    latest_substantive = next(
+        (item for item in reversed(exchanges) if not _is_dialogue_control_exchange(item)),
+        None,
+    )
+    topic = ""
+    if isinstance(latest_substantive, dict):
+        topic = str(latest_substantive.get("target") or "").strip()
+        if not topic:
+            latest_insights = _dialogue_exchange_insights(latest_substantive)
+            topic = str(latest_insights[0] if latest_insights else "").strip()
     if not topic:
-        # Derive a useful title from the first substantive exchange rather
-        # than naming every otherwise untitled dialogue "حفظ سياق الحوار".
-        first_substantive = next(
-            (
-                item for item in exchanges
-                if not _is_dialogue_control_exchange(item)
-            ),
-            None,
-        )
-        if isinstance(first_substantive, dict):
-            topic = str(first_substantive.get("target") or "").strip()
-            if not topic:
-                first_insights = _dialogue_exchange_insights(first_substantive)
-                topic = str(first_insights[0] if first_insights else "").strip()
-            topic = " ".join(topic.split())[:100].strip(" .،؛:")
+        stored_topic = str(state.get("last_topic") or state.get("pending_topic") or "").strip()
+        if stored_topic and not _is_dialogue_control_text(stored_topic):
+            topic = stored_topic
+    topic = " ".join(topic.split())[:100].strip(" .،؛:")
+    if topic and _is_dialogue_control_text(state.get("last_topic")):
+        state["last_topic"] = topic
     data.update({
         "schema_version": data.get("schema_version", SESSION_SCHEMA_VERSION),
         "session_id": session_id,
