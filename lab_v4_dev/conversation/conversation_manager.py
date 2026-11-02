@@ -188,6 +188,8 @@ class ConversationManager:
                 route = "L-FACT"
             elif domain == "technical":
                 route = "P-TOOL"
+            elif act == "SOCIAL_OPENING" and str(parsed.get("target") or "").strip():
+                route = "L-LIVE"
             elif act in {"CASUAL_CONVERSATION", "CASUAL_DISCUSSION", "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP"}:
                 route = "L-LIVE"
             elif domain == "social" or act in {
