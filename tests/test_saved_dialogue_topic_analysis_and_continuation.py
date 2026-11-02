@@ -253,3 +253,43 @@ def test_finalize_route_keeps_social_turn_local_and_project_facts_off_provider()
     assert project.route == "L-FACT"
     assert project.evidence_scope == "project_state"
     assert project.provider_allowed is False
+
+
+
+def test_saved_dialogue_title_uses_latest_substantive_topic_not_social_opener(monkeypatch):
+    saved_records = []
+    monkeypatch.setattr(session_state, "get_session_index", lambda: [])
+    monkeypatch.setattr(session_state, "load_session", lambda: {})
+    monkeypatch.setattr(session_state, "_write_session_detail", saved_records.append)
+    monkeypatch.setattr(session_state, "_append_recent_archive", lambda data: None)
+
+    session_id = "dialogue-title-topic-test"
+    state = {
+        "session_id": session_id,
+        "last_topic": "مرحبا",
+        "history": [],
+        "exchange_archive": [
+            {
+                "session_id": session_id,
+                "user": "ناقشنا الفن التجريدي والنقش البارز.",
+                "assistant": "تطرقنا إلى التكوين والسطح والفراغ.",
+                "target": "الفن التجريدي والنقش البارز",
+                "context_kind": "dialogue",
+                "conversation_domain": "general",
+            },
+            {
+                "session_id": session_id,
+                "user": "مرحبا",
+                "assistant": "مرحبًا، كيف يمكنني مساعدتك؟",
+                "target": "مرحبا",
+                "context_kind": "dialogue",
+                "conversation_domain": "social",
+            },
+        ],
+    }
+
+    result = session_state.save_dialogue_checkpoint(dialogue_state=state)
+
+    assert result["title"] == "حوار: الفن التجريدي والنقش البارز"
+    assert result["dialogue_state"]["last_topic"] == "الفن التجريدي والنقش البارز"
+    assert saved_records
