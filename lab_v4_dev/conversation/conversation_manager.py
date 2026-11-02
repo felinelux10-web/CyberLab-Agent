@@ -1084,6 +1084,35 @@ class ConversationManager:
         ).casefold() == "interrupted_branch"
         from lab_v4_dev.memory.session_state import session_route_contract
         selected_session = session_route_contract(user_input)
+        normalized_repeated_topic_query = normalize_text(user_input)
+        repeated_topic_request = any(marker in normalized_repeated_topic_query for marker in (
+            "اكثر موضوع متكرر", "الموضوع الاكثر تكرارا", "موضوع متكرر",
+            "موضوع تكرر", "تكرر في عدة جلسات", "تكرر عبر الجلسات",
+        ))
+        if repeated_topic_request and selected_session.get("kind") in {"none", "reference"}:
+            from lab_v4_dev.memory.session_state import analyze_repeated_dialogue_topics
+            repeated_topics = analyze_repeated_dialogue_topics(limit=8)
+            lines = ["نتيجة فحص موضوعات جلسات الحوار المحفوظة:"]
+            if not repeated_topics:
+                lines.append("لم أجد موضوعًا موثقًا في أكثر من جلسة حوار وفق السجلات المتاحة.")
+            else:
+                for rank, item in enumerate(repeated_topics, 1):
+                    lines.append(
+                        f"{rank}) {item['topic']} — تكرر في {item['session_count']} جلسات."
+                    )
+                    for session in item["sessions"]:
+                        lines.append(
+                            f"   - الجلسة #{session['number']}: {session['title']} "
+                            f"[{session['session_id']}]"
+                        )
+            return {
+                "status": "success", "intent": Intent.MEMORY_DUMP,
+                "source": "saved_dialogue_topic_analysis",
+                "output_kind": "report", "evidence_scope": "saved_session",
+                "executed": False, "text": "\n".join(lines),
+                "repeated_topics": repeated_topics,
+            }
+
         if active_report_continue and selected_saved_session_id:
             continuation = self._continue_saved_dialogue(
                 user_input, selected_saved_session_id,
