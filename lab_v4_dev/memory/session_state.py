@@ -2205,9 +2205,23 @@ def analyze_repeated_dialogue_topics(*, limit: int = 8) -> list[dict]:
             exchange for exchange in exchanges
             if not _is_dialogue_control_exchange(exchange)
         ]
+        dialogue = session.get("dialogue_state") or {}
+        if not meaningful and isinstance(dialogue, dict):
+            # A user turn can establish the topic even when its assistant
+            # response was not committed (or a legacy archive lacks that
+            # field). Keep strict session identity and exclude control turns.
+            archive = dialogue.get("exchange_archive") or []
+            meaningful = [
+                exchange for exchange in archive
+                if isinstance(exchange, dict)
+                and str(exchange.get("session_id") or "") == session_id
+                and str(exchange.get("user") or "").strip()
+                and not exchange.get("recall_only")
+                and not exchange.get("state_boundary_only")
+                and not _is_dialogue_control_exchange(exchange)
+            ]
         if not meaningful:
             continue
-        dialogue = session.get("dialogue_state") or {}
         candidates = []
         # Session title is persisted from the same dialogue checkpoint and
         # remains useful when last_topic/targets are absent or control turns
