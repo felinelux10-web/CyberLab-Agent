@@ -105,6 +105,7 @@ class ConversationManager:
         saved_session_request: bool,
         selected_saved_session_id: str | None,
         transition: ContextTransition,
+        route_override: str | None = None,
     ) -> RouteDecision:
         """Issue the immutable final route after semantic/context resolution.
 
@@ -154,6 +155,10 @@ class ConversationManager:
                 route = "L-LIVE"
         else:
             route = "L-EXEC"
+        if route_override is not None:
+            if route_override not in {"L-SOCIAL", "L-LIVE", "L-SESSION", "L-FACT", "L-EXEC", "P-TOOL", "CLARIFY", "DENY"}:
+                raise ValueError(f"invalid route override: {route_override}")
+            route = route_override
 
         live_state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
         has_live_dialogue = bool(
@@ -1076,6 +1081,30 @@ class ConversationManager:
             "evidence_scope": "saved_session",
             "context_action": "saved_session_followup", "executed": False,
         })
+        return result
+
+    def _finalize_direct_result(
+        self,
+        result: dict,
+        *,
+        intent,
+        route: str,
+        selected_session: dict | None = None,
+        saved_session_request: bool = False,
+        selected_saved_session_id: str | None = None,
+    ) -> dict:
+        """Attach the same immutable route contract to safe early responses."""
+        decision = self.finalize_route(
+            parsed={"intent": intent, "confidence": 1.0},
+            selected_session=selected_session or {"kind": "none"},
+            saved_session_request=saved_session_request,
+            selected_saved_session_id=selected_saved_session_id,
+            transition=ContextTransition.NEW_INDEPENDENT,
+            route_override=route,
+        )
+        result = dict(result or {})
+        result["route_decision"] = decision
+        self.context_lock = decision.context_lock
         return result
 
     def process(self, user_input: str, *, _restore_context: dict | None = None) -> dict:
