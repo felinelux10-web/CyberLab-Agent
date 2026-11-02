@@ -54,6 +54,7 @@ from lab_v4_dev.awareness.knowledge_retriever import (
 )
 from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
+from lab_v4_dev.core.contracts import RouteDecision, SessionRef, ContextLock
 from lab_v4_dev.nlu.context_resolver import is_incomplete
 from lab_v4_dev.nlu.conversation_semantics import (
     is_social_act,
@@ -93,6 +94,122 @@ class ConversationManager:
         self.active_report_session_id = None
         self.active_report_topic_filter = None
         self.active_live_output_kind = None
+
+    def finalize_route(
+        self,
+        *,
+        parsed: dict,
+        selected_session: dict,
+        saved_session_request: bool,
+        selected_saved_session_id: str | None,
+        transition: ContextTransition,
+    ) -> RouteDecision:
+        """Issue the immutable final route after semantic/context resolution.
+
+        The selector and parser are inputs only. This method resolves the
+        response owner, saved/live evidence boundary, output contract and
+        provider permission once; downstream code must consume this value.
+        """
+        parsed = parsed if isinstance(parsed, dict) else {}
+        selected_session = selected_session if isinstance(selected_session, dict) else {}
+        intent = parsed.get("intent")
+        intent_value = str(getattr(intent, "value", intent) or "").casefold()
+        domain = str(parsed.get("conversation_domain") or "general").casefold()
+        act = str(parsed.get("conversation_act") or "NONE").upper()
+        selector_kind = str(selected_session.get("kind") or "none").casefold()
+        session_id = str(selected_saved_session_id or selected_session.get("session_id") or "").strip()
+        session_number = selected_session.get("number")
+
+        if not session_id and selector_kind == "number" and session_number is not None:
+            try:
+                from lab_v4_dev.memory.session_state import get_session_by_number
+                selected_record = get_session_by_number(int(session_number))
+                session_id = str(selected_record.get("session_id") or "").strip()
+            except (TypeError, ValueError):
+                session_id = ""
+        if not session_id and selector_kind in {"latest", "previous_dialogue"}:
+            try:
+                from lab_v4_dev.memory.session_state import get_latest_session_by_type
+                selected_record = get_latest_session_by_type("dialogue")
+                session_id = str(selected_record.get("session_id") or "").strip()
+            except Exception:
+                session_id = ""
+
+        if saved_session_request or selector_kind not in {"none", "reference", "count", "list", "compare", "status"}:
+            route = "L-SESSION"
+        elif intent_value in {str(getattr(item, "value", item)).casefold() for item in _NON_EXECUTABLE_INTENTS}:
+            if domain == "project" or intent_value in {"cyber_explain", "architecture"} and domain == "technical":
+                route = "L-FACT"
+            elif domain == "social" or act.startswith("SOCIAL_"):
+                route = "L-SOCIAL"
+            else:
+                route = "L-LIVE"
+        else:
+            route = "L-EXEC"
+
+        if route == "L-SESSION" and session_id:
+            if selector_kind == "number" and session_number is not None:
+                session_scope = "saved_number"
+                session_ref = SessionRef(session_id=session_id, number=int(session_number))
+            elif selector_kind in {"latest", "previous_dialogue"}:
+                session_scope = "previous_saved"
+                session_ref = SessionRef(session_id=session_id)
+            else:
+                session_scope = "saved_id"
+                session_ref = SessionRef(session_id=session_id)
+        elif route == "L-SESSION":
+            session_scope = "none"
+            session_ref = None
+        elif transition in CONTEXTUAL_TRANSITIONS and self.dialogue_memory:
+            session_scope = "live_current"
+            session_ref = None
+        else:
+            session_scope = "none"
+            session_ref = None
+
+        requested_output = str(selected_session.get("output_kind") or parsed.get("output_kind") or "none")
+        if requested_output == "chat" or requested_output not in {"none", "brief", "summary", "report", "topic_summary", "transcript", "list", "continue_topic", "capability"}:
+            requested_output = "none"
+        if route == "L-SESSION" and requested_output == "none":
+            requested_output = "report"
+        if route == "L-SESSION" and session_ref is not None:
+            evidence_scope = "saved_session"
+        elif route == "L-FACT":
+            evidence_scope = "project_state"
+        elif route == "L-EXEC":
+            evidence_scope = "work_state"
+        elif session_scope == "live_current":
+            evidence_scope = "live_exchanges"
+        else:
+            evidence_scope = "none"
+
+        lock_active = bool(
+            route == "L-SESSION" and (session_ref or selected_session.get("query"))
+        )
+        lock = ContextLock(
+            active=lock_active,
+            session_id=session_ref.session_id if session_ref else None,
+            topic=str(selected_session.get("topic_filter") or "").strip() or None,
+            output_kind=requested_output if requested_output != "none" else None,
+            reason="saved_session_selection" if lock_active else None,
+        )
+        return RouteDecision(
+            route=route,
+            session_scope=session_scope,
+            session_ref=session_ref,
+            output_kind=requested_output,
+            topic_filter=str(selected_session.get("topic_filter") or "").strip() or None,
+            context_lock=lock,
+            evidence_scope=evidence_scope,
+            provider_allowed=route in {"L-LIVE", "P-TOOL"},
+            intent=intent,
+            confidence=float(parsed.get("confidence", 0.0) or 0.0),
+            metadata={
+                "selector_kind": selector_kind,
+                "saved_session_request": bool(saved_session_request),
+                "context_transition": transition.value,
+            },
+        )
 
     @staticmethod
     def _is_project_progress_request(text: str) -> bool:
@@ -2425,6 +2542,17 @@ class ConversationManager:
             context_transition=transition,
             context_kind=self._context_kind(user_input, parsed, transition),
         )
+
+        route_decision = self.finalize_route(
+            parsed=parsed,
+            selected_session=selected_session,
+            saved_session_request=saved_session_request,
+            selected_saved_session_id=selected_saved_session_id,
+            transition=transition,
+        )
+        parsed = dict(parsed or {})
+        parsed["route_decision"] = route_decision
+        parsed["output_kind"] = route_decision.output_kind
 
         # A generic return with no recoverable dialogue branch must fail
         # closed instead of being treated as a successful chat response.
