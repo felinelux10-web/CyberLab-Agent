@@ -159,7 +159,12 @@ class ConversationManager:
             live_state is not None and (
                 getattr(live_state, "exchange_archive", [])
                 or getattr(live_state, "history", [])
+                or getattr(live_state, "context_history", [])
                 or getattr(live_state, "last_topic", None)
+            )
+            or bool(
+                callable(getattr(self.dialogue_memory, "active_context_entity", None))
+                and self.dialogue_memory.active_context_entity()
             )
         )
         if selector_kind == "reference" and not has_live_dialogue and selected_session.get("output_kind") in {
