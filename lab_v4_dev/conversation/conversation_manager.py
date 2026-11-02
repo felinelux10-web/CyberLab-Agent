@@ -2084,11 +2084,16 @@ class ConversationManager:
                 "source": "named_dialogue_topic_return",
             })
         ordinal_exchange = self._ordinal_dialogue_exchange(user_input)
-        if ordinal_exchange and str(ordinal_exchange.get("target") or "").strip():
+        ordinal_exchange_target = str(
+            (ordinal_exchange or {}).get("target")
+            or (ordinal_exchange or {}).get("user")
+            or ""
+        ).strip()
+        if ordinal_exchange and ordinal_exchange_target:
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.PERSONAL_CHAT,
-                "target": str(ordinal_exchange.get("target") or "").strip(),
+                "target": ordinal_exchange_target,
                 "entity_type": "CONCEPT",
                 "conversation_domain": "general",
                 "conversation_act": "TOPIC_RETURN",
