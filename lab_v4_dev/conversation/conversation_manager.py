@@ -248,7 +248,7 @@ class ConversationManager:
             topic_filter=str(selected_session.get("topic_filter") or "").strip() or None,
             context_lock=lock,
             evidence_scope=evidence_scope,
-            provider_allowed=route in {"L-LIVE", "P-TOOL", "L-EXEC"},
+            provider_allowed=route in {"L-FACT", "L-LIVE", "P-TOOL", "L-EXEC"},
             intent=intent,
             confidence=float(parsed.get("confidence", 0.0) or 0.0),
             metadata={
@@ -1504,6 +1504,11 @@ class ConversationManager:
         explicit_live_branch_return = bool(
             self._resolve_generic_topic_reference(user_input)
             or self._ordinal_dialogue_exchange(user_input)
+            or str((candidate.get("conversation_act") or "")).upper()
+                in {"CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY", "TOPIC_RETURN"}
+            or any(marker in self._normalize_transition_text(user_input) for marker in (
+                "اكمل", "أكمل", "تابع", "واصل", "نكمل", "استمر",
+            ))
             or str((candidate.get("response_attributes") or {}).get("dialogue_recovery", "")).casefold()
                 in {"named_topic_return", "ordinal_topic_return", "interrupted_branch"}
         )
@@ -3254,7 +3259,7 @@ class ConversationManager:
             intent in knowledge_intents
             and knowledge_scope == ProjectScope.CURRENT_PROJECT
             and knowledge_type in {"component", "relationship", "execution"}
-            and not explicit_target
+            and (not explicit_target or knowledge_type in {"component", "relationship"})
         ):
             return self._handle_chat(
                 text,
@@ -3804,8 +3809,16 @@ class ConversationManager:
         history: list | None = None,
     ) -> dict | None:
         normalized = str(text or "").casefold()
-        bare_confirmation = normalized.strip(" .!؟?")
-        if (
+        feature_discussion_markers = (
+            "نطور سياق الحوار", "تطوير سياق الحوار", "تصحيح مسار الحوار",
+            "طبقات الذاكرة", "استرجاع الحوار داخل الوكيل",
+            "استمرارية الحوار", "تحسين استرجاع الحوار",
+        )
+        if any(marker in normalized for marker in feature_discussion_markers):
+            # A discussion about the agent's dialogue architecture is a
+            # technical/project request, not a social opener to answer locally.
+            return None
+        bare_confirmation = normalized.strip(" .!؟?")        if (
             bare_confirmation in {"نعم", "أجل", "اجل", "بلى", "لا", "كلا", "yes", "no"}
             and (parsed or {}).get("source") == "bare_confirmation"
         ):
