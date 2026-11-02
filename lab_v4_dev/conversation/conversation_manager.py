@@ -252,16 +252,34 @@ class ConversationManager:
         else:
             evidence_scope = "none"
 
+        live_session_id = str(getattr(live_state, "session_id", "") or "").strip()
+        live_topic = str(
+            parsed.get("target")
+            or getattr(live_state, "last_topic", None)
+            or ""
+        ).strip()
+        locked_topic = str(selected_session.get("topic_filter") or live_topic or "").strip() or None
         lock_active = bool(
-            route == "L-SESSION"
-            and (session_ref or selected_session.get("topic_filter") or requested_output != "none")
+            (
+                route == "L-SESSION"
+                and (session_ref or locked_topic or requested_output != "none")
+            )
+            or (session_scope == "live_current" and (live_session_id or locked_topic))
         )
         lock = ContextLock(
             active=lock_active,
-            session_id=session_ref.session_id if session_ref else None,
-            topic=str(selected_session.get("topic_filter") or "").strip() or None,
+            session_id=(
+                session_ref.session_id if session_ref
+                else live_session_id if session_scope == "live_current" and live_session_id
+                else None
+            ),
+            topic=locked_topic,
             output_kind=requested_output if requested_output != "none" else None,
-            reason="saved_session_selection" if lock_active else None,
+            reason=(
+                "saved_session_selection" if route == "L-SESSION" and lock_active
+                else "live_dialogue_context" if lock_active
+                else None
+            ),
         )
         return RouteDecision(
             route=route,
