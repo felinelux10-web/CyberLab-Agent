@@ -815,6 +815,7 @@ class ConversationManager:
         selected_saved_session_id = None
         pending_saved_session_selection = {}
         active_report_followup = False
+        active_report_continue = False
         active_report_id = str(self.active_report_session_id or "").strip()
         if active_report_id:
             from lab_v4_dev.memory.session_state import session_route_contract
@@ -836,7 +837,15 @@ class ConversationManager:
                     "الموضوعات", "موضوعات", "الافكار", "الأفكار",
                     "ماذا ناقشنا", "ما ناقشنا", "النتائج", "النقاط المتبقية",
                     "ذلك الحوار", "هذا الحوار", "الحوار السابق", "ذلك النقاش",
+                    "اكمل", "استكمل", "تابع", "واصل", "من نفس النقطة",
+                    "نقطة التوقف", "استئناف الحوار",
                 ))
+            )
+            active_report_continue = active_report_followup and any(
+                marker in normalized_followup for marker in (
+                    "اكمل", "استكمل", "تابع", "واصل", "من نفس النقطة",
+                    "نقطة التوقف", "استئناف الحوار",
+                )
             )
             if active_report_followup:
                 selected_saved_session_id = active_report_id
