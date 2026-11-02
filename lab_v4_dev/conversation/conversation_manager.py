@@ -638,17 +638,14 @@ class ConversationManager:
     @staticmethod
     def _is_current_project_identity_request(text: str) -> bool:
         normalized = normalize_text(str(text or ""))
-        names_project = any(marker in normalized for marker in (
-            "cyberlab_agent", "cyberlab agent", "مشروع cyberlab",
+        # The project name must immediately follow an identity predicate.
+        # This intentionally excludes broader questions such as project plans,
+        # architecture, and agent limits that merely mention CyberLab Agent.
+        return bool(re.search(
+            r"(?:^|\\s)(?:ماهو|ما هو|ماهي|ما هي|عرف|ما طبيعة)\\s+"
+            r"(?:(?:مشروع|المشروع|الوكيل)\\s+)?cyberlab(?:[_ -]?agent)\\b",
+            normalized,
         ))
-        asks_what_it_is = any(marker in normalized for marker in (
-            "ماهو", "ما هو", "ماهي", "ما هي", "عرف",
-            "ما طبيعة", "ما وظيفة المشروع", "ما هذا المشروع",
-        ))
-        asks_agent_identity = any(marker in normalized for marker in (
-            "من انت", "من تكون", "ما هويتك", "من هو الوكيل",
-        ))
-        return names_project and asks_what_it_is and not asks_agent_identity
 
     @staticmethod
     def _local_current_project_identity_answer() -> dict:
