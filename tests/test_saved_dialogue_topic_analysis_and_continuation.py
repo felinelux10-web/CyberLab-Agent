@@ -564,3 +564,62 @@ def test_finalize_route_represents_saved_dialogue_collection_without_faking_sing
     assert decision.evidence_scope == "none"
     assert decision.metadata["evidence_collection"] == "saved_dialogues"
     assert decision.provider_allowed is False
+
+
+
+def test_finalize_route_resolves_saved_number_to_exact_session_ref(monkeypatch):
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+    from lab_v4_dev.intent.intents import Intent
+
+    monkeypatch.setattr(
+        session_state,
+        "get_session_by_number",
+        lambda number: {"session_id": "saved-number-24"} if number == 24 else {},
+    )
+    context = ContextStore()
+    manager = ConversationManager(
+        SimpleNamespace(context=context),
+        DialogueMemory(context),
+    )
+
+    decision = manager.finalize_route(
+        parsed={"intent": Intent.SESSION_RESTORE},
+        selected_session={"kind": "number", "number": 24, "output_kind": "summary"},
+        saved_session_request=True,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+
+    assert decision.session_scope == "saved_number"
+    assert decision.session_ref.session_id == "saved-number-24"
+    assert decision.session_ref.number == 24
+    assert decision.evidence_scope == "saved_session"
+    assert decision.context_lock.session_id == "saved-number-24"
+
+
+def test_finalize_route_resolves_previous_dialogue_not_latest_work_session(monkeypatch):
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+    from lab_v4_dev.intent.intents import Intent
+
+    monkeypatch.setattr(
+        session_state,
+        "get_latest_session_by_type",
+        lambda kind: {"session_id": "latest-dialogue"} if kind == "dialogue" else {},
+    )
+    context = ContextStore()
+    manager = ConversationManager(
+        SimpleNamespace(context=context),
+        DialogueMemory(context),
+    )
+
+    decision = manager.finalize_route(
+        parsed={"intent": Intent.SESSION_RESTORE},
+        selected_session={"kind": "previous_dialogue", "output_kind": "summary"},
+        saved_session_request=True,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+
+    assert decision.session_scope == "previous_saved"
+    assert decision.session_ref.session_id == "latest-dialogue"
+    assert decision.evidence_scope == "saved_session"
