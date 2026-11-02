@@ -3262,12 +3262,19 @@ class ConversationManager:
                     "text": "يلزم تحديد السياق أو الجلسة المقصودة قبل المتابعة.",
                     "route_decision": route_decision,
                 }
-            if route_decision.route in {"L-SOCIAL", "L-LIVE"}:
-                return self._handle_chat(
+            if route_decision.route in {"L-SOCIAL", "L-LIVE", "L-FACT"}:
+                # L-FACT is a knowledge owner, not an execution owner. It
+                # uses the evidence-backed chat/local-fact responder; this
+                # preserves retrieval and provider policy without invoking
+                # operational handlers.
+                result = self._handle_chat(
                     text, mode, parsed=parsed,
                     user_question=user_question or text, history=chat_history,
                 )
-            if route_decision.route in {"L-SESSION", "L-FACT", "L-EXEC", "P-TOOL"}:
+                result = dict(result or {})
+                result.setdefault("executed", False)
+                return result
+            if route_decision.route in {"L-SESSION", "L-EXEC", "P-TOOL"}:
                 handle = self.orchestrator.handle
                 kwargs = {
                     "parsed": parsed,
@@ -3277,13 +3284,22 @@ class ConversationManager:
                     "route_decision": route_decision,
                 }
                 result = handle(text, **kwargs)
-                return dict(result) if isinstance(result, dict) else {
-                    "status": "error", "intent": intent,
-                    "source": "route_decision_orchestrator_contract",
-                    "executed": False,
-                    "text": "أعاد مالك المسار نتيجة غير صالحة.",
-                    "route_decision": route_decision,
-                }
+                if not isinstance(result, dict):
+                    return {
+                        "status": "error", "intent": intent,
+                        "source": "route_decision_orchestrator_contract",
+                        "executed": False,
+                        "text": "أعاد مالك المسار نتيجة غير صالحة.",
+                        "route_decision": route_decision,
+                    }
+                result = dict(result)
+                if route_decision.route == "L-SESSION":
+                    result["executed"] = False
+                else:
+                    result["executed"] = result.get("status") not in {
+                        "needs_clarification", "denied", "unsupported", "error", "failed",
+                    }
+                return result
             raise ValueError(f"unhandled authoritative route: {route_decision.route}")
 
         # Legacy compatibility path for direct callers without a finalized
