@@ -258,7 +258,7 @@ class Orchestrator:
     ) -> dict:
         if route_decision is not None:
             authorized_route = str(getattr(route_decision, "route", ""))
-            if authorized_route not in {"L-EXEC", "L-SESSION"}:
+            if authorized_route not in {"L-EXEC", "L-SESSION", "L-FACT", "P-TOOL"}:
                 return {
                     "status": "denied", "intent": intent,
                     "source": "route_decision_orchestrator_guard",
@@ -272,6 +272,16 @@ class Orchestrator:
                     "executed": False,
                     "text": "قرار التوجيه يحدد مسار جلسة محفوظة لكن النية لا تطابق الاستعادة.",
                 }
+
+        def authorized_ask(*args, **kwargs):
+            if route_decision is not None and not bool(
+                getattr(route_decision, "provider_allowed", False)
+            ):
+                return {
+                    "status": "unavailable",
+                    "message": "provider denied by RouteDecision",
+                }
+            return ask(*args, **kwargs)
 
         # ─── Response Cache ───
         from lab_v4_dev.intent.response_cache import get as rcache_get
@@ -555,7 +565,7 @@ class Orchestrator:
                 intent=intent,
                 project_scope=resolve_project_scope(raw, intent=intent),
             )
-            result  = ask(raw, system=system, max_tokens=400)
+            result = authorized_ask(raw, system=system, max_tokens=400)
             return {
                 "status": result["status"],
                 "intent": intent,
@@ -571,7 +581,7 @@ class Orchestrator:
                 intent=intent,
                 project_scope=resolve_project_scope(raw, intent=intent),
             )
-            result = ask(raw, system=system, max_tokens=300)
+            result = authorized_ask(raw, system=system, max_tokens=300)
             return {
                 "status" : result["status"],
                 "intent" : intent,
