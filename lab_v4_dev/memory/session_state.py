@@ -2356,10 +2356,13 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
             item for item in exchanges
             if not _is_dialogue_control_exchange(item)
         ]
+        latest_archive_subject = next(
+            (_dialogue_exchange_subject(item) for item in reversed(meaningful_exchanges)
+             if _dialogue_exchange_subject(item)),
+            "",
+        )
         topic_candidates = (
-            dialogue.get("last_topic"),
-            next((item.get("target") for item in reversed(meaningful_exchanges) if item.get("target")), ""),
-            next((item.get("user") for item in meaningful_exchanges if item.get("user")), ""),
+            latest_archive_subject, dialogue.get("last_topic"),
             report.get("topic"), session.get("title"), session.get("active_goal"),
         )
         topic = next(
