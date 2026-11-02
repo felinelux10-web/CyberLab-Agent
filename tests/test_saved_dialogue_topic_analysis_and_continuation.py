@@ -329,3 +329,46 @@ def test_orchestrator_rejects_non_owned_route_before_task_chain(monkeypatch):
 
     assert result["status"] == "denied"
     assert result["source"] == "route_decision_handle_guard"
+
+
+
+def test_finalize_route_locks_live_branch_and_releases_it_on_independent_turn():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+    from lab_v4_dev.intent.intents import Intent
+
+    context = ContextStore()
+    memory = DialogueMemory(context)
+    memory.state.last_topic = "SQL Injection"
+    manager = ConversationManager(SimpleNamespace(context=context), memory)
+
+    continuing = manager.finalize_route(
+        parsed={
+            "intent": Intent.PERSONAL_CHAT,
+            "target": "SQL Injection",
+            "conversation_domain": "technical",
+            "conversation_act": "CONVERSATION_CONTINUATION",
+        },
+        selected_session={"kind": "none"},
+        saved_session_request=False,
+        selected_saved_session_id=None,
+        transition=ContextTransition.CONTINUE,
+    )
+    independent = manager.finalize_route(
+        parsed={
+            "intent": Intent.PERSONAL_CHAT,
+            "conversation_domain": "social",
+            "conversation_act": "SOCIAL_GREETING",
+        },
+        selected_session={"kind": "none"},
+        saved_session_request=False,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+
+    assert continuing.session_scope == "live_current"
+    assert continuing.evidence_scope == "live_exchanges"
+    assert continuing.context_lock.active is True
+    assert continuing.context_lock.session_id == memory.state.session_id
+    assert continuing.context_lock.topic == "SQL Injection"
+    assert independent.session_scope == "none"
+    assert independent.context_lock.active is False
