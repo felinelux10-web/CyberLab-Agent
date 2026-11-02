@@ -120,6 +120,21 @@ def get_session_index() -> list:
         return []
 
 
+def get_session_type_counts() -> dict[str, int]:
+    """Return one canonical type distribution for the stable saved-session index."""
+    counts = {"total": 0, "dialogue": 0, "work": 0, "other": 0}
+    index = get_session_index()
+    counts["total"] = len(index)
+    for item in index:
+        kind = str(item.get("session_type") or "").casefold()
+        if kind == "dialogue":
+            counts["dialogue"] += 1
+        elif kind == "work":
+            counts["work"] += 1
+        else:
+            counts["other"] += 1
+    return counts
+
 def _details_dir() -> str:
     from lab_v4_dev.core.project_context import project_data_dir
     return os.path.join(project_data_dir(), "sessions")
