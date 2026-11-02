@@ -2735,18 +2735,29 @@ class ConversationManager:
         recovery_mode = str(
             (parsed.get("response_attributes") or {}).get("dialogue_recovery", "")
         ).casefold()
-        if recovery_mode in {"interrupted_branch", "named_topic_return"}:
+        recovery_intent = parsed.get("intent")
+        recovery_is_dialogue = bool(
+            recovery_mode in {"interrupted_branch", "named_topic_return", "ordinal_topic_return"}
+            and recovery_intent in _NON_EXECUTABLE_INTENTS
+        )
+        if recovery_is_dialogue and recovery_mode in {"interrupted_branch", "named_topic_return"}:
             parsed = dict(parsed or {})
             parsed["intent"] = Intent.PERSONAL_CHAT
             parsed["conversation_domain"] = "general"
             mode = "CHAT"
+        elif recovery_mode and not recovery_is_dialogue:
+            # A stale recovery annotation must never rewrite an explicit
+            # executable/knowledge intent into a dialogue continuation.
+            parsed = dict(parsed or {})
+            attributes = dict(parsed.get("response_attributes") or {})
+            attributes.pop("dialogue_recovery", None)
+            parsed["response_attributes"] = attributes
+            recovery_mode = ""
         ambiguous_resume = self._ambiguous_resume_without_domain(user_input, parsed)
 
         route_override = (
             "CLARIFY" if ambiguous_resume
-            else "L-LIVE" if recovery_mode in {
-                "interrupted_branch", "named_topic_return", "ordinal_topic_return",
-            }
+            else "L-LIVE" if recovery_is_dialogue
             else None
         )
         # Canonical semantic request follows the context-authorized parse and
