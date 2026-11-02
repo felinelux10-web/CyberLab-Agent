@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Dict
+from types import MappingProxyType
 
 
 @dataclass(frozen=True)
@@ -232,6 +233,9 @@ class RouteDecision:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        # frozen=True protects attributes; freeze the metadata mapping too so
+        # a downstream owner cannot mutate the supposedly authoritative decision.
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata or {})))
         if self.route not in ROUTES:
             raise ValueError(f"invalid route: {self.route}")
         if self.session_scope not in SESSION_SCOPES:
