@@ -130,7 +130,15 @@ class ConversationManager:
                 session_id = str(selected_record.get("session_id") or "").strip()
             except (TypeError, ValueError):
                 session_id = ""
-        if not session_id and selector_kind in {"latest", "previous_dialogue"}:
+        if not session_id and selector_kind == "latest":
+            try:
+                from lab_v4_dev.memory.session_state import get_session_index, _session_updated_key
+                records = sorted(get_session_index(), key=_session_updated_key, reverse=True)
+                selected_record = records[0] if records else {}
+                session_id = str(selected_record.get("session_id") or "").strip()
+            except Exception:
+                session_id = ""
+        if not session_id and selector_kind == "previous_dialogue":
             try:
                 from lab_v4_dev.memory.session_state import get_latest_session_by_type
                 selected_record = get_latest_session_by_type("dialogue")
