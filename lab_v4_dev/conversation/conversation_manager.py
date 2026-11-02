@@ -149,6 +149,19 @@ class ConversationManager:
         else:
             route = "L-EXEC"
 
+        live_state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
+        has_live_dialogue = bool(
+            live_state is not None and (
+                getattr(live_state, "exchange_archive", [])
+                or getattr(live_state, "history", [])
+                or getattr(live_state, "last_topic", None)
+            )
+        )
+        if selector_kind == "reference" and not has_live_dialogue and selected_session.get("output_kind") in {
+            "brief", "summary", "report", "topic_summary", "transcript",
+        }:
+            route = "CLARIFY"
+
         if route == "L-SESSION" and session_id:
             if selector_kind == "number" and session_number is not None:
                 session_scope = "saved_number"
@@ -162,7 +175,9 @@ class ConversationManager:
         elif route == "L-SESSION":
             session_scope = "none"
             session_ref = None
-        elif transition in CONTEXTUAL_TRANSITIONS and self.dialogue_memory:
+        elif (
+            selector_kind == "reference" and has_live_dialogue
+        ) or (transition in CONTEXTUAL_TRANSITIONS and self.dialogue_memory):
             session_scope = "live_current"
             session_ref = None
         else:
