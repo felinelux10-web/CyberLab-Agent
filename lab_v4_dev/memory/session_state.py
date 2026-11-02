@@ -1876,10 +1876,16 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     topic = topic or "حوار افتتاحي أو إداري بلا موضوع معرف في السجل"
     last = (summary_exchanges or exchanges)[-1] if (summary_exchanges or exchanges) else {}
     if last:
+        last_target = str(last.get("target") or "").strip()
+        if last_target and not _is_dialogue_control_text(last_target):
+            stop_detail = f"كان موضوع التبادل «{last_target}»."
+        elif last_insights:
+            stop_detail = f"آخر مضمون موثق: {last_insights[0]}"
+        else:
+            stop_detail = f"لا يحمل آخر تبادل موضوعًا فرعيًا محددًا؛ الموضوع العام المسجل هو «{topic}»."
         stop_point = (
             "توقف الحوار بعد آخر تبادل مكتمل محفوظ؛ "
-            + (f"كان موضوع التبادل «{last.get('target')}»." if last.get("target")
-               else f"لا يحمل آخر تبادل موضوعًا فرعيًا محددًا؛ الموضوع العام المسجل هو «{topic}».")
+            + stop_detail
             + " يوجد رد محفوظ من الوكيل، ولم تُنشأ متابعة جديدة أثناء الاستعادة."
         )
         next_step = f"استكمال الحوار من آخر تبادل محفوظ حول «{topic}»."
