@@ -2732,6 +2732,15 @@ class ConversationManager:
             context_entity = None
             chat_history = []
 
+        ambiguous_resume = self._ambiguous_resume_without_domain(user_input, parsed)
+
+        route_override = (
+            "CLARIFY" if ambiguous_resume
+            else "L-LIVE" if recovery_mode in {
+                "interrupted_branch", "named_topic_return", "ordinal_topic_return",
+            }
+            else None
+        )
         # Canonical semantic request follows the context-authorized parse and
         # is established before selecting the execution owner.
         semantic = build_semantic_request(
@@ -2767,11 +2776,22 @@ class ConversationManager:
             saved_session_request=saved_session_request,
             selected_saved_session_id=selected_saved_session_id,
             transition=transition,
+            route_override=route_override,
         )
         parsed = dict(parsed or {})
         parsed["route_decision"] = route_decision
         parsed["output_kind"] = route_decision.output_kind
         self.context_lock = route_decision.context_lock
+
+        if ambiguous_resume:
+            return self._attach_route_decision({
+                "status": "needs_clarification",
+                "intent": parsed.get("intent") or Intent.RESUME,
+                "source": "conversation_manager",
+                "text": "هل تريد استكمال الحوار السابق أم استكمال العمل في جلسة أو ملف؟",
+                "executed": False,
+                "semantic_request": semantic.as_dict(),
+            }, route_decision)
 
         # A generic return with no recoverable dialogue branch must fail
         # closed instead of being treated as a successful chat response.
@@ -3005,17 +3025,7 @@ class ConversationManager:
                 ),
                 "executed": False,
             }
-        if self._ambiguous_resume_without_domain(user_input, parsed):
-            return self._finalize_direct_result({
-                "status": "needs_clarification",
-                "intent": parsed.get("intent") or Intent.RESUME,
-                "source": "conversation_manager",
-                "text": (
-                    "هل تريد استكمال الحوار السابق أم استكمال العمل في جلسة أو ملف؟"
-                ),
-                "executed": False,
-                "semantic_request": semantic.as_dict(),
-            }, intent=parsed.get("intent") or Intent.RESUME, route="CLARIFY")
+
         if conversation_history_answer is not None:
             result = conversation_history_answer
             result["semantic_request"] = semantic.as_dict()
