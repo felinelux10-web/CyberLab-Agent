@@ -29,6 +29,7 @@ class FrozenDict(dict):
     popitem = _immutable
     setdefault = _immutable
     update = _immutable
+    __ior__ = _immutable
 
     def __deepcopy__(self, memo):
         return self
