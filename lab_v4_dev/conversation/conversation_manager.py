@@ -2831,7 +2831,12 @@ class ConversationManager:
         local_project_answer = self._local_project_progress_answer(
             user_input, parsed, context_entity
         )
-        if local_project_answer is not None and not saved_session_request and not _restore_context:
+        if (
+            local_project_answer is not None
+            and route_decision.route == "L-FACT"
+            and not saved_session_request
+            and not _restore_context
+        ):
             # Anchor the saved branch to the actual project, not a stale technical target
             # inherited by a parser fallback on a short continuation.
             from dataclasses import replace as dataclass_replace
@@ -2896,6 +2901,7 @@ class ConversationManager:
                 raw_act == "CONVERSATION_HISTORY_QUERY"
                 or self._dialogue_recall_requested(user_input, parsed)
             )
+            and route_decision.route == "L-LIVE"
             and not interrupted_recovery
             and not specific_dialogue_return
             and not saved_session_request
@@ -2939,6 +2945,7 @@ class ConversationManager:
                 context_entity=context_entity,
             )
             if not saved_session_request
+            and route_decision.route == "L-SOCIAL"
             and unified_act in {
                 "SOCIAL_GREETING",
                 "SOCIAL_CLOSING",
@@ -2975,7 +2982,7 @@ class ConversationManager:
             )
         local_social = (
             None
-            if saved_session_request
+            if saved_session_request or route_decision.route != "L-SOCIAL"
             else self._local_social_answer(
                 user_input, parsed, history=social_history
             )
@@ -2998,7 +3005,8 @@ class ConversationManager:
         conversation_history_answer = (
             None
             if (
-                generic_topic
+                route_decision.route != "L-LIVE"
+                or generic_topic
                 or _restore_context
                 or saved_session_request
                 or interrupted_recovery
@@ -3007,6 +3015,7 @@ class ConversationManager:
         )
         if (
             conversation_history_answer is None
+            and route_decision.route == "L-LIVE"
             and not _restore_context
             and not saved_session_request
             and self._dialogue_recall_requested(user_input, parsed)
