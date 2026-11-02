@@ -468,3 +468,41 @@ def test_dialogue_summary_extracts_file_subject_without_structured_target():
 
     assert insight
     assert "orchestrator.py" in insight[0]
+
+
+
+def test_saved_dialogue_summary_prefers_latest_substantive_archive_topic_over_stale_metadata():
+    session_id = "saved-dialogue-latest-topic"
+    data = {
+        "session_id": session_id,
+        "session_type": "dialogue",
+        "title": "حوار: موضوع قديم",
+        "dialogue_state": {
+            "session_id": session_id,
+            "last_topic": "موضوع قديم",
+            "exchange_archive": [
+                {
+                    "session_id": session_id,
+                    "user": "ناقشنا موضوعًا قديمًا.",
+                    "assistant": "تحدثنا عن بدايات الموضوع.",
+                    "target": "موضوع قديم",
+                    "context_kind": "dialogue",
+                    "conversation_domain": "general",
+                },
+                {
+                    "session_id": session_id,
+                    "user": "كيف يلتقي الفن التجريدي بالنقش البارز؟",
+                    "assistant": "ناقشنا التكوين والسطح والفراغ بوصفها عناصر مشتركة.",
+                    "target": "الفن التجريدي والنقش البارز",
+                    "context_kind": "dialogue",
+                    "conversation_domain": "general",
+                },
+            ],
+        },
+    }
+
+    summary = session_state._build_dialogue_session_summary(data, "summary")
+
+    assert "الفن التجريدي والنقش البارز" in summary
+    assert "موضوع قديم" not in summary
+    assert "التكوين والسطح والفراغ" in summary
