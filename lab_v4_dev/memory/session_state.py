@@ -1111,7 +1111,9 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
         if stored_topic and not _is_dialogue_control_text(stored_topic):
             topic = stored_topic
     topic = " ".join(topic.split())[:100].strip(" .،؛:")
-    if topic and _is_dialogue_control_text(state.get("last_topic")):
+    if topic and (latest_substantive is not None or _is_dialogue_control_text(state.get("last_topic"))):
+        # Keep the persisted semantic topic aligned with the same archive
+        # exchange used for title/summary/stop-point generation.
         state["last_topic"] = topic
     data.update({
         "schema_version": data.get("schema_version", SESSION_SCHEMA_VERSION),
