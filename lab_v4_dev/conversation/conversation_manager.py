@@ -137,8 +137,10 @@ class ConversationManager:
 
         if saved_session_request or selector_kind not in {"none", "reference", "count", "list", "compare", "status"}:
             route = "L-SESSION"
+        elif intent_value in {"cyber_explain", "architecture"} and domain in {"project", "technical"}:
+            route = "L-FACT"
         elif intent_value in {str(getattr(item, "value", item)).casefold() for item in _NON_EXECUTABLE_INTENTS}:
-            if domain == "project" or intent_value in {"cyber_explain", "architecture"} and domain == "technical":
+            if domain == "project":
                 route = "L-FACT"
             elif domain == "social" or act.startswith("SOCIAL_"):
                 route = "L-SOCIAL"
@@ -170,7 +172,11 @@ class ConversationManager:
         requested_output = str(selected_session.get("output_kind") or parsed.get("output_kind") or "none")
         if requested_output == "chat" or requested_output not in {"none", "brief", "summary", "report", "topic_summary", "transcript", "list", "continue_topic", "capability"}:
             requested_output = "none"
-        if route == "L-SESSION" and requested_output == "none":
+        if route == "L-SESSION" and session_ref is None:
+            # Search/ambiguous selectors are not evidence yet. Keep the
+            # report mode in selector metadata until an exact session resolves.
+            requested_output = "none"
+        elif route == "L-SESSION" and requested_output == "none":
             requested_output = "report"
         if route == "L-SESSION" and session_ref is not None:
             evidence_scope = "saved_session"
