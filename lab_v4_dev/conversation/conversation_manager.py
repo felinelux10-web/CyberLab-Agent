@@ -266,7 +266,12 @@ class ConversationManager:
             or getattr(live_state, "last_topic", None)
             or ""
         ).strip()
-        locked_topic = str(selected_session.get("topic_filter") or live_topic or "").strip() or None
+        locked_topic = str(
+            selected_session.get("topic_filter")
+            if route == "L-SESSION"
+            else live_topic
+            or ""
+        ).strip() or None
         lock_active = bool(
             (
                 route == "L-SESSION"
@@ -1197,7 +1202,15 @@ class ConversationManager:
         pending_saved_session_selection = {}
         active_report_followup = False
         active_report_continue = False
-        active_report_id = str(self.active_report_session_id or "").strip()
+        # ContextLock is the durable owner contract for saved-report follow-ups;
+        # the legacy scalar remains a compatibility mirror, not the authority.
+        locked_report_id = (
+            str(self.context_lock.session_id or "").strip()
+            if self.context_lock.active
+            and self.context_lock.reason == "saved_session_selection"
+            else ""
+        )
+        active_report_id = str(self.active_report_session_id or locked_report_id).strip()
         if active_report_id:
             from lab_v4_dev.memory.session_state import session_route_contract
             explicit_session_selector = session_route_contract(user_input)
@@ -1235,6 +1248,8 @@ class ConversationManager:
                 # saved-session selection will replace it after resolution.
                 self.active_report_session_id = None
                 self.active_report_topic_filter = None
+                if self.context_lock.reason == "saved_session_selection":
+                    self.context_lock = ContextLock()
 
         # Resolve saved-session ambiguity before NLU sees this turn.
         if self.dialogue_memory:
