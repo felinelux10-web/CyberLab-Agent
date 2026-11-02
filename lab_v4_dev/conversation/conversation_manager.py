@@ -169,9 +169,9 @@ class ConversationManager:
         elif intent_value in {"cyber_explain", "architecture"}:
             route = "L-FACT" if domain == "project" else "P-TOOL"
         elif intent_value == "propose_solution" and not str(parsed.get("target") or "").strip():
-            # A targetless proposal is a social/dialogue invitation, not an
-            # operational task. A concrete target is handled by P-TOOL below.
-            route = "L-SOCIAL" if domain != "execution" else "L-EXEC"
+            # A targetless proposal is a live dialogue request, not an
+            # operational task. Provider fallback remains authorized.
+            route = "L-LIVE" if domain != "execution" else "L-EXEC"
         elif intent_value in {"plan", "lab_plan"} and not str(parsed.get("target") or "").strip():
             route = "L-LIVE" if domain != "execution" else "L-EXEC"
         elif intent_value in {"propose_solution", "plan", "lab_plan"} and str(parsed.get("target") or "").strip():
@@ -185,10 +185,11 @@ class ConversationManager:
                 route = "L-FACT"
             elif domain == "technical":
                 route = "L-LIVE"
-            elif domain == "social" or intent_value == "personal_chat" or act in {
+            elif act in {"CASUAL_CONVERSATION", "CASUAL_DISCUSSION", "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP"}:
+                route = "L-LIVE"
+            elif domain == "social" or act in {
                 "SOCIAL_GREETING", "SOCIAL_CLOSING", "SOCIAL_ACKNOWLEDGEMENT",
-                "SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION",
-                "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP",
+                "SOCIAL_OPENING",
             }:
                 route = "L-SOCIAL"
             else:
@@ -227,7 +228,7 @@ class ConversationManager:
                 "brief", "summary", "report", "topic_summary", "transcript",
             } or explicit_history_request
         ) and selector_kind in {"none", "reference"}
-        if live_history_output and not has_live_dialogue and selector_kind == "reference":
+        if live_history_output and not has_live_exchange_evidence:
             route = "CLARIFY"
         if selector_kind == "reference" and not has_live_dialogue and selected_session.get("output_kind") in {
             "brief", "summary", "report", "topic_summary", "transcript",
@@ -330,6 +331,8 @@ class ConversationManager:
                 "selector_kind": selector_kind,
                 "saved_session_request": bool(saved_session_request),
                 "context_transition": transition.value,
+                **({"clarification_reason": "missing_live_evidence"}
+                   if route == "CLARIFY" and live_history_output and not has_live_exchange_evidence else {}),
                 **({"evidence_collection": "saved_dialogues"} if selector_kind == "collection" else {}),
             },
         )
@@ -3123,7 +3126,7 @@ class ConversationManager:
             )
         local_social = (
             None
-            if saved_session_request or route_decision.route != "L-SOCIAL"
+            if saved_session_request or route_decision.route not in {"L-SOCIAL", "L-LIVE"}
             else self._local_social_answer(
                 user_input, parsed, history=social_history
             )
