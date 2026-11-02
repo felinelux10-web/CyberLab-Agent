@@ -4656,15 +4656,21 @@ class ConversationManager:
             "سجل الحوار السابق:\n" + "\n\n".join(archive)
         )
         try:
-            generated = gateway_ask(
-                task,
-                system=(
-                    "أنت تسترجع حوارًا سابقًا. التزم بالسجل فقط. "
-                    "لا تضف أحداثًا غير موجودة. أجب مباشرة وبالعربية."
-                ),
-                max_tokens=900,
-                temperature=0.2,
-                routing_text=text,
+            route_decision = (parsed or {}).get("route_decision")
+            generated = (
+                gateway_ask(
+                    task,
+                    system=(
+                        "أنت تسترجع حوارًا سابقًا. التزم بالسجل فقط. "
+                        "لا تضف أحداثًا غير موجودة. أجب مباشرة وبالعربية."
+                    ),
+                    max_tokens=900,
+                    temperature=0.2,
+                    routing_text=text,
+                )
+                if route_decision is None or bool(
+                    getattr(route_decision, "provider_allowed", False)
+                ) else {}
             )
             answer = str((generated or {}).get("text") or "").strip()
             if (generated or {}).get("status") == "success" and answer:
@@ -5342,14 +5348,20 @@ class ConversationManager:
                     "قدراته إلا إذا كان ذلك بندًا صريحًا في السؤال."
                 )
 
-            result = gateway_ask(
-                prompt,
-                system=system,
-                # Reasoning can consume the full budget before GPT-5 emits
-                # visible text; grounded self-descriptions need extra headroom.
-                max_tokens=4000 if self_knowledge else 1600,
-                temperature=0.7,
-                routing_text=text,
+            route_decision = (parsed or {}).get("route_decision")
+            result = (
+                gateway_ask(
+                    prompt,
+                    system=system,
+                    # Reasoning can consume the full budget before GPT-5 emits
+                    # visible text; grounded self-descriptions need extra headroom.
+                    max_tokens=4000 if self_knowledge else 1600,
+                    temperature=0.7,
+                    routing_text=text,
+                )
+                if route_decision is None or bool(
+                    getattr(route_decision, "provider_allowed", False)
+                ) else {"status": "unavailable", "message": "provider denied by RouteDecision"}
             )
 
             if result.get("status") != "success":
