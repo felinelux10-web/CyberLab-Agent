@@ -177,3 +177,79 @@ def test_cyberlab_agent_project_identity_uses_local_project_state(monkeypatch):
     assert "ليس وصفًا عامًا لمختبر تدريب اختراق" in result["text"]
     assert "v5.9.13-dev" in result["text"]
     assert "Project Knowledge Engine" in result["text"]
+
+
+
+def test_finalize_route_freezes_saved_session_owner_and_provider_denial():
+    from dataclasses import FrozenInstanceError
+    import pytest
+    from lab_v4_dev.core.contracts import RouteDecision, SessionRef
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+
+    context = ContextStore()
+    manager = ConversationManager(
+        SimpleNamespace(context=context),
+        DialogueMemory(context),
+    )
+    decision = manager.finalize_route(
+        parsed={"intent": "session_restore", "confidence": 0.95},
+        selected_session={
+            "kind": "id",
+            "session_id": "saved-dialogue-42",
+            "output_kind": "summary",
+            "topic_filter": "الفن التجريدي",
+        },
+        saved_session_request=True,
+        selected_saved_session_id="saved-dialogue-42",
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+
+    assert isinstance(decision, RouteDecision)
+    assert decision.route == "L-SESSION"
+    assert decision.session_scope == "saved_id"
+    assert decision.session_ref == SessionRef("saved-dialogue-42")
+    assert decision.output_kind == "summary"
+    assert decision.evidence_scope == "saved_session"
+    assert decision.context_lock.active is True
+    assert decision.provider_allowed is False
+    with pytest.raises(FrozenInstanceError):
+        decision.route = "L-LIVE"
+
+
+def test_finalize_route_keeps_social_turn_local_and_project_facts_off_provider():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+
+    context = ContextStore()
+    manager = ConversationManager(
+        SimpleNamespace(context=context),
+        DialogueMemory(context),
+    )
+    social = manager.finalize_route(
+        parsed={
+            "intent": "personal_chat",
+            "conversation_domain": "social",
+            "conversation_act": "SOCIAL_GREETING",
+            "confidence": 0.9,
+        },
+        selected_session={"kind": "none"},
+        saved_session_request=False,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+    project = manager.finalize_route(
+        parsed={
+            "intent": "cyber_explain",
+            "conversation_domain": "project",
+            "confidence": 0.9,
+        },
+        selected_session={"kind": "none"},
+        saved_session_request=False,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+
+    assert social.route == "L-SOCIAL"
+    assert social.provider_allowed is False
+    assert project.route == "L-FACT"
+    assert project.evidence_scope == "project_state"
+    assert project.provider_allowed is False
