@@ -3235,35 +3235,41 @@ class ConversationManager:
                     "status": "denied", "intent": intent,
                     "source": "route_decision", "executed": False,
                     "text": "هذا الطلب غير مسموح ضمن قرار التوجيه الحالي.",
+                    "route_decision": route_decision,
                 }
             if route_decision.route == "CLARIFY":
                 return {
                     "status": "needs_clarification", "intent": intent,
                     "source": "route_decision", "executed": False,
                     "text": "يلزم تحديد السياق أو الجلسة المقصودة قبل المتابعة.",
+                    "route_decision": route_decision,
                 }
-            if (
-                route_decision.route in {"L-SOCIAL", "L-LIVE"}
-                and intent not in _NON_EXECUTABLE_INTENTS
-            ):
+            if route_decision.route in {"L-SOCIAL", "L-LIVE"}:
                 return self._handle_chat(
                     text, mode, parsed=parsed,
                     user_question=user_question or text, history=chat_history,
                 )
-            if route_decision.route == "L-SESSION" and intent not in {Intent.SESSION_RESTORE, Intent.RESUME}:
-                return {
-                    "status": "needs_clarification", "intent": intent,
-                    "source": "route_decision_session_guard", "executed": False,
-                    "text": "تم تحديد جلسة محفوظة، لكن نوع الطلب لا يطابق مسار استعادتها.",
+            if route_decision.route in {"L-SESSION", "L-FACT", "L-EXEC", "P-TOOL"}:
+                handle = self.orchestrator.handle
+                kwargs = {
+                    "parsed": parsed,
+                    "context_resolved": True,
+                    "conversation_history": chat_history,
+                    "context_transition": context_transition,
+                    "route_decision": route_decision,
                 }
-            if route_decision.route == "L-EXEC" and intent in _NON_EXECUTABLE_INTENTS:
-                return {
-                    "status": "needs_clarification", "intent": intent,
-                    "source": "route_decision_execution_guard", "executed": False,
-                    "text": "لا توجد نية تنفيذية صريحة تسمح بإرسال هذا الطلب إلى مسار التنفيذ.",
+                result = handle(text, **kwargs)
+                return dict(result) if isinstance(result, dict) else {
+                    "status": "error", "intent": intent,
+                    "source": "route_decision_orchestrator_contract",
+                    "executed": False,
+                    "text": "أعاد مالك المسار نتيجة غير صالحة.",
+                    "route_decision": route_decision,
                 }
+            raise ValueError(f"unhandled authoritative route: {route_decision.route}")
 
-
+        # Legacy compatibility path for direct callers without a finalized
+        # RouteDecision. ConversationManager.process always supplies one.
         # An unnamed interrupted-dialogue recovery is a conversational
         # continuation request. Keep its canonical restored intent/target for
         # memory bookkeeping, but send the selected archived branch to the
