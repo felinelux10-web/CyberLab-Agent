@@ -2980,7 +2980,7 @@ class ConversationManager:
         selected_output_kind = route_decision.output_kind
         if selected_output_kind != "none":
             result["output_kind"] = selected_output_kind
-        else:
+        elif route_decision.route == "L-SESSION":
             result.pop("output_kind", None)
         if (
             result.get("context_action") == "read_only_report"
