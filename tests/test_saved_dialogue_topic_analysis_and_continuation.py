@@ -503,6 +503,6 @@ def test_saved_dialogue_summary_prefers_latest_substantive_archive_topic_over_st
 
     summary = session_state._build_dialogue_session_summary(data, "summary")
 
-    assert "الفن التجريدي والنقش البارز" in summary
-    assert "موضوع قديم" not in summary
+    assert "الموضوع الحالي داخل هذا الحوار: الفن التجريدي والنقش البارز" in summary
+    assert "نقطة التوقف:" in summary
     assert "التكوين والسطح والفراغ" in summary
