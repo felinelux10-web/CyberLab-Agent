@@ -1107,13 +1107,26 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
     if isinstance(latest_substantive, dict):
         topic = _dialogue_exchange_subject(latest_substantive)
     if not topic:
+        # An exchange may not have been committed yet, while the bounded
+        # user-turn history already contains a grounded topic declaration.
+        for turn in reversed(history):
+            if not isinstance(turn, dict) or str(turn.get("role") or "").casefold() != "user":
+                continue
+            subject = _dialogue_exchange_subject({
+                "user": turn.get("content") or turn.get("user") or "",
+                "target": turn.get("target") or "",
+            })
+            if subject and not _is_dialogue_control_text(subject):
+                topic = subject
+                break
+    if not topic:
         stored_topic = str(state.get("last_topic") or state.get("pending_topic") or "").strip()
         if stored_topic and not _is_dialogue_control_text(stored_topic):
             topic = stored_topic
     topic = " ".join(topic.split())[:100].strip(" .،؛:")
-    if topic and (latest_substantive is not None or _is_dialogue_control_text(state.get("last_topic"))):
-        # Keep the persisted semantic topic aligned with the same archive
-        # exchange used for title/summary/stop-point generation.
+    if topic:
+        # Keep the persisted semantic topic aligned with the strongest
+        # available archive/history evidence, not a stale control-turn label.
         state["last_topic"] = topic
     data.update({
         "schema_version": data.get("schema_version", SESSION_SCHEMA_VERSION),
@@ -2223,15 +2236,9 @@ def analyze_repeated_dialogue_topics(*, limit: int = 8) -> list[dict]:
         if not meaningful:
             continue
         candidates = []
-        # Session title is persisted from the same dialogue checkpoint and
-        # remains useful when last_topic/targets are absent or control turns
-        # have overwritten them. Ignore generic titles, never work metadata.
-        saved_title = str(item.get("title") or session.get("title") or "").strip()
-        if saved_title and not _is_dialogue_control_text(saved_title):
-            candidates.append(saved_title)
-        last_topic = str(dialogue.get("last_topic") or "").strip() if isinstance(dialogue, dict) else ""
-        if last_topic and not _is_dialogue_control_text(last_topic):
-            candidates.append(last_topic)
+        # The exchange archive is primary evidence. Saved title/last_topic are
+        # fallback metadata only because legacy control turns may have made
+        # them stale or generic.
         for exchange in meaningful:
             target = str(exchange.get("target") or "").strip()
             if target and not _is_dialogue_control_text(target):
@@ -2240,6 +2247,14 @@ def analyze_repeated_dialogue_topics(*, limit: int = 8) -> list[dict]:
                 subject = _dialogue_exchange_subject(exchange)
                 if subject and not _is_dialogue_control_text(subject):
                     candidates.append(subject)
+        if not candidates:
+            saved_title = str(item.get("title") or session.get("title") or "").strip()
+            if saved_title and not _is_dialogue_control_text(saved_title):
+                candidates.append(saved_title)
+        if not candidates:
+            last_topic = str(dialogue.get("last_topic") or "").strip() if isinstance(dialogue, dict) else ""
+            if last_topic and not _is_dialogue_control_text(last_topic):
+                candidates.append(last_topic)
         if not candidates:
             brief = summarize_dialogue_exchanges(meaningful, limit=2)
             if brief.get("topic") and not _is_dialogue_control_text(brief["topic"]):
