@@ -535,3 +535,30 @@ def test_saved_dialogue_title_ignores_stale_social_target_on_substantive_exchang
 
     assert "النجوم النابضة" in result["title"]
     assert result["dialogue_state"]["last_topic"] != "مرحبا"
+
+
+
+def test_finalize_route_represents_saved_dialogue_collection_without_faking_single_session_ref():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+    from lab_v4_dev.intent.intents import Intent
+
+    context = ContextStore()
+    manager = ConversationManager(
+        SimpleNamespace(context=context),
+        DialogueMemory(context),
+    )
+    decision = manager.finalize_route(
+        parsed={"intent": Intent.MEMORY_DUMP, "confidence": 0.9},
+        selected_session={"kind": "collection", "output_kind": "list"},
+        saved_session_request=True,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+
+    assert decision.route == "L-SESSION"
+    assert decision.session_scope == "none"
+    assert decision.session_ref is None
+    assert decision.output_kind == "list"
+    assert decision.evidence_scope == "none"
+    assert decision.metadata["evidence_collection"] == "saved_dialogues"
+    assert decision.provider_allowed is False
