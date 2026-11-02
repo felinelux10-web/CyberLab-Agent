@@ -2937,6 +2937,22 @@ class ConversationManager:
         parsed["output_kind"] = route_decision.output_kind
         self.context_lock = route_decision.context_lock
 
+        if (
+            route_decision.route == "CLARIFY"
+            and route_decision.metadata.get("clarification_reason") == "missing_live_evidence"
+        ):
+            history_result = self._conversation_history_answer(user_input, parsed)
+            if history_result is None:
+                history_result = {
+                    "status": "needs_clarification",
+                    "intent": Intent.MEMORY_DUMP,
+                    "source": "dialogue_memory",
+                    "text": "لا توجد تبادلات حوارية مكتملة في الجلسة الحالية يمكن استرجاعها.",
+                    "executed": False,
+                }
+            history_result["semantic_request"] = semantic.as_dict()
+            return self._attach_route_decision(history_result, route_decision)
+
         if ambiguous_resume:
             return self._attach_route_decision({
                 "status": "needs_clarification",
