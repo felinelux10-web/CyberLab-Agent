@@ -39,6 +39,8 @@ def test_repeated_topic_analysis_groups_evidence_across_saved_dialogues(monkeypa
         "الفن التجريدي والنقش البارز",
         "كيف يلتقي الفن التجريدي مع النقش البارز؟",
     )
+    second["dialogue_state"]["last_topic"] = ""
+    second["dialogue_state"]["exchange_archive"][0]["target"] = ""
     work = {
         "session_id": "work-only",
         "session_type": "work",
