@@ -1105,14 +1105,7 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
     )
     topic = ""
     if isinstance(latest_substantive, dict):
-        latest_target = str(latest_substantive.get("target") or "").strip()
-        if latest_target and not _is_dialogue_control_text(latest_target):
-            topic = latest_target
-        else:
-            latest_insights = _dialogue_exchange_insights(latest_substantive)
-            topic = str(latest_insights[0] if latest_insights else "").strip()
-            if not topic:
-                topic = str(latest_substantive.get("user") or "").strip()
+        topic = _dialogue_exchange_subject(latest_substantive)
     if not topic:
         stored_topic = str(state.get("last_topic") or state.get("pending_topic") or "").strip()
         if stored_topic and not _is_dialogue_control_text(stored_topic):
@@ -1693,6 +1686,36 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         "لا يتضمن هذا التبادل حقولًا دلالية أو ردًا موضوعيًا كافيًا؛ لذلك لم أضف له مضمونًا تخمينيًا."
     ]
 
+def _dialogue_exchange_subject(exchange: dict) -> str:
+    """Resolve a concise subject from explicit target or user wording."""
+    target = " ".join(str(exchange.get("target") or "").split()).strip()
+    if target and not _is_dialogue_control_text(target):
+        return target[:100]
+    user_text = " ".join(str(exchange.get("user") or "").split()).strip()
+    if not user_text or _is_dialogue_control_text(user_text):
+        return ""
+    normalized = (
+        user_text.casefold().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        .replace("ى", "ي").replace("ـ", "")
+    )
+    normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
+    if "cyberlab" in normalized:
+        return "مشروع CyberLab Agent"
+    patterns = (
+        r"كيف\s+(?:تعمل|يعمل|يتم|يلتقي|ترتبط)\s+(.+?)(?:[؟?!.،؛]|$)",
+        r"ما\s+(?:وظيفة|دور|معنى|هو|هي)\s+(.+?)(?:[؟?!.،؛]|$)",
+        r"ما\s+العلاقة\s+بين\s+(.+?)(?:[؟?!.،؛]|$)",
+        r"(?:ناقشنا|تحدثنا\s+عن|موضوع\s+(?:عن|حول)|فكرة\s+(?:عن|حول))\s+(.+?)(?:[؟?!.،؛]|$)",
+        r"(?:عن|حول|بخصوص)\s+(.+?)(?:[؟?!.،؛]|$)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, user_text, flags=re.IGNORECASE)
+        if match:
+            subject = " ".join(match.group(1).split()).strip(" .،؛:!?؟")
+            if subject and not _is_dialogue_control_text(subject):
+                return subject[:100]
+    return ""
+
 def _dialogue_assistant_insight(exchange: dict) -> str:
     """Extract a concise grounded insight from an assistant turn without quoting the turn."""
     if _is_dialogue_control_exchange(exchange):
@@ -1854,16 +1877,10 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         "حفظ سياق الحوار", "جلسة حوار", "حوار محفوظ", "غير محدد من سجل الحوار",
         "حوار بلا موضوع محدد", "جلسة بلا عنوان",
     }
-    content_topic = ""
-    for item in reversed(summary_exchanges):
-        target = " ".join(str(item.get("target") or "").split()).strip()
-        if target and not _is_dialogue_control_text(target):
-            content_topic = target[:100]
-            break
-        insights = _dialogue_exchange_insights(item)
-        if insights:
-            content_topic = " ".join(str(insights[0]).split())[:100]
-            break
+    content_topic = next(
+        (_dialogue_exchange_subject(item) for item in reversed(summary_exchanges) if _dialogue_exchange_subject(item)),
+        "",
+    )
     stored_topic_is_control = _is_dialogue_control_text(stored_topic)
     stored_topic_is_generic = stored_topic in generic_topics
     # Prefer the latest substantive archive evidence over stale metadata.
