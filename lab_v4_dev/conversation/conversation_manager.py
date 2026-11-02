@@ -5522,6 +5522,11 @@ class ConversationManager:
         try:
             intent = (parsed or {}).get("intent")
             response_attributes = (parsed or {}).get("response_attributes") or {}
+            route_decision = (parsed or {}).get("route_decision")
+            evidence_scope = str(
+                getattr(route_decision, "evidence_scope", "none")
+                if route_decision is not None else "none"
+            )
             compound_request = bool(response_attributes.get("compound_request"))
             normalized_question = self._normalize_transition_text(user_question or text)
             general_scope_markers = (
@@ -5592,6 +5597,7 @@ class ConversationManager:
                     }
                 )
                 and project_scope == ProjectScope.CURRENT_PROJECT
+                and (route_decision is None or evidence_scope == "project_state")
             ):
                 try:
                     if authorized_project_context:
