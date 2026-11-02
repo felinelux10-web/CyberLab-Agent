@@ -1126,13 +1126,13 @@ class ConversationManager:
             memory_reset = getattr(self.dialogue_memory, "reset", None)
             if callable(memory_reset):
                 memory_reset()
-            return {
+            return self._finalize_direct_result({
                 "status": "success",
                 "intent": Intent.RESTART,
                 "source": "conversation_manager",
                 "text": "بدأت جلسة حوار جديدة ومستقلة. لم يتم إنشاء أو تنفيذ أي مهمة، ولم أستعد سياق الجلسة السابقة.",
                 "executed": False,
-            }
+            }, intent=Intent.RESTART, route="L-SOCIAL")
 
         selected_saved_session_id = None
         pending_saved_session_selection = {}
@@ -1206,13 +1206,14 @@ class ConversationManager:
                             lines.append(f"- الخيار {number}: {title} [{session_id}]")
                             if item.get("summary"):
                                 lines.append(f"  الملخص: {item['summary']}")
-                        return {
+                        return self._finalize_direct_result({
                             "status": "needs_clarification",
                             "intent": Intent.SESSION_RESTORE,
                             "source": "saved_session_selector",
                             "executed": False,
                             "text": "\n".join(lines),
-                        }
+                        }, intent=Intent.SESSION_RESTORE, route="L-SESSION",
+                           selected_session={"kind": "collection"})
                     state.pending_clarification = None
 
             # Preserve project-list ordering clarification behavior.
@@ -1234,19 +1235,19 @@ class ConversationManager:
         # A direct stop request is a conversation control, not an executable
         # task. Do not send it through the parser fallback or Orchestrator.
         if self._is_explicit_stop_request(user_input):
-            return {
+            return self._finalize_direct_result({
                 "status": "success",
                 "intent": Intent.STOP,
                 "source": "conversation_manager",
                 "text": "سأتوقف عن متابعة الطلب الحالي؛ لم أرسل أمر إلغاء إلى أي مهمة تنفيذية.",
                 "executed": False,
-            }
+            }, intent=Intent.STOP, route="L-SOCIAL")
 
         # Incomplete fragments must not inherit a prior continuation act or
         # stale target. Asking for the missing text is read-only: do not append
         # it to dialogue history, update the active topic, or call a provider.
         if self._is_fragmentary_turn(user_input):
-            return {
+            return self._finalize_direct_result({
                 "status": "needs_clarification",
                 "intent": Intent.PERSONAL_CHAT,
                 "source": "conversation_manager",
@@ -1255,7 +1256,7 @@ class ConversationManager:
                     "اكتب الفكرة كاملة أو وضّح ما تريد متابعته."
                 ),
                 "executed": False,
-            }
+            }, intent=Intent.PERSONAL_CHAT, route="CLARIFY")
 
         # Parse the current turn without any persistent NLU context first.
         # The transition decision below is the sole authority that may grant
