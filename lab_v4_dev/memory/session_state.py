@@ -2183,7 +2183,7 @@ def analyze_repeated_dialogue_topics(*, limit: int = 8) -> list[dict]:
                 token = token[1:]
             if len(token) > 3 and token.startswith("ال"):
                 token = token[2:]
-            if len(token) > 2 and token not in stop_words:
+            if (len(token) > 2 or token == "فن") and token not in stop_words:
                 normalized_tokens.add(token)
         return normalized_tokens
 
