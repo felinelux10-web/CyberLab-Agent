@@ -273,17 +273,14 @@ class ConversationManager:
             or getattr(live_state, "last_topic", None)
             or ""
         ).strip()
-        locked_topic = str(
-            selected_session.get("topic_filter")
-            if route == "L-SESSION"
-            else live_topic
-            or ""
-        ).strip() or None
+        locked_topic_value = (
+            selected_session.get("topic_filter") if route == "L-SESSION" else live_topic
+        )
+        locked_topic = str(locked_topic_value or "").strip() or None
+        # A collection/list or unresolved search is not a single session owner.
+        # Only an exact SessionRef may establish a saved-session context lock.
         lock_active = bool(
-            (
-                route == "L-SESSION"
-                and (session_ref or locked_topic or requested_output != "none")
-            )
+            (route == "L-SESSION" and session_ref is not None)
             or (session_scope == "live_current" and (live_session_id or locked_topic))
         )
         lock = ContextLock(
