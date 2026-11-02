@@ -2058,6 +2058,122 @@ def build_session_restore_summary(data: dict | None = None, *, report_mode: str 
     return "\n".join(lines)
 
 
+
+def analyze_repeated_dialogue_topics(*, limit: int = 8) -> list[dict]:
+    """Find topics supported by multiple distinct saved dialogue sessions.
+
+    Session identity and numbering come from the canonical session index.
+    Topic evidence comes only from each matching dialogue archive; work
+    checkpoints and the live DialogueMemory are never consulted.
+    """
+    clusters: list[dict] = []
+    stop_words = {
+        "من", "في", "عن", "على", "الى", "إلى", "مع", "بين", "حول",
+        "هذا", "هذه", "ذلك", "تلك", "كان", "كانت", "نحن", "كنا",
+        "الذي", "التي", "وما", "وهو", "وهي", "موضوع", "موضوعات",
+        "جلسة", "جلسات", "حوار", "الحوار", "السابق", "السابقة",
+        "المحفوظ", "المحفوظة", "الوكيل", "ناقشنا", "تحدثنا",
+    }
+
+    def signature(value: object) -> set[str]:
+        normalized = " ".join(str(value or "").split()).casefold()
+        normalized = (
+            normalized.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+            .replace("ى", "ي").replace("ـ", "")
+        )
+        normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
+        tokens = re.findall(r"[a-z0-9]+|[\u0621-\u064a]+", normalized)
+        return {token for token in tokens if len(token) > 2 and token not in stop_words}
+
+    index = get_session_index()
+    for number, item in enumerate(index, 1):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("session_type") or "").casefold() != "dialogue":
+            continue
+        session_id = str(item.get("session_id") or "").strip()
+        if not session_id:
+            continue
+        detail = get_session_by_id(session_id)
+        session = detail if isinstance(detail, dict) and detail else item
+        if str(session.get("session_id") or "").strip() != session_id:
+            continue
+        exchanges = _dialogue_exchanges(session)
+        meaningful = [
+            exchange for exchange in exchanges
+            if not _is_dialogue_control_exchange(exchange)
+        ]
+        if not meaningful:
+            continue
+        dialogue = session.get("dialogue_state") or {}
+        candidates = []
+        last_topic = str(dialogue.get("last_topic") or "").strip() if isinstance(dialogue, dict) else ""
+        if last_topic and not _is_dialogue_control_text(last_topic):
+            candidates.append(last_topic)
+        for exchange in meaningful:
+            target = str(exchange.get("target") or "").strip()
+            if target and not _is_dialogue_control_text(target):
+                candidates.append(target)
+        if not candidates:
+            brief = summarize_dialogue_exchanges(meaningful, limit=2)
+            if brief.get("topic") and not _is_dialogue_control_text(brief["topic"]):
+                candidates.append(str(brief["topic"]))
+
+        session_topics = []
+        seen_signatures = set()
+        for candidate in candidates:
+            tokens = signature(candidate)
+            key = tuple(sorted(tokens))
+            if len(tokens) < 2 or not key or key in seen_signatures:
+                continue
+            seen_signatures.add(key)
+            session_topics.append((candidate, tokens))
+        for label, tokens in session_topics:
+            best = None
+            best_score = 0.0
+            for cluster in clusters:
+                overlap = len(tokens & cluster["tokens"])
+                denominator = min(len(tokens), len(cluster["tokens"])) or 1
+                score = overlap / denominator
+                if overlap >= 2 and score >= 0.5 and score > best_score:
+                    best = cluster
+                    best_score = score
+            if best is None:
+                best = {
+                    "topic": label,
+                    "tokens": set(tokens),
+                    "sessions": [],
+                    "evidence": [],
+                }
+                clusters.append(best)
+            if not any(entry["session_id"] == session_id for entry in best["sessions"]):
+                best["sessions"].append({
+                    "number": number,
+                    "session_id": session_id,
+                    "title": str(item.get("title") or label),
+                })
+                best["evidence"].append(label)
+                if len(label) > len(best["topic"]):
+                    best["topic"] = label
+                best["tokens"].update(tokens)
+
+    repeated = [
+        {
+            "topic": cluster["topic"],
+            "session_count": len(cluster["sessions"]),
+            "sessions": cluster["sessions"],
+            "evidence": list(dict.fromkeys(cluster["evidence"])),
+        }
+        for cluster in clusters
+        if len(cluster["sessions"]) > 1
+    ]
+    repeated.sort(
+        key=lambda item: (item["session_count"], len(item["evidence"]), item["topic"]),
+        reverse=True,
+    )
+    return repeated[:max(1, int(limit))]
+
+
 def build_session_brief_summary(data: dict | None = None) -> dict:
     """Build a concise list summary from saved dialogue/work evidence."""
     session = data if isinstance(data, dict) else {}
