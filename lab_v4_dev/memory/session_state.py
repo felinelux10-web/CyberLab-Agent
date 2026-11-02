@@ -1864,10 +1864,6 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         if insights:
             content_topic = " ".join(str(insights[0]).split())[:100]
             break
-        user_text = " ".join(str(item.get("user") or "").split()).strip()
-        if user_text and not _is_dialogue_control_text(user_text):
-            content_topic = user_text[:100]
-            break
     stored_topic_is_control = _is_dialogue_control_text(stored_topic)
     stored_topic_is_generic = stored_topic in generic_topics
     # Prefer the latest substantive archive evidence over stale metadata.
