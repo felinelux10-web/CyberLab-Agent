@@ -210,11 +210,45 @@ class ConversationManager:
             route = route_override
 
         live_state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
-        has_live_exchange_evidence = bool(
-            live_state is not None and (
-                getattr(live_state, "exchange_archive", [])
-                or getattr(live_state, "history", [])
+        live_session_id = str(getattr(live_state, "session_id", "") or "")
+        live_archive = getattr(live_state, "exchange_archive", []) if live_state is not None else []
+        live_history = getattr(live_state, "history", []) if live_state is not None else []
+
+        def is_live_dialogue_record(item):
+            if not isinstance(item, dict):
+                return False
+            item_session = str(item.get("session_id") or "")
+            if live_session_id and item_session and item_session != live_session_id:
+                return False
+            kind = str(item.get("context_kind") or "dialogue").casefold()
+            domain = str(item.get("conversation_domain") or "general").casefold()
+            return (
+                kind not in {"work", "system", "execution"}
+                and domain not in {"work", "system", "execution"}
+                and not item.get("recall_only")
+                and not item.get("state_boundary_only")
             )
+
+        archive_evidence = any(
+            is_live_dialogue_record(item)
+            and str(item.get("user") or "").strip()
+            and str(item.get("assistant") or "").strip()
+            for item in (live_archive or [])
+        )
+        history_has_user = any(
+            is_live_dialogue_record(item)
+            and item.get("role") == "user"
+            and str(item.get("content") or "").strip()
+            for item in (live_history or [])
+        )
+        history_has_assistant = any(
+            is_live_dialogue_record(item)
+            and item.get("role") == "assistant"
+            and str(item.get("content") or "").strip()
+            for item in (live_history or [])
+        )
+        has_live_exchange_evidence = bool(
+            archive_evidence or (history_has_user and history_has_assistant)
         )
         has_live_dialogue = bool(
             has_live_exchange_evidence
