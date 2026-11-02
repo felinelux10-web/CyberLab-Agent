@@ -506,3 +506,32 @@ def test_saved_dialogue_summary_prefers_latest_substantive_archive_topic_over_st
     assert "الموضوع الحالي داخل هذا الحوار: الفن التجريدي والنقش البارز" in summary
     assert "نقطة التوقف:" in summary
     assert "التكوين والسطح والفراغ" in summary
+
+
+
+def test_saved_dialogue_title_ignores_stale_social_target_on_substantive_exchange(monkeypatch):
+    records = []
+    monkeypatch.setattr(session_state, "get_session_index", lambda: [])
+    monkeypatch.setattr(session_state, "load_session", lambda: {})
+    monkeypatch.setattr(session_state, "_write_session_detail", records.append)
+    monkeypatch.setattr(session_state, "_append_recent_archive", lambda data: None)
+
+    session_id = "dialogue-stale-control-target"
+    state = {
+        "session_id": session_id,
+        "last_topic": "مرحبا",
+        "history": [],
+        "exchange_archive": [{
+            "session_id": session_id,
+            "user": "كيف تعمل النجوم النابضة؟",
+            "assistant": "تنبض النجوم النابضة بإشارات دورية بسبب دورانها السريع.",
+            "target": "مرحبا",
+            "context_kind": "dialogue",
+            "conversation_domain": "technical",
+        }],
+    }
+
+    result = session_state.save_dialogue_checkpoint(dialogue_state=state)
+
+    assert "النجوم النابضة" in result["title"]
+    assert result["dialogue_state"]["last_topic"] != "مرحبا"
