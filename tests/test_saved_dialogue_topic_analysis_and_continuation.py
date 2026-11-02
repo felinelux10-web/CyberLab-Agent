@@ -82,6 +82,7 @@ def test_saved_dialogue_continuation_uses_selected_archive_without_mutating_live
         "الفن التجريدي والنقش البارز",
         "ناقشنا العلاقة بين الفن التجريدي والنقش البارز.",
     )
+    saved["dialogue_state"]["last_topic"] = "مرحبا"
     monkeypatch.setattr(
         session_state,
         "get_session_by_id",
