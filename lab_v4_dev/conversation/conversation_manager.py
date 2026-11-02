@@ -4438,6 +4438,11 @@ class ConversationManager:
             )
         ]
         response_attributes = dict((parsed or {}).get("response_attributes") or {})
+        topic_list_request = any(marker in normalized_query for marker in (
+            "ما الموضوعين", "الموضوعين", "ما المواضيع", "الموضوعات التي",
+        )) and not any(marker in normalized_query for marker in (
+            "ملخص", "لخص", "تلخيص", "تقرير",
+        ))
         response_mode = str(
             response_attributes.get("dialogue_response_mode", "")
         ).casefold()
@@ -4541,6 +4546,7 @@ class ConversationManager:
         elif (
             not response_mode
             and history_act in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
+            and not topic_list_request
         ):
             response_mode = "summary"
 
