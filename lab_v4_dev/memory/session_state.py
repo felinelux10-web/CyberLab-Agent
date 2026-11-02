@@ -1462,6 +1462,8 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         ]
 
     topic = " ".join(str(exchange.get("target") or "").split()).strip()
+    if topic and _is_dialogue_control_text(topic):
+        topic = ""
     assistant_text = str(exchange.get("assistant") or "").strip()
     answer_candidates = []
     for paragraph in re.split(r"\n+", assistant_text):
