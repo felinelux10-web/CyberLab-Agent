@@ -2767,7 +2767,10 @@ class ConversationManager:
         recovery_intent = parsed.get("intent")
         recovery_is_dialogue = bool(
             recovery_mode in {"interrupted_branch", "named_topic_return", "ordinal_topic_return"}
-            and recovery_intent in _NON_EXECUTABLE_INTENTS
+            and (
+                recovery_intent in _NON_EXECUTABLE_INTENTS
+                or recovery_intent == Intent.MEMORY_DUMP
+            )
         )
         if recovery_is_dialogue and recovery_mode in {"interrupted_branch", "named_topic_return"}:
             parsed = dict(parsed or {})
@@ -2782,11 +2785,16 @@ class ConversationManager:
             attributes.pop("dialogue_recovery", None)
             parsed["response_attributes"] = attributes
             recovery_mode = ""
+        local_project_answer = (
+            self._local_project_progress_answer(user_input, parsed, context_entity)
+            if not saved_session_request and not _restore_context else None
+        )
         ambiguous_resume = self._ambiguous_resume_without_domain(user_input, parsed)
 
         route_override = (
             "CLARIFY" if ambiguous_resume
             else "L-LIVE" if recovery_is_dialogue
+            else "L-FACT" if local_project_answer is not None
             else None
         )
         # Canonical semantic request follows the context-authorized parse and
@@ -2868,9 +2876,6 @@ class ConversationManager:
         # existing owners.
         # Project progress is a local knowledge request, not generic chat or dialogue recall.
         # Resolve scope from the current turn plus an already-authorized active branch.
-        local_project_answer = self._local_project_progress_answer(
-            user_input, parsed, context_entity
-        )
         if (
             local_project_answer is not None
             and route_decision.route == "L-FACT"
