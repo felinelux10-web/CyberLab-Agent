@@ -216,7 +216,7 @@ def test_finalize_route_freezes_saved_session_owner_and_provider_denial():
         decision.route = "L-LIVE"
 
 
-def test_finalize_route_keeps_social_turn_local_and_project_facts_off_provider():
+def test_finalize_route_keeps_greetings_local_and_marks_project_facts_as_evidence_first():
     from lab_v4_dev.conversation.semantic_contract import ContextTransition
 
     context = ContextStore()
@@ -252,7 +252,7 @@ def test_finalize_route_keeps_social_turn_local_and_project_facts_off_provider()
     assert social.provider_allowed is False
     assert project.route == "L-FACT"
     assert project.evidence_scope == "project_state"
-    assert project.provider_allowed is False
+    assert project.provider_allowed is True
 
 
 
