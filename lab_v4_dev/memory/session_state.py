@@ -1426,17 +1426,6 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     if not user_text or _is_dialogue_control_text(user_text):
         return []
 
-    if (
-        "cyberlab" in normalized
-        and any(marker in normalized for marker in (
-            "اخر تعديلات", "اخر نقطة توقف", "نقطة توقفنا", "ماذا كنا نعمل",
-        ))
-    ):
-        return [
-            "سأل المستخدم عن آخر تعديلات العمل ونقطة التوقف العملية في مشروع CyberLab Agent؛ "
-            "ولا يثبت هذا السؤال وحده تفاصيل تنفيذية إضافية."
-        ]
-
     insights = []
     for field in (
         "semantic_summary", "summary", "gist", "key_points",
@@ -1457,6 +1446,17 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         .replace("ى", "ي").replace("ـ", "")
     )
     normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
+    if (
+        "cyberlab" in normalized
+        and any(marker in normalized for marker in (
+            "اخر تعديلات", "اخر نقطة توقف", "نقطة توقفنا", "ماذا كنا نعمل",
+        ))
+    ):
+        return [
+            "سأل المستخدم عن آخر تعديلات العمل ونقطة التوقف العملية في مشروع CyberLab Agent؛ "
+            "ولا يثبت هذا السؤال وحده تفاصيل تنفيذية إضافية."
+        ]
+
     topic = " ".join(str(exchange.get("target") or "").split()).strip()
     assistant_text = str(exchange.get("assistant") or "").strip()
     answer_candidates = []
