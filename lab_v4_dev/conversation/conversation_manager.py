@@ -2977,12 +2977,11 @@ class ConversationManager:
             chat_history=chat_history,
             context_transition=transition.value,
         )
-        selected_output_kind = (
-            (parsed.get("session_selector") or {}).get("output_kind")
-            or parsed.get("output_kind")
-        )
-        if selected_output_kind:
+        selected_output_kind = route_decision.output_kind
+        if selected_output_kind != "none":
             result["output_kind"] = selected_output_kind
+        else:
+            result.pop("output_kind", None)
         if (
             result.get("context_action") == "read_only_report"
             and str(result.get("session_id") or "").strip()
@@ -3022,6 +3021,7 @@ class ConversationManager:
 
         result = dict(result)
         result["semantic_request"] = semantic.as_dict()
+        result["route_decision"] = route_decision
 
         # Saving an explanation is only offered for an actual technical
         # explanation response. Never leak a knowledge-save prompt into casual
