@@ -1061,7 +1061,10 @@ class ConversationManager:
     @staticmethod
     def _continue_saved_dialogue(text: str, session_id: str) -> dict | None:
         """Continue one saved dialogue without importing it into live memory."""
-        from lab_v4_dev.memory.session_state import _dialogue_exchanges, get_session_by_id
+        from lab_v4_dev.memory.session_state import (
+            _dialogue_exchanges, _dialogue_exchange_subject,
+            _is_dialogue_control_text, get_session_by_id,
+        )
 
         saved = get_session_by_id(session_id)
         if (
@@ -1079,10 +1082,13 @@ class ConversationManager:
             return None
 
         dialogue = saved.get("dialogue_state") or {}
-        topic = str(
-            (dialogue.get("last_topic") if isinstance(dialogue, dict) else "")
-            or next((item.get("target") for item in reversed(meaningful) if item.get("target")), "")
-        ).strip()
+        stored_topic = str(dialogue.get("last_topic") or "").strip() if isinstance(dialogue, dict) else ""
+        topic = stored_topic if stored_topic and not _is_dialogue_control_text(stored_topic) else ""
+        if not topic:
+            topic = next(
+                (_dialogue_exchange_subject(item) for item in reversed(meaningful) if _dialogue_exchange_subject(item)),
+                "",
+            )
         latest = meaningful[-1]
         domain = str(latest.get("conversation_domain") or "general").casefold()
         if domain in {"project", "work", "system", "execution"}:
