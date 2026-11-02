@@ -636,6 +636,66 @@ class ConversationManager:
 
 
     @staticmethod
+    def _is_current_project_identity_request(text: str) -> bool:
+        normalized = normalize_text(str(text or ""))
+        names_project = any(marker in normalized for marker in (
+            "cyberlab_agent", "cyberlab agent", "مشروع cyberlab",
+        ))
+        asks_what_it_is = any(marker in normalized for marker in (
+            "ماهو", "ما هو", "ماهي", "ما هي", "عرف",
+            "ما طبيعة", "ما وظيفة المشروع", "ما هذا المشروع",
+        ))
+        asks_agent_identity = any(marker in normalized for marker in (
+            "من انت", "من تكون", "ما هويتك", "من هو الوكيل",
+        ))
+        return names_project and asks_what_it_is and not asks_agent_identity
+
+    @staticmethod
+    def _local_current_project_identity_answer() -> dict:
+        """Describe this checkout's project from its local project-state record."""
+        try:
+            from lab_v4_dev.awareness.project_knowledge import get_project_state
+            state = get_project_state()
+        except Exception as exc:
+            return {
+                "status": "needs_clarification",
+                "intent": Intent.CYBER_EXPLAIN,
+                "source": "local_project_identity",
+                "executed": False,
+                "text": f"لم أتمكن من قراءة سجل تعريف المشروع المحلي ({type(exc).__name__})؛ لن أستبدله بوصف عام أو تخميني.",
+            }
+        state = state if isinstance(state, dict) else {}
+        lines = [
+            "CyberLab Agent هو المشروع البرمجي الموجود في هذا المستودع والذي نعمل على تطويره؛ وليس وصفًا عامًا لمختبر تدريب اختراق.",
+            "ملامح المشروع المثبتة في سجل الحالة المحلي:",
+        ]
+        fields = (
+            ("version", "الإصدار"),
+            ("current_focus", "محور التطوير الحالي"),
+            ("last_goal", "آخر هدف عمل مسجل"),
+            ("last_step", "الخطوة التالية المسجلة"),
+        )
+        for key, label in fields:
+            value = str(state.get(key) or "").strip()
+            if value and value not in {"?", "unknown", "غير معروف", "غير متاح"}:
+                lines.append(f"- {label}: {value}")
+        for key, label in (("active", "عناصر العمل النشطة"), ("planned", "العناصر المخططة")):
+            values = [str(value).strip() for value in (state.get(key) or []) if str(value).strip()]
+            if values:
+                lines.append(f"- {label}: " + "؛ ".join(values[:5]))
+        if state.get("completed_count") is not None:
+            lines.append(f"- العناصر المكتملة المسجلة: {state['completed_count']}")
+        if len(lines) == 2:
+            lines.append("لم يوفر سجل الحالة الحالي تفاصيل إضافية كافية عن التركيز أو التقدم.")
+        return {
+            "status": "success",
+            "intent": Intent.CYBER_EXPLAIN,
+            "source": "local_project_identity",
+            "executed": False,
+            "text": "\n".join(lines),
+        }
+
+    @staticmethod
     def _is_memory_inventory_request(text: str) -> bool:
         """Recognize broad requests to inspect the agent's locally persisted memory."""
         normalized = ConversationManager._normalize_transition_text(text)
@@ -1085,6 +1145,12 @@ class ConversationManager:
         ).casefold() == "interrupted_branch"
         from lab_v4_dev.memory.session_state import session_route_contract
         selected_session = session_route_contract(user_input)
+        if (
+            selected_session.get("kind") in {"none", "reference"}
+            and self._is_current_project_identity_request(user_input)
+        ):
+            return self._local_current_project_identity_answer()
+
         normalized_repeated_topic_query = normalize_text(user_input)
         repeated_topic_request = any(marker in normalized_repeated_topic_query for marker in (
             "اكثر موضوع متكرر", "الموضوع الاكثر تكرارا", "موضوع متكرر",
