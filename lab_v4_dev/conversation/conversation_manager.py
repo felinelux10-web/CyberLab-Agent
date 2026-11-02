@@ -1481,10 +1481,24 @@ class ConversationManager:
             inherited_report_mode = str(
                 pending_saved_session_selection.get("report_mode") or ""
             ).strip()
+            locked_output_kind = (
+                self.context_lock.output_kind
+                if self.context_lock.active
+                and self.context_lock.reason == "saved_session_selection"
+                else None
+            )
             inherited_output_kind = str(
-                pending_saved_session_selection.get("output_kind") or ""
+                pending_saved_session_selection.get("output_kind") or locked_output_kind or ""
             ).strip()
-            inherited_topic_filter = pending_saved_session_selection.get("topic_filter")
+            inherited_topic_filter = (
+                pending_saved_session_selection.get("topic_filter")
+                or (
+                    self.context_lock.topic
+                    if self.context_lock.active
+                    and self.context_lock.reason == "saved_session_selection"
+                    else None
+                )
+            )
             selected_session = {
                 "kind": "id",
                 "session_id": selected_saved_session_id,
