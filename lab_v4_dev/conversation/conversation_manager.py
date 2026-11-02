@@ -201,13 +201,18 @@ class ConversationManager:
             route = route_override
 
         live_state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
-        has_live_dialogue = bool(
+        has_live_exchange_evidence = bool(
             live_state is not None and (
                 getattr(live_state, "exchange_archive", [])
                 or getattr(live_state, "history", [])
-                or getattr(live_state, "context_history", [])
-                or getattr(live_state, "last_topic", None)
             )
+        )
+        has_live_dialogue = bool(
+            has_live_exchange_evidence
+            or (live_state is not None and (
+                getattr(live_state, "context_history", [])
+                or getattr(live_state, "last_topic", None)
+            ))
             or bool(
                 callable(getattr(self.dialogue_memory, "active_context_entity", None))
                 and self.dialogue_memory.active_context_entity()
@@ -242,13 +247,15 @@ class ConversationManager:
         elif route == "L-SESSION":
             session_scope = "none"
             session_ref = None
-        elif (
-            selector_kind in {"none", "reference"}
-            and has_live_dialogue
-            and live_history_output
-        ) or (
-            selector_kind == "reference" and has_live_dialogue
-        ) or (transition in CONTEXTUAL_TRANSITIONS and has_live_dialogue):
+        elif route != "CLARIFY" and (
+            (
+                selector_kind in {"none", "reference"}
+                and has_live_exchange_evidence
+                and live_history_output
+            ) or (
+                selector_kind == "reference" and has_live_dialogue
+            ) or (transition in CONTEXTUAL_TRANSITIONS and has_live_dialogue)
+        ):
             session_scope = "live_current"
             session_ref = None
         else:
@@ -316,7 +323,7 @@ class ConversationManager:
             topic_filter=str(selected_session.get("topic_filter") or "").strip() or None,
             context_lock=lock,
             evidence_scope=evidence_scope,
-            provider_allowed=route in {"L-SOCIAL", "L-FACT", "L-LIVE", "P-TOOL", "L-EXEC"},
+            provider_allowed=route in {"L-FACT", "L-LIVE", "P-TOOL", "L-EXEC"},
             intent=intent,
             confidence=float(parsed.get("confidence", 0.0) or 0.0),
             metadata={
