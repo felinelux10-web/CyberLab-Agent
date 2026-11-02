@@ -3818,7 +3818,8 @@ class ConversationManager:
             # A discussion about the agent's dialogue architecture is a
             # technical/project request, not a social opener to answer locally.
             return None
-        bare_confirmation = normalized.strip(" .!؟?")        if (
+        bare_confirmation = normalized.strip(" .!؟?")
+        if (
             bare_confirmation in {"نعم", "أجل", "اجل", "بلى", "لا", "كلا", "yes", "no"}
             and (parsed or {}).get("source") == "bare_confirmation"
         ):
