@@ -649,3 +649,45 @@ def test_repeated_topic_inputs_retain_exact_archive_identity_and_extract_subject
     assert not session_state._is_dialogue_control_exchange(
         second["dialogue_state"]["exchange_archive"][0]
     )
+
+
+
+def test_context_lock_retains_saved_dialogue_owner_when_legacy_id_mirror_is_empty(monkeypatch):
+    from lab_v4_dev.core.contracts import ContextLock
+
+    context = ContextStore()
+    manager = ConversationManager(
+        SimpleNamespace(context=context),
+        DialogueMemory(context),
+    )
+    manager.active_report_session_id = None
+    manager.context_lock = ContextLock(
+        active=True,
+        session_id="saved-dialogue-lock-owner",
+        topic="الفن التجريدي والنقش البارز",
+        output_kind="summary",
+        reason="saved_session_selection",
+    )
+    monkeypatch.setattr(
+        session_state,
+        "session_route_contract",
+        lambda _text: {"kind": "none"},
+    )
+    continued = {}
+
+    def continue_saved(text, session_id):
+        continued.update(text=text, session_id=session_id)
+        return {
+            "status": "success",
+            "source": "saved_dialogue_local_continuation",
+            "text": "استمرار من السجل المحفوظ",
+        }
+
+    monkeypatch.setattr(manager, "_continue_saved_dialogue", continue_saved)
+
+    result = manager.process("اكمل من نفس النقطة")
+
+    assert continued["session_id"] == "saved-dialogue-lock-owner"
+    assert result["route_decision"].route == "L-SESSION"
+    assert result["route_decision"].session_ref.session_id == "saved-dialogue-lock-owner"
+    assert result["route_decision"].provider_allowed is False
