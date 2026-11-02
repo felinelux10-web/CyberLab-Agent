@@ -1630,7 +1630,7 @@ class ConversationManager:
                 if choices
                 else "لا توجد جلسات عمل محفوظة قابلة للاختيار حاليًا."
             )
-            return {
+            return self._finalize_direct_result({
                 "status": "needs_clarification",
                 "intent": Intent.SESSION_RESTORE,
                 "source": "session_selector",
@@ -1640,7 +1640,8 @@ class ConversationManager:
                     "conversation_act": "SAVED_SESSION_RESTORE_REQUEST",
                     "response_attributes": {"saved_session_request": True},
                 },
-            }
+            }, intent=Intent.SESSION_RESTORE, route="L-SESSION",
+               selected_session={"kind": "collection"}, saved_session_request=True)
         # A structurally enumerated multi-part message is one compound dialogue
         # request, not an agent-self/capability query merely because its framing
         # mentions testing the assistant. Preserve the whole request for one answer.
