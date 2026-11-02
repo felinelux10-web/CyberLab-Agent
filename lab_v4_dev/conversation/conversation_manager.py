@@ -243,11 +243,11 @@ class ConversationManager:
             requested_output = "none"
         if route == "CLARIFY":
             requested_output = "none"
-        elif route == "L-SESSION" and session_ref is None:
+        elif route == "L-SESSION" and session_ref is None and selector_kind != "collection":
             # Search/ambiguous selectors are not evidence yet. Keep the
             # report mode in selector metadata until an exact session resolves.
             requested_output = "none"
-        elif route == "L-SESSION" and requested_output == "none":
+        elif route == "L-SESSION" and requested_output == "none" and selector_kind != "collection":
             requested_output = "report"
         if route == "L-SESSION" and session_ref is not None:
             evidence_scope = "saved_session"
