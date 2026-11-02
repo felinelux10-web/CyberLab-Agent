@@ -256,6 +256,22 @@ class Orchestrator:
         session_selector: dict | None = None,
         route_decision=None,
     ) -> dict:
+        if route_decision is not None:
+            authorized_route = str(getattr(route_decision, "route", ""))
+            if authorized_route not in {"L-EXEC", "L-SESSION"}:
+                return {
+                    "status": "denied", "intent": intent,
+                    "source": "route_decision_orchestrator_guard",
+                    "executed": False,
+                    "text": "قرار التوجيه لا يمنح Orchestrator ملكية هذا الطلب.",
+                }
+            if authorized_route == "L-SESSION" and intent not in (Intent.SESSION_RESTORE, Intent.RESUME):
+                return {
+                    "status": "denied", "intent": intent,
+                    "source": "route_decision_session_guard",
+                    "executed": False,
+                    "text": "قرار التوجيه يحدد مسار جلسة محفوظة لكن النية لا تطابق الاستعادة.",
+                }
 
         # ─── Response Cache ───
         from lab_v4_dev.intent.response_cache import get as rcache_get
@@ -2027,8 +2043,21 @@ SOURCE CODE:
                         "sessions": ambiguous,
                     }
                 selected_id = candidates[0].get("session_id")
-            # An explicit selection must resolve to that exact saved record.
-            # Never fall back to the live/current session when a selected ID is
+            if route_decision is not None and str(getattr(route_decision, "route", "")) == "L-SESSION":
+                authorized_ref = getattr(route_decision, "session_ref", None)
+                authorized_id = str(getattr(authorized_ref, "session_id", "") or "").strip()
+                if authorized_id:
+                    if selected_id and str(selected_id).strip() != authorized_id:
+                        return {
+                            "status": "denied", "intent": intent,
+                            "source": "route_decision_session_identity_guard",
+                            "executed": False,
+                            "requested_session_id": str(selected_id),
+                            "authorized_session_id": authorized_id,
+                            "text": "معرّف الجلسة المحلول لا يطابق مرجع الجلسة الذي أجازه قرار التوجيه.",
+                        }
+                    selected_id = authorized_id
+            # An explicit selection must resolve to that exact saved record.            # Never fall back to the live/current session when a selected ID is
             # missing or its detail file points at a different session.
             if selected_id:
                 s = get_session_by_id(selected_id)
