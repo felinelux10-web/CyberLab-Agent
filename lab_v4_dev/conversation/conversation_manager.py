@@ -1146,6 +1146,13 @@ class ConversationManager:
         """Make a previously finalized decision govern a direct response."""
         result = dict(result or {})
         result["route_decision"] = decision
+        result.setdefault(
+            "executed",
+            decision.route in {"L-EXEC", "P-TOOL"}
+            and result.get("status") not in {
+                "needs_clarification", "denied", "unsupported", "error", "failed",
+            },
+        )
         self.context_lock = decision.context_lock
         if decision.output_kind != "none":
             result["output_kind"] = decision.output_kind
@@ -1426,9 +1433,7 @@ class ConversationManager:
                 selected_saved_session_id=None,
                 transition=ContextTransition.NEW_INDEPENDENT,
             )
-            result["route_decision"] = decision
-            self.context_lock = decision.context_lock
-            return result
+            return self._attach_route_decision(result, decision)
 
         normalized_repeated_topic_query = normalize_text(user_input)
         repeated_topic_request = any(marker in normalized_repeated_topic_query for marker in (
