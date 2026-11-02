@@ -1609,6 +1609,13 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         "ما طريقة", "كيفيه",
     ))
     if procedural_how:
+        if not topic:
+            method_match = re.search(
+                r"(?:كيف\s+(?:يتم|تعمل|يعمل|يمكن|نستخدم|استخدم)|كيفية|ما\s+طريقة)\s+(.+?)(?:[؟?!.،؛]|$)",
+                user_text,
+                flags=re.IGNORECASE,
+            )
+            topic = method_match.group(1).strip() if method_match else ""
         prefix = f"ناقش الحوار آلية «{topic}» أو طريقة التعامل معها" if topic else "ناقش الحوار طريقة أو آلية محددة"
         return [
             f"{prefix}؛ وأشار الرد إلى {answer}."
@@ -1631,6 +1638,27 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
             topic = topic_match.group(1).strip()
         elif normalized.startswith(("ماذا تستطيع فعله", "ما الذي تستطيع فعله", "ما قدراتك")):
             topic = "قدرات الوكيل"
+    if not topic:
+        project_match = re.search(
+            r"(?:في|عن|حول)\s+(?:مشروع\s+)?(cyberlab(?:[_ -]?agent)?)(?:\s|$|[،؛؟?])",
+            normalized,
+        )
+        if project_match:
+            topic = "مشروع CyberLab Agent"
+    if not topic:
+        subject_match = re.search(
+            r"(?:عن|حول|بخصوص|بشأن)\s+(.+?)(?:[؟?!.،؛]|$)",
+            user_text,
+        )
+        if subject_match:
+            topic = subject_match.group(1).strip()
+    if not topic:
+        question_subject = re.sub(
+            r"^(?:ما\s+(?:هو|هي|وظيفة|دور|علاقة|الفرق|آخر|اخر)|ماذا\s+(?:عن|نعرف|تعرف)|كيف\s+(?:يعمل|تعمل|يتم)|لماذا|اشرح|وضح)\s+",
+            "", user_text, flags=re.IGNORECASE,
+        ).strip(" .،؛:!?؟")
+        if question_subject and len(question_subject.split()) <= 9 and question_subject.casefold() != user_text.casefold():
+            topic = question_subject
 
     if topic and answer:
         return [
