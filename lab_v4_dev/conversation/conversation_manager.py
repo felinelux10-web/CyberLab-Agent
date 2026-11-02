@@ -2980,7 +2980,7 @@ class ConversationManager:
                     user_input, result, mode=mode, parsed=parsed,
                     context_transition=transition,
                 )
-            return result
+            return self._attach_route_decision(result, route_decision)
 
         # An interrupted-branch recovery is a grounded dialogue request. Even
         # when the archived branch was technical, do not execute the recovery
