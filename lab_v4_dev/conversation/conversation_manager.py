@@ -176,10 +176,20 @@ class ConversationManager:
             route = "L-LIVE" if domain != "execution" else "L-EXEC"
         elif intent_value in {"propose_solution", "plan", "lab_plan"} and str(parsed.get("target") or "").strip():
             route = "P-TOOL"
+        elif response_attributes.get("compound_request"):
+            # A multi-part conversational prompt needs the rich dialogue
+            # responder, but it is not an operational execution request.
+            route = "L-LIVE"
         elif intent_value in {str(getattr(item, "value", item)).casefold() for item in _NON_EXECUTABLE_INTENTS}:
             if domain == "project":
                 route = "L-FACT"
-            elif domain == "social" or intent_value == "personal_chat" or act in {"SOCIAL_GREETING", "SOCIAL_CLOSING", "SOCIAL_ACKNOWLEDGEMENT"}:
+            elif domain == "technical":
+                route = "L-LIVE"
+            elif domain == "social" or intent_value == "personal_chat" or act in {
+                "SOCIAL_GREETING", "SOCIAL_CLOSING", "SOCIAL_ACKNOWLEDGEMENT",
+                "SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION",
+                "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP",
+            }:
                 route = "L-SOCIAL"
             else:
                 route = "L-LIVE"
@@ -2071,6 +2081,14 @@ class ConversationManager:
             # An ordinal exchange reference is an explicit branch restore,
             # not a generic continuation from the latest active topic.
             transition = ContextTransition.RESTORE
+            if not active_report_followup:
+                # The ordinal reference resolves against the live exchange
+                # archive. Do not let a broad session selector redirect it
+                # to a saved session or the work checkpoint.
+                selected_session = {"kind": "reference"}
+                selected_saved_session_id = None
+                saved_session_request = False
+                candidate.pop("session_selector", None)
         generic_social_topic_return = False
         normalized_return_request = self._normalize_transition_text(user_input)
         explicit_topic_return = any(marker in normalized_return_request for marker in (
@@ -2761,6 +2779,20 @@ class ConversationManager:
             context_entity = None
             chat_history = []
 
+        # Dialogue-feature engineering discussion is technical context, not
+        # a social opener or a request to retrieve the dialogue archive.
+        normalized_feature_discussion = self._normalize_transition_text(user_input)
+        if any(marker in normalized_feature_discussion for marker in (
+            "نطور سياق الحوار", "تطوير سياق الحوار", "تصحيح مسار الحوار",
+            "طبقات الذاكرة", "استرجاع الحوار بشكل صحيح",
+            "استرجاع الحوار داخل الوكيل", "استمرارية الحوار",
+            "تحسين استرجاع الحوار",
+        )):
+            parsed = dict(parsed or {})
+            parsed["conversation_domain"] = "technical"
+            attributes = dict(parsed.get("response_attributes") or {})
+            attributes["dialogue_feature_discussion"] = True
+            parsed["response_attributes"] = attributes
         recovery_mode = str(
             (parsed.get("response_attributes") or {}).get("dialogue_recovery", "")
         ).casefold()
@@ -3055,6 +3087,7 @@ class ConversationManager:
                 or _restore_context
                 or saved_session_request
                 or interrupted_recovery
+                or explicit_live_branch_return
             )
             else self._conversation_history_answer(user_input, parsed)
         )
