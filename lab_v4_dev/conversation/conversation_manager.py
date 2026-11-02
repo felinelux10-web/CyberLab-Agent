@@ -169,7 +169,12 @@ class ConversationManager:
         elif intent_value in {"cyber_explain", "architecture"}:
             route = "L-FACT" if domain == "project" else "P-TOOL"
         elif intent_value == "propose_solution" and not str(parsed.get("target") or "").strip():
-            route = "L-LIVE" if domain != "execution" else "L-EXEC"
+            # Recognized invitation phrases use the local social composer;
+            # broader generic proposal requests use the dialogue gateway.
+            route = (
+                "L-SOCIAL" if response_attributes.get("local_social_suggestion")
+                else "L-LIVE"
+            ) if domain != "execution" else "L-EXEC"
         elif intent_value in {"plan", "lab_plan"} and not str(parsed.get("target") or "").strip():
             route = "L-LIVE" if domain != "execution" else "L-EXEC"
         elif intent_value in {"propose_solution", "plan", "lab_plan"} and str(parsed.get("target") or "").strip():
@@ -2907,6 +2912,25 @@ class ConversationManager:
                 **dict(parsed.get("response_attributes") or {}),
                 "dialogue_recall": True,
             }
+        normalized_suggestion_request = self._normalize_transition_text(user_input)
+        if (
+            str(getattr(parsed.get("intent"), "value", parsed.get("intent")) or "").casefold()
+                == "propose_solution"
+            and not str(parsed.get("target") or "").strip()
+            and any(marker in normalized_suggestion_request for marker in (
+                "انت اعطيني اقتراحات", "انت اعطني اقتراحات",
+                "اقترح انت بعض المواضيع", "اقترح بعض المواضيع",
+                "اقترح موضوع", "اقترح شي موضوع",
+                "نت قتارح شي موضوع", "عن اي موضوع قتارح نتا",
+                "اقترحات اخرى", "اقتراحات اخرى في مجال اخر",
+                "اريد اقتراحات اخرى في مجال اخر",
+            ))
+        ):
+            parsed = dict(parsed or {})
+            attributes = dict(parsed.get("response_attributes") or {})
+            attributes["local_social_suggestion"] = True
+            parsed["response_attributes"] = attributes
+
         # Dialogue-feature engineering discussion is technical context, not
         # a social opener or a request to retrieve the dialogue archive.
         normalized_feature_discussion = self._normalize_transition_text(user_input)
