@@ -1752,34 +1752,28 @@ SOURCE CODE:
                 load_session, recoverable_work_checkpoint,
                 build_session_restore_summary, build_session_brief_summary,
                 analyze_session, get_session_by_id, get_session_by_number,
-                get_session_index, search_sessions,
+                get_session_index, search_sessions, get_session_type_counts,
             )
             selector = session_selector or {}
             selected_id = None
             report_mode = selector.get("report_mode", "standard")
             if selector.get("kind") == "count":
-                candidates = get_session_index()
-                dialogue_count = sum(
-                    str(item.get("session_type") or "").casefold() == "dialogue"
-                    for item in candidates
-                )
-                work_count = sum(
-                    str(item.get("session_type") or "work").casefold() != "dialogue"
-                    for item in candidates
-                )
+                counts = get_session_type_counts()
                 return {
                     "status": "success",
                     "intent": intent,
                     "source": "local_session_store",
                     "executed": False,
                     "text": (
-                        f"عدد الجلسات المحفوظة: {len(candidates)}. "
-                        f"جلسات الحوار: {dialogue_count}. "
-                        f"جلسات العمل: {work_count}."
+                        f"عدد الجلسات المحفوظة: {counts['total']}. "
+                        f"جلسات الحوار: {counts['dialogue']}. "
+                        f"جلسات العمل: {counts['work']}. "
+                        f"غير مصنفة: {counts['other']}."
                     ),
-                    "session_count": len(candidates),
-                    "dialogue_session_count": dialogue_count,
-                    "work_session_count": work_count,
+                    "session_count": counts['total'],
+                    "dialogue_session_count": counts['dialogue'],
+                    "work_session_count": counts['work'],
+                    "other_session_count": counts['other'],
                 }
             if selector.get("kind") == "compare":
                 recent = sorted(
