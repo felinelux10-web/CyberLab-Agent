@@ -372,3 +372,64 @@ def test_finalize_route_locks_live_branch_and_releases_it_on_independent_turn():
     assert continuing.context_lock.topic == "SQL Injection"
     assert independent.session_scope == "none"
     assert independent.context_lock.active is False
+
+
+
+def test_finalize_route_requires_live_exchange_evidence_for_history_queries():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+    from lab_v4_dev.intent.intents import Intent
+
+    context = ContextStore()
+    memory = DialogueMemory(context)
+    manager = ConversationManager(SimpleNamespace(context=context), memory)
+    memory.state.exchange_archive.append({
+        "session_id": memory.state.session_id,
+        "user": "ناقشنا الفن التجريدي.",
+        "assistant": "تحدثنا عن التكوين والسطح.",
+        "target": "الفن التجريدي",
+        "context_kind": "dialogue",
+        "conversation_domain": "general",
+    })
+
+    with_evidence = manager.finalize_route(
+        parsed={
+            "intent": Intent.PERSONAL_CHAT,
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "output_kind": "chat",
+        },
+        selected_session={"kind": "none"},
+        saved_session_request=False,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+    without_evidence = manager.finalize_route(
+        parsed={
+            "intent": Intent.PERSONAL_CHAT,
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "output_kind": "chat",
+        },
+        selected_session={"kind": "none"},
+        saved_session_request=False,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+    assert with_evidence.session_scope == "live_current"
+    assert with_evidence.evidence_scope == "live_exchanges"
+    assert with_evidence.context_lock.active is True
+    memory.state.exchange_archive.clear()
+    without_evidence = manager.finalize_route(
+        parsed={
+            "intent": Intent.PERSONAL_CHAT,
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "output_kind": "chat",
+        },
+        selected_session={"kind": "none"},
+        saved_session_request=False,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+    assert without_evidence.route == "CLARIFY"
+    assert without_evidence.evidence_scope == "none"
