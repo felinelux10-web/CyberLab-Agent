@@ -3340,6 +3340,23 @@ class ConversationManager:
                     "text": "يلزم تحديد السياق أو الجلسة المقصودة قبل المتابعة.",
                     "route_decision": route_decision,
                 }
+            if (
+                route_decision.route in {"L-SOCIAL", "L-LIVE"}
+                and intent in (Intent.UNSUPPORTED, "unsupported")
+                and (parsed or {}).get("semantic_pattern") == "DEVICE_MEMORY_UNSUPPORTED"
+            ):
+                return {
+                    "status": "unsupported",
+                    "intent": intent,
+                    "source": "capability_boundary",
+                    "text": (
+                        "قراءة ذاكرة RAM للهاتف أو الجهاز غير مدعومة من هذه البيئة. "
+                        "فحص الصحة المتاح يقيس ذاكرة عملية الوكيل فقط."
+                    ),
+                    "mode": mode,
+                    "executed": False,
+                    "route_decision": route_decision,
+                }
             if route_decision.route in {"L-SOCIAL", "L-LIVE", "L-FACT"}:
                 # L-FACT is a knowledge owner, not an execution owner. It
                 # uses the evidence-backed chat/local-fact responder; this
