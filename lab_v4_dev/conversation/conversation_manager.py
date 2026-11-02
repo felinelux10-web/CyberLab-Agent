@@ -4561,6 +4561,18 @@ class ConversationManager:
             if target not in topics:
                 topics.append(target)
         if not topics:
+            # Some legacy DialogueState snapshots preserve complete exchanges
+            # but omit per-turn role/target metadata. The exchange archive is
+            # the canonical source for topic recall in that case.
+            for exchange in exchanges:
+                if not isinstance(exchange, dict):
+                    continue
+                target = str(exchange.get("target") or "").strip()
+                intent = str(exchange.get("intent") or "").casefold()
+                if target and intent in {"cyber_explain", "explain", "question"} and target not in topics:
+                    topics.append(target)
+
+        if not topics:
             dialogue_candidates = [
                 item for item in exchanges
                 if isinstance(item, dict)
@@ -5005,9 +5017,26 @@ class ConversationManager:
                 }
             lines = [
                 f"الموضوع: {report['topic'] or 'لم يُسجّل موضوع محدد.'}",
-                "",
-                "ماذا تناول الحوار:",
             ]
+            # Preserve the user's original topic wording as compact evidence;
+            # semantic topic extraction may normalize away the opening word.
+            original_topic_statement = next(
+                (
+                    " ".join(str(item.get("user") or "").split()).strip()
+                    for item in branch
+                    if str(item.get("user") or "").strip()
+                    and "موضوع" in str(item.get("user") or "")
+                    and (
+                        not report.get("topic")
+                        or self._normalize_transition_text(report.get("topic"))
+                            in self._normalize_transition_text(item.get("user"))
+                    )
+                ),
+                "",
+            )
+            if original_topic_statement:
+                lines.append(f"صياغة الموضوع كما وردت: «{original_topic_statement}»")
+            lines.extend(["", "ماذا تناول الحوار:"])
             if report["insights"]:
                 lines.extend(
                     "- " + str(item)[:180].rstrip()
@@ -5586,6 +5615,17 @@ class ConversationManager:
             if selected:
                 return self._exchange_history_turns(selected)[-8:]
             return [turn for turn in (history or []) if allowed(turn)][-8:]
+
+        if transition == ContextTransition.RESTORE and not topic:
+            # A generic "return to the previous discussion" is an explicit
+            # live-branch restore. Select the latest bounded dialogue branch
+            # from the same session instead of dropping all context because
+            # the user did not repeat its subject name.
+            selected = self._latest_dialogue_branch(
+                [item for item in (exchanges or []) if allowed(item)]
+            )[-8:]
+            if selected:
+                return self._exchange_history_turns(selected)[-8:]
 
         if not topic:
             # General conversation branches may not have a canonical entity.
