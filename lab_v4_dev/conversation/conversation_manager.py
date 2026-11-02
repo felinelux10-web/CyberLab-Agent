@@ -1119,6 +1119,17 @@ class ConversationManager:
         })
         return result
 
+    def _attach_route_decision(self, result: dict, decision: RouteDecision) -> dict:
+        """Make a previously finalized decision govern a direct response."""
+        result = dict(result or {})
+        result["route_decision"] = decision
+        self.context_lock = decision.context_lock
+        if decision.output_kind != "none":
+            result["output_kind"] = decision.output_kind
+        elif decision.route == "L-SESSION":
+            result.pop("output_kind", None)
+        return result
+
     def _finalize_direct_result(
         self,
         result: dict,
@@ -1138,10 +1149,7 @@ class ConversationManager:
             transition=ContextTransition.NEW_INDEPENDENT,
             route_override=route,
         )
-        result = dict(result or {})
-        result["route_decision"] = decision
-        self.context_lock = decision.context_lock
-        return result
+        return self._attach_route_decision(result, decision)
 
     def process(self, user_input: str, *, _restore_context: dict | None = None) -> dict:
         # Session boundaries take precedence over pending clarifications and all
