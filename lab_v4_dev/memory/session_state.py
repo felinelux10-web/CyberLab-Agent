@@ -1851,16 +1851,17 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     content_topic = next(
         (
             " ".join(str(item.get("target") or item.get("user") or "").split())[:100]
-            for item in summary_exchanges
+            for item in reversed(summary_exchanges)
             if " ".join(str(item.get("target") or item.get("user") or "").split()).strip()
         ),
         "",
     )
     stored_topic_is_control = _is_dialogue_control_text(stored_topic)
+    stored_topic_is_generic = stored_topic in generic_topics
+    # Prefer the latest substantive archive evidence over stale metadata.
     topic = (
-        stored_topic
-        if stored_topic and stored_topic not in generic_topics and not stored_topic_is_control
-        else content_topic
+        content_topic
+        or (stored_topic if stored_topic and not stored_topic_is_generic and not stored_topic_is_control else "")
     )
     topic = topic or "حوار افتتاحي أو إداري بلا موضوع معرف في السجل"
     last = (summary_exchanges or exchanges)[-1] if (summary_exchanges or exchanges) else {}
