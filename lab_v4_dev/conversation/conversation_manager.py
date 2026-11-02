@@ -167,11 +167,12 @@ class ConversationManager:
         elif history_request:
             route = "L-LIVE"
         elif intent_value in {"cyber_explain", "architecture"}:
-            route = "L-FACT" if domain == "project" else "P-TOOL"
+            # Explanations are knowledge/dialogue requests, not tool plans.
+            route = "L-FACT" if domain == "project" else "L-LIVE"
         elif intent_value == "propose_solution" and not str(parsed.get("target") or "").strip():
-            # A targetless proposal is a live dialogue request, not an
-            # operational task. Provider fallback remains authorized.
-            route = "L-LIVE" if domain != "execution" else "L-EXEC"
+            # A targetless proposal is a social invitation answered locally;
+            # concrete proposals are routed to P-TOOL below.
+            route = "L-SOCIAL" if domain != "execution" else "L-EXEC"
         elif intent_value in {"plan", "lab_plan"} and not str(parsed.get("target") or "").strip():
             route = "L-LIVE" if domain != "execution" else "L-EXEC"
         elif intent_value in {"propose_solution", "plan", "lab_plan"} and str(parsed.get("target") or "").strip():
@@ -185,11 +186,14 @@ class ConversationManager:
                 route = "L-FACT"
             elif domain == "technical":
                 route = "L-LIVE"
-            elif act in {"CASUAL_CONVERSATION", "CASUAL_DISCUSSION", "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP"}:
+            elif act in {"SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION"} and str(parsed.get("target") or "").strip():
+                # Opening a named topic needs a substantive dialogue response,
+                # not the local generic greeting composer.
                 route = "L-LIVE"
-            elif domain == "social" or act in {
+            elif domain == "social" or intent_value == "personal_chat" or act in {
                 "SOCIAL_GREETING", "SOCIAL_CLOSING", "SOCIAL_ACKNOWLEDGEMENT",
-                "SOCIAL_OPENING",
+                "SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION",
+                "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP",
             }:
                 route = "L-SOCIAL"
             else:
@@ -2863,14 +2867,15 @@ class ConversationManager:
             (parsed.get("response_attributes") or {}).get("dialogue_recovery", "")
         ).casefold()
         recovery_intent = parsed.get("intent")
+        recovery_intent_is_dialogue = bool(
+            recovery_intent in _NON_EXECUTABLE_INTENTS
+            or recovery_intent == Intent.MEMORY_DUMP
+        )
         recovery_is_dialogue = bool(
             recovery_mode in {"interrupted_branch", "named_topic_return", "ordinal_topic_return"}
-            and (
-                recovery_intent in _NON_EXECUTABLE_INTENTS
-                or recovery_intent == Intent.MEMORY_DUMP
-            )
+            and (recovery_intent_is_dialogue or interrupted_recovery)
         )
-        if recovery_is_dialogue and recovery_mode in {"interrupted_branch", "named_topic_return"}:
+        if recovery_intent_is_dialogue and recovery_mode in {"interrupted_branch", "named_topic_return"}:
             parsed = dict(parsed or {})
             parsed["intent"] = Intent.PERSONAL_CHAT
             parsed["conversation_domain"] = "general"
