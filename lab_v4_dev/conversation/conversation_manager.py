@@ -181,6 +181,8 @@ class ConversationManager:
             # A multi-part conversational prompt needs the rich dialogue
             # responder, but it is not an operational execution request.
             route = "L-LIVE"
+        elif act in {"CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY", "TOPIC_RETURN"}:
+            route = "L-LIVE"
         elif intent_value in {str(getattr(item, "value", item)).casefold() for item in _NON_EXECUTABLE_INTENTS}:
             if domain == "project":
                 route = "L-FACT"
@@ -189,6 +191,8 @@ class ConversationManager:
             elif act in {"SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION"} and str(parsed.get("target") or "").strip():
                 # Opening a named topic needs a substantive dialogue response,
                 # not the local generic greeting composer.
+                route = "L-LIVE"
+            elif act in {"SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION"} and str(parsed.get("target") or "").strip():
                 route = "L-LIVE"
             elif domain == "social" or intent_value == "personal_chat" or act in {
                 "SOCIAL_GREETING", "SOCIAL_CLOSING", "SOCIAL_ACKNOWLEDGEMENT",
@@ -2815,6 +2819,32 @@ class ConversationManager:
             and str(item.get("user") or "").strip()
             and str(item.get("assistant") or "").strip()
             for item in (getattr(live_state_for_continuation, "exchange_archive", []) or [])
+        ) or (
+            live_state_for_continuation is not None
+            and any(
+                isinstance(item, dict)
+                and item.get("role") == "user"
+                and (
+                    not live_session_id_for_continuation
+                    or str(item.get("session_id") or "") == live_session_id_for_continuation
+                )
+                and str(item.get("context_kind") or "dialogue").casefold() not in {"work", "system", "execution"}
+                and str(item.get("conversation_domain") or "general").casefold() not in {"work", "system", "execution"}
+                and str(item.get("content") or "").strip()
+                for item in (getattr(live_state_for_continuation, "history", []) or [])
+            )
+            and any(
+                isinstance(item, dict)
+                and item.get("role") == "assistant"
+                and (
+                    not live_session_id_for_continuation
+                    or str(item.get("session_id") or "") == live_session_id_for_continuation
+                )
+                and str(item.get("context_kind") or "dialogue").casefold() not in {"work", "system", "execution"}
+                and str(item.get("conversation_domain") or "general").casefold() not in {"work", "system", "execution"}
+                and str(item.get("content") or "").strip()
+                for item in (getattr(live_state_for_continuation, "history", []) or [])
+            )
         )
         if (
             live_continuation_request
@@ -3186,6 +3216,7 @@ class ConversationManager:
             and not saved_session_request
             and self._dialogue_recall_requested(user_input, parsed)
             and not self._resolve_generic_topic_reference(user_input)
+            and not explicit_live_branch_return
             and not self._ordinal_dialogue_exchange(user_input)
             and not re.search(
                 r"(?:قلت|اقصد|المقصود)\s+(?:موضوع\s+)?(?:الكتب|كتب|الفن|الرسم|النحت)",
