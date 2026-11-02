@@ -5127,6 +5127,25 @@ class ConversationManager:
             )
             if original_topic_statement:
                 lines.append(f"صياغة الموضوع كما وردت: «{original_topic_statement}»")
+            original_suggestion_requests = []
+            for item in branch:
+                user_text = " ".join(str(item.get("user") or "").split()).strip()
+                normalized_user = self._normalize_transition_text(user_text)
+                if (
+                    user_text
+                    and any(marker in normalized_user for marker in (
+                        "ماذا تقترح", "اقترح انت", "اعطيني اقتراحات",
+                        "اعطني اقتراحات", "اقتراحات اخرى",
+                    ))
+                    and user_text not in original_suggestion_requests
+                ):
+                    original_suggestion_requests.append(user_text)
+            if original_suggestion_requests:
+                lines.extend([
+                    "",
+                    "طلبات اقتراح وردت في الحوار:",
+                    *[f"- {item}" for item in original_suggestion_requests[:4]],
+                ])
             lines.extend(["", "ماذا تناول الحوار:"])
             if report["insights"]:
                 lines.extend(
