@@ -168,14 +168,18 @@ class ConversationManager:
             route = "L-LIVE"
         elif intent_value in {"cyber_explain", "architecture"}:
             route = "L-FACT" if domain == "project" else "P-TOOL"
-        elif intent_value in {"propose_solution", "plan", "lab_plan"} and not str(parsed.get("target") or "").strip():
+        elif intent_value == "propose_solution" and not str(parsed.get("target") or "").strip():
+            # A targetless proposal is a social/dialogue invitation, not an
+            # operational task. A concrete target is handled by P-TOOL below.
+            route = "L-SOCIAL" if domain != "execution" else "L-EXEC"
+        elif intent_value in {"plan", "lab_plan"} and not str(parsed.get("target") or "").strip():
             route = "L-LIVE" if domain != "execution" else "L-EXEC"
         elif intent_value in {"propose_solution", "plan", "lab_plan"} and str(parsed.get("target") or "").strip():
             route = "P-TOOL"
         elif intent_value in {str(getattr(item, "value", item)).casefold() for item in _NON_EXECUTABLE_INTENTS}:
             if domain == "project":
                 route = "L-FACT"
-            elif act in {"SOCIAL_GREETING", "SOCIAL_CLOSING", "SOCIAL_ACKNOWLEDGEMENT"}:
+            elif domain == "social" or act in {"SOCIAL_GREETING", "SOCIAL_CLOSING", "SOCIAL_ACKNOWLEDGEMENT"}:
                 route = "L-SOCIAL"
             else:
                 route = "L-LIVE"
