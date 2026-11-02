@@ -2819,6 +2819,7 @@ class ConversationManager:
                 "source": "live_dialogue_continuation",
             })
             transition = ContextTransition.CONTINUE
+            chat_history = self._history_for_transition(transition, candidate)
             selected_session = {"kind": "reference"}
             selected_saved_session_id = None
             candidate.pop("session_selector", None)
