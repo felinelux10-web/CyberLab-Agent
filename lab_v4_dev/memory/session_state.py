@@ -2204,6 +2204,10 @@ def analyze_repeated_dialogue_topics(*, limit: int = 8) -> list[dict]:
             target = str(exchange.get("target") or "").strip()
             if target and not _is_dialogue_control_text(target):
                 candidates.append(target)
+            else:
+                subject = _dialogue_exchange_subject(exchange)
+                if subject and not _is_dialogue_control_text(subject):
+                    candidates.append(subject)
         if not candidates:
             brief = summarize_dialogue_exchanges(meaningful, limit=2)
             if brief.get("topic") and not _is_dialogue_control_text(brief["topic"]):
