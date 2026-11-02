@@ -12,7 +12,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Dict
-from types import MappingProxyType
+
+
+class FrozenDict(dict):
+    """Small JSON/deepcopy-compatible immutable mapping for frozen contracts."""
+    def __init__(self, value=()):
+        dict.__init__(self, value)
+
+    def _immutable(self, *_args, **_kwargs):
+        raise TypeError("FrozenDict does not support mutation")
+
+    __setitem__ = _immutable
+    __delitem__ = _immutable
+    clear = _immutable
+    pop = _immutable
+    popitem = _immutable
+    setdefault = _immutable
+    update = _immutable
+
+    def __deepcopy__(self, memo):
+        return self
 
 
 @dataclass(frozen=True)
@@ -235,7 +254,7 @@ class RouteDecision:
     def __post_init__(self) -> None:
         # frozen=True protects attributes; freeze the metadata mapping too so
         # a downstream owner cannot mutate the supposedly authoritative decision.
-        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata or {})))
+        object.__setattr__(self, "metadata", FrozenDict(self.metadata or {}))
         if self.route not in ROUTES:
             raise ValueError(f"invalid route: {self.route}")
         if self.session_scope not in SESSION_SCOPES:
