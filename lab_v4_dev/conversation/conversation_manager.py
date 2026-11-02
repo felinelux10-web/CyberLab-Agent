@@ -138,8 +138,12 @@ class ConversationManager:
 
         if saved_session_request or selector_kind not in {"none", "reference", "count", "list", "compare", "status"}:
             route = "L-SESSION"
-        elif intent_value in {"cyber_explain", "architecture"} and domain in {"project", "technical"}:
-            route = "L-FACT"
+        elif intent_value in {"cyber_explain", "architecture"}:
+            route = "L-FACT" if domain == "project" else "P-TOOL"
+        elif intent_value in {"propose_solution", "plan", "lab_plan"} and not str(parsed.get("target") or "").strip():
+            route = "L-LIVE" if domain != "execution" else "L-EXEC"
+        elif intent_value in {"propose_solution", "plan", "lab_plan"} and str(parsed.get("target") or "").strip():
+            route = "P-TOOL"
         elif intent_value in {str(getattr(item, "value", item)).casefold() for item in _NON_EXECUTABLE_INTENTS}:
             if domain == "project":
                 route = "L-FACT"
@@ -225,7 +229,7 @@ class ConversationManager:
             topic_filter=str(selected_session.get("topic_filter") or "").strip() or None,
             context_lock=lock,
             evidence_scope=evidence_scope,
-            provider_allowed=route in {"L-LIVE", "P-TOOL"},
+            provider_allowed=route in {"L-LIVE", "P-TOOL", "L-EXEC"},
             intent=intent,
             confidence=float(parsed.get("confidence", 0.0) or 0.0),
             metadata={
