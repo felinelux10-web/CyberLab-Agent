@@ -95,6 +95,7 @@ class ConversationManager:
         self.active_report_session_id = None
         self.active_report_topic_filter = None
         self.active_live_output_kind = None
+        self.context_lock = ContextLock()
 
     def finalize_route(
         self,
@@ -217,7 +218,8 @@ class ConversationManager:
             evidence_scope = "none"
 
         lock_active = bool(
-            route == "L-SESSION" and (session_ref or selected_session.get("query"))
+            route == "L-SESSION"
+            and (session_ref or selected_session.get("topic_filter") or requested_output != "none")
         )
         lock = ContextLock(
             active=lock_active,
@@ -1071,6 +1073,7 @@ class ConversationManager:
             self.active_report_session_id = None
             self.active_report_topic_filter = None
             self.active_live_output_kind = None
+            self.context_lock = ContextLock()
             reset = getattr(self.orchestrator, "reset_conversation_context", None)
             if callable(reset):
                 reset()
@@ -2586,6 +2589,7 @@ class ConversationManager:
         parsed = dict(parsed or {})
         parsed["route_decision"] = route_decision
         parsed["output_kind"] = route_decision.output_kind
+        self.context_lock = route_decision.context_lock
 
         # A generic return with no recoverable dialogue branch must fail
         # closed instead of being treated as a successful chat response.
