@@ -2779,6 +2779,50 @@ class ConversationManager:
             context_entity = None
             chat_history = []
 
+        normalized_live_continuation = self._normalize_transition_text(user_input)
+        live_continuation_request = any(marker in normalized_live_continuation for marker in (
+            "نكمل في نفس سياق الموضوع", "نعم نكمل", "اجل نكمل",
+            "نواصل في نفس السياق", "نكمل في نفس السياق",
+        ))
+        live_state_for_continuation = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
+        live_session_id_for_continuation = str(
+            getattr(live_state_for_continuation, "session_id", "") or ""
+        )
+        has_dialogue_evidence_for_continuation = any(
+            isinstance(item, dict)
+            and (
+                not live_session_id_for_continuation
+                or str(item.get("session_id") or "") == live_session_id_for_continuation
+            )
+            and not item.get("recall_only")
+            and not item.get("state_boundary_only")
+            and str(item.get("context_kind") or "dialogue").casefold() not in {"work", "system", "execution"}
+            and str(item.get("conversation_domain") or "general").casefold() not in {"work", "system", "execution"}
+            and str(item.get("user") or "").strip()
+            and str(item.get("assistant") or "").strip()
+            for item in (getattr(live_state_for_continuation, "exchange_archive", []) or [])
+        )
+        if (
+            live_continuation_request
+            and has_dialogue_evidence_for_continuation
+            and not saved_session_request
+            and not active_report_followup
+            and not any(marker in normalized_live_continuation for marker in (
+                "العمل", "الملف", "المهمة", "مشروع", "work", "file", "task",
+            ))
+        ):
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "conversation_domain": "general",
+                "conversation_act": "CONVERSATION_CONTINUATION",
+                "source": "live_dialogue_continuation",
+            })
+            transition = ContextTransition.CONTINUE
+            selected_session = {"kind": "reference"}
+            selected_saved_session_id = None
+            candidate.pop("session_selector", None)
+            saved_session_request = False
         # Dialogue-feature engineering discussion is technical context, not
         # a social opener or a request to retrieve the dialogue archive.
         normalized_feature_discussion = self._normalize_transition_text(user_input)
@@ -2980,6 +3024,7 @@ class ConversationManager:
             )
             and route_decision.route == "L-LIVE"
             and not interrupted_recovery
+            and not explicit_live_branch_return
             and not specific_dialogue_return
             and not saved_session_request
         ):
