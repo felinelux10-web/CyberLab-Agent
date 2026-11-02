@@ -2207,6 +2207,12 @@ def analyze_repeated_dialogue_topics(*, limit: int = 8) -> list[dict]:
             continue
         dialogue = session.get("dialogue_state") or {}
         candidates = []
+        # Session title is persisted from the same dialogue checkpoint and
+        # remains useful when last_topic/targets are absent or control turns
+        # have overwritten them. Ignore generic titles, never work metadata.
+        saved_title = str(item.get("title") or session.get("title") or "").strip()
+        if saved_title and not _is_dialogue_control_text(saved_title):
+            candidates.append(saved_title)
         last_topic = str(dialogue.get("last_topic") or "").strip() if isinstance(dialogue, dict) else ""
         if last_topic and not _is_dialogue_control_text(last_topic):
             candidates.append(last_topic)
