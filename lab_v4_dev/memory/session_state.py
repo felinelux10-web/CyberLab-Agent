@@ -1105,10 +1105,14 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
     )
     topic = ""
     if isinstance(latest_substantive, dict):
-        topic = str(latest_substantive.get("target") or "").strip()
-        if not topic:
+        latest_target = str(latest_substantive.get("target") or "").strip()
+        if latest_target and not _is_dialogue_control_text(latest_target):
+            topic = latest_target
+        else:
             latest_insights = _dialogue_exchange_insights(latest_substantive)
             topic = str(latest_insights[0] if latest_insights else "").strip()
+            if not topic:
+                topic = str(latest_substantive.get("user") or "").strip()
     if not topic:
         stored_topic = str(state.get("last_topic") or state.get("pending_topic") or "").strip()
         if stored_topic and not _is_dialogue_control_text(stored_topic):
@@ -1848,14 +1852,20 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         "حفظ سياق الحوار", "جلسة حوار", "حوار محفوظ", "غير محدد من سجل الحوار",
         "حوار بلا موضوع محدد", "جلسة بلا عنوان",
     }
-    content_topic = next(
-        (
-            " ".join(str(item.get("target") or item.get("user") or "").split())[:100]
-            for item in reversed(summary_exchanges)
-            if " ".join(str(item.get("target") or item.get("user") or "").split()).strip()
-        ),
-        "",
-    )
+    content_topic = ""
+    for item in reversed(summary_exchanges):
+        target = " ".join(str(item.get("target") or "").split()).strip()
+        if target and not _is_dialogue_control_text(target):
+            content_topic = target[:100]
+            break
+        insights = _dialogue_exchange_insights(item)
+        if insights:
+            content_topic = " ".join(str(insights[0]).split())[:100]
+            break
+        user_text = " ".join(str(item.get("user") or "").split()).strip()
+        if user_text and not _is_dialogue_control_text(user_text):
+            content_topic = user_text[:100]
+            break
     stored_topic_is_control = _is_dialogue_control_text(stored_topic)
     stored_topic_is_generic = stored_topic in generic_topics
     # Prefer the latest substantive archive evidence over stale metadata.
