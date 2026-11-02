@@ -2076,6 +2076,13 @@ SOURCE CODE:
             if route_decision is not None and str(getattr(route_decision, "route", "")) == "L-SESSION":
                 authorized_ref = getattr(route_decision, "session_ref", None)
                 authorized_id = str(getattr(authorized_ref, "session_id", "") or "").strip()
+                if selected_id and not authorized_id:
+                    return {
+                        "status": "needs_clarification", "intent": intent,
+                        "source": "route_decision_unresolved_session_guard",
+                        "executed": False,
+                        "text": "لم يصدر قرار التوجيه مرجعًا لجلسة واحدة؛ يلزم تضييق البحث أو تحديد رقم الجلسة.",
+                    }
                 if authorized_id:
                     if selected_id and str(selected_id).strip() != authorized_id:
                         return {
