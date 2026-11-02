@@ -433,3 +433,38 @@ def test_finalize_route_requires_live_exchange_evidence_for_history_queries():
     )
     assert without_evidence.route == "CLARIFY"
     assert without_evidence.evidence_scope == "none"
+
+
+
+def test_dialogue_summary_extracts_project_subject_from_user_question_without_target():
+    insight = session_state._dialogue_exchange_insights({
+        "user": "ماذا كنا نعمل في مشروع cyberlab_agent يعني اخر تعديلات واخر نقطة توقفنا فيها عمليا؟",
+        "assistant": "أخبرني بما تريد أن نناقشه.",
+        "target": "",
+    })
+
+    assert insight
+    assert "آخر تعديلات العمل" in insight[0]
+    assert "CyberLab Agent" in insight[0]
+
+
+def test_dialogue_summary_extracts_procedural_subject_without_structured_target():
+    insight = session_state._dialogue_exchange_insights({
+        "user": "كيف تعمل النجوم النابضة؟",
+        "assistant": "يمكنني توضيح ذلك إذا حددت الجانب الذي تريده.",
+        "target": "",
+    })
+
+    assert insight
+    assert "النجوم النابضة" in insight[0]
+
+
+def test_dialogue_summary_extracts_file_subject_without_structured_target():
+    insight = session_state._dialogue_exchange_insights({
+        "user": "ما وظيفة orchestrator.py؟",
+        "assistant": "أخبرني بما تريد معرفته.",
+        "target": "",
+    })
+
+    assert insight
+    assert "orchestrator.py" in insight[0]
