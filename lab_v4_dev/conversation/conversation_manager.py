@@ -2732,6 +2732,14 @@ class ConversationManager:
             context_entity = None
             chat_history = []
 
+        recovery_mode = str(
+            (parsed.get("response_attributes") or {}).get("dialogue_recovery", "")
+        ).casefold()
+        if recovery_mode in {"interrupted_branch", "named_topic_return"}:
+            parsed = dict(parsed or {})
+            parsed["intent"] = Intent.PERSONAL_CHAT
+            parsed["conversation_domain"] = "general"
+            mode = "CHAT"
         ambiguous_resume = self._ambiguous_resume_without_domain(user_input, parsed)
 
         route_override = (
@@ -2997,9 +3005,6 @@ class ConversationManager:
             )
             else self._conversation_history_answer(user_input, parsed)
         )
-        recovery_mode = str(
-            (parsed.get("response_attributes") or {}).get("dialogue_recovery", "")
-        ).casefold()
         if (
             conversation_history_answer is None
             and not _restore_context
@@ -3039,15 +3044,6 @@ class ConversationManager:
                 )
             return self._attach_route_decision(result, route_decision)
 
-        # An interrupted-branch recovery is a grounded dialogue request. Even
-        # when the archived branch was technical, do not execute the recovery
-        # sentence as a fresh technical command; let the chat owner continue
-        # from the archived evidence.
-        if recovery_mode in {"interrupted_branch", "named_topic_return"}:
-            parsed = dict(parsed or {})
-            parsed["intent"] = Intent.PERSONAL_CHAT
-            parsed["conversation_domain"] = "general"
-            mode = "CHAT"
 
         # ----------------------------------------------------
         # ONE execution owner.
