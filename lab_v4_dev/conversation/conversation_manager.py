@@ -194,9 +194,17 @@ class ConversationManager:
         requested_output_hint = str(
             selected_session.get("output_kind") or parsed.get("output_kind") or "none"
         )
-        live_history_output = requested_output_hint in {
-            "brief", "summary", "report", "topic_summary", "transcript",
-        } and selector_kind in {"none", "reference"}
+        response_attributes = parsed.get("response_attributes") or {}
+        explicit_history_request = bool(
+            act in {"CONVERSATION_HISTORY_QUERY", "CONVERSATION_HISTORY_SUMMARY"}
+            or response_attributes.get("dialogue_recall")
+            or response_attributes.get("history_query")
+        )
+        live_history_output = (
+            requested_output_hint in {
+                "brief", "summary", "report", "topic_summary", "transcript",
+            } or explicit_history_request
+        ) and selector_kind in {"none", "reference"}
         if live_history_output and not has_live_dialogue:
             route = "CLARIFY"
         if selector_kind == "reference" and not has_live_dialogue and selected_session.get("output_kind") in {
