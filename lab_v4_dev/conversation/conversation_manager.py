@@ -3054,7 +3054,7 @@ class ConversationManager:
                     "source": "route_decision", "executed": False,
                     "text": "يلزم تحديد السياق أو الجلسة المقصودة قبل المتابعة.",
                 }
-            if route_decision.route in {"L-FACT", "P-TOOL"} or (
+            if (
                 route_decision.route in {"L-SOCIAL", "L-LIVE"}
                 and intent not in _NON_EXECUTABLE_INTENTS
             ):
