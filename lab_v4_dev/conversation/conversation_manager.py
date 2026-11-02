@@ -2831,6 +2831,17 @@ class ConversationManager:
             selected_saved_session_id = None
             candidate.pop("session_selector", None)
             saved_session_request = False
+        if (
+            not saved_session_request
+            and not explicit_live_branch_return
+            and self._dialogue_recall_requested(user_input, parsed)
+        ):
+            parsed = dict(parsed or {})
+            parsed["conversation_act"] = "CONVERSATION_HISTORY_QUERY"
+            parsed["response_attributes"] = {
+                **dict(parsed.get("response_attributes") or {}),
+                "dialogue_recall": True,
+            }
         # Dialogue-feature engineering discussion is technical context, not
         # a social opener or a request to retrieve the dialogue archive.
         normalized_feature_discussion = self._normalize_transition_text(user_input)
@@ -3960,6 +3971,7 @@ class ConversationManager:
             "موضوعنا الاصلي", "ارجع الى الموضوع", "ارجع للحوار", "ارجع الى الحوار",
             "ارجع للنقاش", "ارجع الى النقاش", "اين توقفنا", "ما اخر موضوع",
             "ما اخر نقاش", "ما اخر حوار", "لخص الحوار", "ملخص الحوار",
+            "ما الموضوعين", "الموضوعين اللذين شرحت", "المواضيع التي شرحت", "الموضوعات التي شرح",
         )
         if any(marker in normalized for marker in strong_recall_markers):
             return True
