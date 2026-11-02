@@ -119,6 +119,12 @@ class ConversationManager:
         intent_value = str(getattr(intent, "value", intent) or "").casefold()
         domain = str(parsed.get("conversation_domain") or "general").casefold()
         act = str(parsed.get("conversation_act") or "NONE").upper()
+        response_attributes = parsed.get("response_attributes") or {}
+        history_request = bool(
+            act in {"CONVERSATION_HISTORY_QUERY", "CONVERSATION_HISTORY_SUMMARY"}
+            or response_attributes.get("dialogue_recall")
+            or response_attributes.get("history_query")
+        )
         selector_kind = str(selected_session.get("kind") or "none").casefold()
         session_id = str(selected_saved_session_id or selected_session.get("session_id") or "").strip()
         session_number = selected_session.get("number")
@@ -158,6 +164,8 @@ class ConversationManager:
 
         if saved_session_request or selector_kind not in {"none", "reference", "count", "list", "compare", "status"}:
             route = "L-SESSION"
+        elif history_request:
+            route = "L-LIVE"
         elif intent_value in {"cyber_explain", "architecture"}:
             route = "L-FACT" if domain == "project" else "P-TOOL"
         elif intent_value in {"propose_solution", "plan", "lab_plan"} and not str(parsed.get("target") or "").strip():
@@ -194,12 +202,7 @@ class ConversationManager:
         requested_output_hint = str(
             selected_session.get("output_kind") or parsed.get("output_kind") or "none"
         )
-        response_attributes = parsed.get("response_attributes") or {}
-        explicit_history_request = bool(
-            act in {"CONVERSATION_HISTORY_QUERY", "CONVERSATION_HISTORY_SUMMARY"}
-            or response_attributes.get("dialogue_recall")
-            or response_attributes.get("history_query")
-        )
+        explicit_history_request = history_request
         live_history_output = (
             requested_output_hint in {
                 "brief", "summary", "report", "topic_summary", "transcript",
