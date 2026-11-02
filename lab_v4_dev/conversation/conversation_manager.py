@@ -786,6 +786,76 @@ class ConversationManager:
                 "saved_sessions", "live_dialogue", "project_knowledge", "task_history",
             ],
         }
+    @staticmethod
+    def _continue_saved_dialogue(text: str, session_id: str) -> dict | None:
+        """Continue one saved dialogue without importing it into live memory."""
+        from lab_v4_dev.memory.session_state import _dialogue_exchanges, get_session_by_id
+
+        saved = get_session_by_id(session_id)
+        if (
+            not isinstance(saved, dict)
+            or str(saved.get("session_id") or "").strip() != str(session_id).strip()
+            or str(saved.get("session_type") or "").casefold() != "dialogue"
+        ):
+            return None
+        exchanges = _dialogue_exchanges(saved)
+        meaningful = [
+            item for item in exchanges
+            if not item.get("recall_only") and not item.get("state_boundary_only")
+        ]
+        if not meaningful:
+            return None
+
+        dialogue = saved.get("dialogue_state") or {}
+        topic = str(
+            (dialogue.get("last_topic") if isinstance(dialogue, dict) else "")
+            or next((item.get("target") for item in reversed(meaningful) if item.get("target")), "")
+        ).strip()
+        latest = meaningful[-1]
+        domain = str(latest.get("conversation_domain") or "general").casefold()
+        if domain in {"project", "work", "system", "execution"}:
+            return None
+        if domain not in {"general", "social", "technical"}:
+            domain = "general"
+
+        history = []
+        for exchange in meaningful:
+            exchange_domain = str(exchange.get("conversation_domain") or domain).casefold()
+            exchange_kind = str(exchange.get("context_kind") or "dialogue").casefold()
+            for role, key in (("user", "user"), ("assistant", "assistant")):
+                value = str(exchange.get(key) or "").strip()
+                if value:
+                    history.append({
+                        "role": role, "content": value, "target": exchange.get("target"),
+                        "context_kind": exchange_kind, "conversation_domain": exchange_domain,
+                        "session_id": session_id,
+                    })
+
+        parsed = {
+            "intent": Intent.PERSONAL_CHAT, "target": topic,
+            "entity_type": "CONCEPT" if topic else "REFERENCE",
+            "conversation_domain": domain,
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "response_attributes": {"dialogue_recovery": "saved_session_continuation"},
+        }
+        semantic = {
+            "intent": "personal_chat", "target": topic,
+            "conversation_domain": domain,
+            "conversation_act": "CONVERSATION_CONTINUATION",
+            "context_kind": "dialogue",
+        }
+        result = answer_local_response(text, parsed, semantic, history=history)
+        if not isinstance(result, dict):
+            return None
+        result = dict(result)
+        result.update({
+            "status": "success", "source": "saved_dialogue_local_continuation",
+            "session_id": session_id, "output_kind": "continue_topic",
+            "evidence_scope": "saved_session",
+            "context_action": "saved_session_followup", "executed": False,
+        })
+        return result
+
     def process(self, user_input: str, *, _restore_context: dict | None = None) -> dict:
         # Session boundaries take precedence over pending clarifications and all
         # NLU/context resolution. A new dialogue must never inherit old state.
@@ -1014,6 +1084,14 @@ class ConversationManager:
         ).casefold() == "interrupted_branch"
         from lab_v4_dev.memory.session_state import session_route_contract
         selected_session = session_route_contract(user_input)
+        if active_report_continue and selected_saved_session_id:
+            continuation = self._continue_saved_dialogue(
+                user_input, selected_saved_session_id,
+            )
+            if continuation is not None:
+                self.active_report_session_id = selected_saved_session_id
+                return continuation
+
         if selected_saved_session_id:
             inherited_report_mode = str(
                 pending_saved_session_selection.get("report_mode") or ""
