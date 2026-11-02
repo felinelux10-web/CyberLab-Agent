@@ -248,7 +248,7 @@ class ConversationManager:
             topic_filter=str(selected_session.get("topic_filter") or "").strip() or None,
             context_lock=lock,
             evidence_scope=evidence_scope,
-            provider_allowed=route in {"L-LIVE", "P-TOOL", "L-EXEC"},
+            provider_allowed=route in {"L-SOCIAL", "L-LIVE", "P-TOOL", "L-EXEC"},
             intent=intent,
             confidence=float(parsed.get("confidence", 0.0) or 0.0),
             metadata={
