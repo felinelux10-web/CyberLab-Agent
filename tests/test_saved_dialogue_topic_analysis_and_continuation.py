@@ -293,3 +293,37 @@ def test_saved_dialogue_title_uses_latest_substantive_topic_not_social_opener(mo
     assert result["title"] == "حوار: الفن التجريدي والنقش البارز"
     assert result["dialogue_state"]["last_topic"] == "الفن التجريدي والنقش البارز"
     assert saved_records
+
+
+
+def test_orchestrator_rejects_non_owned_route_before_task_chain(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+    from lab_v4_dev.intent.intents import Intent
+
+    context = ContextStore()
+    manager = ConversationManager(
+        SimpleNamespace(context=context),
+        DialogueMemory(context),
+    )
+    social_decision = manager.finalize_route(
+        parsed={
+            "intent": Intent.PERSONAL_CHAT,
+            "conversation_domain": "social",
+            "conversation_act": "SOCIAL_GREETING",
+        },
+        selected_session={"kind": "none"},
+        saved_session_request=False,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+    orchestrator = Orchestrator(SimpleNamespace(runtime=None), context=context)
+
+    result = orchestrator.handle(
+        "شغل الاختبارات ثم احذف الملف",
+        parsed={"intent": Intent.PERSONAL_CHAT},
+        route_decision=social_decision,
+    )
+
+    assert result["status"] == "denied"
+    assert result["source"] == "route_decision_handle_guard"
