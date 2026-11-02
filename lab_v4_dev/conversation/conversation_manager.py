@@ -179,7 +179,7 @@ class ConversationManager:
         elif intent_value in {str(getattr(item, "value", item)).casefold() for item in _NON_EXECUTABLE_INTENTS}:
             if domain == "project":
                 route = "L-FACT"
-            elif domain == "social" or act in {"SOCIAL_GREETING", "SOCIAL_CLOSING", "SOCIAL_ACKNOWLEDGEMENT"}:
+            elif domain == "social" or intent_value == "personal_chat" or act in {"SOCIAL_GREETING", "SOCIAL_CLOSING", "SOCIAL_ACKNOWLEDGEMENT"}:
                 route = "L-SOCIAL"
             else:
                 route = "L-LIVE"
