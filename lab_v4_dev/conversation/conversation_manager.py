@@ -168,6 +168,14 @@ class ConversationManager:
                 and self.dialogue_memory.active_context_entity()
             )
         )
+        requested_output_hint = str(
+            selected_session.get("output_kind") or parsed.get("output_kind") or "none"
+        )
+        live_history_output = requested_output_hint in {
+            "brief", "summary", "report", "topic_summary", "transcript",
+        } and selector_kind in {"none", "reference"}
+        if live_history_output and not has_live_dialogue:
+            route = "CLARIFY"
         if selector_kind == "reference" and not has_live_dialogue and selected_session.get("output_kind") in {
             "brief", "summary", "report", "topic_summary", "transcript",
         }:
@@ -187,6 +195,10 @@ class ConversationManager:
             session_scope = "none"
             session_ref = None
         elif (
+            selector_kind in {"none", "reference"}
+            and has_live_dialogue
+            and live_history_output
+        ) or (
             selector_kind == "reference" and has_live_dialogue
         ) or (transition in CONTEXTUAL_TRANSITIONS and self.dialogue_memory):
             session_scope = "live_current"
