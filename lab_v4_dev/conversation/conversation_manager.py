@@ -642,8 +642,8 @@ class ConversationManager:
         # This intentionally excludes broader questions such as project plans,
         # architecture, and agent limits that merely mention CyberLab Agent.
         return bool(re.search(
-            r"(?:^|\\s)(?:ماهو|ما هو|ماهي|ما هي|عرف|ما طبيعة)\\s+"
-            r"(?:(?:مشروع|المشروع|الوكيل)\\s+)?cyberlab(?:[_ -]?agent)\\b",
+            r"(?:^|\s)(?:ماهو|ما هو|ماهي|ما هي|عرف|ما طبيعة)\s+"
+            r"(?:(?:مشروع|المشروع|الوكيل)\s+)?cyberlab(?:[_ -]?agent)\b",
             normalized,
         ))
 
