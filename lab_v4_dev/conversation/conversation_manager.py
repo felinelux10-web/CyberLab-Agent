@@ -223,7 +223,7 @@ class ConversationManager:
             and live_history_output
         ) or (
             selector_kind == "reference" and has_live_dialogue
-        ) or (transition in CONTEXTUAL_TRANSITIONS and self.dialogue_memory):
+        ) or (transition in CONTEXTUAL_TRANSITIONS and has_live_dialogue):
             session_scope = "live_current"
             session_ref = None
         else:
