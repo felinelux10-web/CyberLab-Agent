@@ -1706,6 +1706,26 @@ class ConversationManager:
             and not prefer_live_dialogue
             and not _restore_context
         )
+        if prefer_live_dialogue:
+            # This phrase is intentionally ambiguous between the most recent
+            # live dialogue and a persisted session. When live exchanges exist,
+            # the selector must not retain a saved-session identity downstream.
+            selected_session = {
+                **selected_session,
+                "kind": "reference",
+                "session_id": None,
+                "number": None,
+            }
+            candidate = dict(candidate or {})
+            candidate.pop("session_selector", None)
+            candidate.update({
+                "intent": Intent.MEMORY_DUMP,
+                "conversation_domain": "general",
+                "conversation_act": "CONVERSATION_HISTORY_QUERY",
+                "output_kind": selected_session.get("output_kind") or "summary",
+                "response_attributes": {"dialogue_response_mode": selected_session.get("output_kind") or "summary"},
+                "source": "live_dialogue_reference",
+            })
         if (
             selected_session.get("kind") == "none"
             and raw_signal.get("conversation_act") == "SAVED_SESSION_RESTORE_REQUEST"
