@@ -118,3 +118,24 @@ def test_saved_dialogue_continuation_uses_selected_archive_without_mutating_live
     )
     assert memory.snapshot() == before
     assert manager.active_report_session_id == saved["session_id"]
+
+
+
+def test_session_type_counts_keep_unclassified_records_separate(monkeypatch):
+    monkeypatch.setattr(
+        session_state,
+        "get_session_index",
+        lambda: [
+            {"session_id": "d1", "session_type": "dialogue"},
+            {"session_id": "w1", "session_type": "work"},
+            {"session_id": "legacy1", "session_type": "mixed"},
+            {"session_id": "legacy2"},
+        ],
+    )
+
+    assert session_state.get_session_type_counts() == {
+        "total": 4,
+        "dialogue": 1,
+        "work": 1,
+        "other": 2,
+    }
