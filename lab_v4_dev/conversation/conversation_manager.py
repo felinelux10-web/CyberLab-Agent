@@ -1501,8 +1501,15 @@ class ConversationManager:
             and selected_session.get("output_kind") in {"brief", "topic_summary", "report"}
             and bool(str(selected_session.get("topic_filter") or "").strip())
         )
+        explicit_live_branch_return = bool(
+            self._resolve_generic_topic_reference(user_input)
+            or self._ordinal_dialogue_exchange(user_input)
+            or str((candidate.get("response_attributes") or {}).get("dialogue_recovery", "")).casefold()
+                in {"named_topic_return", "ordinal_topic_return", "interrupted_branch"}
+        )
         if (
             not semantic_interrupted_recovery
+            and not explicit_live_branch_return
             and (
                 selected_session.get("kind") == "reference"
                 or live_topic_summary
