@@ -214,6 +214,8 @@ def test_finalize_route_freezes_saved_session_owner_and_provider_denial():
     assert decision.provider_allowed is False
     with pytest.raises(FrozenInstanceError):
         decision.route = "L-LIVE"
+    with pytest.raises(TypeError):
+        decision.metadata["owner"] = "live"
 
 
 def test_finalize_route_keeps_greetings_local_and_marks_project_facts_as_evidence_first():
