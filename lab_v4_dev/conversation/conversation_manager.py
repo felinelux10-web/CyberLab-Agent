@@ -212,7 +212,7 @@ class ConversationManager:
                 "brief", "summary", "report", "topic_summary", "transcript",
             } or explicit_history_request
         ) and selector_kind in {"none", "reference"}
-        if live_history_output and not has_live_dialogue:
+        if live_history_output and not has_live_dialogue and selector_kind == "reference":
             route = "CLARIFY"
         if selector_kind == "reference" and not has_live_dialogue and selected_session.get("output_kind") in {
             "brief", "summary", "report", "topic_summary", "transcript",
@@ -306,7 +306,7 @@ class ConversationManager:
             topic_filter=str(selected_session.get("topic_filter") or "").strip() or None,
             context_lock=lock,
             evidence_scope=evidence_scope,
-            provider_allowed=route in {"L-FACT", "L-LIVE", "P-TOOL", "L-EXEC"},
+            provider_allowed=route in {"L-SOCIAL", "L-FACT", "L-LIVE", "P-TOOL", "L-EXEC"},
             intent=intent,
             confidence=float(parsed.get("confidence", 0.0) or 0.0),
             metadata={
