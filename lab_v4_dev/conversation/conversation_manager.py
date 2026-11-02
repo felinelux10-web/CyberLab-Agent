@@ -124,7 +124,7 @@ class ConversationManager:
             act in {"CONVERSATION_HISTORY_QUERY", "CONVERSATION_HISTORY_SUMMARY"}
             or response_attributes.get("dialogue_recall")
             or response_attributes.get("history_query")
-        )
+        ) and domain not in {"technical", "execution", "project"} and not response_attributes.get("dialogue_feature_discussion")
         selector_kind = str(selected_session.get("kind") or "none").casefold()
         session_id = str(selected_saved_session_id or selected_session.get("session_id") or "").strip()
         session_number = selected_session.get("number")
@@ -167,37 +167,26 @@ class ConversationManager:
         elif history_request:
             route = "L-LIVE"
         elif intent_value in {"cyber_explain", "architecture"}:
-            # Explanations are knowledge/dialogue requests, not tool plans.
-            route = "L-FACT" if domain == "project" else "L-LIVE"
+            route = "L-FACT" if domain == "project" else "P-TOOL"
         elif intent_value == "propose_solution" and not str(parsed.get("target") or "").strip():
-            # A targetless proposal is a social invitation answered locally;
-            # concrete proposals are routed to P-TOOL below.
-            route = "L-SOCIAL" if domain != "execution" else "L-EXEC"
+            route = "L-LIVE" if domain != "execution" else "L-EXEC"
         elif intent_value in {"plan", "lab_plan"} and not str(parsed.get("target") or "").strip():
             route = "L-LIVE" if domain != "execution" else "L-EXEC"
         elif intent_value in {"propose_solution", "plan", "lab_plan"} and str(parsed.get("target") or "").strip():
             route = "P-TOOL"
         elif response_attributes.get("compound_request"):
-            # A multi-part conversational prompt needs the rich dialogue
-            # responder, but it is not an operational execution request.
             route = "L-LIVE"
         elif act in {"CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY", "TOPIC_RETURN"}:
-            route = "L-LIVE"
+            route = "P-TOOL" if domain == "technical" else "L-LIVE"
         elif intent_value in {str(getattr(item, "value", item)).casefold() for item in _NON_EXECUTABLE_INTENTS}:
             if domain == "project":
                 route = "L-FACT"
             elif domain == "technical":
+                route = "P-TOOL"
+            elif act in {"CASUAL_CONVERSATION", "CASUAL_DISCUSSION", "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP"}:
                 route = "L-LIVE"
-            elif act in {"SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION"} and str(parsed.get("target") or "").strip():
-                # Opening a named topic needs a substantive dialogue response,
-                # not the local generic greeting composer.
-                route = "L-LIVE"
-            elif act in {"SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION"} and str(parsed.get("target") or "").strip():
-                route = "L-LIVE"
-            elif domain == "social" or intent_value == "personal_chat" or act in {
-                "SOCIAL_GREETING", "SOCIAL_CLOSING", "SOCIAL_ACKNOWLEDGEMENT",
-                "SOCIAL_OPENING", "CASUAL_CONVERSATION", "CASUAL_DISCUSSION",
-                "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP",
+            elif domain == "social" or act in {
+                "SOCIAL_GREETING", "SOCIAL_CLOSING", "SOCIAL_ACKNOWLEDGEMENT", "SOCIAL_OPENING",
             }:
                 route = "L-SOCIAL"
             else:
