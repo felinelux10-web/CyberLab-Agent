@@ -702,7 +702,7 @@ class Orchestrator:
             content = release["content"][:800]
             from lab_v4_dev.llm.prompt_builder import build_release_prompt
             prompt  = build_release_prompt(ver, content, raw)
-            result  = ask(prompt, system="أنت مساعد هندسي. أجب فقط من التقرير المعطى.", max_tokens=400)
+            result = authorized_ask(prompt, system="أنت مساعد هندسي. أجب فقط من التقرير المعطى.", max_tokens=400)
             self.context.current_version = ver
             self.context.current_subject = f"version_{ver}"
             return {
@@ -845,7 +845,7 @@ class Orchestrator:
                 "لا تخترع معلومات."
             )
 
-            result = ask(
+            result = authorized_ask(
                 prompt,
                 system=system,
                 max_tokens=400
@@ -881,7 +881,7 @@ class Orchestrator:
                 f"أجب بالعربية: ما الفروقات الرئيسية؟"
             )
             system = "أنت مساعد هندسي متخصص في تحليل إصدارات البرمجيات. أجب بإيجاز."
-            result = ask(prompt, system=system, max_tokens=400)
+            result = authorized_ask(prompt, system=system, max_tokens=400)
             return {
                 "status": result["status"],
                 "intent": intent,
@@ -1312,7 +1312,7 @@ class Orchestrator:
                         "text":f"لم أجد '{q}' في ملفات المشروع الحقيقية"}
             from lab_v4_dev.llm.prompt_builder import build_search_prompt
             prompt = build_search_prompt(q, results)
-            result = ask(prompt, system="أنت مساعد هندسي. أجب فقط بناءً على البيانات المعطاة.", max_tokens=200)
+            result = authorized_ask(prompt, system="أنت مساعد هندسي. أجب فقط بناءً على البيانات المعطاة.", max_tokens=200)
             # إضافة الملفات الحقيقية دائماً
             lines = [f"الملفات الحقيقية المرتبطة بـ '{q}':"]
             for r in results[:3]:
@@ -1584,7 +1584,7 @@ SOURCE CODE:
                 if style_instructions:
                     system += "\n\n" + style_instructions
 
-            result = ask(
+            result = authorized_ask(
                 _prompt,
                 system=system,
                 max_tokens=2000
@@ -2575,7 +2575,7 @@ SOURCE CODE:
                         pass
                 code_text = "\n\n".join(parts)
             prompt = f"أنت خبير أمن سيبراني وبرمجة. حلل الكود التالي وأجب على: {raw}\n\nالكود:\n{code_text}"
-            result = ask(prompt, max_tokens=600)
+            result = authorized_ask(prompt, max_tokens=600)
             text = result.get("text","")
             if text:
                 from lab_v4_dev.intent.response_cache import save as rcache_save
