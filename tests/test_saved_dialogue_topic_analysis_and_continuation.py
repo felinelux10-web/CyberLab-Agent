@@ -139,3 +139,41 @@ def test_session_type_counts_keep_unclassified_records_separate(monkeypatch):
         "work": 1,
         "other": 2,
     }
+
+
+
+def test_cyberlab_agent_project_identity_uses_local_project_state(monkeypatch):
+    import lab_v4_dev.conversation.conversation_manager as manager_module
+    from lab_v4_dev.awareness import project_knowledge
+
+    monkeypatch.setattr(
+        project_knowledge,
+        "get_project_state",
+        lambda: {
+            "version": "v5.9.13-dev",
+            "current_focus": "Project Knowledge Engine",
+            "completed_count": 8,
+            "active": ["Event System"],
+            "planned": ["Context API"],
+        },
+    )
+    monkeypatch.setattr(
+        manager_module,
+        "gateway_ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("project identity must be answered locally")
+        ),
+    )
+    context = ContextStore()
+    manager = ConversationManager(
+        SimpleNamespace(context=context),
+        DialogueMemory(context),
+    )
+
+    result = manager.process("ماهو cyberlab_agent؟")
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_project_identity"
+    assert "ليس وصفًا عامًا لمختبر تدريب اختراق" in result["text"]
+    assert "v5.9.13-dev" in result["text"]
+    assert "Project Knowledge Engine" in result["text"]
