@@ -624,3 +624,28 @@ def test_finalize_route_resolves_previous_dialogue_not_latest_work_session(monke
     assert decision.session_scope == "previous_saved"
     assert decision.session_ref.session_id == "latest-dialogue"
     assert decision.evidence_scope == "saved_session"
+
+
+
+def test_repeated_topic_inputs_retain_exact_archive_identity_and_extract_subjects():
+    first = _dialogue(
+        "diagnostic-art-a",
+        "الفن والرسم والنحت والنقش",
+        "ما العلاقة بين الفن والرسم والنحت والنقش؟",
+    )
+    second = _dialogue(
+        "diagnostic-art-b",
+        "الفن التجريدي والنقش البارز",
+        "كيف يلتقي الفن التجريدي مع النقش البارز؟",
+    )
+    second["dialogue_state"]["last_topic"] = ""
+    second["dialogue_state"]["exchange_archive"][0]["target"] = ""
+
+    assert len(session_state._dialogue_exchanges(first)) == 1
+    assert len(session_state._dialogue_exchanges(second)) == 1
+    assert session_state._dialogue_exchange_subject(
+        second["dialogue_state"]["exchange_archive"][0]
+    ) == "الفن التجريدي مع النقش البارز"
+    assert not session_state._is_dialogue_control_exchange(
+        second["dialogue_state"]["exchange_archive"][0]
+    )
