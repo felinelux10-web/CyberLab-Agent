@@ -304,6 +304,7 @@ class ConversationManager:
                 "selector_kind": selector_kind,
                 "saved_session_request": bool(saved_session_request),
                 "context_transition": transition.value,
+                **({"evidence_collection": "saved_dialogues"} if selector_kind == "collection" else {}),
             },
         )
 
