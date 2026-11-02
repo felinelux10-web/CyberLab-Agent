@@ -664,16 +664,17 @@ class ConversationManager:
                 get_session_index,
                 get_recent_sessions,
                 get_session_by_id,
+                get_session_type_counts,
                 build_session_brief_summary,
             )
             index = get_session_index()
-            session_count = len(index)
-            for item in index:
-                kind = str(item.get("session_type") or "").casefold()
-                if kind in {"dialogue", "work"}:
-                    session_type_counts[kind] += 1
-                else:
-                    session_type_counts["other"] += 1
+            counts = get_session_type_counts()
+            session_count = counts["total"]
+            session_type_counts = {
+                "dialogue": counts["dialogue"],
+                "work": counts["work"],
+                "other": counts["other"],
+            }
             for item in get_recent_sessions()[:5]:
                 session_id = str(item.get("session_id") or "")
                 detail = get_session_by_id(session_id) if session_id else {}
