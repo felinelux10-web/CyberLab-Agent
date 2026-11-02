@@ -1301,7 +1301,7 @@ class ConversationManager:
             "تحقق", "تحقق اولا", "تحقق من فضلك", "تحقق اولا من فضلك",
             "verify", "verify first",
         } and not str(candidate.get("target") or "").strip():
-            return {
+            return self._finalize_direct_result({
                 "status": "needs_clarification",
                 "intent": Intent.VERIFY_FIX,
                 "source": "conversation_manager",
@@ -1310,7 +1310,7 @@ class ConversationManager:
                     "اذكر الإصلاح أو الاختبار أو المعلومة المقصودة."
                 ),
                 "executed": False,
-            }
+            }, intent=Intent.VERIFY_FIX, route="CLARIFY")
 
         if confirmation_intent is None and self._is_bare_confirmation(user_input):
             # A bare yes/no without a pending operation is dialogue, not a new
@@ -1374,13 +1374,14 @@ class ConversationManager:
                             f"   - الجلسة #{session['number']}: {session['title']} "
                             f"[{session['session_id']}]"
                         )
-            return {
+            return self._finalize_direct_result({
                 "status": "success", "intent": Intent.MEMORY_DUMP,
                 "source": "saved_dialogue_topic_analysis",
                 "output_kind": "report", "evidence_scope": "saved_session",
                 "executed": False, "text": "\n".join(lines),
                 "repeated_topics": repeated_topics,
-            }
+            }, intent=Intent.MEMORY_DUMP, route="L-SESSION",
+               selected_session={"kind": "collection"}, saved_session_request=True)
 
         if active_report_continue and selected_saved_session_id:
             continuation = self._continue_saved_dialogue(
@@ -1493,7 +1494,11 @@ class ConversationManager:
             selected_session.get("kind") == "none"
             and self._is_memory_inventory_request(user_input)
         ):
-            return self._local_memory_inventory_answer()
+            return self._finalize_direct_result(
+                self._local_memory_inventory_answer(),
+                intent=Intent.MEMORY_DUMP, route="L-SESSION",
+                selected_session={"kind": "collection"}, saved_session_request=True,
+            )
 
         normalized_session_request = self._normalize_transition_text(user_input).strip(
             " .,،؛:!?؟"
