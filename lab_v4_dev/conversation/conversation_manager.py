@@ -33,6 +33,7 @@ unless the current turn explicitly requests an operation.
 """
 
 import re
+import inspect
 
 from lab_v4_dev.conversation.mode_detector import detect_mode
 from lab_v4_dev.conversation.assistant_style import format_response, single_question
@@ -3049,7 +3050,10 @@ class ConversationManager:
                     "source": "route_decision", "executed": False,
                     "text": "يلزم تحديد السياق أو الجلسة المقصودة قبل المتابعة.",
                 }
-            if route_decision.route in {"L-SOCIAL", "L-LIVE", "L-FACT", "P-TOOL"}:
+            if route_decision.route in {"L-FACT", "P-TOOL"} or (
+                route_decision.route in {"L-SOCIAL", "L-LIVE"}
+                and intent not in _NON_EXECUTABLE_INTENTS
+            ):
                 return self._handle_chat(
                     text, mode, parsed=parsed,
                     user_question=user_question or text, history=chat_history,
@@ -3219,14 +3223,21 @@ class ConversationManager:
         # Do NOT let TASK mode unconditionally override the intent decision —
         # intent remains authoritative to avoid hijacking conversational inputs.
         if mode == "SYSTEM":
-            result = self.orchestrator.handle(
-                text,
-                parsed=parsed,
-                context_resolved=True,
-                conversation_history=chat_history,
-                context_transition=context_transition,
-                route_decision=route_decision if isinstance(route_decision, RouteDecision) else None,
-            )
+            handle = self.orchestrator.handle
+            handle_kwargs = {
+                "parsed": parsed,
+                "context_resolved": True,
+                "conversation_history": chat_history,
+                "context_transition": context_transition,
+            }
+            try:
+                if "route_decision" in inspect.signature(handle).parameters:
+                    handle_kwargs["route_decision"] = (
+                        route_decision if isinstance(route_decision, RouteDecision) else None
+                    )
+            except (TypeError, ValueError):
+                pass
+            result = handle(text, **handle_kwargs)
             result = dict(result)
             result["executed"] = result.get("status") != "needs_clarification"
             return result
