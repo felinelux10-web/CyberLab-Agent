@@ -2737,14 +2737,14 @@ class ConversationManager:
                 or getattr(state, "last_topic", None)
             )
             if not has_dialogue:
-                return {
+                return self._attach_route_decision({
                     "status": "needs_clarification",
                     "intent": Intent.MEMORY_DUMP,
                     "source": "dialogue_memory",
                     "text": "لا يوجد موضوع سابق مسجل أستطيع الرجوع إليه في هذه الجلسة. اذكر الموضوع الذي تريد استعادته.",
                     "executed": False,
                     "semantic_request": semantic.as_dict(),
-                }
+                }, route_decision)
 
         # Strong project-progress requests must be resolved before broad
         # dialogue-history rules see words such as "كنا". This is still a
@@ -2781,7 +2781,7 @@ class ConversationManager:
                     user_input, local_project_answer, mode=mode, parsed=project_parsed,
                     context_transition=transition,
                 )
-            return local_project_answer
+            return self._attach_route_decision(local_project_answer, route_decision)
 
 
         # Ownership is decided before any generic/local responder. A history
@@ -2843,7 +2843,7 @@ class ConversationManager:
             )
             # Retrieval is read-only: do not archive the retrieval request as a
             # new dialogue exchange or make it the next active topic.
-            return history_result
+            return self._attach_route_decision(history_result, route_decision)
 
         # Keep the unified responder scoped to greetings and closings.
         # Social openings, casual dialogue, acknowledgements, continuations, and
@@ -2884,7 +2884,7 @@ class ConversationManager:
                     user_input, local_unified, mode=mode, parsed=parsed,
                     context_transition=transition,
                 )
-            return local_unified
+            return self._attach_route_decision(local_unified, route_decision)
 
         # Explicit persisted-session requests belong to Orchestrator. A local
         # social responder may otherwise consume ASSISTANT_STATE_QUERY and
@@ -2915,7 +2915,7 @@ class ConversationManager:
                     user_input, local_social, mode=mode, parsed=parsed,
                     context_transition=transition,
                 )
-            return local_social
+            return self._attach_route_decision(local_social, route_decision)
 
         # ----------------------------------------------------
         # أسئلة تاريخ الحوار تُجاب من DialogueMemory محليًا، لا من سياق
@@ -2959,7 +2959,7 @@ class ConversationManager:
                 "executed": False,
             }
         if self._ambiguous_resume_without_domain(user_input, parsed):
-            return {
+            return self._finalize_direct_result({
                 "status": "needs_clarification",
                 "intent": parsed.get("intent") or Intent.RESUME,
                 "source": "conversation_manager",
@@ -2968,7 +2968,7 @@ class ConversationManager:
                 ),
                 "executed": False,
                 "semantic_request": semantic.as_dict(),
-            }
+            }, intent=parsed.get("intent") or Intent.RESUME, route="CLARIFY")
         if conversation_history_answer is not None:
             result = conversation_history_answer
             result["semantic_request"] = semantic.as_dict()
