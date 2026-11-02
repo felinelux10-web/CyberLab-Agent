@@ -3295,7 +3295,15 @@ class ConversationManager:
             intent in knowledge_intents
             and knowledge_scope == ProjectScope.CURRENT_PROJECT
             and knowledge_type in {"component", "relationship", "execution"}
-            and (not explicit_target or knowledge_type in {"component", "relationship"})
+            and (
+                not explicit_target
+                or (
+                    knowledge_type in {"component", "relationship"}
+                    and not explicit_target.casefold().endswith((".py", ".pyw"))
+                    and "/" not in explicit_target
+                    and "\\" not in explicit_target
+                )
+            )
         ):
             return self._handle_chat(
                 text,
