@@ -75,6 +75,7 @@ class Orchestrator:
         context_resolved: bool = False,
         conversation_history: list | None = None,
         context_transition: str | None = None,
+        route_decision=None,
     ) -> dict:
         request = Request.from_input(request)
         raw_request = request.raw_text
@@ -153,6 +154,8 @@ class Orchestrator:
             route_kwargs["context_transition"] = context_transition
         if "session_selector" in route_parameters:
             route_kwargs["session_selector"] = parsed.get("session_selector")
+        if "route_decision" in route_parameters:
+            route_kwargs["route_decision"] = route_decision
         result = self._route(intent, target, ctx_hint, raw_request, **route_kwargs)
         if _rt:
             try:
@@ -251,6 +254,7 @@ class Orchestrator:
         conversation_history: list | None = None,
         context_transition: str | None = None,
         session_selector: dict | None = None,
+        route_decision=None,
     ) -> dict:
 
         # ─── Response Cache ───
@@ -2266,6 +2270,10 @@ SOURCE CODE:
                     allow_provider_synthesis = bool(
                         getattr(self.agent, "allow_provider_session_synthesis", True)
                     )
+                    if route_decision is not None and not bool(
+                        getattr(route_decision, "provider_allowed", False)
+                    ):
+                        allow_provider_synthesis = False
                     if source_text and allow_provider_synthesis:
                         topic = str(
                             dialogue_state.get("last_topic")
