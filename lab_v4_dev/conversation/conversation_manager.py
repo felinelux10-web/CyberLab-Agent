@@ -138,6 +138,16 @@ class ConversationManager:
                 session_id = str(selected_record.get("session_id") or "").strip()
             except Exception:
                 session_id = ""
+        if not session_id and selector_kind == "search":
+            query = str(selected_session.get("query") or selected_session.get("topic_filter") or "").strip()
+            if query:
+                try:
+                    from lab_v4_dev.memory.session_state import search_sessions
+                    matches = search_sessions(query, limit=2)
+                    if len(matches) == 1:
+                        session_id = str(matches[0].get("session_id") or "").strip()
+                except Exception:
+                    session_id = ""
         if not session_id and selector_kind == "previous_dialogue":
             try:
                 from lab_v4_dev.memory.session_state import get_latest_session_by_type
