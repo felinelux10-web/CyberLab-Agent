@@ -187,7 +187,9 @@ class ConversationManager:
         requested_output = str(selected_session.get("output_kind") or parsed.get("output_kind") or "none")
         if requested_output == "chat" or requested_output not in {"none", "brief", "summary", "report", "topic_summary", "transcript", "list", "continue_topic", "capability"}:
             requested_output = "none"
-        if route == "L-SESSION" and session_ref is None:
+        if route == "CLARIFY":
+            requested_output = "none"
+        elif route == "L-SESSION" and session_ref is None:
             # Search/ambiguous selectors are not evidence yet. Keep the
             # report mode in selector metadata until an exact session resolves.
             requested_output = "none"
