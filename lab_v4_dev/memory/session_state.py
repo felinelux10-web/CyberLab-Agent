@@ -212,6 +212,8 @@ def _saved_dialogue_search_content(item: dict) -> list[str]:
             "gist", "key_points", "main_points", "topics_discussed",
         ):
             value = exchange.get(field)
+            if field == "target" and _is_generated_dialogue_label(value):
+                continue
             if isinstance(value, (list, tuple, set)):
                 exchange_parts.extend(str(entry) for entry in value if entry)
             elif value:
@@ -1132,7 +1134,11 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
                 break
     if not topic:
         stored_topic = str(state.get("last_topic") or state.get("pending_topic") or "").strip()
-        if stored_topic and not _is_dialogue_control_text(stored_topic):
+        if (
+            stored_topic
+            and not _is_dialogue_control_text(stored_topic)
+            and not _is_generated_dialogue_label(stored_topic)
+        ):
             topic = stored_topic
     topic = " ".join(topic.split())[:100].strip(" .،؛:")
     if topic:
@@ -1271,7 +1277,7 @@ def _structured_topics(dialogue: dict) -> list[str]:
                 continue
             for field in ("target", "topic", "entity", "subject"):
                 value = str(record.get(field) or "").strip()
-                if value and value not in topics:
+                if value and not _is_generated_dialogue_label(value) and value not in topics:
                     topics.append(value)
     return topics
 
