@@ -84,6 +84,21 @@ def test_all_sessions_report_is_aggregate_semantic_and_never_a_transcript(monkey
     assert "=== نص الحوار المحفوظ حرفيًا ===" not in report
 
 
+def test_dialogue_brief_uses_semantic_subject_not_generated_target_or_user_prompt():
+    session = _dialogue(
+        "saved-agent-identity",
+        "أنا CyberLab Agent، وكيل برمجي داخل هذا المشروع",
+        "من أنت؟ أجب بشكل ودي.",
+        "أنا CyberLab Agent، وكيل برمجي مدمج داخل المشروع.",
+        "أنا CyberLab Agent، وكيل برمجي داخل هذا المشروع",
+    )
+    brief = session_state.build_session_brief_summary(session)
+
+    assert brief["topic"] == "هوية الوكيل وآلية عمله"
+    assert "من أنت؟ أجب بشكل ودي." not in brief["summary"]
+    assert "تركز مضمون الردود المسجلة على" not in brief["summary"]
+
+
 def test_orchestrator_returns_collection_report_locally_without_provider(monkeypatch):
     from lab_v4_dev.core.orchestrator import Orchestrator
     from lab_v4_dev.intent.intents import Intent
