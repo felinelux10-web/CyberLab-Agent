@@ -1784,6 +1784,19 @@ def _dialogue_exchange_subject(exchange: dict) -> str:
         .replace("ى", "ي").replace("ـ", "")
     )
     normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
+    if any(marker in normalized for marker in (
+        "كيف تشتغل انت كوكيل", "كيف تعمل انت كوكيل",
+        "كيف تشتغل كوكيل", "كيف تعمل كوكيل",
+    )) or normalized.startswith(("من انت", "من تكون")):
+        return "هوية الوكيل وآلية عمله"
+    if any(marker in normalized for marker in (
+        "ماهوالنظام", "ما هو النظام", "حالة النظام", "كيف حالة النظام",
+    )):
+        return "حالة النظام ومكوناته"
+    if any(marker in normalized for marker in (
+        "ما قدراتك", "ماذا تستطيع", "ما الذي تستطيع فعله",
+    )):
+        return "قدرات الوكيل وحدودها"
     if "cyberlab" in normalized:
         return "مشروع CyberLab Agent"
     patterns = (
