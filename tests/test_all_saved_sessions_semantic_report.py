@@ -84,6 +84,46 @@ def test_all_sessions_report_is_aggregate_semantic_and_never_a_transcript(monkey
     assert "=== نص الحوار المحفوظ حرفيًا ===" not in report
 
 
+def test_orchestrator_returns_collection_report_locally_without_provider(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    from lab_v4_dev.intent.intents import Intent
+
+    art = _dialogue(
+        "saved-art-route",
+        "الفن التجريدي والنقش البارز",
+        "ما الفرق بين الفن التجريدي والنقش البارز؟",
+        "يرتبط الفرق بأسلوب معالجة الشكل والسطح.",
+        "الفن التجريدي والنقش البارز",
+    )
+    index = [art]
+    monkeypatch.setattr(session_state, "get_session_index", lambda: index)
+    monkeypatch.setattr(session_state, "get_session_by_id", lambda session_id: art if session_id == art["session_id"] else {})
+    monkeypatch.setattr(
+        "lab_v4_dev.core.orchestrator.ask",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("all-sessions report must not require a provider")
+        ),
+    )
+    selector = session_state.session_selector("اكتب تقرير مفصل لجميع الجلسات")
+    orchestrator = Orchestrator(SimpleNamespace(runtime=None))
+
+    result = orchestrator.handle(
+        "اكتب تقرير مفصل لجميع الجلسات",
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "target": "",
+            "context": "system",
+            "session_selector": selector,
+        },
+    )
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_all_sessions_report"
+    assert result["output_kind"] == "report"
+    assert result["session_count"] == 1
+    assert "الفن التجريدي والنقش البارز" in result["text"]
+
+
 def test_report_does_not_treat_provider_failure_as_session_knowledge():
     exchange = {
         "user": "كيف تشتغل أنت كوكيل؟",
