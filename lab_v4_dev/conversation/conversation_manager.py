@@ -306,11 +306,11 @@ class ConversationManager:
             requested_output = "none"
         if route == "CLARIFY":
             requested_output = "none"
-        elif route == "L-SESSION" and session_ref is None and selector_kind != "collection":
+        elif route == "L-SESSION" and session_ref is None and selector_kind not in {"collection", "list"}:
             # Search/ambiguous selectors are not evidence yet. Keep the
             # report mode in selector metadata until an exact session resolves.
             requested_output = "none"
-        elif route == "L-SESSION" and requested_output == "none" and selector_kind != "collection":
+        elif route == "L-SESSION" and requested_output == "none" and selector_kind not in {"collection", "list"}:
             requested_output = "report"
         if route == "L-SESSION" and session_ref is not None:
             evidence_scope = "saved_session"
@@ -371,7 +371,11 @@ class ConversationManager:
                 "context_transition": transition.value,
                 **({"clarification_reason": "missing_live_evidence"}
                    if route == "CLARIFY" and live_history_output and not has_live_exchange_evidence else {}),
-                **({"evidence_collection": "saved_dialogues"} if selector_kind == "collection" else {}),
+                **({
+                    "evidence_collection": (
+                        "saved_sessions" if requested_output == "report" else "saved_dialogues"
+                    )
+                } if selector_kind in {"collection", "list"} else {}),
             },
         )
 
@@ -1480,6 +1484,11 @@ class ConversationManager:
         ).casefold() == "interrupted_branch"
         from lab_v4_dev.memory.session_state import session_route_contract
         selected_session = session_route_contract(user_input)
+        if (
+            selected_session.get("kind") == "list"
+            and selected_session.get("report_mode") == "full"
+        ):
+            selected_session["output_kind"] = "report"
         if (
             selected_session.get("kind") in {"none", "reference"}
             and self._is_current_project_identity_request(user_input)
