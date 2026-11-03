@@ -1889,6 +1889,7 @@ SOURCE CODE:
                         "output_kind": "report",
                         "evidence_scope": "saved_sessions",
                         "evidence_collection": "saved_sessions",
+                        "context_action": "read_only_report",
                         "executed": False,
                         "session_count": len(candidates),
                         "text": report_text,
