@@ -1931,7 +1931,11 @@ def summarize_dialogue_exchanges(
     last_insights = _dialogue_exchange_insights(last) if last else []
     if not meaningful:
         stop_point = "لم يتجاوز السجل تبادل التحية أو الحديث الاجتماعي القصير؛ لم يُسجّل موضوع نقاش فعلي."
-    elif last_target and not _is_dialogue_control_text(last_target):
+    elif (
+        last_target
+        and not _is_dialogue_control_text(last_target)
+        and not _is_generated_dialogue_label(last_target)
+    ):
         stop_point = f"توقف الحوار عند مناقشة «{last_target}»؛ ولا توجد متابعة محفوظة بعد آخر تبادل مكتمل."
     elif last_insights:
         stop_point = f"آخر مضمون موثق في السجل: {last_insights[0]}"
@@ -2319,7 +2323,11 @@ def analyze_repeated_dialogue_topics(*, limit: int = 8) -> list[dict]:
         # them stale or generic.
         for exchange in meaningful:
             target = str(exchange.get("target") or "").strip()
-            if target and not _is_dialogue_control_text(target):
+            if (
+                target
+                and not _is_dialogue_control_text(target)
+                and not _is_generated_dialogue_label(target)
+            ):
                 candidates.append(target)
             else:
                 subject = _dialogue_exchange_subject(exchange)
@@ -2327,11 +2335,19 @@ def analyze_repeated_dialogue_topics(*, limit: int = 8) -> list[dict]:
                     candidates.append(subject)
         if not candidates:
             saved_title = str(item.get("title") or session.get("title") or "").strip()
-            if saved_title and not _is_dialogue_control_text(saved_title):
+            if (
+                saved_title
+                and not _is_dialogue_control_text(saved_title)
+                and not _is_generated_dialogue_label(saved_title)
+            ):
                 candidates.append(saved_title)
         if not candidates:
             last_topic = str(dialogue.get("last_topic") or "").strip() if isinstance(dialogue, dict) else ""
-            if last_topic and not _is_dialogue_control_text(last_topic):
+            if (
+                last_topic
+                and not _is_dialogue_control_text(last_topic)
+                and not _is_generated_dialogue_label(last_topic)
+            ):
                 candidates.append(last_topic)
         if not candidates:
             brief = summarize_dialogue_exchanges(meaningful, limit=2)
@@ -2447,7 +2463,11 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
             (
                 clean(value, 100)
                 for value in topic_candidates
-                if useful_topic(value) and not _is_dialogue_control_text(value)
+                if (
+                    useful_topic(value)
+                    and not _is_dialogue_control_text(value)
+                    and not _is_generated_dialogue_label(value)
+                )
             ),
             "",
         )
