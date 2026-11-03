@@ -2645,6 +2645,7 @@ def build_all_sessions_report(sessions: list[dict] | None = None, *, session_typ
         lines.extend([
             "",
             f"الجلسة رقم {record['number']} — [{label}] {record['topic']}",
+            f"- المعرّف: {record['session_id']}",
             f"- الحالة المسجلة: {record['status']}.",
         ])
         if record["kind"] == "dialogue":
