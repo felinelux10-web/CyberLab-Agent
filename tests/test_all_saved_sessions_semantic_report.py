@@ -29,6 +29,12 @@ def test_detailed_report_for_all_sessions_is_classified_as_saved_collection():
         "اكتب تقرير مفصل لهذه الجليات كلها"
     )
     assert selected == {"kind": "list", "report_mode": "full"}
+    route_contract = session_state.session_route_contract(
+        "اكتب تقرير مفصل لهذه الجليات كلها"
+    )
+    assert route_contract["kind"] == "list"
+    assert route_contract["report_mode"] == "full"
+    assert route_contract["output_kind"] == "report"
 
     corrected_followup = session_state.session_selector(
         "لا تعرض محتوى الجلسات بل قلت لك اكتب تقرير مفصل"
