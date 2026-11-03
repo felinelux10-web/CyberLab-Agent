@@ -2504,16 +2504,20 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
             if user not in meaningful_users:
                 meaningful_users.append(user)
 
-        if not topic and meaningful_users:
-            topic = clean(meaningful_users[0], 100)
-        topic = topic or "حوار بلا موضوع محدد"
-        # Summaries describe the meaning of saved exchanges; verbatim messages
-        # remain available only through the explicit transcript report mode.
+        # Do not fall back to copying the first user message as a session title.
+        # Let the semantic extractor infer a subject from the exchange evidence.
         semantic_summary = summarize_dialogue_exchanges(
             meaningful_exchanges,
             topic=topic,
             limit=4,
         )
+        if not topic:
+            inferred_topic = str(semantic_summary.get("topic") or "").strip()
+            topic = (
+                clean(inferred_topic, 100)
+                if useful_topic(inferred_topic) and not _is_generated_dialogue_label(inferred_topic)
+                else "حوار بلا موضوع محدد"
+            )
         insights = semantic_summary["insights"]
         if insights:
             summary = "الخلاصة الدلالية للحوار: " + "؛ ".join(
@@ -2523,6 +2527,8 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
             summary = (
                 f"تناول الحوار موضوع «{topic}»، لكن لا توجد بيانات محفوظة كافية "
                 "لاستخلاص تفاصيل أدق دون تخمين."
+                if topic != "حوار بلا موضوع محدد"
+                else "توجد تبادلات موضوعية في السجل، لكن لا تتوفر أدلة كافية لتحديد مضمونها دون تخمين."
             )
         elif greeting_seen:
             summary = "حوار افتتاحي للتحية والتعارف؛ لا تظهر في السجل تبادلات موضوعية أخرى مكتملة."
