@@ -1823,7 +1823,7 @@ def _dialogue_assistant_insight(exchange: dict) -> str:
     if _is_dialogue_control_exchange(exchange):
         return ""
     text = " ".join(str(exchange.get("assistant") or "").split()).strip()
-    if not text:
+    if not text or _is_generated_dialogue_label(text):
         return ""
     normalized = (
         text.casefold()
