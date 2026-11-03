@@ -334,6 +334,7 @@ def session_selector(raw: str) -> dict:
         .replace("ملهص", "ملخص").replace("نلخص", "ملخص")
         .replace("مظمون", "مضمون")
         .replace("جنيع", "جميع").replace("جميغ", "جميع")
+        .replace("الجليات", "الجلسات").replace("جليات", "جلسات")
     )
     text = re.sub(r"[\u064b-\u065f\u0670]", "", text)
     # Repair common mobile/terminal input where adjacent words are joined.
@@ -367,18 +368,27 @@ def session_selector(raw: str) -> dict:
         r"(?:جلسات|الجلسات)\s+(?:العمل|العملية|العمليات)",
         text,
     ))
-    if work_sessions_mentioned and asks_for_summary:
+    if work_sessions_mentioned and (asks_for_summary or explicit_report_request):
         return {
             "kind": "list",
             "session_type": "work",
-            "report_mode": "summaries",
+            "report_mode": "full" if explicit_report_request else "summaries",
         }
     sessions_with_all_suffix = re.search(
         r"(?:الجلسات|جلسات)(?:\s+(?:المحفوظة|السابقة|القديمة))?\s+(?:كلها|جميعها|كافه)",
         text,
     )
-    if (collective_sessions or sessions_with_all_suffix) and asks_for_summary:
-        return {"kind": "list", "report_mode": "summaries"}
+    if (collective_sessions or sessions_with_all_suffix) and (
+        asks_for_summary or explicit_report_request
+    ):
+        return {
+            "kind": "list",
+            "report_mode": "full" if explicit_report_request else "summaries",
+        }
+    # A plural-session report may omit "all" wording. Keep it in the saved
+    # collection owner rather than treating it as a live-dialogue report.
+    if explicit_report_request and re.search(r"(?<!\w)(?:الجلسات|جلسات)(?!\w)", text):
+        return {"kind": "list", "report_mode": "full"}
 
     # A deictic request is not a safe selector for the latest saved checkpoint.
     if asks_for_summary and any(marker in text for marker in (
@@ -1447,7 +1457,16 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         values = value if isinstance(value, (list, tuple, set)) else [value]
         for candidate in values:
             item = " ".join(str(candidate or "").split()).strip(" \t\r\n-•")
-            if item and item not in insights:
+            normalized_item = item.casefold().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+            if (
+                item
+                and not normalized_item.startswith((
+                    "تركز مضمون الردود المسجلة على",
+                    "ابرز مضمون محفوظ في رد الوكيل",
+                    "لا يتضمن هذا التبادل حقول",
+                ))
+                and item not in insights
+            ):
                 insights.append(item)
     if insights:
         return insights[:4]
@@ -1470,8 +1489,35 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         ]
 
     topic = " ".join(str(exchange.get("target") or "").split()).strip()
-    if topic and _is_dialogue_control_text(topic):
+    normalized_topic = topic.casefold().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+    if (
+        not topic
+        or _is_dialogue_control_text(topic)
+        or normalized_topic.startswith((
+            "تركز مضمون الردود المسجلة على",
+            "انا cyberlab agent",
+            "ابرز مضمون محفوظ في رد الوكيل",
+            "اخر نقطة محفوظة في هذا الفرع",
+            "تعذر توليد شرح",
+        ))
+    ):
         topic = ""
+    # Recover common self-knowledge/system subjects from the user's question.
+    if not topic:
+        if any(marker in normalized for marker in (
+            "كيف تشتغل انت كوكيل", "كيف تعمل انت كوكيل", "كيف تشتغل كوكيل",
+            "كيف تعمل كوكيل", "كيف تشتغل انت", "كيف تعمل انت",
+        )) or normalized.startswith(("من انت", "ماهو cyberlab", "ما هو cyberlab")):
+            topic = "هوية الوكيل وآلية عمله"
+        elif any(marker in normalized for marker in (
+            "ماهوالنظام", "ما هو النظام", "ماهي حالة النظام", "ما هي حالة النظام",
+            "كيف حالة النظام", "حالة النظام",
+        )):
+            topic = "حالة النظام ومكوناته"
+        elif any(marker in normalized for marker in (
+            "ما قدراتك", "ماذا تستطيع", "ما الذي تستطيع فعله",
+        )):
+            topic = "قدرات الوكيل وحدودها"
     assistant_text = str(exchange.get("assistant") or "").strip()
     answer_candidates = []
     for paragraph in re.split(r"\n+", assistant_text):
@@ -1488,6 +1534,10 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         "لا املك سجل", "لا أملك سجل", "لم افهم", "لم أفهم",
         "انا جاهز", "أنا جاهز", "اخبرني بما تريد",
         "حسنًا، أخبرني", "اخبرني بما يشغلك", "ما الذي تود",
+        "تعذر توليد شرح", "تعذر الوصول الى مزود", "تعذر الوصول إلى مزود",
+        "تعذر انتاج رد صالح", "تعذر إنتاج رد صالح", "provider_exception",
+        "اخر نقطة محفوظة في هذا الفرع", "آخر نقطة محفوظة في هذا الفرع",
+        "حافظت على حدود السجل", "لم احفظ شرحا جديدا", "لم يُحفظ شرح جديد",
     )
     useful_answers = [
         sentence for sentence in answer_candidates
@@ -2500,6 +2550,139 @@ def _enrich_session_fields(data: dict) -> dict:
     })
     data["summary"] = build_session_restore_summary(data)
     return data
+
+def build_all_sessions_report(sessions: list[dict] | None = None, *, session_type: str | None = None) -> str:
+    """Build an aggregate, non-transcript report from every selected saved session."""
+    index = get_session_index()
+    selected = sessions if isinstance(sessions, list) else index
+    wanted_type = str(session_type or "").strip().casefold()
+    stable_numbers = {
+        str(item.get("session_id") or "").strip(): number
+        for number, item in enumerate(index, 1)
+        if isinstance(item, dict) and str(item.get("session_id") or "").strip()
+    }
+    records = []
+    counts = {"dialogue": 0, "work": 0, "other": 0}
+    status_counts = {}
+    topic_counts = {}
+    for entry in selected:
+        if not isinstance(entry, dict):
+            continue
+        session_id = str(entry.get("session_id") or "").strip()
+        if not session_id:
+            continue
+        detail = get_session_by_id(session_id)
+        session = detail if (
+            isinstance(detail, dict)
+            and str(detail.get("session_id") or "").strip() == session_id
+        ) else dict(entry)
+        kind = str(session.get("session_type") or entry.get("session_type") or "other").casefold()
+        if kind not in counts:
+            kind = "other"
+        if wanted_type == "work" and kind == "dialogue":
+            continue
+        if wanted_type == "dialogue" and kind != "dialogue":
+            continue
+        counts[kind] += 1
+        brief = build_session_brief_summary(session)
+        report = analyze_session(session)
+        status = str(brief.get("status") or report.get("status") or "غير محددة")
+        status_counts[status] = status_counts.get(status, 0) + 1
+        topic = str(brief.get("topic") or report.get("topic") or "موضوع غير محدد").strip()
+        if topic and topic not in {"حوار بلا موضوع محدد", "جلسة عمل بلا عنوان موثوق"}:
+            topic_counts[topic] = topic_counts.get(topic, 0) + 1
+        dialogue_summary = {}
+        if kind == "dialogue":
+            exchanges = [
+                item for item in _dialogue_exchanges(session)
+                if not _is_dialogue_control_exchange(item)
+            ]
+            dialogue_summary = summarize_dialogue_exchanges(exchanges, topic=topic, limit=5)
+        records.append({
+            "number": stable_numbers.get(session_id, "?"),
+            "session_id": session_id,
+            "kind": kind,
+            "topic": topic,
+            "summary": str(brief.get("summary") or "").strip(),
+            "status": status,
+            "next_step": str(brief.get("next_step") or report.get("next_step") or "").strip(),
+            "insights": list(dialogue_summary.get("insights") or []),
+            "stop_point": str(dialogue_summary.get("stop_point") or "").strip(),
+            "report": report,
+        })
+
+    total = len(records)
+    lines = [
+        "=== التقرير التحليلي لجميع الجلسات المحفوظة ===",
+        f"نطاق التقرير: جميع السجلات المطابقة في فهرس الجلسات المحفوظة{(' (' + wanted_type + ')') if wanted_type else ''}.",
+        f"إجمالي الجلسات المشمولة: {total}.",
+        f"- جلسات الحوار: {counts['dialogue']}.",
+        f"- جلسات العمل: {counts['work']}.",
+        f"- سجلات أخرى أو غير مصنفة: {counts['other']}.",
+        "",
+        "1) التوزيع والحالة العامة",
+    ]
+    if status_counts:
+        lines.extend(f"- {status}: {count} جلسة" for status, count in sorted(status_counts.items()))
+    else:
+        lines.append("- لا توجد سجلات جلسات مطابقة.")
+    lines.extend(["", "2) المحاور والموضوعات المتكررة"])
+    repeated = analyze_repeated_dialogue_topics(limit=8) if not wanted_type or wanted_type == "dialogue" else []
+    if repeated:
+        for item in repeated:
+            lines.append(f"- {item['topic']}: ظهر في {item['session_count']} جلسات حوار مستقلة.")
+    elif topic_counts:
+        for topic, count in sorted(topic_counts.items(), key=lambda pair: (-pair[1], pair[0]))[:12]:
+            lines.append(f"- {topic}" + (f" (تكرر {count} مرات)." if count > 1 else "."))
+    else:
+        lines.append("- لا توجد موضوعات مشتركة كافية لإثبات التكرار.")
+    lines.extend(["", "3) التحليل التفصيلي لكل جلسة"])
+    if not records:
+        lines.append("- لا توجد جلسات محفوظة ضمن النطاق المحدد.")
+    for record in records:
+        label = "حوار" if record["kind"] == "dialogue" else "عمل" if record["kind"] == "work" else "غير مصنفة"
+        lines.extend([
+            "",
+            f"الجلسة رقم {record['number']} — [{label}] {record['topic']}",
+            f"- الحالة المسجلة: {record['status']}.",
+        ])
+        if record["kind"] == "dialogue":
+            if record["insights"]:
+                lines.append("- مضمون النقاش:")
+                lines.extend(f"  • {item}" for item in record["insights"])
+            elif record["summary"]:
+                lines.append(f"- الخلاصة المتاحة: {record['summary']}")
+            else:
+                lines.append("- لا يحتوي السجل على مضمون موضوعي كافٍ لتلخيصه بثقة.")
+            if record["stop_point"]:
+                lines.append(f"- نقطة التوقف: {record['stop_point']}")
+        else:
+            report = record["report"]
+            lines.append(f"- الهدف المسجل: {report.get('active_goal') or 'غير محدد'}.")
+            achievements = report.get("confirmed_achievements") or []
+            pending = report.get("pending_tasks") or []
+            if achievements:
+                lines.append("- الإنجازات المثبتة:")
+                lines.extend(f"  • {item}" for item in achievements[:8])
+            else:
+                lines.append("- لا توجد إنجازات تنفيذية مؤكدة في الحقول المنظمة.")
+            if pending:
+                lines.append("- الأعمال المتبقية:")
+                lines.extend(f"  • {item}" for item in pending[:8])
+            if record["next_step"]:
+                lines.append(f"- الخطوة التالية: {record['next_step']}")
+        lines.append("- المصدر: سجل الجلسة وحقوله المنظمة؛ لم تُنسخ الرسائل الأصلية.")
+
+    lines.extend([
+        "",
+        "4) قراءة عامة للسجل",
+        f"- يغطي التقرير {total} جلسة محفوظة من الفهرس الحالي، مع الفصل بين سجلات الحوار والعمل.",
+        "- عُرض مضمون الجلسات بصياغة تحليلية مختصرة، ولم تُنسخ رسائل المستخدم أو ردود الوكيل.",
+        "- لا تُعد عناوين الجلسات أو الأسئلة وحدها دليلًا على إنجاز أو قرار؛ لم تُثبت إلا البيانات الصريحة المسجلة.",
+        "- الجلسات التي لا تحتوي على تبادلات مكتملة أو حقول موضوعية كافية وُصفت حدود معرفتها بدل اختلاق مضمون لها.",
+    ])
+    return "\n".join(lines)
+
 
 def clear_session():
     path = _session_file()
