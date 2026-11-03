@@ -125,6 +125,34 @@ def test_orchestrator_returns_collection_report_locally_without_provider(monkeyp
     assert "الفن التجريدي والنقش البارز" in result["text"]
 
 
+def test_route_decision_preserves_report_contract_for_saved_collection():
+    from lab_v4_dev.context.context_store import ContextStore
+    from lab_v4_dev.conversation.conversation_manager import ConversationManager
+    from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+    from lab_v4_dev.intent.intents import Intent
+
+    context = ContextStore()
+    manager = ConversationManager(SimpleNamespace(context=context), DialogueMemory(context))
+    decision = manager.finalize_route(
+        parsed={"intent": Intent.SESSION_RESTORE, "output_kind": "report"},
+        selected_session={
+            "kind": "list",
+            "report_mode": "full",
+            "output_kind": "report",
+        },
+        saved_session_request=True,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+
+    assert decision.route == "L-SESSION"
+    assert decision.session_scope == "none"
+    assert decision.output_kind == "report"
+    assert decision.provider_allowed is False
+    assert decision.metadata["evidence_collection"] == "saved_sessions"
+
+
 def test_report_does_not_treat_provider_failure_as_session_knowledge():
     exchange = {
         "user": "كيف تشتغل أنت كوكيل؟",
