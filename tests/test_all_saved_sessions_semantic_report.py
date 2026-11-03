@@ -120,6 +120,7 @@ def test_orchestrator_returns_collection_report_locally_without_provider(monkeyp
     assert result["status"] == "success"
     assert result["source"] == "local_all_sessions_report"
     assert result["output_kind"] == "report"
+    assert result["context_action"] == "read_only_report"
     assert result["session_count"] == 1
     assert "الفن التجريدي والنقش البارز" in result["text"]
 
