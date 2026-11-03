@@ -1443,6 +1443,26 @@ def _is_dialogue_control_exchange(exchange: dict) -> bool:
     return _is_dialogue_control_text(exchange.get("user"))
 
 
+def _is_generated_dialogue_label(value: object) -> bool:
+    """Reject response/error text accidentally persisted as a semantic topic."""
+    normalized = " ".join(str(value or "").split()).casefold()
+    normalized = (
+        normalized.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        .replace("ى", "ي").replace("ـ", "")
+    )
+    normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
+    return normalized.startswith((
+        "تركز مضمون الردود المسجلة على",
+        "انا cyberlab agent",
+        "ابرز مضمون محفوظ في رد الوكيل",
+        "اخر نقطة محفوظة في هذا الفرع",
+        "تعذر توليد شرح",
+        "تعذر الوصول الى مزود",
+        "تعذر انتاج رد صالح",
+        "provider_exception",
+    ))
+
+
 def _dialogue_exchange_insights(exchange: dict) -> list[str]:
     """Extract a grounded semantic point from one exchange, never a raw Q/A line."""
     user_text = " ".join(str(exchange.get("user") or "").split()).strip()
@@ -1490,18 +1510,7 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
         ]
 
     topic = " ".join(str(exchange.get("target") or "").split()).strip()
-    normalized_topic = topic.casefold().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
-    if (
-        not topic
-        or _is_dialogue_control_text(topic)
-        or normalized_topic.startswith((
-            "تركز مضمون الردود المسجلة على",
-            "انا cyberlab agent",
-            "ابرز مضمون محفوظ في رد الوكيل",
-            "اخر نقطة محفوظة في هذا الفرع",
-            "تعذر توليد شرح",
-        ))
-    ):
+    if not topic or _is_dialogue_control_text(topic) or _is_generated_dialogue_label(topic):
         topic = ""
     # Recover common self-knowledge/system subjects from the user's question.
     if not topic:
@@ -1755,7 +1764,11 @@ def _dialogue_exchange_insights(exchange: dict) -> list[str]:
 def _dialogue_exchange_subject(exchange: dict) -> str:
     """Resolve a concise subject from explicit target or user wording."""
     target = " ".join(str(exchange.get("target") or "").split()).strip()
-    if target and not _is_dialogue_control_text(target):
+    if (
+        target
+        and not _is_dialogue_control_text(target)
+        and not _is_generated_dialogue_label(target)
+    ):
         return target[:100]
     user_text = " ".join(str(exchange.get("user") or "").split()).strip()
     if not user_text or _is_dialogue_control_text(user_text):
@@ -1865,13 +1878,18 @@ def summarize_dialogue_exchanges(
     ]
 
     selected_topic = " ".join(str(topic or "").split()).strip()
-    if not selected_topic or _is_dialogue_control_text(selected_topic):
+    if (
+        not selected_topic
+        or _is_dialogue_control_text(selected_topic)
+        or _is_generated_dialogue_label(selected_topic)
+    ):
         selected_topic = next(
             (
                 " ".join(str(item.get("target") or "").split()).strip()
                 for item in reversed(meaningful)
                 if str(item.get("target") or "").strip()
                 and not _is_dialogue_control_text(item.get("target"))
+                and not _is_generated_dialogue_label(item.get("target"))
             ),
             "",
         )
@@ -1893,6 +1911,7 @@ def summarize_dialogue_exchanges(
                 " ".join(str(item.get("target") or "").split()).strip()
                 for item in meaningful
                 if str(item.get("target") or "").strip()
+                and not _is_generated_dialogue_label(item.get("target"))
             ),
             "",
         )
@@ -1948,7 +1967,9 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         "",
     )
     stored_topic_is_control = _is_dialogue_control_text(stored_topic)
-    stored_topic_is_generic = stored_topic in generic_topics
+    stored_topic_is_generic = (
+        stored_topic in generic_topics or _is_generated_dialogue_label(stored_topic)
+    )
     # Prefer the latest substantive archive evidence over stale metadata.
     topic = (
         content_topic
