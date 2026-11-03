@@ -793,7 +793,11 @@ def session_route_contract(raw: str) -> dict:
     if capability_request:
         output_kind = "capability"
     elif selection.get("kind") in {"list", "count"}:
-        output_kind = "list"
+        output_kind = (
+            "report"
+            if selection.get("kind") == "list" and selection.get("report_mode") == "full"
+            else "list"
+        )
     elif is_explicit_transcript_request(raw_text):
         # Transcript is a privileged output and must be selected explicitly,
         # including when the target is the live dialogue rather than a saved session.
