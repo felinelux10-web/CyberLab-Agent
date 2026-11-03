@@ -1801,8 +1801,9 @@ SOURCE CODE:
             from lab_v4_dev.memory.session_state import (
                 load_session, recoverable_work_checkpoint,
                 build_session_restore_summary, build_session_brief_summary,
-                analyze_session, get_session_by_id, get_session_by_number,
-                get_session_index, search_sessions, get_session_type_counts,
+                build_all_sessions_report, analyze_session, get_session_by_id,
+                get_session_by_number, get_session_index, search_sessions,
+                get_session_type_counts,
             )
             selector = session_selector or {}
             selected_id = None
@@ -1876,6 +1877,23 @@ SOURCE CODE:
                 if not candidates:
                     return {"status": "success", "intent": intent,
                             "text": "لا توجد جلسات محفوظة حاليًا."}
+                if report_mode in {"full", "report"}:
+                    report_text = build_all_sessions_report(
+                        candidates,
+                        session_type=requested_session_type or None,
+                    )
+                    return {
+                        "status": "success",
+                        "intent": intent,
+                        "source": "local_all_sessions_report",
+                        "output_kind": "report",
+                        "evidence_scope": "saved_sessions",
+                        "evidence_collection": "saved_sessions",
+                        "executed": False,
+                        "session_count": len(candidates),
+                        "text": report_text,
+                        "sessions": candidates,
+                    }
                 detailed_summaries = report_mode == "summaries"
                 lines = [
                     "=== ملخصات الجلسات المحفوظة ==="
