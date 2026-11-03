@@ -421,8 +421,9 @@ def session_selector(raw: str) -> dict:
         "اعرض ملخصات الجلسة المحفوظة",
     )):
         report_mode = "summaries"
-    elif any(token in text for token in (
+    elif explicit_report_request or any(token in text for token in (
         "تقرير كامل", "تقريرًا كاملًا", "تقريرا كاملا",
+        "تقرير مفصل", "تقريرًا مفصلًا", "تقريرا مفصلا",
         "اكتب ملخص الجلسة المحفوظة", "اكتب تقرير الجلسة المحفوظة",
         "تقرير الجلسة المحفوظة", "ملخص الجلسة المحفوظة",
     )):
