@@ -2766,6 +2766,26 @@ class ConversationManager:
             else:
                 parsed["target"] = ""
 
+        # The ordinal resolver selects an exact archived exchange before the
+        # generic context guards run. Those guards may legitimately prefer the
+        # active branch for ordinary follow-ups, but must not rewrite an
+        # explicit ordinal return (e.g. "قبل ردين") into CONTINUE. Reassert
+        # both the selected subject and RESTORE at the history boundary, where
+        # the branch is actually materialized for the prompt.
+        if ordinal_exchange and ordinal_exchange_target and not saved_session_request:
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": ordinal_exchange_target,
+                "entity_type": "CONCEPT",
+                "conversation_domain": "general",
+                "conversation_act": "TOPIC_RETURN",
+                "response_attributes": {"dialogue_recovery": "ordinal_topic_return"},
+                "semantic_pattern": "ORDINAL_DIALOGUE_TOPIC_RETURN",
+                "source": "ordinal_dialogue_topic_return",
+            })
+            transition = ContextTransition.RESTORE
+
         # A saved-session selector is an explicit routing decision. Context
         # enrichment above may re-parse a synthetic reference and discard
         # selector metadata, so reassert saved-session ownership immediately
