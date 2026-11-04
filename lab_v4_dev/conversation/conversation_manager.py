@@ -314,6 +314,14 @@ class ConversationManager:
             requested_output = "report"
         if route == "L-SESSION" and session_ref is not None:
             evidence_scope = "saved_session"
+        elif (
+            route == "L-SESSION"
+            and selector_kind in {"collection", "list"}
+            and requested_output == "report"
+        ):
+            # A collection report reads the saved-session index and detail
+            # records as a collection, not one selected saved session.
+            evidence_scope = "saved_sessions"
         elif route == "L-FACT":
             evidence_scope = "project_state"
         elif route == "L-EXEC":
@@ -5758,6 +5766,34 @@ class ConversationManager:
                     return self._exchange_history_turns(selected)[-8:]
                 return [turn for turn in (history or []) if allowed(turn)][-8:]
             return []
+
+        if transition == ContextTransition.RESTORE and topic:
+            # Restore the complete chronological branch, not only exchanges
+            # whose individual target string equals the branch's opening
+            # label. Elaborations can carry a more specific target while
+            # remaining part of the same topic (e.g. art -> drawing/sculpture).
+            matching_index = next(
+                (
+                    index for index, item in enumerate(exchanges or [])
+                    if allowed(item)
+                    and item.get("target")
+                    and self._same_topic(item.get("target"), topic)
+                ),
+                None,
+            )
+            if matching_index is not None:
+                segment = []
+                for item in (exchanges or [])[matching_index:]:
+                    if not allowed(item):
+                        continue
+                    relation = str(item.get("context_transition") or "").casefold()
+                    if segment and relation in {
+                        "new_independent", "explicit_switch", "restore",
+                    }:
+                        break
+                    segment.append(item)
+                if segment:
+                    return self._exchange_history_turns(segment[-8:])[-8:]
 
         selected = [
             item for item in (exchanges or [])
