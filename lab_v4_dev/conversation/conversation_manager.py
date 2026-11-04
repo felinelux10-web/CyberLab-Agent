@@ -2307,6 +2307,13 @@ class ConversationManager:
                 })
 
         transition = self._classify_context_transition(mode, candidate, text=user_input)
+        if ordinal_exchange and ordinal_exchange_target:
+            # The ordinal resolver has already selected an exact archived
+            # exchange and promoted its target into the candidate. Preserve
+            # that explicit RESTORE decision after generic semantic
+            # classification; otherwise the classifier sees only the
+            # continuation wording and silently replaces it with CONTINUE.
+            transition = ContextTransition.RESTORE
         interrupted_anchor = ""
         if interrupted_recovery and not generic_topic:
             # The wording describes a past topic switch, not a new switch now.
