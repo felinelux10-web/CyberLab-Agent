@@ -2306,7 +2306,54 @@ class ConversationManager:
                     "source": "contextual_additive_follow_up",
                 })
 
-        transition = self._classify_context_transition(mode, candidate, text=user_input)
+        # A bare topical elaboration inside an active social/dialogue branch
+        # is part of that conversation, even when the fallback intent parser
+        # labels the noun phrase as technical/executable. If it is allowed to
+        # fall through with that domain, DialogueMemory.update rejects it and
+        # the ordinal archive later has no exchange to restore.
+        active_dialogue = (
+            self.dialogue_memory.active_dialogue_branch()
+            if self.dialogue_memory
+            and callable(getattr(self.dialogue_memory, "active_dialogue_branch", None))
+            else None
+        )
+        active_dialogue_domain = str(
+            (active_dialogue or {}).get("conversation_domain") or "general"
+        ).casefold()
+        normalized_bare_topic = self._normalize_transition_text(user_input).strip(
+            " .,،؛:!?؟"
+        )
+        has_dialogue_action = any(marker in normalized_bare_topic for marker in (
+            "اشرح", "وضح", "فسر", "حلل", "نفذ", "شغل", "تشغيل", "انفذ",
+            "اعطني", "اعطيني", "اقترح", "خطط", "كيف", "لماذا", "ما هو",
+            "ماهي", "ما هي", "هل", "اريد", "أريد", "نريد", "اكتب",
+            "ابن", "صمم", "راجع", "افحص", "اختبر",
+        ))
+        if (
+            active_dialogue
+            and active_dialogue_domain not in {
+                "technical", "project", "work", "system", "execution",
+            }
+            and normalized_bare_topic
+            and not has_dialogue_action
+            and not self._is_explicit_topic_switch(user_input)
+            and not self._is_explicit_targeted_proposal(user_input)
+            and not any(mark in str(user_input or "") for mark in ("؟", "?"))
+        ):
+            candidate = dict(candidate or {})
+            candidate.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": str(user_input or "").strip(),
+                "entity_type": "CONCEPT",
+                "conversation_domain": "general",
+                "conversation_act": "CONVERSATION_CONTINUATION",
+                "response_attributes": {},
+                "semantic_pattern": "SOCIAL_DIALOGUE_TOPIC_ELABORATION",
+                "source": "active_dialogue_topic_elaboration",
+            })
+            transition = ContextTransition.CONTINUE
+        else:
+            transition = self._classify_context_transition(mode, candidate, text=user_input)
         if ordinal_exchange and ordinal_exchange_target:
             # The ordinal resolver has already selected an exact archived
             # exchange and promoted its target into the candidate. Preserve
