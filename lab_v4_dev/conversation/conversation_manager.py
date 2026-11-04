@@ -2006,7 +2006,7 @@ class ConversationManager:
             candidate.update({
                 "intent": Intent.PERSONAL_CHAT,
                 "target": named_topic,
-                "entity_type": "REFERENCE",
+                "entity_type": "CONCEPT",
                 "conversation_domain": "general",
                 "conversation_act": "TOPIC_RETURN",
                 "response_attributes": {"dialogue_recovery": "named_topic_return"},
@@ -2014,7 +2014,7 @@ class ConversationManager:
                 "source": "named_dialogue_topic_return",
             })
         raw_act = raw_signal.get("conversation_act")
-        if raw_act == "CORRECTION":
+        if raw_act == "CORRECTION" and not named_return:
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.PERSONAL_CHAT,
@@ -2337,6 +2337,7 @@ class ConversationManager:
             and normalized_bare_topic
             and not has_dialogue_action
             and not self._is_explicit_topic_switch(user_input)
+            and not named_return
             and not self._is_explicit_targeted_proposal(user_input)
             and not any(mark in str(user_input or "") for mark in ("؟", "?"))
         ):
@@ -2360,6 +2361,11 @@ class ConversationManager:
             # that explicit RESTORE decision after generic semantic
             # classification; otherwise the classifier sees only the
             # continuation wording and silently replaces it with CONTINUE.
+            transition = ContextTransition.RESTORE
+        if named_return:
+            # A named correction is an explicit branch selection. Keep its
+            # canonical topic and RESTORE transition authoritative over
+            # generic correction/continuation classification.
             transition = ContextTransition.RESTORE
         interrupted_anchor = ""
         if interrupted_recovery and not generic_topic:
