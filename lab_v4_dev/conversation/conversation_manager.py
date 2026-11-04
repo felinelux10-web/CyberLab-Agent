@@ -166,7 +166,17 @@ class ConversationManager:
             route = "L-SESSION"
         elif history_request:
             route = "L-LIVE"
-        elif intent_value in {"cyber_explain", "architecture"}:
+        elif intent_value == "cyber_explain":
+            if domain == "project":
+                route = "L-FACT"
+            elif domain == "technical" or response_attributes.get("incomplete_explanation_request"):
+                route = "P-TOOL"
+            else:
+                # A concept/question is not automatically a technical task.
+                # General explanatory questions belong to the live dialogue
+                # gateway; explicit technical subjects retain Orchestrator.
+                route = "L-LIVE"
+        elif intent_value == "architecture":
             route = "L-FACT" if domain == "project" else "P-TOOL"
         elif intent_value == "propose_solution" and not str(parsed.get("target") or "").strip():
             # Recognized invitation phrases use the local social composer;
@@ -1930,7 +1940,9 @@ class ConversationManager:
                 "intent": Intent.PERSONAL_CHAT,
                 "target": explicit_topic,
                 "entity_type": "CONCEPT",
-                "conversation_domain": raw_signal.get("conversation_domain", "general"),
+                # The user explicitly opened a dialogue branch. A concept
+                # entity here does not make the branch technical.
+                "conversation_domain": "general",
                 "conversation_act": "SOCIAL_OPENING",
                 "conversation_confidence": 0.95,
                 "semantic_pattern": "EXPLICIT_DIALOGUE_TOPIC",
@@ -2876,6 +2888,25 @@ class ConversationManager:
         parsed.setdefault("conversation_domain", "general")
         parsed.setdefault("conversation_confidence", 0.0)
         parsed.setdefault("response_attributes", {})
+
+        # A bare explanation imperative is an incomplete technical request,
+        # not a general knowledge question. Preserve Orchestrator ownership so
+        # it can ask for the missing subject instead of answering speculatively.
+        normalized_incomplete_explanation = self._normalize_transition_text(user_input)
+        parsed_intent_value = str(
+            getattr(parsed.get("intent"), "value", parsed.get("intent")) or ""
+        ).casefold()
+        if (
+            parsed_intent_value == "cyber_explain"
+            and not str(parsed.get("target") or "").strip()
+            and normalized_incomplete_explanation in {
+                "اشرح", "اشرح لي", "وضح", "وضح لي", "فسر", "فسر لي",
+                "explain", "describe",
+            }
+        ):
+            response_attributes = dict(parsed.get("response_attributes") or {})
+            response_attributes["incomplete_explanation_request"] = True
+            parsed["response_attributes"] = response_attributes
 
         # Generic targetless proposals are dialogue, even when the fallback parser
         # labels their domain as execution. Preserve execution ownership only when
