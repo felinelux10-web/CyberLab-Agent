@@ -169,7 +169,16 @@ class ConversationManager:
         elif intent_value == "cyber_explain":
             if domain == "project":
                 route = "L-FACT"
-            elif domain == "technical" or response_attributes.get("incomplete_explanation_request"):
+            elif (
+                domain == "technical"
+                or response_attributes.get("incomplete_explanation_request")
+                or (
+                    transition == ContextTransition.AMBIGUOUS
+                    and not str(parsed.get("target") or "").strip()
+                )
+            ):
+                # Preserve clarification ownership for an unresolved follow-up
+                # such as "كيف يعمل؟" when no authorized subject exists.
                 route = "P-TOOL"
             else:
                 # A concept/question is not automatically a technical task.
