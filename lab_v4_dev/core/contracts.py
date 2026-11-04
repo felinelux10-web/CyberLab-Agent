@@ -189,6 +189,7 @@ EVIDENCE_SCOPES = frozenset({
     "none",
     "live_exchanges",
     "saved_session",
+    "saved_sessions",
     "project_state",
     "work_state",
 })
