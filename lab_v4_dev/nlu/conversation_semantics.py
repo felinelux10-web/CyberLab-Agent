@@ -511,7 +511,10 @@ def _domain(text: str, bases: set[str], target: str = "", entity_type: str = "")
         return "system"
     if entity_type.upper() in {"FILE", "COMPONENT"} or _has_any(bases, _PROJECT_MARKERS):
         return "project"
-    if entity_type.upper() == "CONCEPT" or _has_any(bases, _TECHNICAL_MARKERS):
+    # CONCEPT describes the entity shape, not its domain. Only explicit
+    # technical vocabulary should classify an otherwise generic concept as
+    # technical; e.g. "أهمية التعلم المستمر" is not a cyber task.
+    if _has_any(bases, _TECHNICAL_MARKERS):
         return "technical"
     if target and (
         "." in target or "/" in target or target.startswith(("/", "~/"))
