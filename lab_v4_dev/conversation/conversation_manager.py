@@ -211,9 +211,12 @@ class ConversationManager:
                 route = "L-LIVE"
             elif act in {"CASUAL_CONVERSATION", "CASUAL_DISCUSSION", "PERSONAL_INTERACTION", "SOCIAL_FOLLOW_UP"}:
                 route = "L-LIVE"
-            elif domain == "social" or act in {
+            elif act in {
                 "SOCIAL_GREETING", "SOCIAL_CLOSING", "SOCIAL_ACKNOWLEDGEMENT", "SOCIAL_OPENING",
             }:
+                # Domain classification alone must not force a substantive
+                # topic shift into the local-only social route. TOPIC_SHIFT
+                # and other open-ended turns require the live dialogue gateway.
                 route = "L-SOCIAL"
             else:
                 route = "L-LIVE"
