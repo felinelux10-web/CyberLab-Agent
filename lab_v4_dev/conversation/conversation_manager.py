@@ -166,6 +166,8 @@ class ConversationManager:
             route = "L-SESSION"
         elif history_request:
             route = "L-LIVE"
+        elif history_request:
+            route = "L-LIVE"
         elif intent_value == "cyber_explain":
             if domain == "project":
                 route = "L-FACT"
@@ -1944,24 +1946,22 @@ class ConversationManager:
                     "source": "contextual_dialogue_acknowledgement",
                 })
 
+        explicit_explanation = self._explicit_explanation_topic(user_input)
         explicit_topic = self._explicit_dialogue_topic(user_input)
-        if explicit_topic:
-            # Explicit topic openings create a dialogue branch even if the LLM
-            # provider later fails. The old branch is not inherited as context.
+        if explicit_topic and not explicit_explanation:
+            # A named topic opener is social only when it is not already an
+            # explicit technical explanation request.
             candidate = dict(candidate or {})
             candidate.update({
                 "intent": Intent.PERSONAL_CHAT,
                 "target": explicit_topic,
                 "entity_type": "CONCEPT",
-                # The user explicitly opened a dialogue branch. A concept
-                # entity here does not make the branch technical.
                 "conversation_domain": "general",
                 "conversation_act": "SOCIAL_OPENING",
                 "conversation_confidence": 0.95,
                 "semantic_pattern": "EXPLICIT_DIALOGUE_TOPIC",
                 "source": "explicit_dialogue_topic",
             })
-        explicit_explanation = self._explicit_explanation_topic(user_input)
         normalized_social_text = str(user_input or "").casefold()
         explicit_casual_opening = any(marker in normalized_social_text for marker in (
             "بغيت نهضر معاك", "بغيت نهضر", "موضوع خفيف", "كيفاش داز نهارك",
@@ -3254,6 +3254,7 @@ class ConversationManager:
                 attributes.pop("dialogue_recovery", None)
                 parsed["response_attributes"] = attributes
                 transition = ContextTransition.NEW_INDEPENDENT
+                chat_history = []
         elif not interrupted_resume_request and not self._ordinal_dialogue_exchange(user_input):
             # Reassert a resolved named/previous topic after generic recovery
             # heuristics. The selected branch's original intent/domain decide
@@ -3336,8 +3337,12 @@ class ConversationManager:
         recovery_has_selected_target = bool(str((parsed or {}).get("target") or "").strip())
         route_override = (
             "CLARIFY" if ambiguous_resume
-            else "L-LIVE" if recovery_is_dialogue and (
-                interrupted_resume_request or not recovery_has_selected_target or recovery_is_social
+            else "L-LIVE" if (
+                (interrupted_resume_request and not explicit_independent_request)
+                or (
+                    recovery_is_dialogue
+                    and (not recovery_has_selected_target or recovery_is_social)
+                )
             )
             else "L-FACT" if local_project_answer is not None
             else None
