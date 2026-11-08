@@ -364,6 +364,9 @@ def session_selector(raw: str) -> dict:
         any(marker in text for marker in ("تقرير", "تقريرا", "تقريرًا", "تقرير مفصل", "تقرير كامل"))
         and not bool(re.search(r"(?:لا|بدون|دون|ليس|لا اريد).{0,25}تقرير", text))
     )
+    collection_report_mode = (
+        "full" if explicit_report_request and not asks_for_summary else "summaries"
+    )
     # Requests specifically about work sessions must not be interpreted as a
     # technical question about session hijacking or as a mixed-session report.
     work_sessions_mentioned = bool(re.search(
@@ -374,7 +377,7 @@ def session_selector(raw: str) -> dict:
         return {
             "kind": "list",
             "session_type": "work",
-            "report_mode": "full" if explicit_report_request else "summaries",
+            "report_mode": collection_report_mode,
         }
     sessions_with_all_suffix = re.search(
         r"(?:الجلسات|جلسات)(?:\s+(?:المحفوظة|السابقة|القديمة))?\s+(?:كلها|جميعها|كافه)",
