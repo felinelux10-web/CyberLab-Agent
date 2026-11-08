@@ -1111,3 +1111,12 @@ def test_saved_dialogue_evidence_rejects_mismatched_nested_session_identity():
         },
     }
     assert retrieve_dialogue_evidence(session, "المعلومة") == []
+
+
+
+def test_numbered_factual_question_without_terminal_punctuation_is_still_recall():
+    request = "ما الأدوات التي ذكرتها لك في الجلسة 72"
+    selected = session_route_contract(request)
+    assert selected["kind"] == "number"
+    assert selected["number"] == 72
+    assert selected["report_mode"] == "recall"

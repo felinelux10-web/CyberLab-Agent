@@ -2198,7 +2198,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
                 continue
             is_question = bool(
                 "؟" in user_text or "?" in user_text
-                or re.match(r"^(?:ما|ماذا|من|هل|كيف|اين|أين|لماذا|كم)\\b", user_text)
+                or re.match(r"^(?:ما|ماذا|من|هل|كيف|اين|أين|لماذا|كم)\b", user_text)
             )
             if user_text and is_question:
                 user_points = _dialogue_exchange_insights(exchange)
