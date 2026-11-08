@@ -2240,7 +2240,14 @@ class ConversationManager:
             restored_technical_intent = restored_intent in {
                 "cyber_explain", "architecture", "propose_solution", "plan", "lab_plan",
             }
-            restored_social = (
+            restored_user_text = self._normalize_transition_text(
+                (restored_exchange or {}).get("user") or ""
+            )
+            restored_social_topic = any(marker in restored_user_text for marker in (
+                "موضوع عام", "نقاش عام", "حديث عام", "حوار عام",
+                "دعنا نتحدث", "لنتحدث", "نتحدث عن",
+            ))
+            restored_social = restored_social_topic or (
                 restored_kind in {"dialogue", "social", "unknown"}
                 and (
                     restored_social_intent
