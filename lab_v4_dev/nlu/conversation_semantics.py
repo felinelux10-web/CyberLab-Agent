@@ -1025,6 +1025,24 @@ def classify_conversation_semantics(
             "conversational": True,
         }
 
+    # Questions about the topic discussed in a previous message are
+    # dialogue-memory queries even when phrased as "ما الموضوع الذي كنا
+    # نشرحه في رسالتي السابقة؟" rather than using a conventional recall verb.
+    previous_message_topic_question = (
+        _has_any(bases, {"موضوع", "مواضيع", "رساله", "رسالت", "رسائل"})
+        and _has_any(bases, {"كنا", "نشرح", "شرح", "نقول", "قلنا"})
+        and _has_any(bases, {"سابق", "سابقه", "قبل", "اخر", "آخر"})
+        and not _has_any(bases, {"العمل", "مهام", "مهمه", "ملف", "مشروع"})
+    )
+    if previous_message_topic_question:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.96,
+            "response_attributes": {"dialogue_response_mode": "summary"},
+            "conversational": True,
+        }
+
     # A dialogue-history query is a relationship to the conversation, not a
     # HISTORY/CONTEXT_REPORT execution request. Require two semantic signals:
     # a reference to earlier dialogue and a recollection/question cue.

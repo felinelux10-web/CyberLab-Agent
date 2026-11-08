@@ -3211,8 +3211,11 @@ class ConversationManager:
             "دون ان اذكر اسم الموضوع", "بدون ان اذكر اسم الموضوع",
         ))
         explicit_independent_request = (
-            self._is_explicit_independent_topic(user_input, parsed)
-            or self._is_explicit_topic_switch(user_input)
+            not interrupted_resume_request
+            and (
+                self._is_explicit_independent_topic(user_input, parsed)
+                or self._is_explicit_topic_switch(user_input)
+            )
         )
         if explicit_independent_request:
             # Do not let a generic interrupted-branch annotation turn an

@@ -98,6 +98,11 @@ def test_generic_topic_references_resolve_from_dialogue_topics_only():
     assert orchestrator.calls[-1]["parsed"]["target"] == "SQL Injection"
     assert first["semantic_request"]["context_transition"] == "restore"
 
+    resolved_previous = manager._resolve_generic_topic_reference("ارجع إلى الموضوع السابق")
+    assert resolved_previous == "SQL Injection", {
+        "resolved_previous": resolved_previous,
+        "archive": memory.state.exchange_archive,
+    }
     previous = manager.process("ارجع إلى الموضوع السابق")
     assert previous["status"] == "success", previous.get("semantic_request")
     assert orchestrator.calls[-1]["parsed"]["target"] == "SQL Injection"
