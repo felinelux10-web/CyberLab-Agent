@@ -2557,13 +2557,20 @@ class ConversationManager:
                 if subject:
                     candidate = dict(candidate or {})
                     candidate["target"] = subject
+                    technical_independent_explanation = bool(explicit_explanation)
                     candidate["intent"] = (
-                        Intent.PERSONAL_CHAT if explicit_topic else Intent.CYBER_EXPLAIN
+                        Intent.CYBER_EXPLAIN
+                        if technical_independent_explanation
+                        else (Intent.PERSONAL_CHAT if explicit_topic else Intent.CYBER_EXPLAIN)
                     )
                     candidate["entity_type"] = "CONCEPT"
                     candidate["conversation_domain"] = (
-                        "general" if explicit_topic else "technical"
+                        "technical"
+                        if technical_independent_explanation
+                        else ("general" if explicit_topic else "technical")
                     )
+                    if technical_independent_explanation:
+                        candidate["conversation_act"] = "EXECUTABLE_REQUEST"
             else:
                 # Do not carry an inherited target into a new subjectless topic.
                 candidate = dict(candidate or {})
