@@ -169,23 +169,12 @@ class ConversationManager:
         elif intent_value == "cyber_explain":
             if domain == "project":
                 route = "L-FACT"
-            elif (
-                domain == "technical"
-                or bool(str(parsed.get("target") or "").strip())
-                or response_attributes.get("incomplete_explanation_request")
-                or (
-                    transition == ContextTransition.AMBIGUOUS
-                    and not str(parsed.get("target") or "").strip()
-                )
-            ):
-                # Preserve clarification ownership for an unresolved follow-up
-                # such as "كيف يعمل؟" when no authorized subject exists.
-                route = "P-TOOL"
             else:
-                # A concept/question is not automatically a technical task.
-                # General explanatory questions belong to the live dialogue
-                # gateway; explicit technical subjects retain Orchestrator.
-                route = "L-LIVE"
+                # CYBER_EXPLAIN is already the parser's explicit technical
+                # explanation intent. Do not demote it to generic live chat
+                # merely because the domain classifier underlabels the subject.
+                # Missing/ambiguous subjects are clarified by the tool owner.
+                route = "P-TOOL"
         elif intent_value == "architecture":
             route = "L-FACT" if domain == "project" else "P-TOOL"
         elif intent_value == "propose_solution" and not str(parsed.get("target") or "").strip():
@@ -4823,9 +4812,10 @@ class ConversationManager:
                 "الردود السابقة", "الردود السابقه", "قبل قليل",
             )
         ):
-            # History recall must preserve the recorded user/assistant pairs.
-            # A summary is selected only when the user asks for one explicitly.
-            response_mode = "transcript"
+            # A generic history question defaults to a semantic summary.
+            # Literal transcript output remains privileged and requires an
+            # explicit request for original messages.
+            response_mode = "summary"
         elif not response_mode and any(
             marker in normalized_query
             for marker in (
