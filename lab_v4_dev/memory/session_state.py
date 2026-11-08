@@ -445,7 +445,7 @@ def session_selector(raw: str) -> dict:
     # "ملخص الجلسة المحفوظة رقم 30"; otherwise the request silently selects latest.
     number_match = re.search(
         r"(?<!\w)(?:الجلسة|الجلسه|جلسة|جلسه|session)"
-        r"(?:\s+(?:(?!رقم\b)[\w-]+)){0,5}\s*(?:رقم\s*)?#?\s*(\d+)\b",
+        r"(?:\s+(?:(?!رقم\b)[^\W\d_][\w-]*)){0,5}\s*(?:رقم\s*)?#?\s*(\d+)\b",
         text,
         flags=re.IGNORECASE,
     )
@@ -2183,25 +2183,38 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         "حدود الاستعادة: هذا ملخص للسجل المحدد فقط؛ لم تُدمج معه الجلسة الحية أو جلسة العمل. لم يُنشأ أي رد جديد.",
     ])
     if detailed_report:
-        # Keep analytical prose distinct from original evidence. Preserve each
-        # speaker and the exchange order so every claim remains auditable.
+        # Keep analytical prose distinct from attributed evidence. Questions are
+        # represented by grounded semantic points rather than copied verbatim;
+        # declarative user statements remain available as source evidence.
         lines.extend([
             "",
-            "ملحق الأدلة الأصلية المرتبة زمنيًا:",
-            "تُعرض مساهمة المستخدم ورد الوكيل كلٌّ على حدة؛ ولا تُنسب اقتراحات الوكيل إلى المستخدم.",
+            "ملحق الأدلة المنسوبة إلى أصحابها والمرتبة زمنيًا:",
+            "تُفصل مساهمات المستخدم عن ردود الوكيل، مع استبعاد تبادلات التحية والإدارة من التحليل الموضوعي.",
         ])
-        for index, exchange in enumerate(exchanges, 1):
+        for index, exchange in enumerate(summary_exchanges, 1):
             user_text = str(exchange.get("user") or "").strip()
             assistant_text = str(exchange.get("assistant") or "").strip()
             if not user_text and not assistant_text:
                 continue
+            is_question = bool(
+                "؟" in user_text or "?" in user_text
+                or re.match(r"^(?:ما|ماذا|من|هل|كيف|اين|أين|لماذا|كم)\\b", user_text)
+            )
+            if user_text and is_question:
+                user_points = _dialogue_exchange_insights(exchange)
+                user_text = "؛ ".join(user_points) or (
+                    "طرح المستخدم سؤالًا موضوعيًا محفوظًا في التبادل الأصلي."
+                )
+            assistant_insight = _dialogue_assistant_insight(exchange)
+            if assistant_insight:
+                assistant_text = assistant_insight
             lines.extend([
                 "",
-                f"التبادل {index}:",
+                f"التبادل الموضوعي {index}:",
                 "مساهمة المستخدم:",
-                user_text or "لا توجد رسالة مستخدم محفوظة لهذا التبادل.",
+                user_text or "لا توجد مساهمة مستخدم محفوظة.",
                 "رد الوكيل:",
-                assistant_text or "لا يوجد رد محفوظ لهذا التبادل.",
+                assistant_text or "لا يوجد رد موضوعي محفوظ.",
             ])
     return "\n".join(lines)
 

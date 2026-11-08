@@ -44,7 +44,9 @@ def _tokens(value: Any) -> set[str]:
             token = token[3:]
         elif len(token) > 4 and token.startswith(("بال", "لل")):
             token = token[2:]
-        elif len(token) > 3 and token.startswith(("ال", "و", "ب", "ل")):
+        elif len(token) > 3 and token.startswith("ال"):
+            token = token[2:]
+        elif len(token) > 3 and token.startswith(("و", "ب", "ل")):
             token = token[1:]
         if len(token) > 3 and token.endswith(("ها", "هم", "كم")):
             token = token[:-2]
