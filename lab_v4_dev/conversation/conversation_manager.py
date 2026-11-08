@@ -3205,9 +3205,19 @@ class ConversationManager:
         )
         ambiguous_resume = self._ambiguous_resume_without_domain(user_input, parsed)
 
+        recovery_domain = str((parsed or {}).get("conversation_domain") or "general").casefold()
+        recovery_intent = str(
+            getattr((parsed or {}).get("intent"), "value", (parsed or {}).get("intent")) or ""
+        ).casefold()
+        recovery_is_social = (
+            recovery_domain not in {"technical", "project", "work", "system", "execution"}
+            and recovery_intent not in {
+                "cyber_explain", "architecture", "propose_solution", "plan", "lab_plan",
+            }
+        )
         route_override = (
             "CLARIFY" if ambiguous_resume
-            else "L-LIVE" if recovery_is_dialogue
+            else "L-LIVE" if recovery_is_dialogue and recovery_is_social
             else "L-FACT" if local_project_answer is not None
             else None
         )
@@ -4184,10 +4194,21 @@ class ConversationManager:
                 continue
             kind = str(item.get("context_kind") or "").casefold()
             domain = str(item.get("conversation_domain") or "").casefold()
+            intent_value = str(item.get("intent") or "").casefold()
+            social_dialogue = intent_value in {
+                "personal_chat", "chat", "discussion", "question",
+            }
             if (
                 kind in {"work", "system"}
-                or domain in {"work", "system", "execution"}
-                or (kind == "execution" and domain != "technical")
+                or (
+                    domain in {"work", "system", "execution"}
+                    and not social_dialogue
+                )
+                or (
+                    kind == "execution"
+                    and domain != "technical"
+                    and not social_dialogue
+                )
             ):
                 continue
             user = self._normalize_transition_text(item.get("user") or "")
