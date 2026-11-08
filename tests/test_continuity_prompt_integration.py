@@ -49,7 +49,7 @@ def test_explicit_independent_topic_does_not_receive_previous_branch():
         "اشرح CSRF بالتفصيل، وابدأ شرحًا مستقلًا عن الموضوع السابق"
     )
 
-    assert result["status"] == "success"
+    assert result["status"] == "success", result
     call = orchestrator.calls[-1]
     assert call["kwargs"]["conversation_history"] == []
     assert call["kwargs"]["context_transition"] == "new_independent"
@@ -99,7 +99,7 @@ def test_generic_topic_references_resolve_from_dialogue_topics_only():
     assert first["semantic_request"]["context_transition"] == "restore"
 
     previous = manager.process("ارجع إلى الموضوع السابق")
-    assert previous["status"] == "success"
+    assert previous["status"] == "success", previous
     assert orchestrator.calls[-1]["parsed"]["target"] == "SQL Injection"
     assert previous["intent"] == "cyber_explain"
 
@@ -255,7 +255,7 @@ def test_return_to_social_dialogue_continues_saved_branch_without_work_context(m
     manager.process("موضوع عام عن التقنية")
 
     result = manager.process("ارجع للنقاش السابق")
-    assert result["status"] == "success"
+    assert result["status"] == "success", result
     assert "رد حواري" in result["text"]
     assert prompts
     assert "موضوع عام عن التقنية" in prompts[-1]
