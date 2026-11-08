@@ -388,7 +388,7 @@ def session_selector(raw: str) -> dict:
     ):
         return {
             "kind": "list",
-            "report_mode": "full" if explicit_report_request else "summaries",
+            "report_mode": collection_report_mode,
         }
     # A plural-session report may omit "all" wording. Keep it in the saved
     # collection owner rather than treating it as a live-dialogue report.
