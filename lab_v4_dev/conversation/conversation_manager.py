@@ -1948,7 +1948,21 @@ class ConversationManager:
 
         explicit_explanation = self._explicit_explanation_topic(user_input)
         explicit_topic = self._explicit_dialogue_topic(user_input)
-        if explicit_topic and not explicit_explanation:
+        normalized_explanation_subject = self._normalize_transition_text(
+            explicit_explanation or ""
+        )
+        cyber_explanation_markers = (
+            "sql injection", "csrf", "cross site request forgery", "xss",
+            "cross site scripting", "ssrf", "xxe", "idor", "rce",
+            "command injection", "path traversal", "directory traversal",
+            "phishing", "malware", "ransomware", "session hijacking",
+            "clickjacking", "sql",
+        )
+        explicit_technical_explanation = bool(
+            explicit_explanation
+            and any(marker in normalized_explanation_subject for marker in cyber_explanation_markers)
+        )
+        if explicit_topic and not explicit_technical_explanation:
             # A named topic opener is social only when it is not already an
             # explicit technical explanation request.
             candidate = dict(candidate or {})
@@ -3204,6 +3218,29 @@ class ConversationManager:
             if not saved_session_request and not _restore_context else None
         )
         ambiguous_resume = self._ambiguous_resume_without_domain(user_input, parsed)
+
+        normalized_history_question = self._normalize_transition_text(user_input)
+        prior_message_topic_question = (
+            "موضوع" in normalized_history_question
+            and "كنا" in normalized_history_question
+            and any(marker in normalized_history_question for marker in ("نشرح", "نشرحه", "شرح"))
+            and any(marker in normalized_history_question for marker in ("رساله", "رسالت", "رسائل"))
+            and any(marker in normalized_history_question for marker in ("سابق", "سابقه", "قبل"))
+        )
+        if prior_message_topic_question:
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": "",
+                "conversation_domain": "general",
+                "conversation_act": "CONVERSATION_HISTORY_QUERY",
+                "output_kind": "summary",
+                "response_attributes": {"dialogue_response_mode": "summary"},
+                "semantic_pattern": "PRIOR_MESSAGE_TOPIC_RECALL",
+                "source": "dialogue_memory",
+            })
+            transition = ContextTransition.CONTINUE
+            recovery_is_dialogue = False
 
         normalized_recovery_request = self._normalize_transition_text(user_input)
         interrupted_resume_request = any(marker in normalized_recovery_request for marker in (
