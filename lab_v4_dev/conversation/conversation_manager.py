@@ -171,6 +171,7 @@ class ConversationManager:
                 route = "L-FACT"
             elif (
                 domain == "technical"
+                or bool(str(parsed.get("target") or "").strip())
                 or response_attributes.get("incomplete_explanation_request")
                 or (
                     transition == ContextTransition.AMBIGUOUS
@@ -2244,9 +2245,23 @@ class ConversationManager:
             restored_intent = str(
                 (restored_exchange or {}).get("intent") or ""
             ).casefold()
+            restored_social_intent = restored_intent in {
+                "personal_chat", "chat", "discussion", "question", "unclear",
+            }
+            restored_technical_intent = restored_intent in {
+                "cyber_explain", "architecture", "propose_solution", "plan", "lab_plan",
+            }
             restored_social = (
-                restored_domain not in {"technical", "project", "work", "system", "execution"}
-                and restored_kind in {"dialogue", "social", "unknown"}
+                restored_kind in {"dialogue", "social", "unknown"}
+                and (
+                    restored_social_intent
+                    or (
+                        not restored_technical_intent
+                        and restored_domain not in {
+                            "technical", "project", "work", "system", "execution",
+                        }
+                    )
+                )
             )
             history_reference = (
                 raw_act == "CONVERSATION_HISTORY_QUERY"
@@ -2871,6 +2886,64 @@ class ConversationManager:
                 "response_attributes": {"dialogue_recovery": "ordinal_topic_return"},
                 "semantic_pattern": "ORDINAL_DIALOGUE_TOPIC_RETURN",
                 "source": "ordinal_dialogue_topic_return",
+            })
+            transition = ContextTransition.RESTORE
+
+        # Explicit "do not change the topic" wording is a continuity
+        # constraint. Resolve the active branch from its saved exchange, not
+        # from a secondary noun (for example "SQL") inside the same sentence.
+        normalized_same_topic = self._normalize_transition_text(user_input)
+        same_topic_requested = any(marker in normalized_same_topic for marker in (
+            "بدون تغيير الموضوع", "دون تغيير الموضوع", "لا تغير الموضوع",
+            "لا نغير الموضوع", "نفس الموضوع", "without changing the topic",
+            "keep the same topic",
+        ))
+        if same_topic_requested and not saved_session_request and self.dialogue_memory:
+            active_archive = getattr(
+                getattr(self.dialogue_memory, "state", None),
+                "exchange_archive",
+                [],
+            ) or []
+            active_exchange = next((
+                item for item in reversed(active_archive)
+                if isinstance(item, dict)
+                and str(item.get("target") or "").strip()
+                and not item.get("recall_only")
+                and not item.get("state_boundary_only")
+                and str(item.get("context_kind") or "dialogue").casefold()
+                    not in {"work", "system", "execution"}
+            ), None)
+            if active_exchange:
+                parsed = dict(parsed or {})
+                parsed.update({
+                    "intent": Intent.PERSONAL_CHAT,
+                    "target": str(active_exchange.get("target") or "").strip(),
+                    "entity_type": "CONCEPT",
+                    "conversation_domain": str(
+                        active_exchange.get("conversation_domain") or "general"
+                    ).casefold(),
+                    "conversation_act": "CONVERSATION_CONTINUATION",
+                    "response_attributes": {"same_topic_constraint": True},
+                    "semantic_pattern": "EXPLICIT_SAME_TOPIC_CONTINUATION",
+                    "source": "active_dialogue_branch",
+                })
+                transition = ContextTransition.CONTINUE
+
+        # An explicit internal restore request must retain RESTORE semantics
+        # after parser enrichment; it must not degrade to ordinary CONTINUE.
+        if _restore_context:
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": str(_restore_context.get("entity") or "").strip(),
+                "entity_type": _restore_context.get("entity_type", "CONCEPT"),
+                "conversation_domain": str(
+                    _restore_context.get("conversation_domain") or "general"
+                ).casefold(),
+                "conversation_act": "TOPIC_RETURN",
+                "response_attributes": {"dialogue_recovery": "named_topic_return"},
+                "semantic_pattern": "AUTHORIZED_DIALOGUE_RESTORE",
+                "source": "authorized_dialogue_restore",
             })
             transition = ContextTransition.RESTORE
 
@@ -4022,6 +4095,7 @@ class ConversationManager:
             .replace("ئ", "ي").replace("ؤ", "و")
             .replace("ـ", "")
             .replace("فبل", "قبل")
+            .replace("ناذا", "ماذا")
             .split()
         )
 
