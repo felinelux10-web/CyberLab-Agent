@@ -2283,9 +2283,9 @@ class ConversationManager:
                 "target": generic_topic,
                 "entity_type": "REFERENCE" if restored_social else "CONCEPT",
                 "semantic_pattern": "GENERIC_TOPIC_REFERENCE",
-                "conversation_domain": "general" if history_reference else (restored_domain if restored_social else (
+                "conversation_domain": "general" if history_reference or restored_social else (
                     "technical" if restored_domain == "general" else restored_domain
-                )),
+                ),
                 "conversation_act": (
                     "TOPIC_RETURN" if is_ordinal_return or raw_act == "TOPIC_RETURN"
                     else "COMPOUND_REFERENCE"
