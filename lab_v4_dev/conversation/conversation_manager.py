@@ -3279,6 +3279,8 @@ class ConversationManager:
                     )
                     and not item.get("recall_only")
                     and not item.get("state_boundary_only")
+                    and str(item.get("context_transition") or "").casefold()
+                        not in {"restore", "resume", "continue", "topic_return"}
                 ), None)
                 if restored_exchange:
                     restored_intent = str(restored_exchange.get("intent") or "").casefold()
@@ -3339,13 +3341,10 @@ class ConversationManager:
         )
         recovery_has_selected_target = bool(str((parsed or {}).get("target") or "").strip())
         route_override = (
-            "CLARIFY" if ambiguous_resume
-            else "L-LIVE" if (
-                (interrupted_resume_request and not explicit_independent_request)
-                or (
-                    recovery_is_dialogue
-                    and (not recovery_has_selected_target or recovery_is_social)
-                )
+            "L-LIVE" if interrupted_resume_request and not explicit_independent_request
+            else "CLARIFY" if ambiguous_resume
+            else "L-LIVE" if recovery_is_dialogue and (
+                not recovery_has_selected_target or recovery_is_social
             )
             else "L-FACT" if local_project_answer is not None
             else None

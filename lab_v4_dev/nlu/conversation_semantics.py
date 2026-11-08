@@ -1029,9 +1029,11 @@ def classify_conversation_semantics(
     # dialogue-memory queries even when phrased as "ما الموضوع الذي كنا
     # نشرحه في رسالتي السابقة؟" rather than using a conventional recall verb.
     previous_message_topic_question = (
-        _has_any(bases, {"موضوع", "مواضيع", "رساله", "رسالت", "رسائل"})
-        and _has_any(bases, {"كنا", "نشرح", "شرح", "نقول", "قلنا"})
-        and _has_any(bases, {"سابق", "سابقه", "قبل", "اخر", "آخر"})
+        "موضوع" in normalized_phrase
+        and "كنا" in normalized_phrase
+        and any(marker in normalized_phrase for marker in ("نشرح", "نشرحه", "شرح"))
+        and any(marker in normalized_phrase for marker in ("رساله", "رسالت", "رسائل"))
+        and any(marker in normalized_phrase for marker in ("سابق", "سابقه", "قبل"))
         and not _has_any(bases, {"العمل", "مهام", "مهمه", "ملف", "مشروع"})
     )
     if previous_message_topic_question:
