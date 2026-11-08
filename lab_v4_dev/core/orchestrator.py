@@ -2173,6 +2173,33 @@ SOURCE CODE:
             if not s:
                 return {"status":"success","intent":intent,
                         "text":"لا توجد جلسة سابقة محفوظة"}
+            if report_mode == "recall":
+                from lab_v4_dev.memory.dialogue_knowledge import format_dialogue_evidence_answer
+                evidence_text = format_dialogue_evidence_answer(s, str(raw or ""))
+                if not evidence_text:
+                    return {
+                        "status": "needs_clarification",
+                        "intent": intent,
+                        "source": "saved_session_evidence_retrieval",
+                        "executed": False,
+                        "session_id": str(s.get("session_id") or selected_id or ""),
+                        "text": (
+                            "لم أجد في تفاصيل الجلسة المحددة دليلًا نصيًا كافيًا للإجابة عن هذا السؤال. "
+                            "لم أستخدم ملخصًا قديمًا بديلًا عن التبادلات الأصلية، ولم أخمّن الإجابة."
+                        ),
+                    }
+                return {
+                    "status": "success",
+                    "intent": intent,
+                    "source": "saved_session_evidence_retrieval",
+                    "context_action": "read_only_retrieval",
+                    "context_restored": None,
+                    "executed": False,
+                    "session_id": str(s.get("session_id") or selected_id or ""),
+                    "selected_session_id": str(s.get("session_id") or selected_id or ""),
+                    "output_kind": "summary",
+                    "text": evidence_text,
+                }
             recoverable = recoverable_work_checkpoint(s)
             if intent == Intent.RESUME:
                 if not recoverable:
@@ -2237,7 +2264,7 @@ SOURCE CODE:
                 not explicit_context_restore
                 and (
                     summary_language
-                    or report_mode in {"brief", "summary", "full", "progress", "transcript"}
+                    or report_mode in {"brief", "summary", "full", "progress", "transcript", "recall"}
                     or selector.get("kind") in {"previous_dialogue", "search"}
                 )
             )

@@ -5,7 +5,8 @@ from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.core.orchestrator import Orchestrator
 from lab_v4_dev.intent.intents import Intent
-from lab_v4_dev.memory.session_state import session_selector
+from lab_v4_dev.memory.session_state import session_selector, session_route_contract, build_session_restore_summary
+from lab_v4_dev.memory.dialogue_knowledge import retrieve_dialogue_evidence
 
 
 def test_session_selector_keeps_explicit_number_and_saved_session_list():
@@ -971,3 +972,142 @@ def test_offline_dialogue_insights_preserve_both_sides_of_comparison():
     assert "القاموس يربط المفاتيح بالقيم" in combined
     assert "ما الفرق بين القائمة والقاموس؟" not in combined
 
+
+
+
+def test_explicit_numbered_factual_question_selects_exact_saved_session():
+    request = "ما الأدوات التي ذكرتها لك في الجلسة 72؟"
+    selected = session_selector(request)
+    assert selected["kind"] == "number"
+    assert selected["number"] == 72
+    contract = session_route_contract(request)
+    assert contract["kind"] == "number"
+    assert contract["report_mode"] == "recall"
+    assert contract["output_kind"] == "summary"
+
+
+def test_saved_dialogue_evidence_retrieval_finds_user_details_and_preserves_attribution():
+    session = {
+        "session_id": "saved-72",
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": "saved-72",
+            "exchange_archive": [
+                {
+                    "session_id": "saved-72",
+                    "user": "سأستخدم سكينًا ومفك براغٍ وملعقة لتشكيل الجبس.",
+                    "assistant": "هذه أدوات منزلية بسيطة يمكن استخدامها لتشكيل السطح.",
+                },
+                {
+                    "session_id": "saved-72",
+                    "user": "سأضيف الذهبي والأبيض والأزرق بعد الطلاء الأسود.",
+                    "assistant": "يمكن تنسيق هذه الألوان بنسب متوازنة.",
+                },
+            ],
+        },
+    }
+    evidence = retrieve_dialogue_evidence(session, "ما الأدوات التي ذكرتها؟")
+    assert evidence
+    assert "سكين" in evidence[0]["user"]
+    assert evidence[0]["session_id"] == "saved-72"
+
+
+def test_full_dialogue_report_keeps_user_and_assistant_evidence_separate():
+    session = {
+        "session_id": "saved-72",
+        "session_type": "dialogue",
+        "updated_at": "2026-11-08T10:00:00",
+        "dialogue_state": {
+            "session_id": "saved-72",
+            "last_topic": "الفن التجريدي والنقش البارز",
+            "exchange_archive": [
+                {
+                    "session_id": "saved-72",
+                    "user": "صببت الجبس بسماكة ثلاثة سنتيمترات داخل إطار خشبي.",
+                    "assistant": "يمكن تشكيل الجبس بعد جفافه.",
+                },
+                {
+                    "session_id": "saved-72",
+                    "user": "سأستخدم الذهبي والأبيض والأزرق.",
+                    "assistant": "يمكن توزيع الألوان بصورة متوازنة.",
+                },
+            ],
+        },
+    }
+    report = build_session_restore_summary(session, report_mode="full")
+    assert "ملحق الأدلة الأصلية المرتبة زمنيًا" in report
+    assert "مساهمة المستخدم:" in report
+    assert "رد الوكيل:" in report
+    assert "ثلاثة سنتيمترات" in report
+    assert "يمكن تشكيل الجبس" in report
+
+
+def test_numbered_factual_question_uses_read_only_evidence_retrieval(monkeypatch):
+    session = {
+        "session_id": "saved-72",
+        "session_type": "dialogue",
+        "status": "completed",
+        "dialogue_state": {
+            "session_id": "saved-72",
+            "last_topic": "الفن التجريدي",
+            "exchange_archive": [
+                {
+                    "session_id": "saved-72",
+                    "user": "استخدمت سكينًا ومفك براغٍ وملعقة لتشكيل الجبس.",
+                    "assistant": "هذه أدوات مناسبة للتشكيل اليدوي.",
+                },
+            ],
+        },
+    }
+    restored = []
+    agent = SimpleNamespace(
+        restore_session_snapshot=lambda data: restored.append(data) or True,
+        restore_session_context=lambda: False,
+        runtime=None,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    orchestrator = Orchestrator(agent)
+    indexed_sessions = [
+        {"session_id": f"older-session-{number}", "session_type": "dialogue"}
+        for number in range(1, 72)
+    ] + [session]
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_index", lambda: indexed_sessions)
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_by_number", lambda number: session if number == 72 else {})
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_by_id", lambda session_id: session if session_id == "saved-72" else {})
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.load_session", lambda: {})
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.recoverable_work_checkpoint", lambda data: None)
+
+    request = "ما الأدوات التي ذكرتها لك في الجلسة 72؟"
+    result = orchestrator.handle(
+        request,
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "target": "",
+            "context": "system",
+            "session_selector": session_route_contract(request),
+        },
+    )
+    assert result["status"] == "success"
+    assert result["source"] == "saved_session_evidence_retrieval"
+    assert "سكينًا" in result["text"]
+    assert result["context_restored"] is None
+    assert not restored
+
+
+
+def test_saved_dialogue_evidence_rejects_mismatched_nested_session_identity():
+    session = {
+        "session_id": "outer-session",
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": "different-session",
+            "exchange_archive": [
+                {
+                    "session_id": "different-session",
+                    "user": "المعلومة التي لا تخص الجلسة المحددة.",
+                    "assistant": "رد غير تابع للسجل الخارجي.",
+                },
+            ],
+        },
+    }
+    assert retrieve_dialogue_evidence(session, "المعلومة") == []

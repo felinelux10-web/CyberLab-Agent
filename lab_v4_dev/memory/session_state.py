@@ -449,12 +449,19 @@ def session_selector(raw: str) -> dict:
         text,
         flags=re.IGNORECASE,
     )
-    if number_match and any(token in text for token in (
-        "استرجع", "استعد", "استكمل", "استكمال", "اعرض", "اكتب", "اقرا", "حلل",
-        "ملخص", "تلخيص", "لخص", "موجز", "باختصار", "مضمون", "محتوى", "تقرير", "ما الموضوع",
-        "ماذا كنا", "ما كنا", "ما الفرق", "restore", "resume", "summarize",
-        "summary", "report",
-    )):
+    explicit_question = bool(re.match(
+        r"^(?:ما|ماذا|من|هل|كيف|اين|أين|اذكر|حدد|حدّد|اي|أي|ماهي|ما هي|كم)\b",
+        text,
+    )) or "؟" in text or "?" in text
+    if number_match and (
+        explicit_question
+        or any(token in text for token in (
+            "استرجع", "استعد", "استكمل", "استكمال", "اعرض", "اكتب", "اقرا", "حلل",
+            "ملخص", "تلخيص", "لخص", "موجز", "باختصار", "مضمون", "محتوى", "تقرير", "ما الموضوع",
+            "ماذا كنا", "ما كنا", "ما الفرق", "restore", "resume", "summarize",
+            "summary", "report",
+        ))
+    ):
         return {
             "kind": "number",
             "number": int(number_match.group(1)),
@@ -661,6 +668,22 @@ def session_route_contract(raw: str) -> dict:
     selection = session_selector(raw_text)
     selection = dict(selection or {"kind": "none"})
 
+    # Numbered factual questions retrieve source evidence instead of restoring
+    # the saved context or silently turning the question into a generic report.
+    specific_saved_question = bool(
+        selection.get("kind") in {"number", "id"}
+        and re.match(
+            r"^(?:ما|ماذا|من|هل|كيف|اين|أين|اذكر|حدد|حدّد|اي|أي|ماهي|ما هي|كم)\b",
+            text,
+        )
+        and not any(marker in text for marker in (
+            "ملخص", "تلخيص", "لخص", "موجز", "تقرير", "نص الحوار",
+            "الرسائل الاصلية", "الرسائل الأصلية",
+        ))
+    )
+    if specific_saved_question:
+        selection["report_mode"] = "recall"
+
     # Output intent belongs to the route contract, which owns the selection.
     asks_for_summary = any(
         marker in text
@@ -804,6 +827,8 @@ def session_route_contract(raw: str) -> dict:
         output_kind = "transcript"
     elif selection.get("report_mode") == "transcript":
         output_kind = "transcript"
+    elif selection.get("report_mode") == "recall":
+        output_kind = "summary"
     elif selection.get("report_mode") == "progress" or any(
         marker in text for marker in (
             "اين توقفنا", "الخطوه التاليه", "ما الذي انجز", "اين وصلنا",
@@ -2157,6 +2182,27 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         "",
         "حدود الاستعادة: هذا ملخص للسجل المحدد فقط؛ لم تُدمج معه الجلسة الحية أو جلسة العمل. لم يُنشأ أي رد جديد.",
     ])
+    if detailed_report:
+        # Keep analytical prose distinct from original evidence. Preserve each
+        # speaker and the exchange order so every claim remains auditable.
+        lines.extend([
+            "",
+            "ملحق الأدلة الأصلية المرتبة زمنيًا:",
+            "تُعرض مساهمة المستخدم ورد الوكيل كلٌّ على حدة؛ ولا تُنسب اقتراحات الوكيل إلى المستخدم.",
+        ])
+        for index, exchange in enumerate(exchanges, 1):
+            user_text = str(exchange.get("user") or "").strip()
+            assistant_text = str(exchange.get("assistant") or "").strip()
+            if not user_text and not assistant_text:
+                continue
+            lines.extend([
+                "",
+                f"التبادل {index}:",
+                "مساهمة المستخدم:",
+                user_text or "لا توجد رسالة مستخدم محفوظة لهذا التبادل.",
+                "رد الوكيل:",
+                assistant_text or "لا يوجد رد محفوظ لهذا التبادل.",
+            ])
     return "\n".join(lines)
 
 
