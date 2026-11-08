@@ -2188,7 +2188,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         # declarative user statements remain available as source evidence.
         lines.extend([
             "",
-            "ملحق الأدلة المنسوبة إلى أصحابها والمرتبة زمنيًا:",
+            "ملحق الأدلة الأصلية المرتبة زمنيًا:",
             "تُفصل مساهمات المستخدم عن ردود الوكيل، مع استبعاد تبادلات التحية والإدارة من التحليل الموضوعي.",
         ])
         for index, exchange in enumerate(summary_exchanges, 1):
