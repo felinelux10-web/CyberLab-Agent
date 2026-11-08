@@ -99,7 +99,7 @@ def test_generic_topic_references_resolve_from_dialogue_topics_only():
     assert first["semantic_request"]["context_transition"] == "restore"
 
     previous = manager.process("ارجع إلى الموضوع السابق")
-    assert previous["status"] == "success", previous
+    assert previous["status"] == "success", previous.get("semantic_request")
     assert orchestrator.calls[-1]["parsed"]["target"] == "SQL Injection"
     assert previous["intent"] == "cyber_explain"
 
@@ -367,7 +367,7 @@ def test_history_recall_keeps_relevant_execution_exchange():
     result = ConversationManager(orchestrator, memory).process(
         "ما الموضوع الذي كنا نشرحه في رسالتي السابقة؟"
     )
-    assert result["source"] == "dialogue_memory"
+    assert result.get("source") == "dialogue_memory", result
     assert "شرح التنفيذ المرتبط بالموضوع" in result["text"]
 
 

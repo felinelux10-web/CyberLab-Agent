@@ -999,7 +999,7 @@ def test_unnamed_topic_return_routes_selected_prior_branch_instead_of_dumping_ar
     assert memory.state.last_intent == "cyber_explain"
     assert memory.active_context_entity()["entity"] == "SQL Injection"
     assert memory.active_context_entity()["action"] == "cyber_explain"
-    assert calls
+    assert calls, result
     prompt = calls[-1][0]
     assert "SQL Injection" in prompt
     assert "توقفنا في SQL Injection عند آلية الحدوث" in prompt
