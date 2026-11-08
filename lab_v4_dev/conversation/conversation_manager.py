@@ -3205,6 +3205,124 @@ class ConversationManager:
         )
         ambiguous_resume = self._ambiguous_resume_without_domain(user_input, parsed)
 
+        normalized_recovery_request = self._normalize_transition_text(user_input)
+        interrupted_resume_request = any(marker in normalized_recovery_request for marker in (
+            "انقطع", "انقطعت", "توقفنا", "اخر نقطه", "اخر نقطة",
+            "دون ان اذكر اسم الموضوع", "بدون ان اذكر اسم الموضوع",
+        ))
+        explicit_independent_request = (
+            self._is_explicit_independent_topic(user_input, parsed)
+            or self._is_explicit_topic_switch(user_input)
+        )
+        if explicit_independent_request:
+            # Do not let a generic interrupted-branch annotation turn an
+            # explicitly independent technical explanation back into social chat.
+            recovery_is_dialogue = False
+            explanation_subject = self._explicit_explanation_topic(user_input)
+            normalized_subject = self._normalize_transition_text(explanation_subject or "")
+            cyber_subject_markers = (
+                "sql injection", "csrf", "cross site request forgery", "xss",
+                "cross site scripting", "ssrf", "xxe", "idor", "rce",
+                "command injection", "path traversal", "directory traversal",
+                "phishing", "malware", "ransomware", "session hijacking",
+                "clickjacking", "sql",
+            )
+            current_intent = str(
+                getattr((parsed or {}).get("intent"), "value", (parsed or {}).get("intent")) or ""
+            ).casefold()
+            current_domain = str((parsed or {}).get("conversation_domain") or "general").casefold()
+            technical_independent = bool(
+                explanation_subject
+                and (
+                    current_intent == "cyber_explain"
+                    or current_domain == "technical"
+                    or any(marker in normalized_subject for marker in cyber_subject_markers)
+                )
+            )
+            if technical_independent:
+                parsed = dict(parsed or {})
+                parsed.update({
+                    "intent": Intent.CYBER_EXPLAIN,
+                    "target": explanation_subject,
+                    "entity_type": "CONCEPT",
+                    "conversation_domain": "technical",
+                    "conversation_act": "EXECUTABLE_REQUEST",
+                    "semantic_pattern": "EXPLICIT_INDEPENDENT_CYBER_EXPLANATION",
+                    "source": "explicit_independent_topic",
+                })
+                attributes = dict(parsed.get("response_attributes") or {})
+                attributes.pop("dialogue_recovery", None)
+                parsed["response_attributes"] = attributes
+                transition = ContextTransition.NEW_INDEPENDENT
+        elif not interrupted_resume_request and not self._ordinal_dialogue_exchange(user_input):
+            # Reassert a resolved named/previous topic after generic recovery
+            # heuristics. The selected branch's original intent/domain decide
+            # whether it returns to the technical owner or live dialogue.
+            resolved_topic = self._resolve_generic_topic_reference(user_input)
+            if resolved_topic and self.dialogue_memory:
+                normalized_topic = self._normalize_transition_text(resolved_topic)
+                archive = getattr(
+                    getattr(self.dialogue_memory, "state", None),
+                    "exchange_archive",
+                    [],
+                ) or []
+                restored_exchange = next((
+                    item for item in reversed(archive)
+                    if isinstance(item, dict)
+                    and (
+                        self._normalize_transition_text(item.get("target") or "") == normalized_topic
+                        or self._normalize_transition_text(item.get("user") or "") == normalized_topic
+                    )
+                    and not item.get("recall_only")
+                    and not item.get("state_boundary_only")
+                ), None)
+                if restored_exchange:
+                    restored_intent = str(restored_exchange.get("intent") or "").casefold()
+                    restored_domain = str(
+                        restored_exchange.get("conversation_domain") or "general"
+                    ).casefold()
+                    restored_kind = str(
+                        restored_exchange.get("context_kind") or "dialogue"
+                    ).casefold()
+                    restored_user = self._normalize_transition_text(
+                        restored_exchange.get("user") or ""
+                    )
+                    restored_social = (
+                        restored_intent in {"personal_chat", "chat", "discussion", "question", "unclear"}
+                        or any(marker in restored_user for marker in (
+                            "موضوع عام", "نقاش عام", "حديث عام", "حوار عام",
+                            "دعنا نتحدث", "لنتحدث", "نتحدث عن",
+                        ))
+                        or (
+                            restored_kind in {"dialogue", "social", "unknown"}
+                            and restored_domain not in {
+                                "technical", "project", "work", "system", "execution",
+                            }
+                            and restored_intent not in {
+                                "cyber_explain", "architecture", "propose_solution", "plan", "lab_plan",
+                            }
+                        )
+                    )
+                    parsed = dict(parsed or {})
+                    parsed.update({
+                        "intent": Intent.PERSONAL_CHAT if restored_social else (
+                            Intent.CYBER_EXPLAIN if restored_intent == "cyber_explain" else restored_intent
+                        ),
+                        "target": resolved_topic,
+                        "entity_type": "REFERENCE" if restored_social else "CONCEPT",
+                        "conversation_domain": "general" if restored_social else (
+                            "technical" if restored_domain == "general" else restored_domain
+                        ),
+                        "conversation_act": "TOPIC_RETURN",
+                        "semantic_pattern": "RESOLVED_DIALOGUE_BRANCH_RETURN",
+                        "source": "dialogue_branch_archive",
+                    })
+                    attributes = dict(parsed.get("response_attributes") or {})
+                    attributes.pop("dialogue_recovery", None)
+                    parsed["response_attributes"] = attributes
+                    transition = ContextTransition.RESTORE
+                    recovery_is_dialogue = False
+
         recovery_domain = str((parsed or {}).get("conversation_domain") or "general").casefold()
         recovery_intent = str(
             getattr((parsed or {}).get("intent"), "value", (parsed or {}).get("intent")) or ""
@@ -3219,7 +3337,7 @@ class ConversationManager:
         route_override = (
             "CLARIFY" if ambiguous_resume
             else "L-LIVE" if recovery_is_dialogue and (
-                not recovery_has_selected_target or recovery_is_social
+                interrupted_resume_request or not recovery_has_selected_target or recovery_is_social
             )
             else "L-FACT" if local_project_answer is not None
             else None
