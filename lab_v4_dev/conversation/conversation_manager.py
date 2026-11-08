@@ -3215,9 +3215,12 @@ class ConversationManager:
                 "cyber_explain", "architecture", "propose_solution", "plan", "lab_plan",
             }
         )
+        recovery_has_selected_target = bool(str((parsed or {}).get("target") or "").strip())
         route_override = (
             "CLARIFY" if ambiguous_resume
-            else "L-LIVE" if recovery_is_dialogue and recovery_is_social
+            else "L-LIVE" if recovery_is_dialogue and (
+                not recovery_has_selected_target or recovery_is_social
+            )
             else "L-FACT" if local_project_answer is not None
             else None
         )
