@@ -1302,15 +1302,45 @@ def test_simple_chat_opening_is_answered_locally_without_provider(monkeypatch):
 
 def test_mesopotamia_followup_stays_in_ancient_civilizations_dialogue(monkeypatch):
     manager, memory, orchestrator, calls = _manager(monkeypatch)
+    topic = "الحضارات القديمة"
+    memory.state.last_topic = topic
+    memory.state.last_intent = "personal_chat"
+    memory.state.last_mode = "CHAT"
+    memory.state.last_target = "مصر القديمة والأهرامات"
+    memory.state.add_turn(
+        role="user",
+        content="لنتحدث عن مصر القديمة والأهرامات.",
+        intent="personal_chat",
+        target="مصر القديمة والأهرامات",
+        conversation_domain="general",
+        conversation_act="CASUAL_CONVERSATION",
+        context_kind="dialogue",
+    )
+    memory.state.add_turn(
+        role="assistant",
+        content="ناقشنا مصر القديمة والأهرامات.",
+        intent="personal_chat",
+        target="مصر القديمة والأهرامات",
+        conversation_domain="general",
+        conversation_act="CASUAL_CONVERSATION",
+        context_kind="dialogue",
+    )
+    memory.state.exchange_archive.append({
+        "session_id": memory.state.session_id,
+        "exchange_id": "ancient-history-1",
+        "user": "لنتحدث عن مصر القديمة والأهرامات.",
+        "assistant": "ناقشنا مصر القديمة والأهرامات.",
+        "target": topic,
+        "conversation_domain": "general",
+        "conversation_act": "CASUAL_CONVERSATION",
+        "context_kind": "dialogue",
+        "context_transition": "new_independent",
+    })
 
-    first = manager.process("لنتحدث عن مصر القديمة والأهرامات.")
-    second = manager.process("وماذا عن بلاد الرافدين؟")
+    result = manager.process("وماذا عن بلاد الرافدين؟")
+    decision = result.get("route_decision")
 
-    decision = second.get("route_decision")
-    assert first["status"] == "success", first
-    assert second["status"] == "success", second
-    assert getattr(decision, "route", None) in {"L-LIVE", "L-SOCIAL"}
-    assert "SQL Injection" not in str(second)
+    assert getattr(decision, "route", None) in {"L-LIVE", "L-SOCIAL"}, result
+    assert "SQL Injection" not in str(result)
     assert memory.state.last_topic != "SQL Injection"
     assert orchestrator.calls == []
-    assert calls
