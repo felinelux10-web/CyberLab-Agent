@@ -310,37 +310,3 @@ def test_orchestrator_refuses_to_analyze_compact_index_without_detail_file(monke
 
     assert result["status"] == "needs_clarification"
     assert result["source"] == "saved_session_detail_unavailable"
-
-
-def test_ancient_civilizations_followup_stays_in_live_dialogue(monkeypatch):
-    calls = []
-
-    def fake_gateway(prompt, **kwargs):
-        calls.append(prompt)
-        return {"status": "success", "text": "رد حواري عن الحضارات القديمة.", "provider_used": "test"}
-
-    monkeypatch.setattr(
-        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
-        fake_gateway,
-    )
-    class Recorder:
-        def __init__(self):
-            self.context = ContextStore()
-            self.calls = []
-
-        def handle(self, text, parsed=None, **kwargs):
-            self.calls.append((text, dict(parsed or {}), kwargs))
-            return {"status": "success", "intent": (parsed or {}).get("intent"), "text": "رد التنفيذ"}
-
-    recorder = Recorder()
-    memory = DialogueMemory(recorder.context)
-    manager = ConversationManager(recorder, memory)
-    first = manager.process("لنتحدث عن مصر القديمة والأهرامات.")
-    second = manager.process("وماذا عن بلاد الرافدين؟")
-
-    decision = second.get("route_decision")
-    assert first["status"] == "success", first
-    assert second["status"] == "success", second
-    assert getattr(decision, "route", None) in {"L-LIVE", "L-SOCIAL"}
-    assert "SQL Injection" not in str(second)
-    assert memory.state.last_topic != "SQL Injection"

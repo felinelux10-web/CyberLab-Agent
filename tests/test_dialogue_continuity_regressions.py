@@ -1297,3 +1297,20 @@ def test_simple_chat_opening_is_answered_locally_without_provider(monkeypatch):
     assert calls == []
     assert orchestrator.calls == []
 
+
+
+
+def test_mesopotamia_followup_stays_in_ancient_civilizations_dialogue(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+
+    first = manager.process("لنتحدث عن مصر القديمة والأهرامات.")
+    second = manager.process("وماذا عن بلاد الرافدين؟")
+
+    decision = second.get("route_decision")
+    assert first["status"] == "success", first
+    assert second["status"] == "success", second
+    assert getattr(decision, "route", None) in {"L-LIVE", "L-SOCIAL"}
+    assert "SQL Injection" not in str(second)
+    assert memory.state.last_topic != "SQL Injection"
+    assert orchestrator.calls == []
+    assert calls

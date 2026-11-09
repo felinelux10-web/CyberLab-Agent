@@ -2245,7 +2245,6 @@ SOURCE CODE:
                     route_decision is not None
                     and getattr(route_decision, "route", None) == "L-SESSION"
                     and getattr(route_decision, "provider_allowed", False)
-                    and getattr(self.agent, "allow_provider_session_synthesis", False)
                 )
                 if provider_allowed:
                     synthesis_attempted = True
