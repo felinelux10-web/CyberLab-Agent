@@ -2124,7 +2124,7 @@ def _dialogue_knowledge_summary_insights(
         prefix = (
             "صحح المستخدم معلومة سابقة: "
             if str(item.get("knowledge_id") or "") in corrected_ids
-            else "ذكر المستخدم: "
+            else "بحسب المستخدم، "
         )
         source_index = int(item.get("source_exchange_index") or 0)
         candidates.append((
@@ -2875,7 +2875,7 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
         insights = semantic_summary["insights"]
         if insights:
             summary = "الخلاصة الدلالية للحوار: " + "؛ ".join(
-                clean(value, 105) for value in insights[:2]
+                clean(value, 105) for value in insights[:3]
             ) + "."
         elif meaningful_users:
             summary = (

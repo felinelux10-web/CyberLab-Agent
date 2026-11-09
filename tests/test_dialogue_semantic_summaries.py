@@ -444,9 +444,9 @@ def test_saved_dialogue_summary_uses_speaker_attributed_knowledge_across_exchang
     brief = build_session_brief_summary(saved)
     report = build_session_restore_summary(saved, report_mode="progress")
 
-    assert "ذكر المستخدم: أنشأت إطارا خشبيا" in brief["summary"]
-    assert "ذكر المستخدم: سأصب الجبس" in brief["summary"]
-    assert "ذكر المستخدم: سأشكل السطح" in report
+    assert "بحسب المستخدم، أنشأت إطارا خشبيا" in brief["summary"]
+    assert "بحسب المستخدم، سأصب الجبس" in brief["summary"]
+    assert "بحسب المستخدم، سأشكل السطح" in report
     detailed_report = build_session_restore_summary(saved, report_mode="full")
     assert "مساهمات الوكيل واقتراحاته:" in detailed_report
     assert "الإطار يحدد حدود العمل." in detailed_report
@@ -503,8 +503,8 @@ def test_legacy_dialogue_without_exchange_ids_still_contributes_to_summary():
         limit=5,
     )
 
-    assert any("ذكر المستخدم: أنشأت إطارا خشبيا" in item for item in report["insights"])
-    assert any("ذكر المستخدم: سأصب الجبس" in item for item in report["insights"])
+    assert any("بحسب المستخدم، أنشأت إطارا خشبيا" in item for item in report["insights"])
+    assert any("بحسب المستخدم، سأصب الجبس" in item for item in report["insights"])
 
 
 def test_session_72_progress_summary_reconstructs_user_facts_and_excludes_failed_answers():
@@ -550,7 +550,7 @@ def test_session_72_progress_summary_reconstructs_user_facts_and_excludes_failed
                    "الذهبي", "الأبيض", "الأزرق", "صباغة مائية", "كولا",
                    "الورنيش الخشبي الشفاف"):
         assert marker in report, marker
-    assert "ذكر المستخدم:" in report
+    assert "بحسب المستخدم،" in report
     assert "لا أملك سجلًا كافيًا لتحديد ذلك" not in report
 
 
@@ -599,6 +599,6 @@ def test_summary_falls_back_when_full_transcript_contains_only_clarifications():
     brief = build_session_brief_summary(saved)
     progress = build_session_restore_summary(saved, report_mode="progress")
 
-    assert "ذكر المستخدم: صببت الجبس" in brief["summary"]
+    assert "بحسب المستخدم، صببت الجبس" in brief["summary"]
     assert "ثلاثة سنتيمترات" in progress
     assert "ما المقصود بالسماكة" not in brief["summary"]
