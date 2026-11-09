@@ -1558,26 +1558,30 @@ def analyze_session(data: dict | None = None) -> dict:
     }
 
 def _dialogue_exchanges(data: dict) -> list[dict]:
-    """Return only completed exchanges belonging to the selected saved dialogue."""
+    """Return completed exchanges, falling back when the full archive has no completed turn."""
     dialogue = data.get("dialogue_state") or {}
     if not isinstance(dialogue, dict):
         return []
     session_id = str(dialogue.get("session_id") or "").strip()
-    exchanges = dialogue.get("transcript_archive")
-    if not isinstance(exchanges, list) or not exchanges:
-        exchanges = dialogue.get("exchange_archive") or []
-    if not isinstance(exchanges, list):
+    if not session_id:
         return []
-    return [
-        item for item in exchanges
-        if isinstance(item, dict)
-        and not item.get("recall_only")
-        and not item.get("state_boundary_only")
-        and str(item.get("session_id") or "") == session_id
-        and str(item.get("user") or "").strip()
-        and str(item.get("assistant") or "").strip()
-        and not item.get("response_failed")
-    ]
+
+    def completed_records(archive):
+        return [
+            item for item in (archive if isinstance(archive, list) else [])
+            if isinstance(item, dict)
+            and not item.get("recall_only")
+            and not item.get("state_boundary_only")
+            and str(item.get("session_id") or "") == session_id
+            and str(item.get("user") or "").strip()
+            and str(item.get("assistant") or "").strip()
+            and not item.get("response_failed")
+        ]
+
+    exchanges = completed_records(dialogue.get("transcript_archive"))
+    if not exchanges:
+        exchanges = completed_records(dialogue.get("exchange_archive"))
+    return exchanges
 
 
 def _is_dialogue_control_text(value: object) -> bool:
@@ -2062,11 +2066,112 @@ def _dialogue_explicit_conclusions(exchanges: list[dict]) -> list[str]:
 
 
 
+def _dialogue_knowledge_summary_insights(
+    exchanges: list[dict],
+    *,
+    limit: int = 6,
+    session_id: str = "",
+) -> list[str]:
+    """Build summary points from source-attributed knowledge, not assistant-only heuristics."""
+    records = [dict(item) for item in exchanges if isinstance(item, dict)]
+    session_id = str(session_id or "").strip() or next(
+        (str(item.get("session_id") or "").strip() for item in records if item.get("session_id")),
+        "",
+    )
+    if not session_id or not records:
+        return []
+    # Legacy archives may not carry exchange_id. Assign a deterministic ID
+    # before analysis so provenance IDs also match the completion filter below.
+    for index, item in enumerate(records, 1):
+        item.setdefault("exchange_id", f"{session_id}:{index}")
+    from lab_v4_dev.memory.dialogue_knowledge import analyze_dialogue_session
+
+    analysis = analyze_dialogue_session({
+        "session_id": session_id,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": session_id,
+            "transcript_archive": records,
+        },
+    })
+    completed_ids = {
+        str(item.get("exchange_id") or "")
+        for item in records
+        if not item.get("response_failed")
+        and not item.get("recall_only")
+        and not item.get("state_boundary_only")
+        and str(item.get("assistant") or "").strip()
+    }
+    corrected_ids = {
+        str(item.get("source_knowledge_id") or "")
+        for item in analysis.get("relationships", [])
+        if item.get("relation") == "corrects"
+    }
+    superseded_ids = {
+        str(item.get("target_knowledge_id") or "")
+        for item in analysis.get("relationships", [])
+        if item.get("relation") == "corrects"
+    }
+    candidates = []
+    for item in analysis.get("user_information", []):
+        if str(item.get("knowledge_id") or "") in superseded_ids:
+            continue
+        if str(item.get("source_exchange_id") or "") not in completed_ids:
+            continue
+        content = " ".join(str(item.get("content") or "").split()).strip()
+        if not content:
+            continue
+        prefix = (
+            "صحح المستخدم معلومة سابقة: "
+            if str(item.get("knowledge_id") or "") in corrected_ids
+            else "ذكر المستخدم: "
+        )
+        source_index = int(item.get("source_exchange_index") or 0)
+        candidates.append((
+            0 if str(item.get("knowledge_id") or "") in corrected_ids else 1,
+            source_index,
+            f"{prefix}{content} [التبادل {source_index}]",
+        ))
+    for item in analysis.get("assistant_information", []):
+        if (
+            str(item.get("source_exchange_id") or "") not in completed_ids
+            or str(item.get("knowledge_type") or "") == "assistant_non_answer"
+        ):
+            continue
+        content = " ".join(str(item.get("content") or "").split()).strip()
+        if not content:
+            continue
+        kind = str(item.get("knowledge_type") or "")
+        if kind == "assistant_suggestion":
+            prefix = "اقترح الوكيل: "
+        elif kind == "assistant_conclusion":
+            prefix = "خلص الوكيل إلى: "
+        else:
+            prefix = "أوضح الوكيل: "
+        source_index = int(item.get("source_exchange_index") or 0)
+        candidates.append((
+            2,
+            source_index,
+            f"{prefix}{content} [التبادل {source_index}]",
+        ))
+    # Explicit corrections supersede the older fact they target. Remaining
+    # user-owned facts precede assistant explanations, all in source order.
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    result = []
+    for _, _, insight in candidates:
+        if insight not in result:
+            result.append(insight)
+        if len(result) >= max(1, int(limit)):
+            break
+    return result
+
+
 def summarize_dialogue_exchanges(
     exchanges: list[dict] | None,
     *,
     topic: str = "",
     limit: int = 6,
+    session_id: str = "",
 ) -> dict:
     """Build a concise narrative summary from the meaning of bounded exchanges."""
     records = [
@@ -2100,15 +2205,35 @@ def summarize_dialogue_exchanges(
             "",
         )
 
-    insights = []
+    legacy_insights = []
     for exchange in meaningful:
         for insight in (
             *_dialogue_exchange_insights(exchange),
             _dialogue_assistant_insight(exchange),
         ):
             insight = " ".join(str(insight or "").split()).strip()
-            if insight and insight not in insights:
-                insights.append(insight)
+            if insight and insight not in legacy_insights:
+                legacy_insights.append(insight)
+    knowledge_insights = _dialogue_knowledge_summary_insights(
+        meaningful,
+        limit=max(1, int(limit)),
+        session_id=session_id,
+    )
+    # Retain the established concise narrative lead where available, then
+    # ground the remaining summary points in speaker-attributed source records.
+    insights = []
+    if legacy_insights:
+        insights.append(legacy_insights[0])
+    for insight in knowledge_insights:
+        if insight not in insights:
+            insights.append(insight)
+        if len(insights) >= max(1, int(limit)):
+            break
+    for insight in legacy_insights[1:]:
+        if insight not in insights:
+            insights.append(insight)
+        if len(insights) >= max(1, int(limit)):
+            break
     insights = insights[:max(1, int(limit))]
 
     if not selected_topic and meaningful:
@@ -2237,7 +2362,10 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
             f"عدد التبادلات المكتملة: {len(exchanges)}",
         ])
     if report_mode == "brief":
-        brief = summarize_dialogue_exchanges(summary_exchanges, topic=topic, limit=3)
+        brief = summarize_dialogue_exchanges(
+            summary_exchanges, topic=topic, limit=3,
+            session_id=str(data.get("session_id") or ""),
+        )
         details = "؛ ".join(brief["insights"][:2]) or (
             "لا يتضمن السجل مضمونًا موضوعيًا كافيًا يمكن إثباته."
         )
@@ -2252,6 +2380,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
             summary_exchanges,
             topic=topic,
             limit=12,
+            session_id=str(data.get("session_id") or ""),
         )
         progress_stop_point = progress_summary["stop_point"]
         progress_next_step = (
@@ -2292,6 +2421,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         summary_exchanges,
         topic=topic,
         limit=12,
+        session_id=str(data.get("session_id") or ""),
     )
     content_lines = semantic_summary["insights"]
     explicit_conclusions = _dialogue_explicit_conclusions(summary_exchanges)
@@ -2593,7 +2723,9 @@ def analyze_repeated_dialogue_topics(*, limit: int = 8) -> list[dict]:
             ):
                 candidates.append(last_topic)
         if not candidates:
-            brief = summarize_dialogue_exchanges(meaningful, limit=2)
+            brief = summarize_dialogue_exchanges(
+                meaningful, limit=2, session_id=session_id
+            )
             if brief.get("topic") and not _is_dialogue_control_text(brief["topic"]):
                 candidates.append(str(brief["topic"]))
 
@@ -2753,6 +2885,7 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
             meaningful_exchanges,
             topic=topic,
             limit=4,
+            session_id=str(session.get("session_id") or ""),
         )
         if not topic:
             inferred_topic = str(semantic_summary.get("topic") or "").strip()
@@ -2894,7 +3027,9 @@ def build_all_sessions_report(sessions: list[dict] | None = None, *, session_typ
                 item for item in _dialogue_exchanges(session)
                 if not _is_dialogue_control_exchange(item)
             ]
-            dialogue_summary = summarize_dialogue_exchanges(exchanges, topic=topic, limit=5)
+            dialogue_summary = summarize_dialogue_exchanges(
+                exchanges, topic=topic, limit=5, session_id=session_id
+            )
         records.append({
             "number": stable_numbers.get(session_id, "?"),
             "session_id": session_id,

@@ -6,6 +6,7 @@ It is local-only, deterministic, and preserves speaker attribution.
 from __future__ import annotations
 
 import re
+import math
 import hashlib as _hashlib
 from typing import Any
 
@@ -14,7 +15,8 @@ _STOP_WORDS = {
     "ما", "ماذا", "من", "هل", "كيف", "اين", "متى", "كم", "اي", "هي", "هو",
     "الذي", "التي", "في", "عن", "على", "الى", "مع", "بين", "لك", "لي", "لنا",
     "انا", "انت", "انتم", "هذا", "هذه", "ذلك", "تلك", "كان", "كانت", "تم",
-    "قد", "ثم", "او", "الجلسة", "جلسة", "المحفوظة", "المحفوظ", "رقم",
+    "قد", "ثم", "او", "الجلسة", "جلسة", "جلسه", "جلسات",
+    "المحفوظة", "المحفوظ", "محفوظه", "رقم",
     "اذكر", "حدد", "ذكرت", "ذكرته", "ذكرتها", "قلته", "قلتها", "قلت", "كنا",
 }
 
@@ -33,16 +35,19 @@ def _exchange_source_fingerprint(exchange: dict) -> str:
 def _normalize(value: Any) -> str:
     text = str(value or "").casefold()
     text = (text.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
-            .replace("ى", "ي").replace("ـ", ""))
+            .replace("ى", "ي").replace("ة", "ه").replace("ـ", ""))
     return re.sub(r"[\u064b-\u065f\u0670]", "", text)
 
 
-def _tokens(value: Any) -> set[str]:
-    result = set()
-    for token in re.findall(r"[a-z0-9]+|[\u0621-\u064a]+", _normalize(value)):
+def _token_list(value: Any) -> list[str]:
+    """Return normalized, stemmed tokens while preserving term frequency."""
+    result = []
+    for token in re.findall(r"[a-z0-9]+|[ء-ي]+", _normalize(value)):
         if len(token) > 4 and token.startswith("وال"):
             token = token[3:]
-        elif len(token) > 4 and token.startswith(("بال", "لل")):
+        elif len(token) > 4 and token.startswith("بال"):
+            token = token[3:]
+        elif len(token) > 3 and token.startswith("لل"):
             token = token[2:]
         elif len(token) > 3 and token.startswith("ال"):
             token = token[2:]
@@ -51,8 +56,12 @@ def _tokens(value: Any) -> set[str]:
         if len(token) > 3 and token.endswith(("ها", "هم", "كم")):
             token = token[:-2]
         if token and token not in _STOP_WORDS and not token.isdigit():
-            result.add(token)
+            result.append(token)
     return result
+
+
+def _tokens(value: Any) -> set[str]:
+    return set(_token_list(value))
 
 
 def _exchange_archive(data: dict) -> tuple[str, list[dict]]:
@@ -68,21 +77,27 @@ def _exchange_archive(data: dict) -> tuple[str, list[dict]]:
     session_id = record_session_id or dialogue_session_id
     if not session_id:
         return "", []
-    records = []
-    completed_archive = dialogue.get("transcript_archive")
-    if not isinstance(completed_archive, list) or not completed_archive:
-        completed_archive = dialogue.get("exchange_archive") or []
-    for item in completed_archive:
-        if not isinstance(item, dict):
-            continue
-        item_id = str(item.get("session_id") or "").strip()
-        if item_id and item_id != session_id:
-            continue
-        if item.get("recall_only") or item.get("state_boundary_only") or item.get("response_failed"):
-            continue
-        if not str(item.get("user") or "").strip() and not str(item.get("assistant") or "").strip():
-            continue
-        records.append(item)
+
+    def valid_records(archive):
+        records = []
+        for item in (archive if isinstance(archive, list) else []):
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get("session_id") or "").strip()
+            if item_id and item_id != session_id:
+                continue
+            if item.get("recall_only") or item.get("state_boundary_only") or item.get("response_failed"):
+                continue
+            if not str(item.get("user") or "").strip() and not str(item.get("assistant") or "").strip():
+                continue
+            records.append(item)
+        return records
+
+    # Prefer the durable full transcript. Fall back to the bounded legacy
+    # archive only when the full transcript has no usable completed exchanges.
+    records = valid_records(dialogue.get("transcript_archive"))
+    if not records:
+        records = valid_records(dialogue.get("exchange_archive"))
     return session_id, records
 
 
@@ -114,6 +129,12 @@ def _classify_knowledge_sentence(speaker: str, sentence: str) -> tuple[str, floa
     normalized = _normalize(sentence)
     if speaker == "assistant":
         if any(marker in normalized for marker in (
+            "لا املك سجل", "لا املك تفاصيل", "لا استطيع تأكيد",
+            "لا استطيع تحديد", "لم افهم", "تعذر توليد", "تعذر الوصول",
+            "لا توجد ادله كافيه", "لم استطع",
+        )):
+            return "assistant_non_answer", 0.90
+        if any(marker in normalized for marker in (
             "اقترح", "انصح", "من الافضل", "يمكنك", "يفضل", "ينبغي لك",
             "احد الخيارات", "الخيار المناسب",
         )):
@@ -139,10 +160,13 @@ def _classify_knowledge_sentence(speaker: str, sentence: str) -> tuple[str, floa
         "التزم", "ضروري", "ينبغي",
     )):
         return "constraint", 0.76
-    if any(marker in normalized for marker in (
-        "ساستخدم", "ساضيف", "ساقوم", "ساضع", "سوف استخدم",
-        "سوف اضع", "سوف اترك", "سأقوم",
-    )):
+    if (
+        re.match(r"^س[أإآ][ء-ي]{2,}", sentence)
+        or any(marker in normalized for marker in (
+            "ساستخدم", "ساضيف", "ساقوم", "ساضع", "سوف استخدم",
+            "سوف اضع", "سوف اترك", "سأقوم",
+        ))
+    ):
         return "planned_action", 0.70
     if any(marker in normalized for marker in (
         "قررت", "ساعتمد", "اخترت", "اعتمدت", "تم الاتفاق",
@@ -217,25 +241,14 @@ def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
     session_id = record_session_id or dialogue_session_id
     if not session_id:
         return "", []
-    completed_archive = dialogue.get("transcript_archive")
-    if not isinstance(completed_archive, list) or not completed_archive:
-        completed_archive = dialogue.get("exchange_archive") or []
-    failed_archive = dialogue.get("failed_transcript_archive")
-    if not isinstance(failed_archive, list) or not failed_archive:
-        failed_archive = dialogue.get("failed_exchange_archive") or []
-    ordered_records = []
-    source_order = 0
-    for archive_name, archive in (
-        ("completed", completed_archive),
-        ("failed", failed_archive),
-    ):
-        for item in archive:
+
+    def completed_records(archive):
+        records = []
+        for item in (archive if isinstance(archive, list) else []):
             if not isinstance(item, dict) or item.get("state_boundary_only"):
                 continue
             item_session_id = str(item.get("session_id") or "").strip()
             if item_session_id and item_session_id != session_id:
-                continue
-            if archive_name == "failed" and not item.get("response_failed"):
                 continue
             if not (
                 str(item.get("user") or "").strip()
@@ -243,8 +256,53 @@ def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
                 or item.get("response_failed")
             ):
                 continue
-            ordered_records.append((source_order, item))
-            source_order += 1
+            records.append(item)
+        return records
+
+    # A non-empty full transcript can still contain only clarification or
+    # boundary records. In that case use the bounded legacy archive as the
+    # only available completed-evidence fallback.
+    completed = completed_records(dialogue.get("transcript_archive"))
+    has_completed_evidence = any(
+        not item.get("recall_only")
+        and not item.get("response_failed")
+        and str(item.get("assistant") or "").strip()
+        for item in completed
+    )
+    if not has_completed_evidence:
+        fallback = completed_records(dialogue.get("exchange_archive"))
+        seen = {
+            str(item.get("exchange_id") or _exchange_source_fingerprint(item))
+            for item in completed
+        }
+        for item in fallback:
+            signature = str(item.get("exchange_id") or _exchange_source_fingerprint(item))
+            if signature not in seen:
+                completed.append(item)
+                seen.add(signature)
+
+    failed_archive = dialogue.get("failed_transcript_archive")
+    if not isinstance(failed_archive, list) or not failed_archive:
+        failed_archive = dialogue.get("failed_exchange_archive") or []
+    ordered_records = [(index, item) for index, item in enumerate(completed)]
+    source_order = len(ordered_records)
+    for item in failed_archive:
+        if not isinstance(item, dict) or item.get("state_boundary_only"):
+            continue
+        item_session_id = str(item.get("session_id") or "").strip()
+        if item_session_id and item_session_id != session_id:
+            continue
+        if not item.get("response_failed"):
+            continue
+        if not (
+            str(item.get("user") or "").strip()
+            or str(item.get("assistant") or "").strip()
+            or item.get("response_failed")
+        ):
+            continue
+        ordered_records.append((source_order, item))
+        source_order += 1
+
     # Timestamps provide a reliable cross-archive ordering signal. If any
     # legacy exchange lacks one, retain persisted archive order instead of
     # lexically sorting IDs such as ":10" before ":2".
@@ -270,8 +328,10 @@ def analyze_dialogue_session(data: dict) -> dict:
     relationships = []
     unresolved = []
     failure_markers = (
-        "لم افهم", "لا املك سجل", "تعذر توليد", "تعذر الوصول",
-        "provider_exception", "لا توجد ادله كافيه", "لم استطع",
+        "لم افهم", "لا املك سجل", "لا املك تفاصيل",
+        "لا استطيع تأكيد", "لا استطيع تحديد", "تعذر توليد",
+        "تعذر الوصول", "provider_exception", "لا توجد ادله كافيه",
+        "لم استطع",
     )
 
     for index, exchange in enumerate(exchanges):
@@ -340,7 +400,10 @@ def analyze_dialogue_session(data: dict) -> dict:
                         "confidence": 0.55,
                         "evidence_exchange_id": exchange_id,
                     })
-            if kind in {"user_fact", "decision", "preference", "constraint"}:
+            if kind in {
+                "user_fact", "decision", "preference", "constraint",
+                "planned_action", "observation",
+            }:
                 previous_user_fact = item
             same_suggestion_topic = bool(
                 previous_suggestion
@@ -476,12 +539,27 @@ def format_dialogue_analysis_report(data: dict) -> str:
     if not analysis["user_information"]:
         lines.append("- لا توجد عبارات تقريرية كافية لاستخراج معلومات المستخدم.")
     lines.extend(["", "مساهمات الوكيل واقتراحاته:"])
+    substantive_assistant = [
+        item for item in analysis["assistant_information"]
+        if item.get("knowledge_type") != "assistant_non_answer"
+    ]
     lines.extend(
         f"- [التبادل {item['source_exchange_index']}] {item['knowledge_type']}: {item['content']}"
-        for item in analysis["assistant_information"]
+        for item in substantive_assistant
     )
-    if not analysis["assistant_information"]:
+    if not substantive_assistant:
         lines.append("- لا توجد ردود موضوعية محفوظة.")
+    non_answers = [
+        item for item in analysis["assistant_information"]
+        if item.get("knowledge_type") == "assistant_non_answer"
+    ]
+    lines.extend(["", "ردود الوكيل غير الموضوعية أو غير المكتملة:"])
+    lines.extend(
+        f"- [التبادل {item['source_exchange_index']}] {item['content']}"
+        for item in non_answers
+    )
+    if not non_answers:
+        lines.append("- لا توجد ردود من هذا النوع في السجل.")
     lines.extend(["", "الخطط والإجراءات التي صرّح بها المستخدم:"])
     lines.extend(
         f"- [التبادل {item['source_exchange_index']}] {item['content']}"
@@ -593,7 +671,7 @@ def _bm25_score(query_terms: set[str], document_terms: list[str], document_frequ
         if not frequency:
             continue
         df = document_frequencies.get(term, 0)
-        inverse = max(0.0, __import__("math").log(
+        inverse = max(0.0, math.log(
             1.0 + (document_count - df + 0.5) / (df + 0.5)
         ))
         denominator = frequency + 1.2 * (
@@ -634,9 +712,9 @@ def retrieve_dialogue_evidence(
         user = str(exchange.get("user") or "").strip()
         assistant = str(exchange.get("assistant") or "").strip()
         target = str(exchange.get("target") or "").strip()
-        user_terms = sorted(_tokens(user))
-        assistant_terms = sorted(_tokens(assistant))
-        target_terms = sorted(_tokens(target))
+        user_terms = _token_list(user)
+        assistant_terms = _token_list(assistant)
+        target_terms = _token_list(target)
         all_terms = user_terms + assistant_terms + target_terms
         total_length += len(all_terms)
         for term in set(all_terms):

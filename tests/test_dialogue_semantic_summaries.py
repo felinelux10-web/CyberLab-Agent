@@ -410,3 +410,193 @@ def test_explicit_resume_topic_is_extracted_instead_of_inheriting_old_topic():
     assert ConversationManager._explicit_resume_topic(
         "لنكمل حوارنا"
     ) is None
+
+
+def test_saved_dialogue_summary_uses_speaker_attributed_knowledge_across_exchanges():
+    sid = "knowledge-summary-session"
+    exchanges = [
+        {
+            "session_id": sid,
+            "exchange_id": "summary-user-1",
+            "user": "أنشأت إطارا خشبيا للوحة القديمة.",
+            "assistant": "الإطار يحدد حدود العمل.",
+            "target": "النقش البارز بالجبس",
+        },
+        {
+            "session_id": sid,
+            "exchange_id": "summary-user-2",
+            "user": "سأصب الجبس داخله بسماكة ثلاثة سنتيمترات ثم أتركه حتى يجف.",
+            "assistant": "يجب التأكد من تماسك الجبس قبل التشكيل.",
+            "target": "النقش البارز بالجبس",
+        },
+        {
+            "session_id": sid,
+            "exchange_id": "summary-user-3",
+            "user": "سأشكل السطح بسكين ومفك براغ ومعلقة.",
+            "assistant": "يمكن تنفيذ التشكيل بأدوات يدوية.",
+            "target": "النقش البارز بالجبس",
+        },
+    ]
+    saved = _saved_dialogue(exchanges, topic="النقش البارز بالجبس")
+    saved["session_id"] = sid
+    saved["dialogue_state"]["session_id"] = sid
+
+    brief = build_session_brief_summary(saved)
+    report = build_session_restore_summary(saved, report_mode="progress")
+
+    assert "ذكر المستخدم: أنشأت إطارا خشبيا" in brief["summary"]
+    assert "ذكر المستخدم: سأصب الجبس" in brief["summary"]
+    assert "ذكر المستخدم: سأشكل السطح" in report
+    assert "أوضح الوكيل:" in report
+    assert "summary-user-2" not in brief["summary"]
+
+
+def test_summary_marks_later_user_correction_as_superseding_prior_fact():
+    sid = "summary-correction-session"
+    exchanges = [
+        {
+            "session_id": sid,
+            "exchange_id": "summary-old-fact",
+            "user": "كانت سماكة الجبس ثلاثة سنتيمترات.",
+            "assistant": "تم تسجيل السماكة.",
+            "target": "صب الجبس",
+        },
+        {
+            "session_id": sid,
+            "exchange_id": "summary-correction",
+            "user": "تصحيح: السماكة الصحيحة خمسة سنتيمترات.",
+            "assistant": "تم اعتماد التصحيح.",
+            "target": "صب الجبس",
+        },
+    ]
+    saved = _saved_dialogue(exchanges, topic="صب الجبس")
+    saved["session_id"] = sid
+    saved["dialogue_state"]["session_id"] = sid
+
+    brief = build_session_brief_summary(saved)
+
+    assert "صحح المستخدم معلومة سابقة: تصحيح: السماكة الصحيحة خمسة سنتيمترات." in brief["summary"]
+    assert "كانت سماكة الجبس ثلاثة سنتيمترات" not in brief["summary"]
+
+
+def test_legacy_dialogue_without_exchange_ids_still_contributes_to_summary():
+    sid = "legacy-summary-session"
+    exchanges = [
+        {
+            "session_id": sid,
+            "user": "أنشأت إطارا خشبيا للوحة.",
+            "assistant": "الإطار يحدد مساحة العمل.",
+            "target": "الفن البارز",
+        },
+        {
+            "session_id": sid,
+            "user": "سأصب الجبس داخل الإطار.",
+            "assistant": "يجب تركه حتى يجف.",
+            "target": "الفن البارز",
+        },
+    ]
+    report = summarize_dialogue_exchanges(
+        exchanges,
+        topic="الفن البارز",
+        limit=5,
+    )
+
+    assert any("ذكر المستخدم: أنشأت إطارا خشبيا" in item for item in report["insights"])
+    assert any("ذكر المستخدم: سأصب الجبس" in item for item in report["insights"])
+
+
+def test_session_72_progress_summary_reconstructs_user_facts_and_excludes_failed_answers():
+    sid = "7ccd0498d634430080dcf5d4c27ceb96"
+    user_facts = [
+        "سأضع إطارا خشبيا للوحة القديمة.",
+        "سأصب الجبس داخل الإطار بسماكة نحو 3 سم وأتركه حتى يجف.",
+        "سأشكل السطح بسكين ومفك براغ وملعقة.",
+        "سأطلي العمل كله بالأسود الغامق ثم أضيف الذهبي والأبيض والأزرق بدرجات متناسقة.",
+        "أستعمل صباغة مائية صديقة للبيئة ذات مظهر عتيق.",
+        "سأضع طبقة حماية أسميها كولا تشبه الورنيش الخشبي الشفاف.",
+    ]
+    exchanges = [
+        {
+            "session_id": sid,
+            "exchange_id": f"session72-{index}",
+            "target": "الفن التجريدي والنقش البارز بالجبس",
+            "user": fact,
+            "assistant": "تم تسجيل هذه الخطوة ضمن وصف العمل.",
+        }
+        for index, fact in enumerate(user_facts, 1)
+    ]
+    exchanges.append({
+        "session_id": sid,
+        "exchange_id": "session72-failed-recall",
+        "target": "الفن التجريدي والنقش البارز بالجبس",
+        "user": "ما الأدوات التي ذكرتها؟",
+        "assistant": "لا أملك سجلًا كافيًا لتحديد ذلك.",
+    })
+    saved = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "last_topic": "الفن التجريدي والنقش البارز بالجبس",
+            "transcript_archive": exchanges,
+        },
+    }
+
+    report = build_session_restore_summary(saved, report_mode="progress")
+
+    for marker in ("إطارا خشبيا", "3 سم", "سكين", "مفك براغ", "الأسود الغامق",
+                   "الذهبي", "الأبيض", "الأزرق", "صباغة مائية", "كولا",
+                   "الورنيش الخشبي الشفاف"):
+        assert marker in report, marker
+    assert "ذكر المستخدم:" in report
+    assert "لا أملك سجلًا كافيًا لتحديد ذلك" not in report
+
+
+def test_knowledge_summary_does_not_relabel_foreign_nested_exchange():
+    from lab_v4_dev.memory.session_state import _dialogue_knowledge_summary_insights
+
+    exchanges = [{
+        "session_id": "foreign-nested-session",
+        "exchange_id": "foreign-exchange",
+        "user": "ذكرت معلومة خاصة بجلسة أخرى.",
+        "assistant": "هذا رد من الجلسة الأخرى.",
+        "target": "موضوع أجنبي",
+    }]
+
+    assert _dialogue_knowledge_summary_insights(
+        exchanges,
+        session_id="selected-outer-session",
+    ) == []
+
+
+def test_summary_falls_back_when_full_transcript_contains_only_clarifications():
+    sid = "summary-clarification-fallback"
+    saved = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "last_topic": "صب الجبس",
+            "transcript_archive": [{
+                "session_id": sid,
+                "exchange_id": "clarification-only",
+                "user": "ما المقصود بالسماكة؟",
+                "assistant": "هل تقصد سماكة طبقة الجبس؟",
+                "recall_only": True,
+            }],
+            "exchange_archive": [{
+                "session_id": sid,
+                "exchange_id": "legacy-completed",
+                "user": "صببت الجبس بسماكة ثلاثة سنتيمترات.",
+                "assistant": "يجب ترك الجبس حتى يجف.",
+                "target": "صب الجبس",
+            }],
+        },
+    }
+
+    brief = build_session_brief_summary(saved)
+    progress = build_session_restore_summary(saved, report_mode="progress")
+
+    assert "ذكر المستخدم: صببت الجبس" in brief["summary"]
+    assert "ثلاثة سنتيمترات" in progress
+    assert "ما المقصود بالسماكة" not in brief["summary"]

@@ -971,3 +971,194 @@ def test_retrieval_never_returns_evidence_from_a_different_session():
     assert evidence
     assert all(item["session_id"] == selected["session_id"] for item in evidence)
     assert not any(item["exchange_id"].startswith("exchange-") for item in evidence)
+
+
+def test_future_prefixed_arabic_verbs_are_classified_as_user_plans():
+    from lab_v4_dev.memory.dialogue_knowledge import extract_exchange_knowledge
+
+    sid = "future-plan-classification"
+    records = extract_exchange_knowledge(
+        {
+            "session_id": sid,
+            "exchange_id": "future-plan-1",
+            "user": "سأصب الجبس داخل الإطار ثم سأتركه حتى يجف.",
+            "assistant": "هذه مراحل متتابعة.",
+        },
+        session_id=sid,
+        exchange_index=0,
+    )
+
+    planned = [item["content"] for item in records if item["knowledge_type"] == "planned_action"]
+    assert "سأصب الجبس داخل الإطار ثم سأتركه حتى يجف." in planned
+
+
+def test_dialogue_tokenizer_preserves_term_frequency_for_bm25():
+    from lab_v4_dev.memory.dialogue_knowledge import _bm25_score, _token_list
+
+    repeated = _token_list("الجبس والجبس يحتاج إلى التجفيف")
+    assert repeated.count("جبس") == 2
+
+    once_score = _bm25_score({"جبس"}, ["جبس", "تجفيف"], {"جبس": 1}, 3, 2.0)
+    repeated_score = _bm25_score({"جبس"}, ["جبس", "جبس", "تجفيف"], {"جبس": 1}, 3, 2.0)
+    assert repeated_score > once_score
+
+
+def test_assistant_non_answers_are_not_classified_as_dialogue_knowledge():
+    from lab_v4_dev.memory.dialogue_knowledge import extract_exchange_knowledge
+
+    sid = "assistant-non-answer-session"
+    records = extract_exchange_knowledge(
+        {
+            "session_id": sid,
+            "exchange_id": "non-answer-1",
+            "user": "ما الأدوات التي ذكرتها؟",
+            "assistant": "لا أملك سجلًا كافيًا لتحديد ذلك.",
+        },
+        session_id=sid,
+        exchange_index=0,
+    )
+
+    assistant_records = [item for item in records if item["speaker"] == "assistant"]
+    assert assistant_records
+    assert all(item["knowledge_type"] == "assistant_non_answer" for item in assistant_records)
+
+
+def test_analysis_report_separates_non_answers_from_assistant_knowledge():
+    sid = "assistant-non-answer-report"
+    session = {
+        "session_id": sid,
+        "dialogue_state": {
+            "session_id": sid,
+            "exchange_archive": [{
+                "session_id": sid,
+                "exchange_id": "non-answer-report-1",
+                "user": "ما الأدوات التي ذكرتها؟",
+                "assistant": "لا أملك سجلًا كافيًا لتحديد ذلك.",
+            }],
+        },
+    }
+
+    report = format_dialogue_analysis_report(session)
+
+    assert "مساهمات الوكيل واقتراحاته:" in report
+    assert "- لا توجد ردود موضوعية محفوظة." in report
+    assert "ردود الوكيل غير الموضوعية أو غير المكتملة:" in report
+    assert "لا أملك سجلًا كافيًا لتحديد ذلك" in report
+
+
+def test_unresolved_question_detects_assistant_inability_to_confirm():
+    sid = "unresolved-confirmation-session"
+    session = {
+        "session_id": sid,
+        "dialogue_state": {
+            "session_id": sid,
+            "exchange_archive": [{
+                "session_id": sid,
+                "exchange_id": "unresolved-confirmation-1",
+                "user": "ما مادة الحماية النهائية التي ذكرتها؟",
+                "assistant": "لا أستطيع تحديد المادة من السياق المتاح.",
+            }],
+        },
+    }
+
+    analysis = analyze_dialogue_session(session)
+
+    assert any(
+        item["source_exchange_id"] == "unresolved-confirmation-1"
+        for item in analysis["unresolved_questions"]
+    )
+
+
+def test_correction_can_supersede_a_previously_declared_plan():
+    sid = "plan-correction-session"
+    session = {
+        "session_id": sid,
+        "dialogue_state": {
+            "session_id": sid,
+            "exchange_archive": [
+                {
+                    "session_id": sid,
+                    "exchange_id": "plan-old",
+                    "target": "صب الجبس",
+                    "user": "سأصب الجبس بسماكة ثلاثة سنتيمترات.",
+                    "assistant": "تم تسجيل الخطة.",
+                },
+                {
+                    "session_id": sid,
+                    "exchange_id": "plan-correction",
+                    "target": "صب الجبس",
+                    "user": "تصحيح: سأصب الجبس بسماكة خمسة سنتيمترات.",
+                    "assistant": "تم تحديث الخطة.",
+                },
+            ],
+        },
+    }
+
+    analysis = analyze_dialogue_session(session)
+    correction = next(
+        item for item in analysis["user_corrections"]
+        if "خمسة سنتيمترات" in item["content"]
+    )
+    relation = next(
+        item for item in analysis["relationships"]
+        if item["relation"] == "corrects"
+        and item["source_knowledge_id"] == correction["knowledge_id"]
+    )
+
+    assert relation["target_knowledge_id"].startswith("plan-old:user:")
+
+
+def test_arabic_definite_and_prepositional_prefixes_share_the_same_token():
+    from lab_v4_dev.memory.dialogue_knowledge import _token_list
+
+    variants = _token_list("الجبس بالجبس للجبس والجبس")
+    assert variants == ["جبس", "جبس", "جبس", "جبس"]
+
+
+def test_nonempty_control_only_full_transcript_falls_back_to_legacy_completed_archive():
+    sid = "control-only-full-transcript"
+    completed = {
+        "session_id": sid,
+        "exchange_id": "legacy-completed-1",
+        "user": "ذكرت أنني أستخدم الجبس في العمل الفني.",
+        "assistant": "يمكن تشكيل الجبس بعد جفافه.",
+    }
+    session = {
+        "session_id": sid,
+        "dialogue_state": {
+            "session_id": sid,
+            "transcript_archive": [
+                {
+                    "session_id": sid,
+                    "exchange_id": "boundary-1",
+                    "user": "",
+                    "assistant": "",
+                    "state_boundary_only": True,
+                },
+                {
+                    "session_id": sid,
+                    "exchange_id": "clarification-1",
+                    "user": "ما المقصود؟",
+                    "assistant": "هل يمكنك توضيح السؤال؟",
+                    "recall_only": True,
+                },
+            ],
+            "exchange_archive": [completed],
+        },
+    }
+
+    evidence = retrieve_dialogue_evidence(session, "ما المادة التي أستخدمها؟")
+    analysis = analyze_dialogue_session(session)
+
+    assert evidence
+    assert evidence[0]["exchange_id"] == "legacy-completed-1"
+    assert analysis["exchange_count"] == 2
+    assert {item["exchange_id"] for item in analysis["timeline"]} == {
+        "clarification-1", "legacy-completed-1",
+    }
+
+
+def test_arabic_ta_marbuta_variants_normalize_for_dialogue_retrieval():
+    from lab_v4_dev.memory.dialogue_knowledge import _token_list
+
+    assert _token_list("صباغة صباغه") == ["صباغه", "صباغه"]
