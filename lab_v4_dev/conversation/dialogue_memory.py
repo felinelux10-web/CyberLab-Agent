@@ -535,12 +535,11 @@ class DialogueMemory:
 
         if (
             result.get("status") not in {"error", "failed", "failure", "provider_error"}
-            and result.get("text")
             and not result.get("error")
         ):
             self.state.add_turn(
                 role="assistant",
-                content=result.get("text", ""),
+                content=str(result.get("text") or result.get("message") or ""),
                 mode=self.state.last_mode,
                 intent=turn_intent,
                 target=turn_target,

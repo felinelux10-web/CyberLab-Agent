@@ -2642,6 +2642,34 @@ class ConversationManager:
         )
         parsed = candidate
         normalized_memory_request = self._normalize_transition_text(user_input)
+        dialogue_memory_search_request = bool(
+            any(marker in normalized_memory_request for marker in (
+                "ابحث", "بحث", "فتش", "دور",
+            ))
+            and any(marker in normalized_memory_request for marker in (
+                "ذاكره", "ذاكرة", "الحوار", "المحادثه", "المحادثة", "النقاش",
+            ))
+            and not any(marker in normalized_memory_request for marker in (
+                "جلسة", "جلسه", "الجلسات", "المحفوظة", "المحفوظ", "session",
+                "ملف", "ملفات", "مشروع", "كود",
+            ))
+        )
+        if dialogue_memory_search_request:
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": "",
+                "conversation_domain": "general",
+                "conversation_act": "CONVERSATION_HISTORY_QUERY",
+                "output_kind": "summary",
+                "response_attributes": {
+                    **dict(parsed.get("response_attributes") or {}),
+                    "dialogue_response_mode": "summary",
+                    "dialogue_recall": True,
+                },
+                "semantic_pattern": "EXPLICIT_DIALOGUE_MEMORY_SEARCH",
+                "source": "dialogue_memory",
+            })
         explicit_saved_memory_scope = any(marker in normalized_memory_request for marker in (
             "جلسة", "جلسه", "الجلسات", "الجلسات المحفوظه",
             "الجلسة المحفوظة", "الجلسه المحفوظه", "session",
@@ -3492,6 +3520,32 @@ class ConversationManager:
             and route_decision.metadata.get("clarification_reason") == "missing_live_evidence"
         ):
             history_result = self._conversation_history_answer(user_input, parsed)
+            if history_result is None and dialogue_memory_search_request:
+                state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
+                session_id = str(getattr(state, "session_id", "") or "")
+                exchanges = [
+                    item for item in (getattr(state, "exchange_archive", []) or [])
+                    if isinstance(item, dict)
+                    and (
+                        not session_id
+                        or not str(item.get("session_id") or "").strip()
+                        or str(item.get("session_id") or "") == session_id
+                    )
+                    and not item.get("recall_only")
+                    and not item.get("state_boundary_only")
+                    and str(item.get("context_kind") or "dialogue").casefold()
+                        not in {"work", "system"}
+                    and str(item.get("conversation_domain") or "general").casefold()
+                        not in {"work", "system", "execution"}
+                    and str(item.get("user") or "").strip()
+                    and str(item.get("assistant") or "").strip()
+                ]
+                if exchanges:
+                    history_result = self._answer_dialogue_history(
+                        user_input, "summary", exchanges[-6:]
+                    )
+                    history_result["source"] = "dialogue_memory"
+                    history_result["dialogue_response_mode"] = "summary"
             if history_result is None:
                 history_result = {
                     "status": "needs_clarification",
@@ -3586,6 +3640,7 @@ class ConversationManager:
         normalized_history_request = self._normalize_transition_text(user_input)
         history_output_request = (
             prior_message_topic_question
+            or dialogue_memory_search_request
             or (
                 self._dialogue_recall_requested(user_input, parsed)
                 and any(marker in normalized_history_request for marker in (
@@ -3612,6 +3667,7 @@ class ConversationManager:
             (
                 raw_act == "CONVERSATION_HISTORY_QUERY"
                 or prior_message_topic_question
+                or dialogue_memory_search_request
                 or self._dialogue_recall_requested(user_input, parsed)
             )
             and route_decision.route == "L-LIVE"
@@ -4578,7 +4634,7 @@ class ConversationManager:
         normalized = self._normalize_transition_text(text)
         if not any(marker in normalized for marker in (
             "الموضوع الذي كنا نتحدث", "الموضوع الذي تحدثنا",
-            "الموضوع السابق", "قبل رد", "قبل جواب",
+            "قبل رد", "قبل جواب",
         )):
             return None
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
