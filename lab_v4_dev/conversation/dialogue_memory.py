@@ -314,8 +314,10 @@ class DialogueMemory:
         # turn so the next "continue" resolves to the new branch. Keep generic
         # failed chat turns out of dialogue history entirely.
         if provider_failed and str(text or "").strip():
+            compound_recall_only = parsed.get("semantic_pattern") == "COMPOUND_DIALOGUE_REQUEST"
+            archive_name = "exchange_archive" if compound_recall_only else "failed_exchange_archive"
             archive = [
-                item for item in (getattr(self.state, "failed_exchange_archive", []) or [])
+                item for item in (getattr(self.state, archive_name, []) or [])
                 if isinstance(item, dict)
                 and str(item.get("session_id") or "") == self.state.session_id
             ]
@@ -343,7 +345,7 @@ class DialogueMemory:
                 exchange_index=len(self.state.exchange_archive) + len(archive),
             )
             archive.append(failed_exchange)
-            self.state.failed_exchange_archive = archive[-32:]
+            setattr(self.state, archive_name, archive[-32:])
 
         if provider_failed and not (
             turn_target
