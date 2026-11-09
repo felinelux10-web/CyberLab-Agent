@@ -2200,6 +2200,10 @@ class ConversationManager:
                 candidate.pop("session_selector", None)
         generic_social_topic_return = False
         normalized_return_request = self._normalize_transition_text(user_input)
+        explicit_branch_return_request = any(marker in normalized_return_request for marker in (
+            "ارجع", "نرجع", "عد الى", "عد إلى", "العودة الى", "العودة إلى",
+            "رجوع الى", "رجوع إلى", "return to ", "back to ",
+        ))
         explicit_topic_return = any(marker in normalized_return_request for marker in (
             "ارجع الى الموضوع", "ارجع لموضوع", "نرجع الى الموضوع",
             "نرجع لموضوع", "عد الى الموضوع", "عد لموضوع",
@@ -2404,7 +2408,6 @@ class ConversationManager:
             ))
             and not self._is_explicit_topic_switch(user_input)
             and not explicit_branch_return_request
-            and not prior_message_topic_question
             and not named_return
             and not self._is_explicit_targeted_proposal(user_input)
             and not any(mark in str(user_input or "") for mark in ("؟", "?"))
@@ -3300,10 +3303,6 @@ class ConversationManager:
         interrupted_resume_request = any(marker in normalized_recovery_request for marker in (
             "انقطع", "انقطعت", "توقفنا", "اخر نقطه", "اخر نقطة",
             "دون ان اذكر اسم الموضوع", "بدون ان اذكر اسم الموضوع",
-        ))
-        explicit_branch_return_request = any(marker in normalized_recovery_request for marker in (
-            "ارجع", "نرجع", "عد الى", "عد إلى", "العودة الى", "العودة إلى",
-            "رجوع الى", "رجوع إلى", "return to ", "back to ",
         ))
         explicit_independent_request = (
             not interrupted_resume_request

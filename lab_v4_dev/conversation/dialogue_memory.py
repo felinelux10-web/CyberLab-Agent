@@ -534,7 +534,7 @@ class DialogueMemory:
         )
 
         if (
-            result.get("status") in {None, "success", "needs_clarification", "unsupported"}
+            result.get("status") not in {"error", "failed", "failure", "provider_error"}
             and result.get("text")
             and not result.get("error")
         ):
