@@ -196,7 +196,10 @@ def _saved_dialogue_search_content(item: dict) -> list[str]:
         str(detail.get("title") or ""),
         str(detail.get("active_goal") or ""),
     ]
-    for exchange in dialogue.get("exchange_archive") or []:
+    exchanges = dialogue.get("transcript_archive")
+    if not isinstance(exchanges, list) or not exchanges:
+        exchanges = dialogue.get("exchange_archive") or []
+    for exchange in exchanges:
         if not isinstance(exchange, dict):
             continue
         exchange_id = str(exchange.get("session_id") or "").strip()

@@ -204,3 +204,46 @@ def test_dialogue_checkpoint_materializes_index_fallback_without_persisting_mark
     assert saved_dialogue["transcript_archive"][0]["exchange_id"] == "exchange-1"
     assert saved_dialogue["transcript_archive"][-1]["exchange_id"] == "exchange-41"
     assert saved_dialogue["exchange_archive"][0]["exchange_id"] == "exchange-10"
+
+
+
+def test_saved_dialogue_search_includes_topics_older_than_live_exchange_window(monkeypatch):
+    session_id = "long-searchable-dialogue"
+    transcript = [
+        {
+            "session_id": session_id,
+            "exchange_id": f"{session_id}:{index}",
+            "target": "موضوع عام",
+            "user": f"رسالة عادية رقم {index}",
+            "assistant": f"رد عادي رقم {index}",
+        }
+        for index in range(1, 41)
+    ]
+    transcript[0]["target"] = "الترميم الفسيفسائي البيزنطي"
+    transcript[0]["user"] = "ناقشنا تقنية الترميم الفسيفسائي البيزنطي بالتفصيل."
+    detail = {
+        "session_id": session_id,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": session_id,
+            "transcript_archive": transcript,
+            "exchange_archive": transcript[-32:],
+        },
+    }
+    index_record = {
+        "session_id": session_id,
+        "session_type": "dialogue",
+        "title": "حوار قديم",
+        "topic": "موضوع عام",
+    }
+    monkeypatch.setattr(session_state, "get_session_index", lambda: [index_record])
+    monkeypatch.setattr(
+        session_state,
+        "_load_session_detail",
+        lambda requested_id: detail if requested_id == session_id else {},
+    )
+
+    matches = session_state.search_sessions("الترميم الفسيفسائي البيزنطي")
+
+    assert matches
+    assert matches[0]["session_id"] == session_id
