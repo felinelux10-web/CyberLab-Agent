@@ -275,7 +275,10 @@ def get_session_by_id(session_id: str) -> dict:
     # detail record or the current session.
     for item in get_session_index():
         if isinstance(item, dict) and str(item.get("session_id") or "").strip() == wanted:
-            return item
+            compact = dict(item)
+            compact["_record_source"] = "index"
+            compact["_detail_available"] = False
+            return compact
     return {}
 
 
@@ -2185,6 +2188,10 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         "",
         "حدود الاستعادة: هذا ملخص للسجل المحدد فقط؛ لم تُدمج معه الجلسة الحية أو جلسة العمل. لم يُنشأ أي رد جديد.",
     ])
+    if detailed_report:
+        from lab_v4_dev.memory.dialogue_knowledge import format_dialogue_analysis_report
+        lines.extend(["", format_dialogue_analysis_report(data)])
+
     if detailed_report:
         # Keep analytical prose distinct from attributed evidence. Questions are
         # represented by grounded semantic points rather than copied verbatim;

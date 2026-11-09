@@ -99,6 +99,28 @@ class Orchestrator:
                     "text": "الطلب لا يطابق مسار استعادة الجلسة الذي أجازه قرار التوجيه.",
                 }
 
+        if route_decision is not None and authorized_route == "L-SESSION":
+            output_kind = str(getattr(route_decision, "output_kind", "none") or "none")
+            evidence_scope = str(getattr(route_decision, "evidence_scope", "none") or "none")
+            session_ref = getattr(route_decision, "session_ref", None)
+            selector_kind = str(((parsed or {}).get("session_selector") or {}).get("kind") or "none")
+            if output_kind in {"summary", "brief", "report", "topic_summary", "transcript"}:
+                valid_scope = (
+                    evidence_scope == "saved_session" and session_ref is not None
+                ) or (
+                    evidence_scope == "saved_sessions"
+                    and selector_kind == "list"
+                    and output_kind == "report"
+                )
+                if not valid_scope:
+                    return {
+                        "status": "denied",
+                        "intent": (parsed or {}).get("intent"),
+                        "source": "route_decision_evidence_scope_guard",
+                        "executed": False,
+                        "text": "قرار التوجيه لا يحدد نطاق أدلة محفوظًا صالحًا لهذا المخرج.",
+                    }
+
         # DNI-10: task chains are executable work and may run only when the
         # immutable route explicitly grants execution ownership.
         from lab_v4_dev.core.task_chain import is_chain, detect_chain, execute_chain
@@ -1808,6 +1830,16 @@ SOURCE CODE:
             selector = session_selector or {}
             selected_id = None
             report_mode = selector.get("report_mode", "standard")
+            if route_decision is not None and getattr(route_decision, "route", None) == "L-SESSION":
+                authorized_output = str(getattr(route_decision, "output_kind", "none") or "none")
+                if authorized_output == "report":
+                    report_mode = "full"
+                elif authorized_output == "brief":
+                    report_mode = "brief"
+                elif authorized_output == "transcript":
+                    report_mode = "transcript"
+                elif authorized_output == "summary" and report_mode not in {"recall", "transcript"}:
+                    report_mode = "standard"
             if selector.get("kind") == "count":
                 counts = get_session_type_counts()
                 return {
@@ -2133,6 +2165,19 @@ SOURCE CODE:
                         ),
                         "requested_session_id": str(selected_id),
                         "resolved_session_id": resolved_id or None,
+                    }
+                if s.get("_record_source") == "index" and report_mode != "compact":
+                    return {
+                        "status": "needs_clarification",
+                        "intent": intent,
+                        "source": "saved_session_detail_unavailable",
+                        "executed": False,
+                        "requested_session_id": str(selected_id),
+                        "text": (
+                            "وجدت فهرس الجلسة، لكن ملف تفاصيل الحوار الأصلي غير متاح. "
+                            "الفهرس المختصر لا يكفي لإجابة تفصيلية أو تقرير؛ لم أتعامل معه "
+                            "كمصدر كامل ولم أستبدله بجلسة أخرى."
+                        ),
                     }
             else:
                 # Loading the current checkpoint is allowed only when the

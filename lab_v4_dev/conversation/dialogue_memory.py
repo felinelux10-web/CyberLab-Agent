@@ -8,6 +8,7 @@ Does not route, execute, call providers, or decide intent.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from lab_v4_dev.conversation.dialogue_contract import DialogueState
 from lab_v4_dev.conversation.semantic_contract import CONTEXTUAL_TRANSITIONS
@@ -384,6 +385,8 @@ class DialogueMemory:
             and not result.get("error")
         ):
             exchange = {
+                "exchange_id": uuid.uuid4().hex,
+                "timestamp": datetime.now().isoformat(),
                 "user": str(text),
                 "assistant": str(result.get("text")),
                 "intent": getattr(turn_intent, "value", turn_intent),
@@ -394,6 +397,13 @@ class DialogueMemory:
                 "context_transition": relation,
                 "session_id": self.state.session_id,
             }
+            from lab_v4_dev.memory.dialogue_knowledge import extract_exchange_knowledge
+            exchange["knowledge_version"] = 1
+            exchange["knowledge"] = extract_exchange_knowledge(
+                exchange,
+                session_id=self.state.session_id,
+                exchange_index=len(self.state.exchange_archive),
+            )
             archive = [
                 item for item in (getattr(self.state, "exchange_archive", []) or [])
                 if isinstance(item, dict)
