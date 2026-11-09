@@ -2402,6 +2402,8 @@ class ConversationManager:
                 "اختصر", "بسط", "وضح", "فسر", "اشرح اكثر", "اشرح أكثر",
             ))
             and not self._is_explicit_topic_switch(user_input)
+            and not explicit_branch_return_request
+            and not prior_message_topic_question
             and not named_return
             and not self._is_explicit_targeted_proposal(user_input)
             and not any(mark in str(user_input or "") for mark in ("؟", "?"))
@@ -5041,8 +5043,6 @@ class ConversationManager:
             exchanges = topic_exchanges
         if not response_mode and live_previous_session_recall:
             response_mode = "summary"
-        if normalized_query.strip(" .!؟?") in {"ماذا كنا نقول", "ما كنا نقول"}:
-            response_mode = "transcript"
         if (
             not response_mode
             and any(marker in normalized_query for marker in (
@@ -5105,6 +5105,36 @@ class ConversationManager:
 
         if response_mode in {"brief", "summary", "topic_summary", "report", "last_question", "answer", "transcript"}:
             result = self._answer_dialogue_history(text, response_mode, exchanges)
+            if (
+                response_mode == "summary"
+                and normalized_query.strip(" .!؟?") in {"ماذا كنا نقول", "ما كنا نقول"}
+            ):
+                # Keep the semantic summary mode while retaining the source
+                # user/assistant pairs requested by this direct recall question.
+                source_pairs = [
+                    item for item in exchanges
+                    if isinstance(item, dict)
+                    and str(item.get("user") or "").strip()
+                    and str(item.get("assistant") or "").strip()
+                    and str(item.get("context_kind") or "dialogue").casefold()
+                        not in {"work", "system"}
+                    and (
+                        str(item.get("context_kind") or "dialogue").casefold() != "execution"
+                        or str(item.get("conversation_domain") or "").casefold() == "technical"
+                    )
+                    and str(item.get("conversation_domain") or "general").casefold()
+                        not in {"work", "system", "execution"}
+                    and not item.get("recall_only")
+                    and not item.get("state_boundary_only")
+                ][-6:]
+                if source_pairs:
+                    pair_lines = []
+                    for item in source_pairs:
+                        pair_lines.append(f"المستخدم: {str(item.get('user') or '').strip()}")
+                        pair_lines.append(f"الوكيل: {str(item.get('assistant') or '').strip()}")
+                    result["text"] = str(result.get("text") or "").rstrip() + (
+                        "\n\nالتبادلات الأصلية ذات الصلة:\n" + "\n".join(pair_lines)
+                    )
             response_attributes["dialogue_response_mode"] = response_mode
             result["response_attributes"] = response_attributes
             result["dialogue_response_mode"] = response_mode
