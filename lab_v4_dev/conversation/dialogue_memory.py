@@ -398,7 +398,7 @@ class DialogueMemory:
                 "session_id": self.state.session_id,
             }
             from lab_v4_dev.memory.dialogue_knowledge import extract_exchange_knowledge
-            exchange["knowledge_version"] = 1
+            exchange["knowledge_version"] = 2
             exchange["knowledge"] = extract_exchange_knowledge(
                 exchange,
                 session_id=self.state.session_id,

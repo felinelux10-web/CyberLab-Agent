@@ -9,6 +9,7 @@ from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.memory import session_state
 from lab_v4_dev.memory.dialogue_knowledge import (
     analyze_dialogue_session,
+    extract_exchange_knowledge,
     format_dialogue_analysis_report,
     retrieve_dialogue_evidence,
 )
@@ -106,7 +107,7 @@ def test_dialogue_memory_persists_exchange_identity_and_derived_knowledge():
     exchange = memory.state.exchange_archive[-1]
     assert exchange["exchange_id"]
     assert exchange["timestamp"]
-    assert exchange["knowledge_version"] == 1
+    assert exchange["knowledge_version"] == 2
     assert exchange["knowledge"]
     assert all(item["source_exchange_id"] == exchange["exchange_id"] for item in exchange["knowledge"])
 
@@ -310,3 +311,29 @@ def test_orchestrator_refuses_to_analyze_compact_index_without_detail_file(monke
 
     assert result["status"] == "needs_clarification"
     assert result["source"] == "saved_session_detail_unavailable"
+
+
+
+def test_cached_knowledge_is_rebuilt_when_original_exchange_changes():
+    session = _saved_session()
+    exchange = session["dialogue_state"]["exchange_archive"][0]
+    exchange["knowledge_version"] = 2
+    exchange["knowledge"] = extract_exchange_knowledge(
+        exchange,
+        session_id=session["session_id"],
+        exchange_index=0,
+    )
+    assert any("إطارًا خشبيًا" in item["content"] for item in exchange["knowledge"])
+
+    exchange["user"] = "استخدمت قالبًا معدنيًا وصببت الجبس بسماكة خمسة سنتيمترات."
+    analysis = analyze_dialogue_session(session)
+
+    assert any("قالبًا معدنيًا" in item["content"] for item in analysis["user_information"])
+    assert not any("إطارًا خشبيًا" in item["content"] for item in analysis["user_information"])
+
+
+def test_planned_actions_are_not_misreported_as_final_decisions():
+    analysis = analyze_dialogue_session(_saved_session())
+
+    assert any("سأستخدم سكينًا" in item["content"] for item in analysis["planned_actions"])
+    assert not any("سأستخدم سكينًا" in item["content"] for item in analysis["decisions"])

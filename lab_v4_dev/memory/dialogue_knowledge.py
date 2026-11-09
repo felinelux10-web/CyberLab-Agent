@@ -16,6 +16,14 @@ _STOP_WORDS = {
     "قد", "ثم", "او", "الجلسة", "جلسة", "المحفوظة", "المحفوظ", "رقم",
     "اذكر", "حدد", "ذكرت", "ذكرته", "ذكرتها", "قلته", "قلتها", "قلت", "كنا",
 }
+import hashlib as _hashlib
+
+
+def _exchange_source_fingerprint(exchange: dict) -> str:
+    raw = "\0".join((str(exchange.get("user") or ""), str(exchange.get("assistant") or "")))
+    return _hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 _SYNONYMS = {
     "ادوات": {"سكين", "مفك", "براغي", "ملعقة", "معدات", "اداة"},
     "اداة": {"سكين", "مفك", "براغي", "ملعقة", "معدات"},
@@ -207,10 +215,14 @@ def _classify_knowledge_sentence(speaker: str, sentence: str) -> tuple[str, floa
     )):
         return "constraint", 0.76
     if any(marker in normalized for marker in (
-        "قررت", "ساعتمد", "اخترت", "سأستخدم", "ساستخدم", "سوف استخدم",
-        "اعتمدت", "تم الاتفاق",
+        "ساستخدم", "ساضيف", "ساقوم", "ساضع", "سوف استخدم",
+        "سوف اضع", "سوف اترك", "سأقوم",
     )):
-        return "decision", 0.74
+        return "planned_action", 0.70
+    if any(marker in normalized for marker in (
+        "قررت", "ساعتمد", "اخترت", "اعتمدت", "تم الاتفاق",
+    )):
+        return "decision", 0.78
     if sentence.rstrip().endswith(("؟", "?")) or re.match(
         r"^(?:ما|ماذا|من|هل|كيف|لماذا|متى|اين|أين|كم)\b", sentence
     ):
@@ -238,6 +250,7 @@ def extract_exchange_knowledge(
     exchange_id = str(exchange.get("exchange_id") or f"{sid}:{int(exchange_index or 0) + 1}")
     timestamp = str(exchange.get("timestamp") or exchange.get("created_at") or "")
     target = str(exchange.get("target") or "").strip()
+    source_fingerprint = _exchange_source_fingerprint(exchange)
     records = []
     for speaker, field in (("user", "user"), ("assistant", "assistant")):
         raw_text = str(exchange.get(field) or "").strip()
@@ -255,6 +268,7 @@ def extract_exchange_knowledge(
                 "concept_links": [target] if target else [],
                 "temporal_order": [int(exchange_index or 0) + 1, sentence_index],
                 "timestamp": timestamp or None,
+                "source_fingerprint": source_fingerprint,
                 "confidence": confidence,
                 "extraction_method": "speaker_attributed_sentence_rules",
                 "status": "derived",
@@ -284,13 +298,16 @@ def analyze_dialogue_session(data: dict) -> dict:
             topics.append(target)
 
         stored = exchange.get("knowledge")
+        source_fingerprint = _exchange_source_fingerprint(exchange)
         stored_is_valid = (
-            isinstance(stored, list)
+            exchange.get("knowledge_version") == 2
+            and isinstance(stored, list)
             and bool(stored)
             and all(
                 isinstance(item, dict)
                 and str(item.get("source_exchange_id") or "") == exchange_id
                 and str(item.get("session_id") or "") == session_id
+                and str(item.get("source_fingerprint") or "") == source_fingerprint
                 for item in stored
             )
         )
@@ -334,10 +351,18 @@ def analyze_dialogue_session(data: dict) -> dict:
                     })
             if kind in {"user_fact", "decision", "preference", "constraint"}:
                 previous_user_fact = item
+            same_suggestion_topic = bool(
+                previous_suggestion
+                and (
+                    not item.get("topic_id")
+                    or not previous_suggestion.get("topic_id")
+                    or item.get("topic_id") == previous_suggestion.get("topic_id")
+                )
+            )
             if re.match(r"^(?:نعم|اجل|بلى)\b", normalized) or any(
                 cue in normalized for cue in ("ساعتمد", "اعتمدت اقتراح", "هذا مناسب")
             ):
-                if previous_suggestion:
+                if same_suggestion_topic:
                     relationships.append({
                         "relation": "accepts",
                         "source_knowledge_id": item["knowledge_id"],
@@ -348,7 +373,7 @@ def analyze_dialogue_session(data: dict) -> dict:
             elif any(cue in normalized for cue in (
                 "لا اوافق", "ارفض", "ليس مناسبا", "غير مناسب", "لا اريد هذا",
             )):
-                if previous_suggestion:
+                if same_suggestion_topic:
                     relationships.append({
                         "relation": "rejects",
                         "source_knowledge_id": item["knowledge_id"],
@@ -394,6 +419,9 @@ def analyze_dialogue_session(data: dict) -> dict:
         "decisions": [
             item for item in knowledge if item.get("knowledge_type") == "decision"
         ],
+        "planned_actions": [
+            item for item in knowledge if item.get("knowledge_type") == "planned_action"
+        ],
         "questions": [
             item for item in knowledge if item.get("knowledge_type") == "question"
         ],
@@ -432,6 +460,11 @@ def format_dialogue_analysis_report(data: dict) -> str:
     )
     if not analysis["assistant_information"]:
         lines.append("- لا توجد ردود موضوعية محفوظة.")
+    lines.extend(["", "الخطط والإجراءات التي صرّح بها المستخدم:"])
+    lines.extend(
+        f"- [التبادل {item['source_exchange_index']}] {item['content']}"
+        for item in analysis["planned_actions"]
+    )
     lines.extend(["", "التصحيحات والتفضيلات والقيود والقرارات:"])
     for label, key in (
         ("تصحيح", "user_corrections"),
