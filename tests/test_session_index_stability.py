@@ -129,3 +129,55 @@ def test_partial_topic_search_finds_broader_saved_dialogue_title(tmp_path, monke
 
     assert results
     assert results[0]["session_id"] == "art-session"
+
+
+
+def test_dialogue_checkpoint_materializes_index_fallback_without_persisting_marker(tmp_path, monkeypatch):
+    session_id = "dialogue-index-fallback"
+    index_record = {
+        "session_id": session_id,
+        "session_type": "dialogue",
+        "title": "حوار: الفن",
+        "_record_source": "index",
+        "_detail_available": False,
+    }
+    failed_exchange = {
+        "session_id": session_id,
+        "exchange_id": "failed-1",
+        "timestamp": "2026-11-09T08:00:00",
+        "user": "ما السؤال الذي لم يحصل على إجابة؟",
+        "assistant": "",
+        "context_kind": "dialogue",
+        "conversation_domain": "general",
+        "response_failed": True,
+        "recall_only": True,
+    }
+    captured = []
+    monkeypatch.setattr(session_state, "get_session_index", lambda: [dict(index_record)])
+    monkeypatch.setattr(session_state, "load_session", lambda: {})
+    monkeypatch.setattr(
+        session_state,
+        "get_session_by_id",
+        lambda _session_id: dict(index_record),
+    )
+    monkeypatch.setattr(
+        session_state,
+        "_write_session_detail",
+        lambda data: captured.append(dict(data)) or True,
+    )
+    monkeypatch.setattr(session_state, "_append_recent_archive", lambda _data: None)
+    monkeypatch.setattr(session_state, "_enrich_session_fields", lambda data: data)
+
+    state = {
+        "session_id": session_id,
+        "last_topic": "الفن التجريدي",
+        "history": [],
+        "exchange_archive": [],
+        "failed_exchange_archive": [failed_exchange],
+    }
+    session_state.save_dialogue_checkpoint(dialogue_state=state, version="test")
+
+    assert captured
+    assert "_record_source" not in captured[0]
+    assert "_detail_available" not in captured[0]
+    assert captured[0]["dialogue_state"]["failed_exchange_archive"] == [failed_exchange]
