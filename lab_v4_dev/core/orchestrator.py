@@ -2250,17 +2250,17 @@ SOURCE CODE:
                     allowed_exchange_numbers = {int(item["exchange_index"]) for item in evidence}
                     for item in evidence:
                         source_lines.append(
-                            f"[التبادل {item['exchange_index']}]\\n"
-                            f"المستخدم: {item['user']}\\n"
+                            f"[التبادل {item['exchange_index']}]\n"
+                            f"المستخدم: {item['user']}\n"
                             f"الوكيل: {item['assistant']}"
                         )
-                    prompt = "\\n\\n".join([
+                    prompt = "\n\n".join([
                         "أجب عن سؤال المستخدم اعتمادًا على الأدلة المحددة فقط.",
                         "ميّز بين ما قاله المستخدم وما قاله الوكيل، ولا تنسب قول أحدهما إلى الآخر.",
                         "لا تضف معلومة غير موجودة في الأدلة. ضع مرجعًا من الشكل [التبادل N] بعد كل معلومة مسترجعة.",
                         f"سؤال المستخدم: {str(raw or '')[:500]}",
                         "الأدلة الأصلية من الجلسة المختارة:",
-                        "\\n\\n".join(source_lines),
+                        "\n\n".join(source_lines),
                     ])
                     try:
                         from lab_v4_dev.llm.gateway import ask as _gateway_ask
@@ -2283,14 +2283,14 @@ SOURCE CODE:
                         )
                         cited_numbers = [
                             int(value)
-                            for value in re.findall(r"\\[\\s*التبادل\\s+(\\d+)\\s*\\]", candidate)
+                            for value in re.findall(r"\[\s*التبادل\s+(\d+)\s*\], candidate)
                         ]
                         if (
                             candidate
                             and cited_numbers
                             and all(number in allowed_exchange_numbers for number in cited_numbers)
                         ):
-                            answer_text = "\\n".join([
+                            answer_text = "\n".join([
                                 "إجابة مركبة من الأدلة الأصلية للجلسة المحددة:",
                                 candidate,
                                 "الأدلة التفصيلية:",
@@ -2690,7 +2690,7 @@ SOURCE CODE:
                 "status": "success",
                 "intent": intent,
                 "source": "local_session_store",
-                "text": "\\n".join(lines),
+                "text": "\n".join(lines),
                 "work_session_id": work_saved["session_id"],
                 "dialogue_session_id": dialogue_saved.get("session_id") if dialogue_saved else None,
             }
