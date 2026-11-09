@@ -536,7 +536,6 @@ class DialogueMemory:
         if (
             result.get("status") in {None, "success", "needs_clarification"}
             and result.get("text")
-            and result.get("source") != "fallback"
             and not result.get("error")
         ):
             self.state.add_turn(

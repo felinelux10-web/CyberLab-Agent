@@ -2396,6 +2396,11 @@ class ConversationManager:
             }
             and normalized_bare_topic
             and not has_dialogue_action
+            and not is_style_act(candidate.get("conversation_act"))
+            and not any(marker in normalized_bare_topic for marker in (
+                "اكمل", "أكمل", "تابع", "واصل", "استمر", "نكمل",
+                "اختصر", "بسط", "وضح", "فسر", "اشرح اكثر", "اشرح أكثر",
+            ))
             and not self._is_explicit_topic_switch(user_input)
             and not named_return
             and not self._is_explicit_targeted_proposal(user_input)
@@ -2669,6 +2674,34 @@ class ConversationManager:
             branch_domain not in {"technical", "project", "work", "system", "execution"}
             or branch_action in {"personal_chat", "chat", "discussion"}
         )
+        normalized_active_followup = self._normalize_transition_text(user_input).strip()
+        active_style_request = is_style_act(parsed.get("conversation_act"))
+        active_short_followup = (
+            normalized_active_followup in {
+                "اكمل", "اكمل اكثر", "تابع", "واصل", "استمر",
+                "نكمل", "وضح الفكرة", "بسط الشرح", "اشرح اكثر",
+                "اشرح اكثر قليلا", "اشرح اكثر من ذلك",
+            }
+            or any(marker in normalized_active_followup for marker in (
+                "جيد جدا اكمل", "اكمل الشرح", "تابع الشرح", "واصل الشرح",
+                "نكمل الشرح", "وضح اكثر", "وضح أكثر",
+            ))
+        )
+        if (
+            branch_is_dialogue
+            and active_branch.get("entity")
+            and transition in CONTEXTUAL_TRANSITIONS
+            and (active_style_request or active_short_followup)
+        ):
+            parsed = dict(parsed or {})
+            parsed["target"] = active_branch["entity"]
+            parsed["entity_type"] = active_branch.get("entity_type") or "CONCEPT"
+            parsed["intent"] = Intent.PERSONAL_CHAT
+            parsed["conversation_domain"] = "general"
+            if not active_style_request:
+                parsed["conversation_act"] = "CONVERSATION_CONTINUATION"
+            transition = ContextTransition.CONTINUE
+
         parsed_intent_value = str(
             getattr(parsed.get("intent"), "value", parsed.get("intent")) or ""
         ).casefold()
@@ -3241,14 +3274,23 @@ class ConversationManager:
             })
             transition = ContextTransition.CONTINUE
             recovery_is_dialogue = False
+            # The topic phrase refers to earlier dialogue content, not a branch
+            # selection. Keep the retrieval owner authoritative downstream.
+            explicit_live_branch_return = False
 
         normalized_recovery_request = self._normalize_transition_text(user_input)
         interrupted_resume_request = any(marker in normalized_recovery_request for marker in (
             "انقطع", "انقطعت", "توقفنا", "اخر نقطه", "اخر نقطة",
             "دون ان اذكر اسم الموضوع", "بدون ان اذكر اسم الموضوع",
         ))
+        explicit_branch_return_request = any(marker in normalized_recovery_request for marker in (
+            "ارجع", "نرجع", "عد الى", "عد إلى", "العودة الى", "العودة إلى",
+            "رجوع الى", "رجوع إلى", "return to ", "back to ",
+        ))
         explicit_independent_request = (
             not interrupted_resume_request
+            and not prior_message_topic_question
+            and not explicit_branch_return_request
             and (
                 self._is_explicit_independent_topic(user_input, parsed)
                 or self._is_explicit_topic_switch(user_input)
@@ -3295,8 +3337,13 @@ class ConversationManager:
                 parsed["response_attributes"] = attributes
                 transition = ContextTransition.NEW_INDEPENDENT
                 chat_history = []
-        elif not interrupted_resume_request and not self._ordinal_dialogue_exchange(user_input):
-            # Reassert a resolved named/previous topic after generic recovery
+        elif (
+            explicit_branch_return_request
+            and not prior_message_topic_question
+            and not self._ordinal_dialogue_exchange(user_input)
+        ):
+            # Reassert a resolved named/previous topic only for an imperative
+            # return. A bare reference such as "الموضوع السابق" remains REFERENCE.
             # heuristics. The selected branch's original intent/domain decide
             # whether it returns to the technical owner or live dialogue.
             resolved_topic = self._resolve_generic_topic_reference(user_input)
@@ -3526,14 +3573,17 @@ class ConversationManager:
         ))
         normalized_history_request = self._normalize_transition_text(user_input)
         history_output_request = (
-            self._dialogue_recall_requested(user_input, parsed)
-            and any(marker in normalized_history_request for marker in (
+            prior_message_topic_question
+            or (
+                self._dialogue_recall_requested(user_input, parsed)
+                and any(marker in normalized_history_request for marker in (
                 "ماذا كنا نقول", "ماذا كنا نتحدث", "ما كنا نقول",
                 "الردود السابقة", "الردود السابقه", "قبل قليل",
                 "ملخص الحوار", "اكتب ملخص", "لخص الحوار",
                 "مضمون الجلسة", "مضمون الجلسه", "محتوى الجلسة",
-                "محتوى الجلسه", "الموضوع الذي ناقشناه سابقا",
-            ))
+                    "محتوى الجلسه", "الموضوع الذي ناقشناه سابقا",
+                ))
+            )
         )
         # A request to print/summarize the dialogue archive outranks a vague
         # reference to "the topic". Only an actual named/ordinal topic return
@@ -3549,6 +3599,7 @@ class ConversationManager:
         if (
             (
                 raw_act == "CONVERSATION_HISTORY_QUERY"
+                or prior_message_topic_question
                 or self._dialogue_recall_requested(user_input, parsed)
             )
             and route_decision.route == "L-LIVE"
@@ -4990,6 +5041,8 @@ class ConversationManager:
             exchanges = topic_exchanges
         if not response_mode and live_previous_session_recall:
             response_mode = "summary"
+        if normalized_query.strip(" .!؟?") in {"ماذا كنا نقول", "ما كنا نقول"}:
+            response_mode = "transcript"
         if (
             not response_mode
             and any(marker in normalized_query for marker in (
@@ -6715,6 +6768,11 @@ class ConversationManager:
                 )
                 self.dialogue_memory.restore_pending()
                 result.setdefault("topic", topic)
+                result.setdefault("target", topic)
+                semantic_request = result.get("semantic_request")
+                if isinstance(semantic_request, dict):
+                    semantic_request.setdefault("target", topic)
+                    semantic_request.setdefault("context_transition", "restore")
                 return result
 
         return {
