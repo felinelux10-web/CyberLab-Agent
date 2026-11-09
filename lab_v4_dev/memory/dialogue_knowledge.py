@@ -634,9 +634,9 @@ def retrieve_dialogue_evidence(
         user = str(exchange.get("user") or "").strip()
         assistant = str(exchange.get("assistant") or "").strip()
         target = str(exchange.get("target") or "").strip()
-        user_terms = _tokens(user)
-        assistant_terms = _tokens(assistant)
-        target_terms = _tokens(target)
+        user_terms = sorted(_tokens(user))
+        assistant_terms = sorted(_tokens(assistant))
+        target_terms = sorted(_tokens(target))
         all_terms = user_terms + assistant_terms + target_terms
         total_length += len(all_terms)
         for term in set(all_terms):
