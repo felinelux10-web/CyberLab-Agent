@@ -842,7 +842,10 @@ def session_route_contract(raw: str) -> dict:
             "اين توقفنا", "الخطوه التاليه", "ما الذي انجز", "اين وصلنا",
         )
     ):
-        output_kind = "progress"
+        # Progress is a presentation subtype of a summary, not a separate
+        # output contract. RouteDecision exposes the approved summary kind;
+        # report_mode retains the more specific stop-point rendering.
+        output_kind = "summary"
     elif selection.get("report_mode") == "brief" or asks_for_brief:
         output_kind = "brief"
     elif explicit_report_request or selection.get("report_mode") == "full":

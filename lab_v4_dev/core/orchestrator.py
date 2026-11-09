@@ -1858,6 +1858,12 @@ SOURCE CODE:
                     report_mode = "brief"
                 elif authorized_output == "transcript":
                     report_mode = "transcript"
+                elif authorized_output in {"summary", "topic_summary"} and report_mode not in {
+                    "recall", "progress",
+                }:
+                    # The finalized output contract is authoritative. Preserve
+                    # only the narrower factual-recall and stop-point submodes.
+                    report_mode = "summary"
             if selector.get("kind") == "count":
                 counts = get_session_type_counts()
                 return {

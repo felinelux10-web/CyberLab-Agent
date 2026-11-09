@@ -1367,3 +1367,16 @@ def test_saved_dialogue_provider_synthesis_never_silently_truncates_full_evidenc
         "session_exceeds_single_prompt_evidence_budget"
     )
     assert len(result["evidence_exchange_ids"]) == 44
+
+
+
+def test_saved_session_stop_point_uses_summary_output_contract():
+    contract = session_route_contract("أين توقفنا في الجلسة رقم 72؟")
+
+    assert contract["kind"] == "number"
+    assert contract["report_mode"] == "progress"
+    assert contract["output_kind"] == "summary"
+    assert contract["output_kind"] in {
+        "none", "brief", "summary", "report", "topic_summary",
+        "transcript", "list", "continue_topic", "capability",
+    }
