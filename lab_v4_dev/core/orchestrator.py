@@ -2413,6 +2413,11 @@ SOURCE CODE:
                         and not s.get("context_state")
                     )
                 )
+                report_evidence_ids = []
+                provider_synthesis_allowed = False
+                provider_synthesis_attempted = False
+                provider_synthesis_used = False
+                provider_synthesis_rejection_reason = None
                 dialogue_id = str(dialogue_state.get("session_id") or "").strip()
                 saved_exchanges = dialogue_state.get("exchange_archive") or []
                 if (
@@ -2494,11 +2499,6 @@ SOURCE CODE:
                             )
 
                     source_lines = []
-                    report_evidence_ids = []
-                    provider_synthesis_allowed = False
-                    provider_synthesis_attempted = False
-                    provider_synthesis_used = False
-                    provider_synthesis_rejection_reason = None
                     for index, exchange in enumerate(completed_exchanges, 1):
                         user_text = " ".join(str(exchange.get("user") or "").split())
                         assistant_text = " ".join(str(exchange.get("assistant") or "").split())
