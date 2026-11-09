@@ -471,7 +471,15 @@ def session_selector(raw: str) -> dict:
         # A numbered content question is evidence recall, not a generic
         # summary/report and not a request to restore the selected session.
         # Action verbs and summary/report requests retain their own output mode.
-        if explicit_question and not asks_for_summary and not explicit_report_request and not session_action_request:
+        if (
+            explicit_question
+            and not asks_for_summary
+            and not explicit_report_request
+            and not session_action_request
+            and report_mode != "progress"
+        ):
+            # Stop-point questions are summary/progress requests, not factual
+            # detail lookups. Preserve their dedicated progress submode.
             report_mode = "recall"
         return {
             "kind": "number",
