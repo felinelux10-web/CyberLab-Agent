@@ -49,7 +49,7 @@ def test_explicit_independent_topic_does_not_receive_previous_branch():
         "اشرح CSRF بالتفصيل، وابدأ شرحًا مستقلًا عن الموضوع السابق"
     )
 
-    assert result["status"] == "success", result
+    assert result["status"] == "success"
     call = orchestrator.calls[-1]
     assert call["kwargs"]["conversation_history"] == []
     assert call["kwargs"]["context_transition"] == "new_independent"
@@ -98,13 +98,8 @@ def test_generic_topic_references_resolve_from_dialogue_topics_only():
     assert orchestrator.calls[-1]["parsed"]["target"] == "SQL Injection"
     assert first["semantic_request"]["context_transition"] == "restore"
 
-    resolved_previous = manager._resolve_generic_topic_reference("ارجع إلى الموضوع السابق")
-    assert resolved_previous == "SQL Injection", {
-        "resolved_previous": resolved_previous,
-        "archive": memory.state.exchange_archive,
-    }
     previous = manager.process("ارجع إلى الموضوع السابق")
-    assert previous["status"] == "success", previous.get("semantic_request")
+    assert previous["status"] == "success"
     assert orchestrator.calls[-1]["parsed"]["target"] == "SQL Injection"
     assert previous["intent"] == "cyber_explain"
 
@@ -260,7 +255,7 @@ def test_return_to_social_dialogue_continues_saved_branch_without_work_context(m
     manager.process("موضوع عام عن التقنية")
 
     result = manager.process("ارجع للنقاش السابق")
-    assert result["status"] == "success", result
+    assert result["status"] == "success"
     assert "رد حواري" in result["text"]
     assert prompts
     assert "موضوع عام عن التقنية" in prompts[-1]
@@ -372,7 +367,7 @@ def test_history_recall_keeps_relevant_execution_exchange():
     result = ConversationManager(orchestrator, memory).process(
         "ما الموضوع الذي كنا نشرحه في رسالتي السابقة؟"
     )
-    assert result.get("source") == "dialogue_memory", result
+    assert result["source"] == "dialogue_memory"
     assert "شرح التنفيذ المرتبط بالموضوع" in result["text"]
 
 
