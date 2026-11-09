@@ -446,6 +446,7 @@ class DialogueMemory:
 
         elif (
             str(result.get("status") or "").casefold() == "needs_clarification"
+            and not result.get("recovery")
             and str(result.get("text") or result.get("message") or "").strip()
         ):
             # Clarification turns are part of the original conversation, but
