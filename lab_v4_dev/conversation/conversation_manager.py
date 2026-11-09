@@ -2203,7 +2203,6 @@ class ConversationManager:
         explicit_topic_return = any(marker in normalized_return_request for marker in (
             "ارجع الى الموضوع", "ارجع لموضوع", "نرجع الى الموضوع",
             "نرجع لموضوع", "عد الى الموضوع", "عد لموضوع",
-            "الموضوع السابق", "الموضوع الاول", "الموضوع الثاني",
             "previous topic", "return to the topic", "back to the topic",
         ))
         generic_topic = (
@@ -2236,6 +2235,8 @@ class ConversationManager:
                         self._normalize_transition_text(item.get("target") or "") == normalized_topic
                         or self._normalize_transition_text(item.get("user") or "") == normalized_topic
                     )
+                    and str(item.get("context_transition") or "").casefold()
+                        not in {"restore", "resume", "continue", "topic_return"}
                 ),
                 None,
             )
@@ -2297,7 +2298,7 @@ class ConversationManager:
                     "technical" if restored_domain == "general" else restored_domain
                 ),
                 "conversation_act": (
-                    "TOPIC_RETURN" if is_ordinal_return or raw_act == "TOPIC_RETURN"
+                    "TOPIC_RETURN" if is_ordinal_return or explicit_topic_return
                     else "COMPOUND_REFERENCE"
                 ),
                 "conversation_confidence": 0.95,
@@ -2639,6 +2640,21 @@ class ConversationManager:
             else user_input
         )
         parsed = candidate
+        normalized_memory_request = self._normalize_transition_text(user_input)
+        explicit_saved_memory_scope = any(marker in normalized_memory_request for marker in (
+            "جلسة", "جلسه", "الجلسات", "الجلسات المحفوظه",
+            "الجلسة المحفوظة", "الجلسه المحفوظه", "session",
+        ))
+        if (
+            str(parsed.get("conversation_act") or "").upper() == "CONVERSATION_HISTORY_QUERY"
+            and any(marker in normalized_memory_request for marker in (
+                "ابحث", "بحث", "فتش", "دور", "ذاكره", "ذاكرة",
+            ))
+            and not explicit_saved_memory_scope
+        ):
+            selected_session = {"kind": "none"}
+            selected_saved_session_id = None
+            saved_session_request = False
         context_entity = None
         if self.dialogue_memory:
             if transition == ContextTransition.RESTORE:
