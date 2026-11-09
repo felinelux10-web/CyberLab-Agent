@@ -199,7 +199,7 @@ def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
         return "", []
     dialogue = data.get("dialogue_state")
     if not isinstance(dialogue, dict):
-        return "", []
+        dialogue = data
     record_session_id = str(data.get("session_id") or "").strip()
     dialogue_session_id = str(dialogue.get("session_id") or "").strip()
     if record_session_id and dialogue_session_id and record_session_id != dialogue_session_id:
@@ -482,7 +482,7 @@ def format_dialogue_analysis_report(data: dict) -> str:
     )
     if not analysis["failed_exchanges"]:
         lines.append("- لا توجد تبادلات فاشلة محفوظة في هذا السجل.")
-    lines.extend(["", "الأسئلة غير المحسومة:"])
+    lines.extend(["", "الأسئلة التي لم يُحفظ لها رد:"])
     lines.extend(
         f"- [التبادل {item['source_exchange_index']}] {item['content']}"
         for item in analysis["unresolved_questions"]
