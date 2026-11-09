@@ -1144,3 +1144,32 @@ def test_numbered_factual_question_without_terminal_punctuation_is_still_recall(
     assert selected["kind"] == "number"
     assert selected["number"] == 72
     assert selected["report_mode"] == "recall"
+
+
+
+def test_numbered_factual_session_question_selects_evidence_recall_without_action_verb():
+    selected = session_selector("ما الأدوات التي ذكرتها لك في الجلسة 72؟")
+
+    assert selected == {
+        "kind": "number",
+        "number": 72,
+        "report_mode": "recall",
+    }
+
+
+def test_numbered_factual_session_question_accepts_arabic_indic_digits():
+    selected = session_selector("ما الألوان التي ذكرتها في الجلسة ٧٢؟")
+
+    assert selected == {
+        "kind": "number",
+        "number": 72,
+        "report_mode": "recall",
+    }
+
+
+def test_explicit_numbered_session_summary_is_not_misrouted_to_factual_recall():
+    selected = session_selector("ما ملخص الجلسة 72؟")
+
+    assert selected["kind"] == "number"
+    assert selected["number"] == 72
+    assert selected["report_mode"] != "recall"

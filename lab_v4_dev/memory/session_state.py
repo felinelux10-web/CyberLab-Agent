@@ -459,15 +459,20 @@ def session_selector(raw: str) -> dict:
         r"^(?:ما|ماذا|من|هل|كيف|اين|أين|اذكر|حدد|حدّد|اي|أي|ماهي|ما هي|كم)\b",
         text,
     )) or "؟" in text or "?" in text
+    session_action_request = any(token in text for token in (
+        "استرجع", "استرجاع", "استعد", "استعادة", "استكمل", "استكمال",
+        "اعرض", "اكتب", "اقرا", "حلل", "ملخص", "تلخيص", "لخص", "موجز",
+        "باختصار", "مضمون", "محتوى", "تقرير", "restore", "resume",
+        "summarize", "summary", "report",
+    ))
     if number_match and (
-        explicit_question
-        or any(token in text for token in (
-            "استرجع", "استعد", "استكمل", "استكمال", "اعرض", "اكتب", "اقرا", "حلل",
-            "ملخص", "تلخيص", "لخص", "موجز", "باختصار", "مضمون", "محتوى", "تقرير", "ما الموضوع",
-            "ماذا كنا", "ما كنا", "ما الفرق", "restore", "resume", "summarize",
-            "summary", "report",
-        ))
+        explicit_question or session_action_request
     ):
+        # A numbered content question is evidence recall, not a generic
+        # summary/report and not a request to restore the selected session.
+        # Action verbs and summary/report requests retain their own output mode.
+        if explicit_question and not asks_for_summary and not explicit_report_request and not session_action_request:
+            report_mode = "recall"
         return {
             "kind": "number",
             "number": int(number_match.group(1)),
