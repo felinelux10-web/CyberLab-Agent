@@ -276,9 +276,42 @@ def extract_exchange_knowledge(
     return records
 
 
+
+
+def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
+    """Return all real dialogue exchanges, including failed turns, but not boundary sentinels."""
+    if not isinstance(data, dict):
+        return "", []
+    dialogue = data.get("dialogue_state")
+    if not isinstance(dialogue, dict):
+        return "", []
+    record_session_id = str(data.get("session_id") or "").strip()
+    dialogue_session_id = str(dialogue.get("session_id") or "").strip()
+    if record_session_id and dialogue_session_id and record_session_id != dialogue_session_id:
+        return "", []
+    session_id = record_session_id or dialogue_session_id
+    if not session_id:
+        return "", []
+    records = []
+    for item in dialogue.get("exchange_archive") or []:
+        if not isinstance(item, dict) or item.get("state_boundary_only"):
+            continue
+        item_session_id = str(item.get("session_id") or "").strip()
+        if item_session_id and item_session_id != session_id:
+            continue
+        if not (
+            str(item.get("user") or "").strip()
+            or str(item.get("assistant") or "").strip()
+            or item.get("response_failed")
+        ):
+            continue
+        records.append(item)
+    return session_id, records
+
+
 def analyze_dialogue_session(data: dict) -> dict:
     """Build a traceable local knowledge view while retaining raw exchanges as truth."""
-    session_id, exchanges = _exchange_archive(data if isinstance(data, dict) else {})
+    session_id, exchanges = _raw_exchange_archive(data if isinstance(data, dict) else {})
     knowledge = []
     timeline = []
     topics = []
@@ -330,6 +363,8 @@ def analyze_dialogue_session(data: dict) -> dict:
             "topic": target or None,
             "user_text": user_text,
             "assistant_text": assistant_text,
+            "response_failed": bool(exchange.get("response_failed")),
+            "failure_message": str(exchange.get("failure_message") or ""),
         })
 
         for item in user_records:
@@ -426,6 +461,9 @@ def analyze_dialogue_session(data: dict) -> dict:
             item for item in knowledge if item.get("knowledge_type") == "question"
         ],
         "unresolved_questions": unresolved,
+        "failed_exchanges": [
+            item for item in timeline if item.get("response_failed")
+        ],
         "relationships": relationships,
         "last_exchange": timeline[-1] if timeline else None,
         "evidence_coverage": {
@@ -433,6 +471,7 @@ def analyze_dialogue_session(data: dict) -> dict:
             "knowledge_record_count": len(knowledge),
             "user_record_count": sum(item.get("speaker") == "user" for item in knowledge),
             "assistant_record_count": sum(item.get("speaker") == "assistant" for item in knowledge),
+            "failed_exchange_count": sum(bool(item.get("response_failed")) for item in timeline),
         },
     }
 
@@ -484,6 +523,14 @@ def format_dialogue_analysis_report(data: dict) -> str:
     )
     if not analysis["relationships"]:
         lines.append("- لا توجد علاقة يمكن إثباتها من إشارات صريحة كافية.")
+    lines.extend(["", "التبادلات التي لم يكتمل الرد عليها:"])
+    lines.extend(
+        f"- [التبادل {item['exchange_index']}] طلب المستخدم: {item['user_text'] or 'لا يوجد نص محفوظ'}"
+        + (f" | حالة الفشل: {item['failure_message']}" if item.get("failure_message") else "")
+        for item in analysis["failed_exchanges"]
+    )
+    if not analysis["failed_exchanges"]:
+        lines.append("- لا توجد تبادلات فاشلة محفوظة في هذا السجل.")
     lines.extend(["", "الأسئلة غير المحسومة:"])
     lines.extend(
         f"- [التبادل {item['source_exchange_index']}] {item['content']}"
@@ -500,6 +547,7 @@ def format_dialogue_analysis_report(data: dict) -> str:
         "",
         "تغطية الأدلة:",
         f"- التبادلات الأصلية: {analysis['evidence_coverage']['raw_exchange_count']}",
+        f"- التبادلات التي تعذر إكمال الرد عليها: {analysis['evidence_coverage']['failed_exchange_count']}",
         f"- سجلات المعرفة المشتقة: {analysis['evidence_coverage']['knowledge_record_count']}",
         "- النص الأصلي هو مصدر الحقيقة؛ التصنيفات والعلاقات مشتقات قابلة للمراجعة وليست حقائق مستقلة.",
     ])

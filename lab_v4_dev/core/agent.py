@@ -245,13 +245,22 @@ class Agent:
             return {"status": "frozen", "reason": "manual intervention required"}
 
         # Conversation Layer هو المسار الرئيسي (H.8.5)
+        dialogue_before = (
+            self.dialogue_memory.snapshot()
+            if getattr(self, "dialogue_memory", None)
+            else None
+        )
         result = self.conv_manager.process(request.raw_text)
+        dialogue_after = (
+            self.dialogue_memory.snapshot()
+            if getattr(self, "dialogue_memory", None)
+            else None
+        )
+        if dialogue_after is not None and dialogue_after != dialogue_before:
+            self._save_dialogue_checkpoint()
 
         if result.get("status") == "unsupported":
             return result
-
-        if result.get("status") == "success":
-            self._save_dialogue_checkpoint()
 
         if result.get("status") == "success" and result.get("executed") is True:
             self.session.record_task()

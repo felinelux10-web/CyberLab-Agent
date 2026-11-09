@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
+from lab_v4_dev.core.agent import Agent
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.core.contracts import RouteDecision, SessionRef
@@ -337,3 +338,57 @@ def test_planned_actions_are_not_misreported_as_final_decisions():
 
     assert any("سأستخدم سكينًا" in item["content"] for item in analysis["planned_actions"])
     assert not any("سأستخدم سكينًا" in item["content"] for item in analysis["decisions"])
+
+
+
+def test_failed_dialogue_exchange_is_preserved_as_unresolved_raw_evidence():
+    memory = DialogueMemory(SimpleNamespace())
+    prompt = "ما التفاصيل التي ذكرتها عن طريقة تنفيذ العمل؟"
+    memory.update(
+        prompt,
+        {"status": "error", "text": "تعذر إنتاج رد صالح."},
+        parsed={
+            "intent": "personal_chat",
+            "conversation_domain": "general",
+            "conversation_act": "CASUAL_CONVERSATION",
+        },
+        context_transition="continue",
+    )
+    session = {
+        "session_id": memory.state.session_id,
+        "dialogue_state": memory.snapshot(),
+    }
+
+    analysis = analyze_dialogue_session(session)
+
+    assert analysis["exchange_count"] == 1
+    assert analysis["failed_exchanges"][0]["user_text"] == prompt
+    assert any(item["content"] == prompt for item in analysis["unresolved_questions"])
+    assert retrieve_dialogue_evidence(session, "ما التفاصيل؟") == []
+
+
+def test_agent_persists_changed_dialogue_state_even_when_response_fails():
+    state = {"revision": 0}
+    saves = []
+
+    class Memory:
+        def snapshot(self):
+            return {"revision": state["revision"]}
+
+    class Conversation:
+        def process(self, _text):
+            state["revision"] += 1
+            return {"status": "error", "text": "provider unavailable"}
+
+    fake_agent = SimpleNamespace(
+        loop=object(),
+        state=SimpleNamespace(mode="normal"),
+        conv_manager=Conversation(),
+        dialogue_memory=Memory(),
+        _save_dialogue_checkpoint=lambda: saves.append("saved"),
+    )
+
+    result = Agent.run(fake_agent, "سؤال لم يحصل على إجابة.")
+
+    assert result["status"] == "error"
+    assert saves == ["saved"]

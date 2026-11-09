@@ -306,28 +306,36 @@ class DialogueMemory:
         # still a valid user state transition; preserve that topic and user
         # turn so the next "continue" resolves to the new branch. Keep generic
         # failed chat turns out of dialogue history entirely.
-        if provider_failed and parsed.get("semantic_pattern") == "COMPOUND_DIALOGUE_REQUEST":
-            # Preserve the user's compound prompt for later factual recall when
-            # the provider fails, but never archive the fallback/error as an answer
-            # or treat the failed exchange as resumable prompt context.
+        if provider_failed and str(text or "").strip():
             archive = [
                 item for item in (getattr(self.state, "exchange_archive", []) or [])
                 if isinstance(item, dict)
                 and str(item.get("session_id") or "") == self.state.session_id
             ]
-            archive.append({
+            failed_exchange = {
+                "exchange_id": uuid.uuid4().hex,
+                "timestamp": datetime.now().isoformat(),
                 "user": str(text),
                 "assistant": "",
+                "failure_message": str(result.get("text") or result.get("message") or ""),
                 "intent": getattr(turn_intent, "value", turn_intent),
-                "target": None,
+                "target": turn_target,
                 "conversation_domain": conversation_domain,
-                "conversation_act": conversation_act or "NONE",
-                "context_kind": context_kind if context_kind in {"dialogue", "social"} else "dialogue",
+                "conversation_act": conversation_act or semantic.get("conversation_act", "NONE"),
+                "context_kind": context_kind,
                 "context_transition": relation,
                 "session_id": self.state.session_id,
+                "knowledge_version": 2,
                 "recall_only": True,
                 "response_failed": True,
-            })
+            }
+            from lab_v4_dev.memory.dialogue_knowledge import extract_exchange_knowledge
+            failed_exchange["knowledge"] = extract_exchange_knowledge(
+                failed_exchange,
+                session_id=self.state.session_id,
+                exchange_index=len(archive),
+            )
+            archive.append(failed_exchange)
             self.state.exchange_archive = archive[-32:]
 
         if provider_failed and not (
