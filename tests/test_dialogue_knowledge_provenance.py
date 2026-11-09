@@ -705,3 +705,82 @@ def test_empty_full_transcript_field_falls_back_to_legacy_bounded_archive():
 
     assert analysis["exchange_count"] == 1
     assert any("الرسم التجريدي" in item["content"] for item in analysis["user_information"])
+
+
+
+def test_session_72_art_and_relief_plaster_details_are_retrievable_from_raw_evidence():
+    sid = "7ccd0498d634430080dcf5d4c27ceb96"
+    exchanges = [
+        ("مرحبا.", "مرحبًا بك."),
+        ("كيف حالك؟", "أنا بخير، كيف حالك؟"),
+        ("أريد أن نتحدث عن الفن التجريدي.", "الفن التجريدي يبتعد عن النقل الحرفي للواقع."),
+        ("أريد حوارًا وديًا جديدًا، لا استعادة موضوع سابق.", "حسنًا، لنبدأ حوارًا جديدًا."),
+        ("ما معنى الفن التجريدي؟", "هو فن يستخدم اللون والشكل والخط للتعبير."),
+        ("أريد دمج الفن التجريدي مع النحت أو النقش البارز.", "يمكن الجمع بين التكوين التجريدي والسطح البارز."),
+        (
+            "سأستخدم أدوات منزلية بسيطة: سكينًا ومفك براغٍ وملعقة.",
+            "يمكنك إضافة أدوات أخرى إذا احتجت إلى تفاصيل أدق.",
+        ),
+        (
+            "سأضع إطارًا خشبيًا للوحة قديمة، وأصب الجبس داخله بسماكة نحو 3 سم، "
+            "وأتركه يجف ثم أشكله بالسكين والمفك والملعقة. سأطلي العمل كله بالأسود الغامق، "
+            "ثم أضيف الذهبي والأبيض والأزرق بدرجات ونسب متناسقة.",
+            "يمكن تنفيذ التشكيل بعد جفاف الجبس، ثم توزيع الألوان على السطح.",
+        ),
+        (
+            "أستعمل صباغة مائية صديقة للبيئة ذات مظهر عتيق، ثم أضع طبقة حماية نهائية "
+            "أسميها كولا، وهي تشبه الورنيش الخشبي الشفاف.",
+            "هذه الطبقة تحمي السطح وتحافظ على مظهره.",
+        ),
+        ("ما الأدوات والسماكة التي ذكرتها؟", "لا أملك سجلًا كافيًا لتحديد ذلك."),
+        ("ما الألوان التي ذكرتها؟", "لا أستطيع تأكيد الألوان."),
+        ("ما نوع الطلاء؟", "لا أملك تفاصيل مؤكدة عن الطلاء."),
+        ("ما مادة الحماية النهائية؟", "لا أستطيع تحديد المادة من السياق المتاح."),
+    ]
+    archive = [
+        {
+            "session_id": sid,
+            "exchange_id": f"{sid}:{index}",
+            "timestamp": f"2026-10-22T15:{index:02d}:00",
+            "target": "الفن التجريدي والنقش البارز بالجبس",
+            "user": user_text,
+            "assistant": assistant_text,
+        }
+        for index, (user_text, assistant_text) in enumerate(exchanges, 1)
+    ]
+    session = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "last_topic": "الفن التجريدي والنقش البارز بالجبس",
+            "transcript_archive": archive,
+            "exchange_archive": archive[-8:],
+        },
+    }
+
+    analysis = analyze_dialogue_session(session)
+    tools = retrieve_dialogue_evidence(session, "ما الأدوات التي ذكرتها؟")
+    thickness = retrieve_dialogue_evidence(session, "ما سماكة الجبس؟")
+    colors = retrieve_dialogue_evidence(session, "ما الألوان التي أضفتها؟")
+    paint = retrieve_dialogue_evidence(session, "ما نوع الصباغة؟")
+    protection = retrieve_dialogue_evidence(session, "ما مادة الحماية النهائية؟")
+    report = format_dialogue_analysis_report(session)
+
+    assert analysis["exchange_count"] == 13
+    assert any("سكينًا" in item["user"] and "ملعقة" in item["user"] for item in tools)
+    assert any("3 سم" in item["user"] for item in thickness)
+    assert any("الذهبي" in item["user"] and "الأزرق" in item["user"] for item in colors)
+    assert any("مائية صديقة للبيئة" in item["user"] for item in paint)
+    assert any("كولا" in item["user"] and "الورنيش" in item["user"] for item in protection)
+    assert any(
+        item["speaker"] == "assistant"
+        and item["knowledge_type"] == "assistant_suggestion"
+        and "أدوات أخرى" in item["content"]
+        for item in analysis["assistant_information"]
+    )
+    assert any("إطارًا خشبيًا" in item["content"] for item in analysis["user_information"])
+    assert "معلومات المستخدم المستخرجة" in report
+    assert "مساهمات الوكيل واقتراحاته" in report
+    assert "3 سم" in report
+    assert "كولا" in report
