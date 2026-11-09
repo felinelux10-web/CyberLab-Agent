@@ -110,7 +110,7 @@ class Orchestrator:
                 ) or (
                     evidence_scope == "saved_sessions"
                     and selector_kind == "list"
-                    and output_kind == "report"
+                    and session_ref is None
                 )
                 if not valid_scope:
                     return {
@@ -1832,9 +1832,9 @@ SOURCE CODE:
             report_mode = selector.get("report_mode", "standard")
             if route_decision is not None and getattr(route_decision, "route", None) == "L-SESSION":
                 authorized_output = str(getattr(route_decision, "output_kind", "none") or "none")
-                if authorized_output == "report" and report_mode == "standard":
+                if authorized_output == "report":
                     report_mode = "full"
-                elif authorized_output == "brief" and report_mode == "standard":
+                elif authorized_output == "brief":
                     report_mode = "brief"
                 elif authorized_output == "transcript":
                     report_mode = "transcript"
