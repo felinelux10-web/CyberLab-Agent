@@ -876,3 +876,37 @@ def test_legacy_dialogue_without_timestamps_preserves_archive_order():
     assert analysis["timeline"][1]["exchange_id"] == f"{sid}:10"
     assert analysis["timeline"][0]["exchange_index"] == 1
     assert analysis["timeline"][1]["exchange_index"] == 2
+
+
+
+def test_clarification_turn_is_preserved_as_raw_evidence_but_not_as_answer():
+    memory = DialogueMemory(SimpleNamespace())
+    prompt = "هل تستطيع تحديد المادة التي ذكرتها سابقًا؟"
+    memory.update(
+        prompt,
+        {
+            "status": "needs_clarification",
+            "text": "هل تقصد المادة المستخدمة في الطلاء أم طبقة الحماية؟",
+        },
+        mode="CHAT",
+        parsed={
+            "intent": "personal_chat",
+            "conversation_domain": "general",
+            "conversation_act": "CASUAL_CONVERSATION",
+        },
+        context_transition="continue",
+    )
+    session = {
+        "session_id": memory.state.session_id,
+        "dialogue_state": memory.snapshot(),
+    }
+
+    exchange = memory.state.exchange_archive[-1]
+    analysis = analyze_dialogue_session(session)
+
+    assert exchange["response_status"] == "needs_clarification"
+    assert exchange["recall_only"] is True
+    assert analysis["timeline"][0]["user_text"] == prompt
+    assert any(item["content"] == prompt for item in analysis["unresolved_questions"])
+    assert retrieve_dialogue_evidence(session, "ما المادة؟") == []
+    assert "لم يُحفظ رد موضوعي مكتمل" in format_dialogue_analysis_report(session)

@@ -443,6 +443,43 @@ class DialogueMemory:
             ]
             archive.append(exchange)
             self.state.exchange_archive = archive[-32:]
+
+        elif (
+            str(result.get("status") or "").casefold() == "needs_clarification"
+            and str(result.get("text") or result.get("message") or "").strip()
+        ):
+            # Clarification turns are part of the original conversation, but
+            # they are not completed factual answers. Preserve them in the raw
+            # transcript while excluding them from answer retrieval/resumption.
+            exchange = {
+                "exchange_id": uuid.uuid4().hex,
+                "timestamp": datetime.now().isoformat(),
+                "user": str(text),
+                "assistant": str(result.get("text") or result.get("message") or ""),
+                "intent": getattr(turn_intent, "value", turn_intent),
+                "target": turn_target,
+                "conversation_domain": conversation_domain,
+                "conversation_act": conversation_act or semantic.get("conversation_act", "NONE"),
+                "context_kind": context_kind,
+                "context_transition": relation,
+                "session_id": self.state.session_id,
+                "knowledge_version": 2,
+                "response_status": "needs_clarification",
+                "recall_only": True,
+            }
+            from lab_v4_dev.memory.dialogue_knowledge import extract_exchange_knowledge
+            exchange["knowledge"] = extract_exchange_knowledge(
+                exchange,
+                session_id=self.state.session_id,
+                exchange_index=len(self.state.exchange_archive),
+            )
+            archive = [
+                item for item in (getattr(self.state, "exchange_archive", []) or [])
+                if isinstance(item, dict)
+                and str(item.get("session_id") or self.state.session_id) == self.state.session_id
+            ]
+            archive.append(exchange)
+            self.state.exchange_archive = archive[-32:]
         short_confirmation = str(text or "").strip().casefold() in {
             "نعم", "أجل", "اجل", "بلى", "لا", "كلا", "yes", "no",
         }

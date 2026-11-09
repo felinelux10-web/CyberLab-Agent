@@ -319,6 +319,7 @@ def analyze_dialogue_session(data: dict) -> dict:
             "user_text": user_text,
             "assistant_text": assistant_text,
             "response_failed": bool(exchange.get("response_failed")),
+            "response_status": str(exchange.get("response_status") or ""),
             "failure_message": str(exchange.get("failure_message") or ""),
         })
 
@@ -373,9 +374,14 @@ def analyze_dialogue_session(data: dict) -> dict:
                     })
             if kind == "question":
                 normalized_answer = _normalize(assistant_text)
-                has_answer = bool(assistant_text.strip()) and not any(
-                    marker in normalized_answer for marker in failure_markers
-                ) and not exchange.get("response_failed")
+                has_answer = (
+                    bool(assistant_text.strip())
+                    and not any(marker in normalized_answer for marker in failure_markers)
+                    and not exchange.get("response_failed")
+                    and not exchange.get("recall_only")
+                    and str(exchange.get("response_status") or "").casefold()
+                    != "needs_clarification"
+                )
                 if not has_answer:
                     unresolved.append(item)
 
@@ -527,8 +533,12 @@ def format_dialogue_analysis_report(data: dict) -> str:
     if last_exchange:
         lines.append(f"- آخر تبادل محفوظ: رقم {last_exchange['exchange_index']}")
         lines.append(f"- الموضوع عند التوقف: {last_exchange['topic'] or 'غير محدد'}")
-        if last_exchange.get("response_failed"):
-            lines.append("- لم يُحفظ رد مكتمل لهذا التبادل.")
+        if (
+            last_exchange.get("response_failed")
+            or last_exchange.get("recall_only")
+            or str(last_exchange.get("response_status") or "").casefold() == "needs_clarification"
+        ):
+            lines.append("- لم يُحفظ رد موضوعي مكتمل لهذا التبادل؛ حُفظت المحاولة/رسالة الاستيضاح فقط.")
         else:
             lines.append("- يوجد رد محفوظ لهذا التبادل.")
     else:
