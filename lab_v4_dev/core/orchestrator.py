@@ -90,7 +90,24 @@ class Orchestrator:
                     "executed": False,
                     "text": "قرار التوجيه لا يمنح Orchestrator ملكية هذا الطلب.",
                 }
-            if authorized_route == "L-SESSION" and (parsed or {}).get("intent") not in (Intent.SESSION_RESTORE, Intent.RESUME):
+            parsed_intent = (parsed or {}).get("intent")
+            selector_kind = str(((parsed or {}).get("session_selector") or {}).get("kind") or "none")
+            saved_session_operation = (
+                parsed_intent == Intent.SESSION_RESTORE
+                or (
+                    parsed_intent == Intent.RESUME
+                    and selector_kind in {"number", "id", "latest", "previous_dialogue", "search", "list"}
+                )
+            )
+            if saved_session_operation and authorized_route != "L-SESSION":
+                return {
+                    "status": "denied",
+                    "intent": parsed_intent,
+                    "source": "route_decision_saved_session_owner_guard",
+                    "executed": False,
+                    "text": "لا يسمح قرار التوجيه الحالي بقراءة جلسة محفوظة أو استعادتها.",
+                }
+            if authorized_route == "L-SESSION" and parsed_intent not in (Intent.SESSION_RESTORE, Intent.RESUME):
                 return {
                     "status": "denied",
                     "intent": (parsed or {}).get("intent"),

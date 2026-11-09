@@ -570,3 +570,30 @@ def test_legacy_top_level_exchange_archive_remains_analyzable():
     assert analysis["session_id"] == "legacy-top-level-session"
     assert analysis["exchange_count"] == 1
     assert any("الفن التجريدي" in item["content"] for item in analysis["user_information"])
+
+
+
+def test_orchestrator_rejects_saved_session_intent_when_route_owner_is_not_l_session():
+    agent = SimpleNamespace(runtime=None, _meta=SimpleNamespace(get_version=lambda: "test"))
+    decision = RouteDecision(
+        route="P-TOOL",
+        session_scope="none",
+        session_ref=None,
+        output_kind="none",
+        evidence_scope="none",
+        provider_allowed=False,
+        intent=Intent.SESSION_RESTORE,
+    )
+
+    result = Orchestrator(agent).handle(
+        "ما الأدوات التي ذكرتها في الجلسة 72؟",
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "session_selector": {"kind": "number", "number": 72, "report_mode": "recall"},
+        },
+        route_decision=decision,
+    )
+
+    assert result["status"] == "denied"
+    assert result["source"] == "route_decision_saved_session_owner_guard"
+    assert result["executed"] is False
