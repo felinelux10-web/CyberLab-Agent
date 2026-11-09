@@ -362,6 +362,8 @@ def test_failed_dialogue_exchange_is_preserved_as_unresolved_raw_evidence():
     analysis = analyze_dialogue_session(session)
 
     assert analysis["exchange_count"] == 1
+    assert memory.state.exchange_archive == []
+    assert memory.state.failed_exchange_archive[-1]["user"] == prompt
     assert analysis["failed_exchanges"][0]["user_text"] == prompt
     assert any(item["content"] == prompt for item in analysis["unresolved_questions"])
     assert retrieve_dialogue_evidence(session, "ما التفاصيل؟") == []

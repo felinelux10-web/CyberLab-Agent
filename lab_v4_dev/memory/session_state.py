@@ -1100,8 +1100,15 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
         exchange for exchange in (state.get("exchange_archive") or [])
         if isinstance(exchange, dict) and is_dialogue_record(exchange)
     ]
+    failed_exchanges = [
+        exchange for exchange in (state.get("failed_exchange_archive") or [])
+        if isinstance(exchange, dict)
+        and is_dialogue_record(exchange)
+        and exchange.get("response_failed")
+    ]
     state["history"] = history[-8:]
     state["exchange_archive"] = exchanges[-32:]
+    state["failed_exchange_archive"] = failed_exchanges[-32:]
 
     index = get_session_index()
     previous = next(
@@ -1126,6 +1133,7 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
         not str(state.get("last_topic") or state.get("pending_topic") or "").strip()
         and not history
         and not exchanges
+        and not failed_exchanges
         and not (state.get("context_history") or [])
     )
     # A checkpoint belongs to the dialogue session that produced it.

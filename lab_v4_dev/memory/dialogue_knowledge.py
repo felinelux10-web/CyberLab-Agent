@@ -279,7 +279,7 @@ def extract_exchange_knowledge(
 
 
 def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
-    """Return all real dialogue exchanges, including failed turns, but not boundary sentinels."""
+    """Return completed and failed raw exchanges, excluding control-boundary sentinels."""
     if not isinstance(data, dict):
         return "", []
     dialogue = data.get("dialogue_state")
@@ -293,21 +293,27 @@ def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
     if not session_id:
         return "", []
     records = []
-    for item in dialogue.get("exchange_archive") or []:
-        if not isinstance(item, dict) or item.get("state_boundary_only"):
-            continue
-        item_session_id = str(item.get("session_id") or "").strip()
-        if item_session_id and item_session_id != session_id:
-            continue
-        if not (
-            str(item.get("user") or "").strip()
-            or str(item.get("assistant") or "").strip()
-            or item.get("response_failed")
-        ):
-            continue
-        records.append(item)
+    for archive_name in ("exchange_archive", "failed_exchange_archive"):
+        for item in dialogue.get(archive_name) or []:
+            if not isinstance(item, dict) or item.get("state_boundary_only"):
+                continue
+            item_session_id = str(item.get("session_id") or "").strip()
+            if item_session_id and item_session_id != session_id:
+                continue
+            if archive_name == "failed_exchange_archive" and not item.get("response_failed"):
+                continue
+            if not (
+                str(item.get("user") or "").strip()
+                or str(item.get("assistant") or "").strip()
+                or item.get("response_failed")
+            ):
+                continue
+            records.append(item)
+    records.sort(key=lambda item: (
+        str(item.get("timestamp") or item.get("created_at") or ""),
+        str(item.get("exchange_id") or ""),
+    ))
     return session_id, records
-
 
 def analyze_dialogue_session(data: dict) -> dict:
     """Build a traceable local knowledge view while retaining raw exchanges as truth."""

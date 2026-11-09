@@ -119,7 +119,7 @@ class DialogueMemory:
             "last_topic", "pending_topic", "pending_context", "last_mode", "last_intent",
             "last_target", "last_entity_type", "last_confidence",
             "pending_clarification", "last_items", "context_history",
-            "exchange_archive",
+            "exchange_archive", "failed_exchange_archive",
         ):
             if field in snapshot:
                 setattr(restored, field, snapshot[field])
@@ -129,6 +129,13 @@ class DialogueMemory:
             for item in (restored.exchange_archive or [])
             if isinstance(item, dict)
             and str(item.get("session_id") or "") == restored.session_id
+        ][-32:]
+        restored.failed_exchange_archive = [
+            dict(item)
+            for item in (restored.failed_exchange_archive or [])
+            if isinstance(item, dict)
+            and str(item.get("session_id") or "") == restored.session_id
+            and item.get("response_failed")
         ][-32:]
         for turn in (snapshot.get("history") or [])[-8:]:
             if not isinstance(turn, dict) or not turn.get("role"):
@@ -308,7 +315,7 @@ class DialogueMemory:
         # failed chat turns out of dialogue history entirely.
         if provider_failed and str(text or "").strip():
             archive = [
-                item for item in (getattr(self.state, "exchange_archive", []) or [])
+                item for item in (getattr(self.state, "failed_exchange_archive", []) or [])
                 if isinstance(item, dict)
                 and str(item.get("session_id") or "") == self.state.session_id
             ]
@@ -333,10 +340,10 @@ class DialogueMemory:
             failed_exchange["knowledge"] = extract_exchange_knowledge(
                 failed_exchange,
                 session_id=self.state.session_id,
-                exchange_index=len(archive),
+                exchange_index=len(self.state.exchange_archive) + len(archive),
             )
             archive.append(failed_exchange)
-            self.state.exchange_archive = archive[-32:]
+            self.state.failed_exchange_archive = archive[-32:]
 
         if provider_failed and not (
             turn_target
