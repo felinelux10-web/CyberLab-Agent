@@ -577,11 +577,12 @@ def format_dialogue_analysis_report(data: dict) -> str:
     lines.extend(["", "نقطة التوقف:"])
     last_exchange = analysis["last_exchange"]
     if last_exchange:
-        lines.append(f"- آخر رسالة للمستخدم: {last_exchange['user_text'] or 'لا توجد'}")
+        lines.append(f"- آخر تبادل محفوظ: رقم {last_exchange['exchange_index']}")
+        lines.append(f"- الموضوع عند التوقف: {last_exchange['topic'] or 'غير محدد'}")
         if last_exchange.get("response_failed"):
             lines.append("- لم يُحفظ رد مكتمل لهذا التبادل.")
         else:
-            lines.append(f"- آخر رد محفوظ: {last_exchange['assistant_text'] or 'لا يوجد'}")
+            lines.append("- يوجد رد محفوظ لهذا التبادل.")
     else:
         lines.append("- لا توجد تبادلات أصلية محفوظة.")
     lines.append(
