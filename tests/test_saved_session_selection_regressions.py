@@ -1183,3 +1183,18 @@ def test_numbered_restore_capability_question_is_not_reclassified_as_factual_rec
     assert contract["number"] == 72
     assert contract["report_mode"] != "recall"
     assert contract["output_kind"] == "capability"
+
+
+
+def test_numbered_session_reports_accept_attached_arabic_prepositions():
+    prompts = (
+        "اكتب تقريرًا تحليليًا للجلسة 72",
+        "اكتب تقريرًا تحليليًا بالجلسة 72",
+        "اكتب تقريرًا تحليليًا في الجلسة 72",
+        "اكتب تقريرًا تحليليًا من الجلسة 72",
+    )
+    for prompt in prompts:
+        selected = session_selector(prompt)
+        assert selected["kind"] == "number", (prompt, selected)
+        assert selected["number"] == 72, (prompt, selected)
+        assert selected["report_mode"] == "full", (prompt, selected)
