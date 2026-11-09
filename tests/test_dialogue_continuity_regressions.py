@@ -1,6 +1,7 @@
 from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
+from lab_v4_dev.memory import session_state
 from lab_v4_dev.nlu.conversation_semantics import classify_conversation_semantics
 
 
@@ -1344,3 +1345,29 @@ def test_mesopotamia_followup_stays_in_ancient_civilizations_dialogue(monkeypatc
     assert "SQL Injection" not in str(result)
     assert memory.state.last_topic != "SQL Injection"
     assert orchestrator.calls == []
+
+
+
+def test_numbered_saved_session_detail_question_wins_over_agent_self_classification(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    monkeypatch.setattr(
+        session_state,
+        "get_session_by_number",
+        lambda number: {
+            "session_id": "saved-dialogue-72",
+            "session_type": "dialogue",
+            "number": number,
+        },
+    )
+
+    result = manager.process("ما الأدوات التي ذكرتها لك في الجلسة 72؟")
+
+    assert result["status"] == "success", result
+    assert orchestrator.calls
+    decision = orchestrator.calls[-1][2]["route_decision"]
+    assert decision.route == "L-SESSION"
+    assert decision.session_scope == "saved_number"
+    assert decision.session_ref.session_id == "saved-dialogue-72"
+    assert decision.session_ref.number == 72
+    assert decision.evidence_scope == "saved_session"
+    assert calls == []
