@@ -5,6 +5,7 @@ from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.core.orchestrator import Orchestrator
 from lab_v4_dev.core.contracts import RouteDecision, SessionRef
+from lab_v4_dev.core.contracts import RouteDecision, SessionRef
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.memory.session_state import session_selector, session_route_contract, build_session_restore_summary
 from lab_v4_dev.memory.dialogue_knowledge import retrieve_dialogue_evidence
@@ -693,7 +694,7 @@ def test_numbered_saved_dialogue_summary_uses_only_selected_records_for_provider
     restore_calls = []
     def fake_gateway(prompt, **kwargs):
         observed.append((prompt, kwargs))
-        return {"status": "success", "text": "تناول الحوار الفرق البنيوي بين القوائم والقواميس واستخدام كل نوع."}
+        return {"status": "success", "text": "تناول الحوار الفرق البنيوي بين القوائم والقواميس واستخدام كل نوع. [تبادل محفوظ 1]"}
 
     monkeypatch.setattr("lab_v4_dev.llm.gateway.ask", fake_gateway)
     agent = SimpleNamespace(
@@ -713,6 +714,15 @@ def test_numbered_saved_dialogue_summary_uses_only_selected_records_for_provider
 
     request = "اكتب ملخص الجلسة المحفوظة رقم 2"
     selected = session_selector(request)
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id="python-saved-2", number=2),
+        output_kind="summary",
+        evidence_scope="saved_session",
+        provider_allowed=True,
+        intent=Intent.SESSION_RESTORE,
+    )
     result = orchestrator.handle(
         request,
         parsed={
@@ -721,6 +731,7 @@ def test_numbered_saved_dialogue_summary_uses_only_selected_records_for_provider
             "context": "system",
             "session_selector": selected,
         },
+        route_decision=decision,
     )
 
     assert result["source"] == "saved_session_report"
@@ -729,6 +740,8 @@ def test_numbered_saved_dialogue_summary_uses_only_selected_records_for_provider
     assert observed and "هياكل البيانات في Python" in observed[0][0]
     assert "الفن التجريدي" not in observed[0][0]
     assert "تؤثر العلاقة بين الألوان" not in observed[0][0]
+    assert result["provider_synthesis_used"] is True
+    assert result["evidence_exchange_ids"] == ["python-saved-2:1"]
     assert not restore_calls
 
 
