@@ -533,22 +533,22 @@ class DialogueMemory:
             session_id=self.state.session_id,
         )
 
-        if (
-            result.get("status") not in {"error", "failed", "failure", "provider_error"}
-            and not result.get("error")
-        ):
-            self.state.add_turn(
-                role="assistant",
-                content=str(result.get("text") or result.get("message") or ""),
-                mode=self.state.last_mode,
-                intent=turn_intent,
-                target=turn_target,
-                confidence=turn_confidence,
-                conversation_domain=conversation_domain,
-                conversation_act=conversation_act,
-                context_kind=context_kind,
-                session_id=self.state.session_id,
-            )
+        # A non-error process result closes the user turn even when the
+        # responder had no renderable text. Keep an empty assistant slot in the
+        # bounded turn log; empty slots are ignored by prompt/evidence readers
+        # and are never promoted to exchange_archive.
+        self.state.add_turn(
+            role="assistant",
+            content=str(result.get("text") or result.get("message") or ""),
+            mode=self.state.last_mode,
+            intent=turn_intent,
+            target=turn_target,
+            confidence=turn_confidence,
+            conversation_domain=conversation_domain,
+            conversation_act=conversation_act,
+            context_kind=context_kind,
+            session_id=self.state.session_id,
+        )
 
         items = result.get("items") or result.get("files") or []
         if items:
