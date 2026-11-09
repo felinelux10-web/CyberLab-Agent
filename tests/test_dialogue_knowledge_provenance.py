@@ -319,20 +319,17 @@ def test_ancient_civilizations_followup_stays_in_live_dialogue(monkeypatch):
         "lab_v4_dev.conversation.conversation_manager.gateway_ask",
         fake_gateway,
     )
-    orchestrator = SimpleNamespace(
-        context=ContextStore(),
-        calls=[],
-    )
-    memory = DialogueMemory(orchestrator.context)
-
     class Recorder:
-        context = orchestrator.context
+        def __init__(self):
+            self.context = ContextStore()
+            self.calls = []
 
         def handle(self, text, parsed=None, **kwargs):
             self.calls.append((text, dict(parsed or {}), kwargs))
             return {"status": "success", "intent": (parsed or {}).get("intent"), "text": "رد التنفيذ"}
 
     recorder = Recorder()
+    memory = DialogueMemory(recorder.context)
     manager = ConversationManager(recorder, memory)
     first = manager.process("لنتحدث عن مصر القديمة والأهرامات.")
     second = manager.process("وماذا عن بلاد الرافدين؟")
