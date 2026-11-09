@@ -105,7 +105,7 @@ class DialogueMemory:
         self,
         snapshot: dict | None,
         *,
-        explicit_saved_session: bool = False,
+        explicit_saved_session: bool = True,
     ) -> bool:
         """Restore dialogue state without claiming saved-session ownership unless explicit."""
         if not isinstance(snapshot, dict):

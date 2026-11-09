@@ -400,13 +400,13 @@ def test_agent_persists_changed_dialogue_state_even_when_response_fails():
 
 
 
-def test_dialogue_snapshot_restore_does_not_claim_saved_session_by_default():
+def test_boot_style_dialogue_snapshot_restore_does_not_claim_saved_session():
     memory = DialogueMemory(SimpleNamespace())
     memory.state.last_topic = "الحضارات القديمة"
     snapshot = memory.snapshot()
 
     restored = DialogueMemory(SimpleNamespace())
-    assert restored.restore_snapshot(snapshot) is True
+    assert restored.restore_snapshot(snapshot, explicit_saved_session=False) is True
     assert restored.active_restored_session() is None
 
 
@@ -539,3 +539,16 @@ def test_novel_questions_retrieve_evidence_across_different_topic_domains():
         evidence = retrieve_dialogue_evidence(session, query)
         assert evidence, (query, session["session_id"])
         assert any(expected in item["user"] for item in evidence), (query, evidence)
+
+
+
+def test_agent_boot_checkpoint_restore_explicitly_disables_saved_session_ownership(monkeypatch):
+    saved = {"session_id": "boot-dialogue-checkpoint"}
+    observed = []
+    monkeypatch.setattr("lab_v4_dev.core.agent.load_session", lambda: saved)
+    fake_agent = SimpleNamespace(
+        restore_session_snapshot=lambda data, **kwargs: observed.append((data, kwargs)) or True,
+    )
+
+    assert Agent.restore_session_context(fake_agent) is True
+    assert observed == [(saved, {"explicit_saved_session": False})]
