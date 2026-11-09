@@ -450,7 +450,7 @@ def session_selector(raw: str) -> dict:
     # Allow descriptive words between "session" and its number, e.g.
     # "ملخص الجلسة المحفوظة رقم 30"; otherwise the request silently selects latest.
     number_match = re.search(
-        r"(?<!\w)(?:(?:ل|ب|في|من|عن)\s*)?(?:ال)?(?:جلسة|جلسه|session)"
+        r"(?<!\w)(?:(?:لل|ل|ب|في|من|عن)\s*)?(?:ال)?(?:جلسة|جلسه|session)"
         r"(?:\s+(?:(?!رقم\b)[^\W\d_][\w-]*)){0,5}\s*(?:رقم\s*)?#?\s*(\d+)\b",
         text,
         flags=re.IGNORECASE,
