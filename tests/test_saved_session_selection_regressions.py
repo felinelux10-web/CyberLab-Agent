@@ -1380,3 +1380,51 @@ def test_saved_session_stop_point_uses_summary_output_contract():
         "none", "brief", "summary", "report", "topic_summary",
         "transcript", "list", "continue_topic", "capability",
     }
+
+
+
+def test_literal_transcript_includes_clarification_and_failed_raw_turns():
+    sid = "literal-raw-transcript"
+    session = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "transcript_archive": [
+                {
+                    "session_id": sid,
+                    "exchange_id": "complete-1",
+                    "timestamp": "2026-11-01T10:00:00",
+                    "user": "بدأنا النقاش عن الفن.",
+                    "assistant": "ناقشنا الفن التجريدي.",
+                },
+                {
+                    "session_id": sid,
+                    "exchange_id": "clarify-2",
+                    "timestamp": "2026-11-01T10:01:00",
+                    "user": "ما المادة التي استخدمتها؟",
+                    "assistant": "هل تقصد مادة الطلاء أم الحماية؟",
+                    "response_status": "needs_clarification",
+                    "recall_only": True,
+                },
+            ],
+            "exchange_archive": [],
+            "failed_transcript_archive": [
+                {
+                    "session_id": sid,
+                    "exchange_id": "failed-3",
+                    "timestamp": "2026-11-01T10:02:00",
+                    "user": "ما التفصيل الذي لم تتمكن من الإجابة عنه؟",
+                    "assistant": "",
+                    "response_failed": True,
+                    "recall_only": True,
+                },
+            ],
+        },
+    }
+
+    transcript = build_session_restore_summary(session, report_mode="transcript")
+
+    assert "بدأنا النقاش عن الفن." in transcript
+    assert "هل تقصد مادة الطلاء أم الحماية؟" in transcript
+    assert "ما التفصيل الذي لم تتمكن من الإجابة عنه؟" in transcript

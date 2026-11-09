@@ -2156,14 +2156,19 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         next_step = "حدّد الموضوع أو اختر جلسة أخرى إذا كان هذا السجل غير مكتمل."
 
     if report_mode == "transcript":
+        # A literal transcript includes every persisted raw turn, including
+        # clarification-only and failed turns. Semantic summaries continue to
+        # use _dialogue_exchanges(), which deliberately excludes those records.
+        from lab_v4_dev.memory.dialogue_knowledge import _raw_exchange_archive
+        _, transcript_exchanges = _raw_exchange_archive(data)
         lines = [
             "=== نص الحوار المحفوظ حرفيًا ===",
             f"معرّف الجلسة: {report['session_id']}",
             f"الموضوع: {topic}",
         ]
-        if not exchanges:
-            lines.append("لا يحتوي سجل الجلسة على تبادلات مكتملة قابلة للعرض.")
-        for index, exchange in enumerate(exchanges, 1):
+        if not transcript_exchanges:
+            lines.append("لا يحتوي سجل الجلسة على تبادلات أصلية قابلة للعرض.")
+        for index, exchange in enumerate(transcript_exchanges, 1):
             lines.extend([
                 "",
                 f"[{index}] المستخدم:",
