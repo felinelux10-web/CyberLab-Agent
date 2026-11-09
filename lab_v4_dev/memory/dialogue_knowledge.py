@@ -566,8 +566,9 @@ def format_dialogue_analysis_report(data: dict) -> str:
 
 def _character_ngrams(value: Any, size: int = 3) -> set[str]:
     """Return normalized character n-grams for morphology-tolerant local matching."""
-    text = " ".join(_tokens(value))
-    compact = re.sub(r"\\s+", " ", text).strip()
+    compact = _normalize(value)
+    compact = re.sub(r"[^a-z0-9\\u0621-\\u064a ]+", " ", compact)
+    compact = re.sub(r"\\s+", " ", compact).strip()
     if len(compact) < size:
         return {compact} if compact else set()
     return {
