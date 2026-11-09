@@ -1067,6 +1067,48 @@ def save_recoverable_checkpoint(*, active_goal: str = "", next_step: str = "",
     _append_recent_archive(data)
     return data
 
+def _dialogue_archive_signature(item: dict) -> tuple:
+    return (
+        str(item.get("timestamp") or item.get("created_at") or ""),
+        str(item.get("user") or ""),
+        str(item.get("assistant") or ""),
+        str(item.get("target") or ""),
+        bool(item.get("response_failed")),
+        bool(item.get("recall_only")),
+    )
+
+
+def _merge_append_only_dialogue_archive(existing: list, current: list) -> list:
+    """Merge a bounded live window into the full persisted transcript without duplicating overlap."""
+    old_items = [dict(item) for item in (existing or []) if isinstance(item, dict)]
+    new_items = [dict(item) for item in (current or []) if isinstance(item, dict)]
+    if not old_items:
+        return new_items
+    if not new_items:
+        return old_items
+
+    old_signatures = [_dialogue_archive_signature(item) for item in old_items]
+    new_signatures = [_dialogue_archive_signature(item) for item in new_items]
+    overlap = 0
+    for size in range(min(len(old_signatures), len(new_signatures)), 0, -1):
+        if old_signatures[-size:] == new_signatures[:size]:
+            overlap = size
+            break
+    if overlap:
+        return old_items + new_items[overlap:]
+
+    # If the bounded window no longer overlaps because several checkpoints
+    # were skipped, append only records whose immutable raw signature is new.
+    seen = set(old_signatures)
+    additions = []
+    for item, signature in zip(new_items, new_signatures):
+        if signature in seen:
+            continue
+        additions.append(item)
+        seen.add(signature)
+    return old_items + additions
+
+
 def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
                              project_root: str = None) -> dict:
     """Persist dialogue history without replacing the canonical work checkpoint."""
@@ -1152,6 +1194,34 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
         # index-only fallback marker into a newly materialized detail record.
         data.pop("_record_source", None)
         data.pop("_detail_available", None)
+    previous_dialogue_state = (
+        data.get("dialogue_state") if isinstance(data, dict) else {}
+    )
+    if not isinstance(previous_dialogue_state, dict):
+        previous_dialogue_state = {}
+    previous_transcript = previous_dialogue_state.get("transcript_archive")
+    if not isinstance(previous_transcript, list):
+        previous_transcript = previous_dialogue_state.get("exchange_archive") or []
+    previous_failed_transcript = previous_dialogue_state.get("failed_transcript_archive")
+    if not isinstance(previous_failed_transcript, list):
+        previous_failed_transcript = previous_dialogue_state.get("failed_exchange_archive") or []
+    previous_transcript = [
+        item for item in previous_transcript
+        if isinstance(item, dict) and is_dialogue_record(item)
+    ]
+    previous_failed_transcript = [
+        item for item in previous_failed_transcript
+        if isinstance(item, dict) and is_dialogue_record(item)
+        and item.get("response_failed")
+    ]
+    state["transcript_archive"] = _merge_append_only_dialogue_archive(
+        previous_transcript,
+        exchanges,
+    )
+    state["failed_transcript_archive"] = _merge_append_only_dialogue_archive(
+        previous_failed_transcript,
+        failed_exchanges,
+    )
     now = datetime.now().isoformat()
     if not isinstance(data, dict) or not data:
         data = {
@@ -1428,7 +1498,9 @@ def _dialogue_exchanges(data: dict) -> list[dict]:
     if not isinstance(dialogue, dict):
         return []
     session_id = str(dialogue.get("session_id") or "").strip()
-    exchanges = dialogue.get("exchange_archive") or []
+    exchanges = dialogue.get("transcript_archive")
+    if not isinstance(exchanges, list):
+        exchanges = dialogue.get("exchange_archive") or []
     if not isinstance(exchanges, list):
         return []
     return [

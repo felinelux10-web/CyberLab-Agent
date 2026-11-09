@@ -129,15 +129,21 @@ class DialogueMemory:
             if field in snapshot:
                 setattr(restored, field, snapshot[field])
         # Never relabel records without the exact checkpoint session identity.
+        transcript_source = snapshot.get("transcript_archive")
+        if not isinstance(transcript_source, list):
+            transcript_source = restored.exchange_archive
+        failed_transcript_source = snapshot.get("failed_transcript_archive")
+        if not isinstance(failed_transcript_source, list):
+            failed_transcript_source = restored.failed_exchange_archive
         restored.exchange_archive = [
             dict(item)
-            for item in (restored.exchange_archive or [])
+            for item in (transcript_source or [])
             if isinstance(item, dict)
             and str(item.get("session_id") or "") == restored.session_id
         ][-32:]
         restored.failed_exchange_archive = [
             dict(item)
-            for item in (restored.failed_exchange_archive or [])
+            for item in (failed_transcript_source or [])
             if isinstance(item, dict)
             and str(item.get("session_id") or "") == restored.session_id
             and item.get("response_failed")

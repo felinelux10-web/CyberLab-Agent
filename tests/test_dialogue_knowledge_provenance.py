@@ -624,3 +624,62 @@ def test_orchestrator_rejects_saved_session_continuation_without_saved_evidence_
     assert result["status"] == "denied"
     assert result["source"] == "route_decision_evidence_scope_guard"
     assert result["executed"] is False
+
+
+
+def test_saved_dialogue_retrieval_searches_full_transcript_beyond_live_window():
+    sid = "long-session"
+    old_exchange = {
+        "session_id": sid,
+        "exchange_id": "old-first-exchange",
+        "timestamp": "2026-10-01T08:00:00",
+        "user": "ناقشنا مفهومًا فريدًا اسمه مصطلح_قديم_مميز في بداية الجلسة.",
+        "assistant": "هذا المصطلح ورد في بداية الحوار.",
+    }
+    recent = [
+        {
+            "session_id": sid,
+            "exchange_id": f"recent-{number}",
+            "timestamp": f"2026-10-01T09:{number:02d}:00",
+            "user": f"رسالة حديثة رقم {number}.",
+            "assistant": f"رد حديث رقم {number}.",
+        }
+        for number in range(9, 41)
+    ]
+    session = {
+        "session_id": sid,
+        "dialogue_state": {
+            "session_id": sid,
+            "exchange_archive": recent[-32:],
+            "transcript_archive": [old_exchange, *recent],
+        },
+    }
+
+    evidence = retrieve_dialogue_evidence(session, "ما المصطلح الذي ناقشناه في بداية الجلسة؟")
+    analysis = analyze_dialogue_session(session)
+
+    assert any(item["exchange_id"] == "old-first-exchange" for item in evidence)
+    assert analysis["exchange_count"] == 33
+
+
+def test_restore_snapshot_loads_only_the_last_32_items_from_full_transcript():
+    sid = "long-restore-session"
+    transcript = [
+        {
+            "session_id": sid,
+            "exchange_id": f"exchange-{number}",
+            "user": f"رسالة {number}",
+            "assistant": f"رد {number}",
+        }
+        for number in range(1, 41)
+    ]
+    memory = DialogueMemory(SimpleNamespace())
+    assert memory.restore_snapshot({
+        "session_id": sid,
+        "exchange_archive": transcript[-32:],
+        "transcript_archive": transcript,
+    }) is True
+
+    assert len(memory.state.exchange_archive) == 32
+    assert memory.state.exchange_archive[0]["exchange_id"] == "exchange-9"
+    assert memory.state.exchange_archive[-1]["exchange_id"] == "exchange-40"

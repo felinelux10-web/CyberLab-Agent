@@ -62,7 +62,10 @@ def _exchange_archive(data: dict) -> tuple[str, list[dict]]:
     if not session_id:
         return "", []
     records = []
-    for item in dialogue.get("exchange_archive") or []:
+    completed_archive = dialogue.get("transcript_archive")
+    if not isinstance(completed_archive, list):
+        completed_archive = dialogue.get("exchange_archive") or []
+    for item in completed_archive:
         if not isinstance(item, dict):
             continue
         item_id = str(item.get("session_id") or "").strip()
@@ -207,15 +210,24 @@ def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
     session_id = record_session_id or dialogue_session_id
     if not session_id:
         return "", []
+    completed_archive = dialogue.get("transcript_archive")
+    if not isinstance(completed_archive, list):
+        completed_archive = dialogue.get("exchange_archive") or []
+    failed_archive = dialogue.get("failed_transcript_archive")
+    if not isinstance(failed_archive, list):
+        failed_archive = dialogue.get("failed_exchange_archive") or []
     records = []
-    for archive_name in ("exchange_archive", "failed_exchange_archive"):
-        for item in dialogue.get(archive_name) or []:
+    for archive_name, archive in (
+        ("completed", completed_archive),
+        ("failed", failed_archive),
+    ):
+        for item in archive:
             if not isinstance(item, dict) or item.get("state_boundary_only"):
                 continue
             item_session_id = str(item.get("session_id") or "").strip()
             if item_session_id and item_session_id != session_id:
                 continue
-            if archive_name == "failed_exchange_archive" and not item.get("response_failed"):
+            if archive_name == "failed" and not item.get("response_failed"):
                 continue
             if not (
                 str(item.get("user") or "").strip()

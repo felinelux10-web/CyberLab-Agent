@@ -134,10 +134,28 @@ def test_partial_topic_search_finds_broader_saved_dialogue_title(tmp_path, monke
 
 def test_dialogue_checkpoint_materializes_index_fallback_without_persisting_marker(tmp_path, monkeypatch):
     session_id = "dialogue-index-fallback"
+    def exchange(number):
+        return {
+            "session_id": session_id,
+            "exchange_id": f"exchange-{number}",
+            "timestamp": f"2026-11-09T08:{number:02d}:00",
+            "target": "الفن التجريدي",
+            "user": f"تفصيل أصلي رقم {number}",
+            "assistant": f"رد محفوظ رقم {number}",
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+        }
+
+    prior_transcript = [exchange(number) for number in range(1, 41)]
     index_record = {
         "session_id": session_id,
         "session_type": "dialogue",
         "title": "حوار: الفن",
+        "dialogue_state": {
+            "session_id": session_id,
+            "transcript_archive": prior_transcript,
+            "exchange_archive": prior_transcript[-32:],
+        },
         "_record_source": "index",
         "_detail_available": False,
     }
@@ -172,7 +190,7 @@ def test_dialogue_checkpoint_materializes_index_fallback_without_persisting_mark
         "session_id": session_id,
         "last_topic": "الفن التجريدي",
         "history": [],
-        "exchange_archive": [],
+        "exchange_archive": [exchange(number) for number in range(10, 42)],
         "failed_exchange_archive": [failed_exchange],
     }
     session_state.save_dialogue_checkpoint(dialogue_state=state, version="test")
@@ -180,4 +198,9 @@ def test_dialogue_checkpoint_materializes_index_fallback_without_persisting_mark
     assert captured
     assert "_record_source" not in captured[0]
     assert "_detail_available" not in captured[0]
-    assert captured[0]["dialogue_state"]["failed_exchange_archive"] == [failed_exchange]
+    saved_dialogue = captured[0]["dialogue_state"]
+    assert saved_dialogue["failed_exchange_archive"] == [failed_exchange]
+    assert len(saved_dialogue["transcript_archive"]) == 41
+    assert saved_dialogue["transcript_archive"][0]["exchange_id"] == "exchange-1"
+    assert saved_dialogue["transcript_archive"][-1]["exchange_id"] == "exchange-41"
+    assert saved_dialogue["exchange_archive"][0]["exchange_id"] == "exchange-10"
