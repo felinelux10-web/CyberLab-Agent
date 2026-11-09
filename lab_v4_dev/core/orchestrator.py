@@ -2283,7 +2283,7 @@ SOURCE CODE:
                         )
                         cited_numbers = [
                             int(value)
-                            for value in re.findall(r"\[\s*التبادل\s+(\d+)\s*\], candidate)
+                            for value in re.findall(r"\[\s*التبادل\s+(\d+)\s*\]", candidate)
                         ]
                         if (
                             candidate
