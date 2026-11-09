@@ -1,6 +1,11 @@
 from types import SimpleNamespace
 
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
+from lab_v4_dev.conversation.conversation_manager import ConversationManager
+from lab_v4_dev.context.context_store import ContextStore
+from lab_v4_dev.core.contracts import RouteDecision, SessionRef
+from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.memory import session_state
 from lab_v4_dev.memory.dialogue_knowledge import (
     analyze_dialogue_session,
@@ -120,3 +125,221 @@ def test_missing_detail_file_is_marked_as_compact_index_only(monkeypatch):
     assert record["session_id"] == "index-only-session"
     assert record["_record_source"] == "index"
     assert record["_detail_available"] is False
+
+
+
+def test_saved_question_provider_synthesis_requires_route_permission(monkeypatch):
+    sid = "provider-evidence-session"
+    session = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "exchange_archive": [
+                {
+                    "session_id": sid,
+                    "exchange_id": "evidence-1",
+                    "user": "سأستخدم سكينًا ومفكًا وملعقة لتشكيل الجبس.",
+                    "assistant": "هذه أدوات منزلية مناسبة للتشكيل.",
+                },
+            ],
+        },
+    }
+    observed = []
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_index",
+        lambda: [session],
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_by_number",
+        lambda number: session if number == 1 else {},
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_by_id",
+        lambda session_id: session if session_id == sid else {},
+    )
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.load_session", lambda: {})
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.recoverable_work_checkpoint", lambda _data: None)
+
+    def fake_gateway(prompt, **kwargs):
+        observed.append(prompt)
+        return {
+            "status": "success",
+            "text": "ذكر المستخدم السكين والمفك والملعقة. [التبادل 1]",
+        }
+
+    monkeypatch.setattr("lab_v4_dev.llm.gateway.ask", fake_gateway)
+    agent = SimpleNamespace(
+        allow_provider_session_synthesis=True,
+        restore_session_snapshot=lambda _data: True,
+        restore_session_context=lambda: True,
+        runtime=None,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id=sid, number=1),
+        output_kind="summary",
+        evidence_scope="saved_session",
+        provider_allowed=True,
+        intent=Intent.SESSION_RESTORE,
+    )
+    request = "ما الأدوات التي استخدمتها في الجلسة 1؟"
+    result = Orchestrator(agent).handle(
+        request,
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "session_selector": {
+                "kind": "number",
+                "number": 1,
+                "report_mode": "recall",
+                "output_kind": "summary",
+            },
+        },
+        route_decision=decision,
+    )
+
+    assert result["status"] == "success"
+    assert result["source"] == "saved_session_evidence_synthesis"
+    assert result["provider_synthesis_used"] is True
+    assert observed and "سأستخدم سكينًا" in observed[0]
+    assert "evidence-1" in result["evidence_exchange_ids"]
+
+
+def test_saved_question_provider_is_not_called_without_route_permission(monkeypatch):
+    sid = "local-only-evidence-session"
+    session = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "exchange_archive": [
+                {
+                    "session_id": sid,
+                    "exchange_id": "local-evidence-1",
+                    "user": "صببت الجبس بسماكة ثلاثة سنتيمترات.",
+                    "assistant": "يمكن تشكيله بعد الجفاف.",
+                },
+            ],
+        },
+    }
+    calls = []
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_index", lambda: [session])
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_by_number", lambda _n: session)
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_by_id", lambda _sid: session)
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.load_session", lambda: {})
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.recoverable_work_checkpoint", lambda _data: None)
+    monkeypatch.setattr("lab_v4_dev.llm.gateway.ask", lambda *a, **k: calls.append(a) or {
+        "status": "success", "text": "إجابة لا ينبغي استخدامها. [التبادل 1]"
+    })
+    agent = SimpleNamespace(
+        allow_provider_session_synthesis=True,
+        restore_session_snapshot=lambda _data: True,
+        restore_session_context=lambda: True,
+        runtime=None,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id=sid, number=1),
+        output_kind="summary",
+        evidence_scope="saved_session",
+        provider_allowed=False,
+        intent=Intent.SESSION_RESTORE,
+    )
+    result = Orchestrator(agent).handle(
+        "ما سماكة الجبس في الجلسة 1؟",
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "session_selector": {
+                "kind": "number", "number": 1, "report_mode": "recall", "output_kind": "summary"
+            },
+        },
+        route_decision=decision,
+    )
+
+    assert result["status"] == "success"
+    assert result["source"] == "saved_session_evidence_retrieval"
+    assert result["provider_synthesis_used"] is False
+    assert not calls
+
+
+def test_orchestrator_refuses_to_analyze_compact_index_without_detail_file(monkeypatch):
+    sid = "index-only-report-session"
+    compact = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "_record_source": "index",
+        "_detail_available": False,
+    }
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_index", lambda: [compact])
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_by_number", lambda _n: compact)
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.get_session_by_id", lambda _sid: compact)
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.load_session", lambda: {})
+    agent = SimpleNamespace(
+        restore_session_snapshot=lambda _data: True,
+        restore_session_context=lambda: True,
+        runtime=None,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id=sid, number=1),
+        output_kind="report",
+        evidence_scope="saved_session",
+        provider_allowed=False,
+        intent=Intent.SESSION_RESTORE,
+    )
+    result = Orchestrator(agent).handle(
+        "اكتب تقريرًا تحليليًا عن الجلسة 1",
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "session_selector": {
+                "kind": "number", "number": 1, "report_mode": "full", "output_kind": "report"
+            },
+        },
+        route_decision=decision,
+    )
+
+    assert result["status"] == "needs_clarification"
+    assert result["source"] == "saved_session_detail_unavailable"
+
+
+def test_ancient_civilizations_followup_stays_in_live_dialogue(monkeypatch):
+    calls = []
+
+    def fake_gateway(prompt, **kwargs):
+        calls.append(prompt)
+        return {"status": "success", "text": "رد حواري عن الحضارات القديمة."}
+
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        fake_gateway,
+    )
+    orchestrator = SimpleNamespace(
+        context=ContextStore(),
+        calls=[],
+    )
+    memory = DialogueMemory(orchestrator.context)
+
+    class Recorder:
+        context = orchestrator.context
+
+        def handle(self, text, parsed=None, **kwargs):
+            self.calls.append((text, dict(parsed or {}), kwargs))
+            return {"status": "success", "intent": (parsed or {}).get("intent"), "text": "رد التنفيذ"}
+
+    recorder = Recorder()
+    manager = ConversationManager(recorder, memory)
+    first = manager.process("لنتحدث عن مصر القديمة والأهرامات.")
+    second = manager.process("وماذا عن بلاد الرافدين؟")
+
+    decision = second.get("route_decision")
+    assert first["status"] == "success"
+    assert second["status"] == "success"
+    assert getattr(decision, "route", None) in {"L-LIVE", "L-SOCIAL"}
+    assert "SQL Injection" not in str(second)
+    assert memory.state.last_topic != "SQL Injection"

@@ -1832,14 +1832,12 @@ SOURCE CODE:
             report_mode = selector.get("report_mode", "standard")
             if route_decision is not None and getattr(route_decision, "route", None) == "L-SESSION":
                 authorized_output = str(getattr(route_decision, "output_kind", "none") or "none")
-                if authorized_output == "report":
+                if authorized_output == "report" and report_mode == "standard":
                     report_mode = "full"
-                elif authorized_output == "brief":
+                elif authorized_output == "brief" and report_mode == "standard":
                     report_mode = "brief"
                 elif authorized_output == "transcript":
                     report_mode = "transcript"
-                elif authorized_output == "summary" and report_mode not in {"recall", "transcript"}:
-                    report_mode = "standard"
             if selector.get("kind") == "count":
                 counts = get_session_type_counts()
                 return {
@@ -2219,7 +2217,11 @@ SOURCE CODE:
                 return {"status":"success","intent":intent,
                         "text":"لا توجد جلسة سابقة محفوظة"}
             if report_mode == "recall":
-                from lab_v4_dev.memory.dialogue_knowledge import format_dialogue_evidence_answer
+                from lab_v4_dev.memory.dialogue_knowledge import (
+                    format_dialogue_evidence_answer,
+                    retrieve_dialogue_evidence,
+                )
+                evidence = retrieve_dialogue_evidence(s, str(raw or ""))
                 evidence_text = format_dialogue_evidence_answer(s, str(raw or ""))
                 if not evidence_text:
                     return {
@@ -2233,17 +2235,87 @@ SOURCE CODE:
                             "لم أستخدم ملخصًا قديمًا بديلًا عن التبادلات الأصلية، ولم أخمّن الإجابة."
                         ),
                     }
+
+                answer_text = evidence_text
+                answer_source = "saved_session_evidence_retrieval"
+                synthesis_used = False
+                provider_allowed = bool(
+                    route_decision is not None
+                    and getattr(route_decision, "route", None) == "L-SESSION"
+                    and getattr(route_decision, "provider_allowed", False)
+                    and getattr(self.agent, "allow_provider_session_synthesis", False)
+                )
+                if provider_allowed:
+                    source_lines = []
+                    allowed_exchange_numbers = {int(item["exchange_index"]) for item in evidence}
+                    for item in evidence:
+                        source_lines.append(
+                            f"[التبادل {item['exchange_index']}]\\n"
+                            f"المستخدم: {item['user']}\\n"
+                            f"الوكيل: {item['assistant']}"
+                        )
+                    prompt = "\\n\\n".join([
+                        "أجب عن سؤال المستخدم اعتمادًا على الأدلة المحددة فقط.",
+                        "ميّز بين ما قاله المستخدم وما قاله الوكيل، ولا تنسب قول أحدهما إلى الآخر.",
+                        "لا تضف معلومة غير موجودة في الأدلة. ضع مرجعًا من الشكل [التبادل N] بعد كل معلومة مسترجعة.",
+                        f"سؤال المستخدم: {str(raw or '')[:500]}",
+                        "الأدلة الأصلية من الجلسة المختارة:",
+                        "\\n\\n".join(source_lines),
+                    ])
+                    try:
+                        from lab_v4_dev.llm.gateway import ask as _gateway_ask
+                        synthesis = _gateway_ask(
+                            prompt,
+                            system=(
+                                "أنت محلل أدلة حوارية. أجب مباشرة وبالعربية. "
+                                "الأدلة المرفقة وحدها مصدر الحقيقة. لا تخمّن ولا توسّع نطاق الجلسة. "
+                                "أرفق مرجع التبادل الأصلي لكل معلومة."
+                            ),
+                            max_tokens=350,
+                            temperature=0.1,
+                            routing_text=str(raw or ""),
+                        )
+                        candidate = (
+                            str(synthesis.get("text") or "").strip()
+                            if isinstance(synthesis, dict)
+                            and synthesis.get("status") == "success"
+                            else ""
+                        )
+                        cited_numbers = [
+                            int(value)
+                            for value in re.findall(r"\\[\\s*التبادل\\s+(\\d+)\\s*\\]", candidate)
+                        ]
+                        if (
+                            candidate
+                            and cited_numbers
+                            and all(number in allowed_exchange_numbers for number in cited_numbers)
+                        ):
+                            answer_text = "\\n".join([
+                                "إجابة مركبة من الأدلة الأصلية للجلسة المحددة:",
+                                candidate,
+                                "الأدلة التفصيلية:",
+                                evidence_text,
+                            ])
+                            answer_source = "saved_session_evidence_synthesis"
+                            synthesis_used = True
+                    except Exception:
+                        # Provider synthesis is optional. The exact local evidence
+                        # remains the successful fallback when the provider is absent.
+                        pass
+
                 return {
                     "status": "success",
                     "intent": intent,
-                    "source": "saved_session_evidence_retrieval",
+                    "source": answer_source,
                     "context_action": "read_only_retrieval",
                     "context_restored": None,
                     "executed": False,
                     "session_id": str(s.get("session_id") or selected_id or ""),
                     "selected_session_id": str(s.get("session_id") or selected_id or ""),
                     "output_kind": "summary",
-                    "text": evidence_text,
+                    "provider_synthesis_used": synthesis_used,
+                    "evidence_exchange_ids": [item["exchange_id"] for item in evidence],
+                    "text": answer_text,
                 }
             recoverable = recoverable_work_checkpoint(s)
             if intent == Intent.RESUME:
@@ -2412,8 +2484,8 @@ SOURCE CODE:
 
                     source_lines = []
                     for index, exchange in enumerate(completed_exchanges, 1):
-                        user_text = " ".join(str(exchange.get("user") or "").split())[:500]
-                        assistant_text = " ".join(str(exchange.get("assistant") or "").split())[:700]
+                        user_text = " ".join(str(exchange.get("user") or "").split())
+                        assistant_text = " ".join(str(exchange.get("assistant") or "").split())
                         source_lines.append(
                             f"[تبادل محفوظ {index}]\n"
                             f"رسالة المستخدم: {user_text}\n"
