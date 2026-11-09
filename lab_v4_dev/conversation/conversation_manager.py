@@ -6623,6 +6623,46 @@ class ConversationManager:
                 else None
             )
 
+            # Project-scoped questions remain owned by local project knowledge
+            # when generation is unavailable. Return an explicit evidence gap
+            # instead of an opaque provider error or an invented file description.
+            if project_scope == ProjectScope.CURRENT_PROJECT and not compound_request:
+                knowledge_available = bool(
+                    isinstance(project_knowledge, dict)
+                    and any(
+                        project_knowledge.get(key)
+                        for key in (
+                            "components", "relationships", "files", "entities",
+                            "architecture", "facts", "evidence",
+                        )
+                    )
+                )
+                if knowledge_available:
+                    project_reply = (
+                        "تعذر تركيب إجابة موثقة من أدلة المشروع المحلية في هذه المحاولة. "
+                        "السجل المسترجع مرتبط بالمشروع، لكنه لا يثبت وحده الوظيفة المطلوبة. "
+                        "لن أستنتج وظيفة الملف من اسمه فقط."
+                    )
+                else:
+                    project_reply = (
+                        "لا تتوفر في قاعدة المعرفة المحلية أدلة كافية للإجابة عن هذا السؤال "
+                        "حول المشروع أو الملف المحدد. لم أستبدل نقص الأدلة بوصف تخميني. "
+                        "يمكن تحديد الملف أو الجزء المطلوب بدقة أكبر لاسترجاع مصدره."
+                    )
+                return {
+                    "status": "needs_clarification",
+                    "intent": (parsed or {}).get("intent", mode.lower()),
+                    "target": (parsed or {}).get("target") or "",
+                    "text": project_reply,
+                    "mode": mode,
+                    "source": "local_project_knowledge",
+                    "provider_failure_code": (
+                        str(gateway_error.get("code") or "")
+                        if isinstance(gateway_error, dict) else ""
+                    ),
+                    "executed": False,
+                }
+
             # If generation is unavailable, use the bounded local composer for
             # ordinary conversation continuations. It quotes only the authorized
             # dialogue history and explicitly labels the result as local; it
