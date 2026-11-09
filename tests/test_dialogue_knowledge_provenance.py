@@ -201,6 +201,10 @@ def test_saved_question_provider_synthesis_requires_route_permission(monkeypatch
     )
 
     assert result["status"] == "success"
+    assert result["provider_synthesis_allowed"] is True, result
+    assert result["provider_synthesis_attempted"] is True, result
+    assert observed, result
+    assert result["provider_synthesis_rejection_reason"] is None, result
     assert result["source"] == "saved_session_evidence_synthesis"
     assert result["provider_synthesis_used"] is True
     assert observed and "سأستخدم سكينًا" in observed[0]
@@ -313,7 +317,7 @@ def test_ancient_civilizations_followup_stays_in_live_dialogue(monkeypatch):
 
     def fake_gateway(prompt, **kwargs):
         calls.append(prompt)
-        return {"status": "success", "text": "رد حواري عن الحضارات القديمة."}
+        return {"status": "success", "text": "رد حواري عن الحضارات القديمة.", "provider_used": "test"}
 
     monkeypatch.setattr(
         "lab_v4_dev.conversation.conversation_manager.gateway_ask",
@@ -335,8 +339,8 @@ def test_ancient_civilizations_followup_stays_in_live_dialogue(monkeypatch):
     second = manager.process("وماذا عن بلاد الرافدين؟")
 
     decision = second.get("route_decision")
-    assert first["status"] == "success"
-    assert second["status"] == "success"
+    assert first["status"] == "success", first
+    assert second["status"] == "success", second
     assert getattr(decision, "route", None) in {"L-LIVE", "L-SOCIAL"}
     assert "SQL Injection" not in str(second)
     assert memory.state.last_topic != "SQL Injection"

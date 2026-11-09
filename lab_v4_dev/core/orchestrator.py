@@ -2239,6 +2239,8 @@ SOURCE CODE:
                 answer_text = evidence_text
                 answer_source = "saved_session_evidence_retrieval"
                 synthesis_used = False
+                synthesis_attempted = False
+                synthesis_rejection_reason = None
                 provider_allowed = bool(
                     route_decision is not None
                     and getattr(route_decision, "route", None) == "L-SESSION"
@@ -2246,6 +2248,7 @@ SOURCE CODE:
                     and getattr(self.agent, "allow_provider_session_synthesis", False)
                 )
                 if provider_allowed:
+                    synthesis_attempted = True
                     source_lines = []
                     allowed_exchange_numbers = {int(item["exchange_index"]) for item in evidence}
                     for item in evidence:
@@ -2298,10 +2301,16 @@ SOURCE CODE:
                             ])
                             answer_source = "saved_session_evidence_synthesis"
                             synthesis_used = True
-                    except Exception:
+                        elif not candidate:
+                            synthesis_rejection_reason = "empty_or_failed_provider_response"
+                        elif not cited_numbers:
+                            synthesis_rejection_reason = "missing_exchange_citations"
+                        else:
+                            synthesis_rejection_reason = "citation_outside_retrieved_evidence"
+                    except Exception as exc:
                         # Provider synthesis is optional. The exact local evidence
                         # remains the successful fallback when the provider is absent.
-                        pass
+                        synthesis_rejection_reason = type(exc).__name__
 
                 return {
                     "status": "success",
@@ -2313,7 +2322,10 @@ SOURCE CODE:
                     "session_id": str(s.get("session_id") or selected_id or ""),
                     "selected_session_id": str(s.get("session_id") or selected_id or ""),
                     "output_kind": "summary",
+                    "provider_synthesis_allowed": provider_allowed,
+                    "provider_synthesis_attempted": synthesis_attempted,
                     "provider_synthesis_used": synthesis_used,
+                    "provider_synthesis_rejection_reason": synthesis_rejection_reason,
                     "evidence_exchange_ids": [item["exchange_id"] for item in evidence],
                     "text": answer_text,
                 }
