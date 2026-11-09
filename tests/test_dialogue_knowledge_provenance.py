@@ -784,3 +784,63 @@ def test_session_72_art_and_relief_plaster_details_are_retrievable_from_raw_evid
     assert "مساهمات الوكيل واقتراحاته" in report
     assert "3 سم" in report
     assert "كولا" in report
+
+
+
+def test_knowledge_cache_invalidates_when_topic_metadata_changes():
+    session = _saved_session()
+    exchange = session["dialogue_state"]["exchange_archive"][0]
+    exchange["knowledge_version"] = 2
+    exchange["knowledge"] = extract_exchange_knowledge(
+        exchange,
+        session_id=session["session_id"],
+        exchange_index=0,
+    )
+    original_topic = exchange["knowledge"][0]["topic_id"]
+    assert original_topic == "تنفيذ لوحة بالجبس"
+
+    exchange["target"] = "تركيب نموذج معماري"
+    exchange["timestamp"] = "2026-11-02T12:00:00"
+    analysis = analyze_dialogue_session(session)
+
+    rebuilt = next(
+        item for item in analysis["user_information"]
+        if "إطارًا خشبيًا" in item["content"]
+    )
+    assert rebuilt["topic_id"] == "تركيب نموذج معماري"
+    assert rebuilt["timestamp"] == "2026-11-02T12:00:00"
+
+
+def test_suggestion_acceptance_is_not_inferred_after_an_unrelated_exchange():
+    sid = "suggestion-adjacency-session"
+    session = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "exchange_archive": [
+                {
+                    "session_id": sid, "exchange_id": "s1",
+                    "target": "الفن التجريدي",
+                    "user": "كيف أنعم حواف الجبس؟",
+                    "assistant": "يمكنك استخدام ورق الصنفرة لتنعيم الحواف.",
+                },
+                {
+                    "session_id": sid, "exchange_id": "s2",
+                    "target": "بلاد الرافدين",
+                    "user": "لننتقل إلى حضارة بلاد الرافدين.",
+                    "assistant": "ازدهرت مدن سومر وأكد في بلاد الرافدين.",
+                },
+                {
+                    "session_id": sid, "exchange_id": "s3",
+                    "target": "بلاد الرافدين",
+                    "user": "نعم، أكمل.",
+                    "assistant": "من أبرز مراكزها أور وأوروك.",
+                },
+            ],
+        },
+    }
+
+    analysis = analyze_dialogue_session(session)
+
+    assert not any(item["relation"] == "accepts" for item in analysis["relationships"])

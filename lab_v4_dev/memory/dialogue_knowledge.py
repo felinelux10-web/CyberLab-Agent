@@ -19,7 +19,14 @@ _STOP_WORDS = {
 }
 
 def _exchange_source_fingerprint(exchange: dict) -> str:
-    raw = "\0".join((str(exchange.get("user") or ""), str(exchange.get("assistant") or "")))
+    # Include every source field that changes derived knowledge. In particular,
+    # target and timestamp affect topic attribution and temporal provenance even
+    # when the two message bodies remain byte-for-byte identical.
+    fields = (
+        "session_id", "exchange_id", "timestamp", "created_at",
+        "target", "user", "assistant",
+    )
+    raw = "\0".join(f"{field}={exchange.get(field) or ''}" for field in fields)
     return _hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -362,6 +369,10 @@ def analyze_dialogue_session(data: dict) -> dict:
                 if not has_answer:
                     unresolved.append(item)
 
+        # A suggestion can be accepted or rejected only in the immediately
+        # following exchange. Do not carry an unrelated old suggestion across
+        # intervening dialogue turns and infer a relationship from a bare "yes".
+        previous_suggestion = None
         for item in assistant_records:
             if item.get("knowledge_type") == "assistant_suggestion":
                 previous_suggestion = item
