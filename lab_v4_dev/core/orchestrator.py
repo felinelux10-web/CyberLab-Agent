@@ -2439,7 +2439,9 @@ SOURCE CODE:
                 provider_synthesis_used = False
                 provider_synthesis_rejection_reason = None
                 dialogue_id = str(dialogue_state.get("session_id") or "").strip()
-                saved_exchanges = dialogue_state.get("exchange_archive") or []
+                saved_exchanges = dialogue_state.get("transcript_archive")
+                if not isinstance(saved_exchanges, list) or not saved_exchanges:
+                    saved_exchanges = dialogue_state.get("exchange_archive") or []
                 if (
                     is_saved_dialogue
                     and dialogue_id
@@ -2497,7 +2499,12 @@ SOURCE CODE:
                             completed_exchanges = matched_exchanges
                             filtered_session = dict(s)
                             filtered_dialogue_state = dict(dialogue_state)
-                            filtered_dialogue_state["exchange_archive"] = completed_exchanges
+                            # Keep both the canonical full transcript and the
+                            # bounded live window aligned with this topic-scoped view.
+                            # Otherwise the summary builder would prefer the unfiltered
+                            # transcript_archive and silently reintroduce unrelated topics.
+                            filtered_dialogue_state["transcript_archive"] = completed_exchanges
+                            filtered_dialogue_state["exchange_archive"] = completed_exchanges[-32:]
                             filtered_dialogue_state["last_topic"] = next(
                                 (
                                     str(item.get("target") or "").strip()
@@ -2530,7 +2537,16 @@ SOURCE CODE:
                         report_evidence_ids.append(
                             str(exchange.get("exchange_id") or f"{dialogue_id}:{index}")
                         )
-                    source_text = "\n\n".join(source_lines)[:42000]
+                    complete_source_text = "\n\n".join(source_lines)
+                    # Never silently truncate a saved dialogue and then describe
+                    # the result as a synthesis of the whole session. The local
+                    # evidence-backed report already covers the full transcript;
+                    # optional provider synthesis is skipped when the complete
+                    # source cannot fit in one bounded request.
+                    source_fits_provider_budget = len(complete_source_text) <= 42000
+                    source_text = complete_source_text if source_fits_provider_budget else ""
+                    if not source_fits_provider_budget:
+                        provider_synthesis_rejection_reason = "session_exceeds_single_prompt_evidence_budget"
                     included_exchange_numbers = {
                         int(value)
                         for value in _re_module.findall(r"\[تبادل محفوظ\s+(\d+)\]", source_text)

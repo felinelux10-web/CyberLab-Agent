@@ -1198,3 +1198,172 @@ def test_numbered_session_reports_accept_attached_arabic_prepositions():
         assert selected["kind"] == "number", (prompt, selected)
         assert selected["number"] == 72, (prompt, selected)
         assert selected["report_mode"] == "full", (prompt, selected)
+
+
+
+def test_saved_dialogue_report_uses_full_transcript_not_only_live_window(monkeypatch):
+    session_id = "long-dialogue-session"
+    transcript = [
+        {
+            "exchange_id": f"{session_id}:{index}",
+            "session_id": session_id,
+            "user": f"تفصيل محفوظ قديم رقم {index} عن موضوع البحث الكامل",
+            "assistant": f"شرح موثق للتفصيل رقم {index} ضمن النقاش.",
+            "target": "موضوع البحث الكامل",
+            "timestamp": f"2026-01-01T00:{index:02d}:00",
+        }
+        for index in range(1, 41)
+    ]
+    session = {
+        "session_id": session_id,
+        "session_type": "dialogue",
+        "active_goal": "موضوع البحث الكامل",
+        "dialogue_state": {
+            "session_id": session_id,
+            "last_topic": "موضوع البحث الكامل",
+            "transcript_archive": transcript,
+            "exchange_archive": transcript[-32:],
+        },
+    }
+    observed = []
+    def fake_gateway(prompt, **kwargs):
+        observed.append(prompt)
+        return {
+            "status": "success",
+            "text": "ناقش السجل التفاصيل المتتابعة للموضوع. [تبادل محفوظ 1]",
+        }
+
+    monkeypatch.setattr("lab_v4_dev.llm.gateway.ask", fake_gateway)
+    agent = SimpleNamespace(
+        restore_session_snapshot=lambda _data: True,
+        restore_session_context=lambda: True,
+        runtime=None,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    orchestrator = Orchestrator(agent)
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_index",
+        lambda: [session],
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_by_id",
+        lambda _session_id: session if _session_id == session_id else {},
+    )
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.load_session", lambda: {})
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.recoverable_work_checkpoint",
+        lambda _data: None,
+    )
+
+    request = "اكتب ملخص الجلسة المحفوظة رقم 1"
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id=session_id, number=1),
+        output_kind="summary",
+        evidence_scope="saved_session",
+        provider_allowed=True,
+        intent=Intent.SESSION_RESTORE,
+    )
+    result = orchestrator.handle(
+        request,
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "target": "",
+            "context": "system",
+            "session_selector": session_selector(request),
+        },
+        route_decision=decision,
+    )
+
+    assert result["status"] == "success"
+    assert len(result["evidence_exchange_ids"]) == 40
+    assert result["evidence_exchange_ids"][0] == f"{session_id}:1"
+    assert result["evidence_exchange_ids"][-1] == f"{session_id}:40"
+    assert observed
+    assert "تفصيل محفوظ قديم رقم 1" in observed[0]
+    assert "تفصيل محفوظ قديم رقم 40" in observed[0]
+
+
+def test_saved_dialogue_provider_synthesis_never_silently_truncates_full_evidence(monkeypatch):
+    session_id = "oversized-dialogue-session"
+    transcript = [
+        {
+            "exchange_id": f"{session_id}:{index}",
+            "session_id": session_id,
+            "user": f"معلومة محفوظة رقم {index}: " + ("تفصيل أصلي " * 70),
+            "assistant": f"رد محفوظ رقم {index}: " + ("شرح موثق " * 70),
+            "target": "موضوع طويل",
+            "timestamp": f"2026-01-01T00:{index:02d}:00",
+        }
+        for index in range(1, 45)
+    ]
+    session = {
+        "session_id": session_id,
+        "session_type": "dialogue",
+        "active_goal": "موضوع طويل",
+        "dialogue_state": {
+            "session_id": session_id,
+            "last_topic": "موضوع طويل",
+            "transcript_archive": transcript,
+            "exchange_archive": transcript[-32:],
+        },
+    }
+    provider_calls = []
+    monkeypatch.setattr(
+        "lab_v4_dev.llm.gateway.ask",
+        lambda prompt, **kwargs: provider_calls.append(prompt) or {
+            "status": "success",
+            "text": "ملخص غير مكتمل. [تبادل محفوظ 1]",
+        },
+    )
+    agent = SimpleNamespace(
+        restore_session_snapshot=lambda _data: True,
+        restore_session_context=lambda: True,
+        runtime=None,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    orchestrator = Orchestrator(agent)
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_index",
+        lambda: [session],
+    )
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.get_session_by_id",
+        lambda _session_id: session if _session_id == session_id else {},
+    )
+    monkeypatch.setattr("lab_v4_dev.memory.session_state.load_session", lambda: {})
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state.recoverable_work_checkpoint",
+        lambda _data: None,
+    )
+
+    request = "اكتب ملخص الجلسة المحفوظة رقم 1"
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id=session_id, number=1),
+        output_kind="summary",
+        evidence_scope="saved_session",
+        provider_allowed=True,
+        intent=Intent.SESSION_RESTORE,
+    )
+    result = orchestrator.handle(
+        request,
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "target": "",
+            "context": "system",
+            "session_selector": session_selector(request),
+        },
+        route_decision=decision,
+    )
+
+    assert result["status"] == "success"
+    assert provider_calls == []
+    assert result["provider_synthesis_allowed"] is True
+    assert result["provider_synthesis_attempted"] is False
+    assert result["provider_synthesis_rejection_reason"] == (
+        "session_exceeds_single_prompt_evidence_budget"
+    )
+    assert len(result["evidence_exchange_ids"]) == 44
