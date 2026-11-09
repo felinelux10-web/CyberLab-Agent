@@ -2268,14 +2268,12 @@ class ConversationManager:
             ))
             restored_social = restored_social_topic or (
                 restored_kind in {"dialogue", "social", "unknown"}
+                and restored_domain not in {
+                    "technical", "project", "work", "system", "execution",
+                }
                 and (
                     restored_social_intent
-                    or (
-                        not restored_technical_intent
-                        and restored_domain not in {
-                            "technical", "project", "work", "system", "execution",
-                        }
-                    )
+                    or not restored_technical_intent
                 )
             )
             history_reference = (
@@ -3394,21 +3392,18 @@ class ConversationManager:
                     restored_user = self._normalize_transition_text(
                         restored_exchange.get("user") or ""
                     )
-                    restored_social = (
-                        restored_intent in {"personal_chat", "chat", "discussion", "question", "unclear"}
-                        or any(marker in restored_user for marker in (
-                            "موضوع عام", "نقاش عام", "حديث عام", "حوار عام",
-                            "دعنا نتحدث", "لنتحدث", "نتحدث عن",
-                        ))
-                        or (
-                            restored_kind in {"dialogue", "social", "unknown"}
-                            and restored_domain not in {
-                                "technical", "project", "work", "system", "execution",
-                            }
-                            and restored_intent not in {
-                                "cyber_explain", "architecture", "propose_solution", "plan", "lab_plan",
-                            }
-                        )
+                    explicit_social_branch = any(marker in restored_user for marker in (
+                        "موضوع عام", "نقاش عام", "حديث عام", "حوار عام",
+                        "دعنا نتحدث", "لنتحدث", "نتحدث عن",
+                    ))
+                    restored_social = explicit_social_branch or (
+                        restored_kind in {"dialogue", "social", "unknown"}
+                        and restored_domain not in {
+                            "technical", "project", "work", "system", "execution",
+                        }
+                        and restored_intent not in {
+                            "cyber_explain", "architecture", "propose_solution", "plan", "lab_plan",
+                        }
                     )
                     parsed = dict(parsed or {})
                     parsed.update({
