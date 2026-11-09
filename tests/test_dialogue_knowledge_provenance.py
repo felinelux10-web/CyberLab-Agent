@@ -683,3 +683,25 @@ def test_restore_snapshot_loads_only_the_last_32_items_from_full_transcript():
     assert len(memory.state.exchange_archive) == 32
     assert memory.state.exchange_archive[0]["exchange_id"] == "exchange-9"
     assert memory.state.exchange_archive[-1]["exchange_id"] == "exchange-40"
+
+
+
+def test_empty_full_transcript_field_falls_back_to_legacy_bounded_archive():
+    sid = "legacy-empty-transcript"
+    exchange = {
+        "session_id": sid,
+        "exchange_id": "legacy-exchange-1",
+        "user": "ذكرت أنني أفضّل الرسم التجريدي.",
+        "assistant": "يمكن بناء العمل على اللون والشكل.",
+    }
+    analysis = analyze_dialogue_session({
+        "session_id": sid,
+        "dialogue_state": {
+            "session_id": sid,
+            "transcript_archive": [],
+            "exchange_archive": [exchange],
+        },
+    })
+
+    assert analysis["exchange_count"] == 1
+    assert any("الرسم التجريدي" in item["content"] for item in analysis["user_information"])

@@ -1200,10 +1200,10 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
     if not isinstance(previous_dialogue_state, dict):
         previous_dialogue_state = {}
     previous_transcript = previous_dialogue_state.get("transcript_archive")
-    if not isinstance(previous_transcript, list):
+    if not isinstance(previous_transcript, list) or not previous_transcript:
         previous_transcript = previous_dialogue_state.get("exchange_archive") or []
     previous_failed_transcript = previous_dialogue_state.get("failed_transcript_archive")
-    if not isinstance(previous_failed_transcript, list):
+    if not isinstance(previous_failed_transcript, list) or not previous_failed_transcript:
         previous_failed_transcript = previous_dialogue_state.get("failed_exchange_archive") or []
     previous_transcript = [
         item for item in previous_transcript
@@ -1499,7 +1499,7 @@ def _dialogue_exchanges(data: dict) -> list[dict]:
         return []
     session_id = str(dialogue.get("session_id") or "").strip()
     exchanges = dialogue.get("transcript_archive")
-    if not isinstance(exchanges, list):
+    if not isinstance(exchanges, list) or not exchanges:
         exchanges = dialogue.get("exchange_archive") or []
     if not isinstance(exchanges, list):
         return []

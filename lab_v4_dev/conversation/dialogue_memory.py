@@ -130,10 +130,10 @@ class DialogueMemory:
                 setattr(restored, field, snapshot[field])
         # Never relabel records without the exact checkpoint session identity.
         transcript_source = snapshot.get("transcript_archive")
-        if not isinstance(transcript_source, list):
+        if not isinstance(transcript_source, list) or not transcript_source:
             transcript_source = restored.exchange_archive
         failed_transcript_source = snapshot.get("failed_transcript_archive")
-        if not isinstance(failed_transcript_source, list):
+        if not isinstance(failed_transcript_source, list) or not failed_transcript_source:
             failed_transcript_source = restored.failed_exchange_archive
         restored.exchange_archive = [
             dict(item)

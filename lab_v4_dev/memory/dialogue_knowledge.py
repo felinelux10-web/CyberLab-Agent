@@ -63,7 +63,7 @@ def _exchange_archive(data: dict) -> tuple[str, list[dict]]:
         return "", []
     records = []
     completed_archive = dialogue.get("transcript_archive")
-    if not isinstance(completed_archive, list):
+    if not isinstance(completed_archive, list) or not completed_archive:
         completed_archive = dialogue.get("exchange_archive") or []
     for item in completed_archive:
         if not isinstance(item, dict):
@@ -214,7 +214,7 @@ def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
     if not isinstance(completed_archive, list):
         completed_archive = dialogue.get("exchange_archive") or []
     failed_archive = dialogue.get("failed_transcript_archive")
-    if not isinstance(failed_archive, list):
+    if not isinstance(failed_archive, list) or not failed_archive:
         failed_archive = dialogue.get("failed_exchange_archive") or []
     records = []
     for archive_name, archive in (
