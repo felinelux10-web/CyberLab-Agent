@@ -66,7 +66,7 @@ def _tokens(value: Any) -> set[str]:
 def _exchange_archive(data: dict) -> tuple[str, list[dict]]:
     dialogue = data.get("dialogue_state")
     if not isinstance(dialogue, dict):
-        return "", []
+        dialogue = data
     record_session_id = str(data.get("session_id") or "").strip()
     dialogue_session_id = str(dialogue.get("session_id") or "").strip()
     if record_session_id and dialogue_session_id and record_session_id != dialogue_session_id:
@@ -357,6 +357,11 @@ def analyze_dialogue_session(data: dict) -> dict:
                 exchange, session_id=session_id, exchange_index=index
             )
         )
+        for record in records:
+            record["source_exchange_index"] = index + 1
+            temporal_order = record.get("temporal_order")
+            if isinstance(temporal_order, list) and temporal_order:
+                record["temporal_order"] = [index + 1, *temporal_order[1:]]
         knowledge.extend(records)
         user_records = [item for item in records if item.get("speaker") == "user"]
         assistant_records = [item for item in records if item.get("speaker") == "assistant"]
@@ -463,6 +468,10 @@ def analyze_dialogue_session(data: dict) -> dict:
         "planned_actions": [
             item for item in knowledge if item.get("knowledge_type") == "planned_action"
         ],
+        "conclusions": [
+            item for item in knowledge
+            if item.get("knowledge_type") == "assistant_conclusion"
+        ],
         "questions": [
             item for item in knowledge if item.get("knowledge_type") == "question"
         ],
@@ -472,6 +481,20 @@ def analyze_dialogue_session(data: dict) -> dict:
         ],
         "relationships": relationships,
         "last_exchange": timeline[-1] if timeline else None,
+        "explicit_next_step": next(
+            (
+                sentence
+                for sentence in _split_knowledge_sentences(
+                    (timeline[-1].get("user_text", "") + " " + timeline[-1].get("assistant_text", ""))
+                    if timeline else ""
+                )
+                if any(marker in _normalize(sentence) for marker in (
+                    "الخطوه التاليه", "الخطوة التالية", "سنكمل", "سأتابع",
+                    "سوف نتابع", "تابع في المره القادمه", "بعد ذلك سن",
+                ))
+            ),
+            None,
+        ),
         "evidence_coverage": {
             "raw_exchange_count": len(exchanges),
             "knowledge_record_count": len(knowledge),
@@ -521,6 +544,13 @@ def format_dialogue_analysis_report(data: dict) -> str:
             f"- {label} [التبادل {item['source_exchange_index']}]: {item['content']}"
             for item in analysis[key]
         )
+    lines.extend(["", "الخلاصات التي صرّح بها الوكيل:"])
+    lines.extend(
+        f"- [التبادل {item['source_exchange_index']}] {item['content']}"
+        for item in analysis["conclusions"]
+    )
+    if not analysis["conclusions"]:
+        lines.append("- لا توجد خلاصة صريحة محفوظة يمكن نسبتها إلى الوكيل.")
     lines.extend(["", "العلاقات المستنتجة بحذر:"])
     lines.extend(
         f"- {item['relation']}: {item['source_knowledge_id']} ← {item['target_knowledge_id']} "
@@ -544,6 +574,21 @@ def format_dialogue_analysis_report(data: dict) -> str:
     )
     if not analysis["unresolved_questions"]:
         lines.append("- لا توجد أسئلة محفوظة بلا رد موثق.")
+    lines.extend(["", "نقطة التوقف:"])
+    last_exchange = analysis["last_exchange"]
+    if last_exchange:
+        lines.append(f"- آخر رسالة للمستخدم: {last_exchange['user_text'] or 'لا توجد'}")
+        if last_exchange.get("response_failed"):
+            lines.append("- لم يُحفظ رد مكتمل لهذا التبادل.")
+        else:
+            lines.append(f"- آخر رد محفوظ: {last_exchange['assistant_text'] or 'لا يوجد'}")
+    else:
+        lines.append("- لا توجد تبادلات أصلية محفوظة.")
+    lines.append(
+        f"- الخطوة التالية المصرّح بها: {analysis['explicit_next_step']}"
+        if analysis["explicit_next_step"]
+        else "- لم تُذكر خطوة تالية صريحة في آخر تبادل."
+    )
     lines.extend(["", "التسلسل الزمني:"])
     lines.extend(
         f"- التبادل {item['exchange_index']}: {item['topic'] or 'موضوع غير محدد'}"

@@ -420,3 +420,122 @@ def test_explicit_saved_dialogue_restore_activates_only_the_selected_session():
     active = restored.active_restored_session()
     assert active["session_id"] == snapshot["session_id"]
     assert active["topic"] == "الفن التجريدي"
+
+
+
+def _artwork_session_fixture():
+    sid = "artwork-session-fixture"
+    return {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "exchange_archive": [
+                {
+                    "session_id": sid,
+                    "exchange_id": "art-step-1",
+                    "timestamp": "2026-11-01T10:00:00",
+                    "target": "تنفيذ لوحة بالجبس",
+                    "user": "استخدمت إطارًا خشبيًا للوحة قديمة وصببت الجبس داخله بسماكة تقارب ثلاثة سنتيمترات.",
+                    "assistant": "يمكن ترك الجبس حتى يجف قبل تشكيل سطحه.",
+                },
+                {
+                    "session_id": sid,
+                    "exchange_id": "art-step-2",
+                    "timestamp": "2026-11-01T10:05:00",
+                    "target": "تنفيذ لوحة بالجبس",
+                    "user": "بعد الجفاف شكلت السطح بسكين ومفك براغٍ وملعقة.",
+                    "assistant": "يمكنك استخدام الأدوات المتاحة لتكوين التضاريس.",
+                },
+                {
+                    "session_id": sid,
+                    "exchange_id": "art-step-3",
+                    "timestamp": "2026-11-01T10:10:00",
+                    "target": "تنفيذ لوحة بالجبس",
+                    "user": "دهنت العمل كله بالأسود الغامق ثم أضفت الذهبي والأبيض والأزرق بدرجات متناسقة.",
+                    "assistant": "يمكن توزيع الألوان على طبقات بعد جفاف الطلاء الأساسي.",
+                },
+                {
+                    "session_id": sid,
+                    "exchange_id": "art-step-4",
+                    "timestamp": "2026-11-01T10:15:00",
+                    "target": "تنفيذ لوحة بالجبس",
+                    "user": "استخدمت صباغة مائية صديقة للبيئة بمظهر عتيق، ثم وضعت طبقة حماية أخيرة أسميها كولا تشبه الورنيش الخشبي الشفاف.",
+                    "assistant": "تعمل طبقة الورنيش الشفاف على حماية السطح النهائي.",
+                },
+            ],
+        },
+    }
+
+
+def test_novel_paraphrased_question_retrieves_the_final_protective_layer():
+    evidence = retrieve_dialogue_evidence(
+        _artwork_session_fixture(),
+        "ما المادة الشفافة التي وضعتها في النهاية لحماية العمل؟",
+    )
+
+    assert evidence
+    assert any(
+        item["exchange_id"] == "art-step-4"
+        and "كولا" in item["user"]
+        and "الورنيش الخشبي الشفاف" in item["user"]
+        for item in evidence
+    )
+
+
+def test_novel_questions_retrieve_evidence_across_different_topic_domains():
+    sessions_and_questions = [
+        (
+            {
+                "session_id": "film-topic",
+                "dialogue_state": {
+                    "session_id": "film-topic",
+                    "exchange_archive": [{
+                        "session_id": "film-topic",
+                        "exchange_id": "film-1",
+                        "user": "أفضّل أفلام الخيال العلمي التي تعتمد على ألغاز زمنية ولا تكشف النهاية مبكرًا.",
+                        "assistant": "يمكن أن تناسبك الأفلام ذات السرد غير الخطي.",
+                    }],
+                },
+            },
+            "ما نوع الأفلام التي أفضلها؟",
+            "ألغاز زمنية",
+        ),
+        (
+            {
+                "session_id": "history-topic",
+                "dialogue_state": {
+                    "session_id": "history-topic",
+                    "exchange_archive": [{
+                        "session_id": "history-topic",
+                        "exchange_id": "history-1",
+                        "user": "أرى أن فهم الحاضر يحتاج إلى مقارنة الأحداث الحالية بجذورها التاريخية في الماضي.",
+                        "assistant": "يمكن تتبع أثر الأحداث الماضية في تشكيل الحاضر.",
+                    }],
+                },
+            },
+            "لماذا أحتاج إلى فهم الماضي؟",
+            "جذورها التاريخية",
+        ),
+        (
+            {
+                "session_id": "civilizations-topic",
+                "dialogue_state": {
+                    "session_id": "civilizations-topic",
+                    "exchange_archive": [{
+                        "session_id": "civilizations-topic",
+                        "exchange_id": "civilizations-1",
+                        "user": "أريد مقارنة التنظيم الإداري في مصر القديمة وبلاد الرافدين.",
+                        "assistant": "يمكن مقارنة الإدارة والاقتصاد والكتابة في الحضارتين.",
+                    }],
+                },
+            },
+            "ما الحضارتان اللتان طلبت المقارنة بينهما؟",
+            "بلاد الرافدين",
+        ),
+    ]
+
+    for session, query, expected in sessions_and_questions:
+        evidence = retrieve_dialogue_evidence(session, query)
+        assert evidence, (query, session["session_id"])
+        assert any(expected in item["user"] for item in evidence), (query, evidence)

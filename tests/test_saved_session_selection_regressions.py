@@ -4,6 +4,7 @@ from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.core.contracts import RouteDecision, SessionRef
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.memory.session_state import session_selector, session_route_contract, build_session_restore_summary
 from lab_v4_dev.memory.dialogue_knowledge import retrieve_dialogue_evidence
@@ -625,6 +626,15 @@ def test_numbered_saved_session_summary_is_read_only_and_reports_the_selected_re
     selected = session_selector(request)
     assert selected == {"kind": "number", "number": 2, "report_mode": "full"}
 
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id="python-saved-2", number=2),
+        output_kind="summary",
+        evidence_scope="saved_session",
+        provider_allowed=True,
+        intent=Intent.SESSION_RESTORE,
+    )
     result = orchestrator.handle(
         request,
         parsed={
@@ -633,6 +643,7 @@ def test_numbered_saved_session_summary_is_read_only_and_reports_the_selected_re
             "context": "system",
             "session_selector": selected,
         },
+        route_decision=decision,
     )
 
     assert result["status"] == "success"

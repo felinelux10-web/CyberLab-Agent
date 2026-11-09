@@ -2508,12 +2508,10 @@ SOURCE CODE:
                     # stored exchanges; a successful provider response alone is not
                     # evidence that every generated claim is present in the archive.
                     allow_provider_synthesis = bool(
-                        getattr(self.agent, "allow_provider_session_synthesis", True)
+                        route_decision is not None
+                        and getattr(route_decision, "route", None) == "L-SESSION"
+                        and getattr(route_decision, "provider_allowed", False)
                     )
-                    if route_decision is not None and not bool(
-                        getattr(route_decision, "provider_allowed", False)
-                    ):
-                        allow_provider_synthesis = False
                     if source_text and allow_provider_synthesis:
                         topic = str(
                             dialogue_state.get("last_topic")
