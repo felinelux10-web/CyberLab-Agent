@@ -1305,6 +1305,20 @@ def test_simple_chat_opening_is_answered_locally_without_provider(monkeypatch):
 
 def test_mesopotamia_followup_stays_in_ancient_civilizations_dialogue(monkeypatch):
     manager, memory, orchestrator, calls = _manager(monkeypatch)
+    prompts = []
+
+    def contextual_gateway(prompt, **kwargs):
+        prompts.append(prompt)
+        return {
+            "status": "success",
+            "text": "بلاد الرافدين من أقدم مراكز نشوء المدن والكتابة، ومن حضاراتها سومر وأكد.",
+            "provider_used": "test",
+        }
+
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        contextual_gateway,
+    )
     topic = "الحضارات القديمة"
     memory.state.last_topic = topic
     memory.state.last_intent = "personal_chat"
@@ -1343,7 +1357,12 @@ def test_mesopotamia_followup_stays_in_ancient_civilizations_dialogue(monkeypatc
     result = manager.process("وماذا عن بلاد الرافدين؟")
     decision = result.get("route_decision")
 
-    assert getattr(decision, "route", None) in {"L-LIVE", "L-SOCIAL"}, result
+    assert getattr(decision, "route", None) == "L-LIVE", result
+    assert "بلاد الرافدين" in result["text"]
+    assert prompts
+    assert "وماذا عن بلاد الرافدين؟" in prompts[-1]
+    assert "مصر القديمة والأهرامات" in prompts[-1]
+    assert "SQL Injection" not in prompts[-1]
     assert "SQL Injection" not in str(result)
     assert memory.state.last_topic != "SQL Injection"
     assert orchestrator.calls == []
