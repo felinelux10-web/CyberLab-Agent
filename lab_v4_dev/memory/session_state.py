@@ -683,14 +683,11 @@ def session_route_contract(raw: str) -> dict:
     # the saved context or silently turning the question into a generic report.
     specific_saved_question = bool(
         selection.get("kind") in {"number", "id"}
+        and selection.get("report_mode") == "recall"
         and re.match(
             r"^(?:ما|ماذا|من|هل|كيف|اين|أين|اذكر|حدد|حدّد|اي|أي|ماهي|ما هي|كم)\b",
             text,
         )
-        and not any(marker in text for marker in (
-            "ملخص", "تلخيص", "لخص", "موجز", "تقرير", "نص الحوار",
-            "الرسائل الاصلية", "الرسائل الأصلية",
-        ))
     )
     if specific_saved_question:
         selection["report_mode"] = "recall"

@@ -1173,3 +1173,13 @@ def test_explicit_numbered_session_summary_is_not_misrouted_to_factual_recall():
     assert selected["kind"] == "number"
     assert selected["number"] == 72
     assert selected["report_mode"] != "recall"
+
+
+
+def test_numbered_restore_capability_question_is_not_reclassified_as_factual_recall():
+    contract = session_route_contract("هل يمكنك استرجاع الجلسة 72؟")
+
+    assert contract["kind"] == "number"
+    assert contract["number"] == 72
+    assert contract["report_mode"] != "recall"
+    assert contract["output_kind"] == "capability"
