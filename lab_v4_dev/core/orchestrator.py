@@ -121,7 +121,10 @@ class Orchestrator:
             evidence_scope = str(getattr(route_decision, "evidence_scope", "none") or "none")
             session_ref = getattr(route_decision, "session_ref", None)
             selector_kind = str(((parsed or {}).get("session_selector") or {}).get("kind") or "none")
-            if output_kind in {"summary", "brief", "report", "topic_summary", "transcript"}:
+            if output_kind in {
+                "summary", "brief", "report", "topic_summary", "transcript",
+                "continue_topic", "progress",
+            }:
                 valid_scope = (
                     evidence_scope == "saved_session" and session_ref is not None
                 ) or (

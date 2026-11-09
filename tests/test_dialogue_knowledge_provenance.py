@@ -597,3 +597,30 @@ def test_orchestrator_rejects_saved_session_intent_when_route_owner_is_not_l_ses
     assert result["status"] == "denied"
     assert result["source"] == "route_decision_saved_session_owner_guard"
     assert result["executed"] is False
+
+
+
+def test_orchestrator_rejects_saved_session_continuation_without_saved_evidence_scope():
+    agent = SimpleNamespace(runtime=None, _meta=SimpleNamespace(get_version=lambda: "test"))
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="none",
+        session_ref=None,
+        output_kind="continue_topic",
+        evidence_scope="none",
+        provider_allowed=False,
+        intent=Intent.RESUME,
+    )
+
+    result = Orchestrator(agent).handle(
+        "تابع من الجلسة 72",
+        parsed={
+            "intent": Intent.RESUME,
+            "session_selector": {"kind": "number", "number": 72, "report_mode": "standard"},
+        },
+        route_decision=decision,
+    )
+
+    assert result["status"] == "denied"
+    assert result["source"] == "route_decision_evidence_scope_guard"
+    assert result["executed"] is False
