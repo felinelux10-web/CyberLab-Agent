@@ -630,7 +630,7 @@ def test_numbered_saved_session_summary_is_read_only_and_reports_the_selected_re
     decision = RouteDecision(
         route="L-SESSION",
         session_scope="saved_number",
-        session_ref=SessionRef(session_id="python-saved-2", number=2),
+        session_ref=SessionRef(session_id="dialogue-python-record", number=2),
         output_kind="summary",
         evidence_scope="saved_session",
         provider_allowed=True,
