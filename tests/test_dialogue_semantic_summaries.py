@@ -447,7 +447,9 @@ def test_saved_dialogue_summary_uses_speaker_attributed_knowledge_across_exchang
     assert "ذكر المستخدم: أنشأت إطارا خشبيا" in brief["summary"]
     assert "ذكر المستخدم: سأصب الجبس" in brief["summary"]
     assert "ذكر المستخدم: سأشكل السطح" in report
-    assert "أوضح الوكيل:" in report
+    detailed_report = build_session_restore_summary(saved, report_mode="full")
+    assert "مساهمات الوكيل واقتراحاته:" in detailed_report
+    assert "الإطار يحدد حدود العمل." in detailed_report
     assert "summary-user-2" not in brief["summary"]
 
 

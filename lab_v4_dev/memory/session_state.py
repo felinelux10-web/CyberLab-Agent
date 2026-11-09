@@ -2132,28 +2132,6 @@ def _dialogue_knowledge_summary_insights(
             source_index,
             f"{prefix}{content} [التبادل {source_index}]",
         ))
-    for item in analysis.get("assistant_information", []):
-        if (
-            str(item.get("source_exchange_id") or "") not in completed_ids
-            or str(item.get("knowledge_type") or "") == "assistant_non_answer"
-        ):
-            continue
-        content = " ".join(str(item.get("content") or "").split()).strip()
-        if not content:
-            continue
-        kind = str(item.get("knowledge_type") or "")
-        if kind == "assistant_suggestion":
-            prefix = "اقترح الوكيل: "
-        elif kind == "assistant_conclusion":
-            prefix = "خلص الوكيل إلى: "
-        else:
-            prefix = "أوضح الوكيل: "
-        source_index = int(item.get("source_exchange_index") or 0)
-        candidates.append((
-            2,
-            source_index,
-            f"{prefix}{content} [التبادل {source_index}]",
-        ))
     # Explicit corrections supersede the older fact they target. Remaining
     # user-owned facts precede assistant explanations, all in source order.
     candidates.sort(key=lambda item: (item[0], item[1]))
