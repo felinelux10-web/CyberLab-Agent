@@ -2240,7 +2240,7 @@ class ConversationManager:
                         or self._normalize_transition_text(item.get("user") or "") == normalized_topic
                     )
                     and str(item.get("context_transition") or "").casefold()
-                        not in {"restore", "resume", "continue", "topic_return"}
+                        not in {"restore", "resume", "topic_return"}
                 ),
                 None,
             )
@@ -2266,14 +2266,16 @@ class ConversationManager:
                 "موضوع عام", "نقاش عام", "حديث عام", "حوار عام",
                 "دعنا نتحدث", "لنتحدث", "نتحدث عن",
             ))
-            restored_social = restored_social_topic or (
-                restored_kind in {"dialogue", "social", "unknown"}
-                and restored_domain not in {
-                    "technical", "project", "work", "system", "execution",
-                }
-                and (
-                    restored_social_intent
-                    or not restored_technical_intent
+            restored_social = bool(restored_exchange) and (
+                restored_social_topic or (
+                    restored_kind in {"dialogue", "social", "unknown"}
+                    and restored_domain not in {
+                        "technical", "project", "work", "system", "execution",
+                    }
+                    and (
+                        restored_social_intent
+                        or not restored_technical_intent
+                    )
                 )
             )
             history_reference = (
@@ -3424,14 +3426,16 @@ class ConversationManager:
                         "موضوع عام", "نقاش عام", "حديث عام", "حوار عام",
                         "دعنا نتحدث", "لنتحدث", "نتحدث عن",
                     ))
-                    restored_social = explicit_social_branch or (
-                        restored_kind in {"dialogue", "social", "unknown"}
-                        and restored_domain not in {
-                            "technical", "project", "work", "system", "execution",
-                        }
-                        and restored_intent not in {
-                            "cyber_explain", "architecture", "propose_solution", "plan", "lab_plan",
-                        }
+                    restored_social = bool(restored_exchange) and (
+                        explicit_social_branch or (
+                            restored_kind in {"dialogue", "social", "unknown"}
+                            and restored_domain not in {
+                                "technical", "project", "work", "system", "execution",
+                            }
+                            and restored_intent not in {
+                                "cyber_explain", "architecture", "propose_solution", "plan", "lab_plan",
+                            }
+                        )
                     )
                     parsed = dict(parsed or {})
                     parsed.update({
