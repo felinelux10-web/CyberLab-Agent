@@ -564,13 +564,51 @@ def format_dialogue_analysis_report(data: dict) -> str:
     return "\n".join(lines)
 
 
+def _character_ngrams(value: Any, size: int = 3) -> set[str]:
+    """Return normalized character n-grams for morphology-tolerant local matching."""
+    text = " ".join(_tokens(value))
+    compact = re.sub(r"\\s+", " ", text).strip()
+    if len(compact) < size:
+        return {compact} if compact else set()
+    return {
+        compact[index:index + size]
+        for index in range(len(compact) - size + 1)
+        if compact[index:index + size].strip()
+    }
+
+
+def _bm25_score(query_terms: set[str], document_terms: list[str], document_frequencies: dict[str, int], document_count: int, average_length: float) -> float:
+    """Small dependency-free BM25 scorer over one saved exchange."""
+    if not query_terms or not document_terms or not document_count:
+        return 0.0
+    frequencies = {}
+    for term in document_terms:
+        frequencies[term] = frequencies.get(term, 0) + 1
+    length = len(document_terms)
+    average_length = max(1.0, average_length)
+    score = 0.0
+    for term in query_terms:
+        frequency = frequencies.get(term, 0)
+        if not frequency:
+            continue
+        df = document_frequencies.get(term, 0)
+        inverse = max(0.0, __import__("math").log(
+            1.0 + (document_count - df + 0.5) / (df + 0.5)
+        ))
+        denominator = frequency + 1.2 * (
+            1.0 - 0.75 + 0.75 * length / average_length
+        )
+        score += inverse * frequency * 2.2 / denominator
+    return score
+
+
 def retrieve_dialogue_evidence(
     data: dict,
     query: str,
     *,
     limit: int = 8,
 ) -> list[dict]:
-    """Rank evidence across the selected session with speaker-aware relevance."""
+    """Rank raw exchanges with local BM25, Arabic character similarity and provenance."""
     if not isinstance(data, dict):
         return []
     session_id, exchanges = _exchange_archive(data)
@@ -588,43 +626,89 @@ def retrieve_dialogue_evidence(
     if re.search(r"(?:اتفق|قرار|اعتمد)", normalized_query):
         expanded.update({"قررت", "ساعتمد", "اخترت", "اعتمدت", "تم الاتفاق"})
 
-    ranked = []
+    documents = []
+    document_frequencies: dict[str, int] = {}
+    total_length = 0
     for index, exchange in enumerate(exchanges):
         user = str(exchange.get("user") or "").strip()
         assistant = str(exchange.get("assistant") or "").strip()
         target = str(exchange.get("target") or "").strip()
-        user_tokens = _tokens(user)
-        assistant_tokens = _tokens(assistant)
-        target_tokens = _tokens(target)
-        user_matches = expanded & user_tokens
-        assistant_matches = expanded & assistant_tokens
-        target_matches = expanded & target_tokens
+        user_terms = _tokens(user)
+        assistant_terms = _tokens(assistant)
+        target_terms = _tokens(target)
+        all_terms = user_terms + assistant_terms + target_terms
+        total_length += len(all_terms)
+        for term in set(all_terms):
+            document_frequencies[term] = document_frequencies.get(term, 0) + 1
+        documents.append({
+            "index": index,
+            "exchange": exchange,
+            "user": user,
+            "assistant": assistant,
+            "target": target,
+            "user_terms": user_terms,
+            "assistant_terms": assistant_terms,
+            "target_terms": target_terms,
+            "all_terms": all_terms,
+        })
+
+    document_count = len(documents)
+    average_length = total_length / max(1, document_count)
+    query_ngrams = _character_ngrams(query_text)
+    ranked = []
+    for document in documents:
+        user_terms = document["user_terms"]
+        assistant_terms = document["assistant_terms"]
+        target_terms = document["target_terms"]
+        all_terms = document["all_terms"]
+        user_matches = expanded & set(user_terms)
+        assistant_matches = expanded & set(assistant_terms)
+        target_matches = expanded & set(target_terms)
         all_matches = user_matches | assistant_matches | target_matches
+        lexical_score = (
+            1.8 * _bm25_score(expanded, user_terms, document_frequencies, document_count, average_length)
+            + 1.0 * _bm25_score(expanded, assistant_terms, document_frequencies, document_count, average_length)
+            + 0.55 * _bm25_score(expanded, target_terms, document_frequencies, document_count, average_length)
+        )
+        document_ngrams = _character_ngrams(
+            document["user"] + " " + document["assistant"] + " " + document["target"]
+        )
+        ngram_union = query_ngrams | document_ngrams
+        ngram_similarity = (
+            len(query_ngrams & document_ngrams) / len(ngram_union)
+            if ngram_union else 0.0
+        )
         phrase_match = bool(
             normalized_query
             and len(normalized_query) >= 5
-            and normalized_query in _normalize(user + " " + assistant + " " + target)
+            and normalized_query in _normalize(
+                document["user"] + " " + document["assistant"] + " " + document["target"]
+            )
         )
-        if not all_matches and not phrase_match:
+        # A lexical hit remains the strongest signal. Character n-grams add
+        # tolerance for inflection/orthographic variants without inventing
+        # synonyms or allowing an unrelated session to enter the search.
+        score = lexical_score + (2.0 * ngram_similarity) + (2.5 if phrase_match else 0.0)
+        if not all_matches and ngram_similarity < 0.12 and not phrase_match:
             continue
-        score = (
-            2.4 * len(user_matches)
-            + 1.2 * len(assistant_matches)
-            + 0.8 * len(target_matches)
-            + (3.0 if phrase_match else 0.0)
-        ) / max(1.0, len(expanded) ** 0.5)
         ranked.append({
             "session_id": session_id,
-            "exchange_id": str(exchange.get("exchange_id") or f"{session_id}:{index + 1}"),
-            "exchange_index": index + 1,
-            "timestamp": exchange.get("timestamp") or exchange.get("created_at"),
+            "exchange_id": str(
+                document["exchange"].get("exchange_id")
+                or f"{session_id}:{document['index'] + 1}"
+            ),
+            "exchange_index": document["index"] + 1,
+            "timestamp": (
+                document["exchange"].get("timestamp")
+                or document["exchange"].get("created_at")
+            ),
             "score": round(score, 4),
             "matched_terms": sorted(all_matches),
             "matched_user_terms": sorted(user_matches),
             "matched_assistant_terms": sorted(assistant_matches),
-            "user": user,
-            "assistant": assistant,
-            "target": target,
+            "user": document["user"],
+            "assistant": document["assistant"],
+            "target": document["target"],
         })
     ranked.sort(key=lambda item: (-item["score"], item["exchange_index"]))
     selected = ranked[:max(1, int(limit))]

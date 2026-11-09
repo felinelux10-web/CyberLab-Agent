@@ -910,3 +910,64 @@ def test_clarification_turn_is_preserved_as_raw_evidence_but_not_as_answer():
     assert any(item["content"] == prompt for item in analysis["unresolved_questions"])
     assert retrieve_dialogue_evidence(session, "ما المادة؟") == []
     assert "لم يُحفظ رد موضوعي مكتمل" in format_dialogue_analysis_report(session)
+
+
+def test_retrieval_combines_evidence_from_distant_exchanges_in_one_session():
+    session = _artwork_session_fixture()
+    evidence = retrieve_dialogue_evidence(
+        session,
+        "اجمع وصف قاعدة اللوحة وأدوات تشكيل سطحها في إجابة واحدة.",
+    )
+    ids = {item["exchange_id"] for item in evidence}
+    assert "art-step-1" in ids
+    assert "art-step-2" in ids
+    assert all(item["session_id"] == session["session_id"] for item in evidence)
+
+
+def test_later_explicit_correction_links_to_prior_user_fact_with_provenance():
+    sid = "correction-provenance-session"
+    session = {
+        "session_id": sid,
+        "dialogue_state": {
+            "session_id": sid,
+            "exchange_archive": [
+                {
+                    "session_id": sid,
+                    "exchange_id": "old-detail",
+                    "user": "كانت سماكة طبقة الجبس ثلاثة سنتيمترات.",
+                    "assistant": "سجلت هذه السماكة.",
+                },
+                {
+                    "session_id": sid,
+                    "exchange_id": "corrected-detail",
+                    "user": "بل، التصحيح أن السماكة خمسة سنتيمترات.",
+                    "assistant": "تم اعتماد التصحيح.",
+                },
+            ],
+        },
+    }
+    analysis = analyze_dialogue_session(session)
+    correction = next(
+        item for item in analysis["user_corrections"]
+        if "خمسة سنتيمترات" in item["content"]
+    )
+    relation = next(
+        item for item in analysis["relationships"]
+        if item["relation"] == "corrects"
+        and item["source_knowledge_id"] == correction["knowledge_id"]
+    )
+    assert relation["target_knowledge_id"].startswith("old-detail:user:")
+    assert relation["evidence_exchange_id"] == "corrected-detail"
+    assert correction["source_exchange_id"] == "corrected-detail"
+
+
+def test_retrieval_never_returns_evidence_from_a_different_session():
+    selected = _artwork_session_fixture()
+    other = _saved_session()
+    evidence = retrieve_dialogue_evidence(
+        selected,
+        "ما الأدوات التي استعملتها لتشكيل السطح؟",
+    )
+    assert evidence
+    assert all(item["session_id"] == selected["session_id"] for item in evidence)
+    assert not any(item["exchange_id"].startswith("exchange-") for item in evidence)
