@@ -844,3 +844,35 @@ def test_suggestion_acceptance_is_not_inferred_after_an_unrelated_exchange():
     analysis = analyze_dialogue_session(session)
 
     assert not any(item["relation"] == "accepts" for item in analysis["relationships"])
+
+
+
+def test_legacy_dialogue_without_timestamps_preserves_archive_order():
+    sid = "legacy-ordered-dialogue"
+    session = {
+        "session_id": sid,
+        "dialogue_state": {
+            "session_id": sid,
+            "exchange_archive": [
+                {
+                    "session_id": sid,
+                    "exchange_id": f"{sid}:2",
+                    "user": "المرحلة الثانية من النقاش.",
+                    "assistant": "رد المرحلة الثانية.",
+                },
+                {
+                    "session_id": sid,
+                    "exchange_id": f"{sid}:10",
+                    "user": "المرحلة العاشرة من النقاش.",
+                    "assistant": "رد المرحلة العاشرة.",
+                },
+            ],
+        },
+    }
+
+    analysis = analyze_dialogue_session(session)
+
+    assert analysis["timeline"][0]["exchange_id"] == f"{sid}:2"
+    assert analysis["timeline"][1]["exchange_id"] == f"{sid}:10"
+    assert analysis["timeline"][0]["exchange_index"] == 1
+    assert analysis["timeline"][1]["exchange_index"] == 2

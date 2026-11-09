@@ -223,7 +223,8 @@ def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
     failed_archive = dialogue.get("failed_transcript_archive")
     if not isinstance(failed_archive, list) or not failed_archive:
         failed_archive = dialogue.get("failed_exchange_archive") or []
-    records = []
+    ordered_records = []
+    source_order = 0
     for archive_name, archive in (
         ("completed", completed_archive),
         ("failed", failed_archive),
@@ -242,12 +243,21 @@ def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
                 or item.get("response_failed")
             ):
                 continue
-            records.append(item)
-    records.sort(key=lambda item: (
-        str(item.get("timestamp") or item.get("created_at") or ""),
-        str(item.get("exchange_id") or ""),
-    ))
-    return session_id, records
+            ordered_records.append((source_order, item))
+            source_order += 1
+    # Timestamps provide a reliable cross-archive ordering signal. If any
+    # legacy exchange lacks one, retain persisted archive order instead of
+    # lexically sorting IDs such as ":10" before ":2".
+    if ordered_records and all(
+        str(item.get("timestamp") or item.get("created_at") or "").strip()
+        for _, item in ordered_records
+    ):
+        ordered_records.sort(
+            key=lambda pair: str(
+                pair[1].get("timestamp") or pair[1].get("created_at") or ""
+            )
+        )
+    return session_id, [item for _, item in ordered_records]
 
 def analyze_dialogue_session(data: dict) -> dict:
     """Build a traceable local knowledge view while retaining raw exchanges as truth."""
