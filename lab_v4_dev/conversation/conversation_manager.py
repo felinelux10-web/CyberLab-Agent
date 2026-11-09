@@ -166,8 +166,6 @@ class ConversationManager:
             route = "L-SESSION"
         elif history_request:
             route = "L-LIVE"
-        elif history_request:
-            route = "L-LIVE"
         elif intent_value == "cyber_explain":
             if domain == "project":
                 route = "L-FACT"

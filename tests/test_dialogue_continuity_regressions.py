@@ -1371,3 +1371,40 @@ def test_numbered_saved_session_detail_question_wins_over_agent_self_classificat
     assert decision.session_ref.number == 72
     assert decision.evidence_scope == "saved_session"
     assert calls == []
+
+
+
+def test_saved_session_report_provider_permission_comes_from_manager_policy(monkeypatch):
+    manager, memory, orchestrator, calls = _manager(monkeypatch)
+    orchestrator.agent = SimpleNamespace(allow_provider_session_synthesis=True)
+    monkeypatch.setattr(
+        session_state,
+        "get_session_by_number",
+        lambda number: {
+            "session_id": "saved-report-72",
+            "session_type": "dialogue",
+            "number": number,
+        },
+    )
+
+    result = manager.process("اكتب تقريرًا تحليليًا للجلسة 72")
+    decision = orchestrator.calls[-1][2]["route_decision"]
+
+    assert result["status"] == "success", result
+    assert decision.route == "L-SESSION"
+    assert decision.output_kind == "report"
+    assert decision.evidence_scope == "saved_session"
+    assert decision.provider_allowed is True
+
+    manager_without_permission, _, orchestrator_without_permission, _ = _manager(monkeypatch)
+    orchestrator_without_permission.agent = SimpleNamespace(
+        allow_provider_session_synthesis=False
+    )
+    result_without_permission = manager_without_permission.process(
+        "اكتب تقريرًا تحليليًا للجلسة 72"
+    )
+    decision_without_permission = orchestrator_without_permission.calls[-1][2]["route_decision"]
+
+    assert result_without_permission["status"] == "success", result_without_permission
+    assert decision_without_permission.route == "L-SESSION"
+    assert decision_without_permission.provider_allowed is False
