@@ -101,8 +101,13 @@ class DialogueMemory:
             "topic": getattr(self.state, "active_restored_topic", None),
         }
 
-    def restore_snapshot(self, snapshot: dict | None) -> bool:
-        """Restore bounded dialogue state from an explicit recoverable checkpoint."""
+    def restore_snapshot(
+        self,
+        snapshot: dict | None,
+        *,
+        explicit_saved_session: bool = False,
+    ) -> bool:
+        """Restore dialogue state without claiming saved-session ownership unless explicit."""
         if not isinstance(snapshot, dict):
             return False
         # A persisted dialogue snapshot is trusted only when it carries the
@@ -157,18 +162,22 @@ class DialogueMemory:
                 context_kind=turn.get("context_kind", "unknown"),
                 session_id=turn.get("session_id") or restored.session_id,
             )
-        restored.active_restored_session_id = snapshot_session_id
-        restored.active_restored_topic = (
-            str(restored.last_topic or "").strip()
-            or next(
-                (
-                    str(item.get("target") or "").strip()
-                    for item in reversed(restored.exchange_archive or [])
-                    if isinstance(item, dict) and str(item.get("target") or "").strip()
-                ),
-                None,
+        if explicit_saved_session:
+            restored.active_restored_session_id = snapshot_session_id
+            restored.active_restored_topic = (
+                str(restored.last_topic or "").strip()
+                or next(
+                    (
+                        str(item.get("target") or "").strip()
+                        for item in reversed(restored.exchange_archive or [])
+                        if isinstance(item, dict) and str(item.get("target") or "").strip()
+                    ),
+                    None,
+                )
             )
-        )
+        else:
+            restored.active_restored_session_id = None
+            restored.active_restored_topic = None
         self.state = restored
         return True
 

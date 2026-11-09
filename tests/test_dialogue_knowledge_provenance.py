@@ -397,3 +397,26 @@ def test_agent_persists_changed_dialogue_state_even_when_response_fails():
 
     assert result["status"] == "error"
     assert saves == ["saved"]
+
+
+
+def test_dialogue_snapshot_restore_does_not_claim_saved_session_by_default():
+    memory = DialogueMemory(SimpleNamespace())
+    memory.state.last_topic = "الحضارات القديمة"
+    snapshot = memory.snapshot()
+
+    restored = DialogueMemory(SimpleNamespace())
+    assert restored.restore_snapshot(snapshot) is True
+    assert restored.active_restored_session() is None
+
+
+def test_explicit_saved_dialogue_restore_activates_only_the_selected_session():
+    memory = DialogueMemory(SimpleNamespace())
+    memory.state.last_topic = "الفن التجريدي"
+    snapshot = memory.snapshot()
+
+    restored = DialogueMemory(SimpleNamespace())
+    assert restored.restore_snapshot(snapshot, explicit_saved_session=True) is True
+    active = restored.active_restored_session()
+    assert active["session_id"] == snapshot["session_id"]
+    assert active["topic"] == "الفن التجريدي"

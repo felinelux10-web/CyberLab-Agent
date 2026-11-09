@@ -313,13 +313,21 @@ class Agent:
         """Restore only the explicit bounded checkpoint, never implicit history."""
         try:
             from lab_v4_dev.memory.session_state import load_session
-            return self.restore_session_snapshot(load_session())
+            return self.restore_session_snapshot(
+                load_session(),
+                explicit_saved_session=False,
+            )
         except Exception as exc:
             log.warning(f"Session context restore skipped: {exc}")
             return False
 
-    def restore_session_snapshot(self, saved: dict | None) -> bool:
-        """Restore the explicitly selected session, not merely the latest one."""
+    def restore_session_snapshot(
+        self,
+        saved: dict | None,
+        *,
+        explicit_saved_session: bool = True,
+    ) -> bool:
+        """Restore the selected session; boot-time checkpoint loads are not saved-session selections."""
         try:
             saved = saved if isinstance(saved, dict) else {}
             restored = False
@@ -337,7 +345,10 @@ class Agent:
                 )
 
             if session_type == "dialogue" and self.dialogue_memory:
-                restored = self.dialogue_memory.restore_snapshot(dialogue_state)
+                restored = self.dialogue_memory.restore_snapshot(
+                    dialogue_state,
+                    explicit_saved_session=explicit_saved_session,
+                )
             context_restored = False
             if session_type in {"work", "mixed"} and self.context and isinstance(context_state, dict):
                 clear_restored = getattr(self.dialogue_memory, "clear_restored_session", None)
