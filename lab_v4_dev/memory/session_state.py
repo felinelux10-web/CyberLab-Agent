@@ -1147,6 +1147,11 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
         if empty_dialogue_reset
         else get_session_by_id(session_id)
     )
+    if isinstance(data, dict):
+        # Retrieval provenance is transient control metadata. Never write an
+        # index-only fallback marker into a newly materialized detail record.
+        data.pop("_record_source", None)
+        data.pop("_detail_available", None)
     now = datetime.now().isoformat()
     if not isinstance(data, dict) or not data:
         data = {
