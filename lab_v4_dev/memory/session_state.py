@@ -1184,6 +1184,55 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
         and current.get("session_id") == previous_id
         and str(current.get("session_type") or "work").casefold() != "dialogue"
     )
+    work_identity_collision = bool(
+        same_as_work and session_id == str(previous_id or "").strip()
+    )
+    legacy_dialogue_state = {}
+    if work_identity_collision:
+        old_session_id = session_id
+        source_dialogue_state = current.get("dialogue_state")
+        if (
+            isinstance(source_dialogue_state, dict)
+            and str(source_dialogue_state.get("session_id") or "").strip() == old_session_id
+        ):
+            legacy_dialogue_state = dict(source_dialogue_state)
+
+        # Split a legacy mixed work/dialogue identity before writing. Keep the
+        # canonical work record untouched and move its embedded dialogue
+        # transcript to a new dialogue-owned identity.
+        session_id = uuid.uuid4().hex
+        state["session_id"] = session_id
+
+        def rebind_records(records):
+            rebound = []
+            for item in records or []:
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("session_id") or "").strip() != old_session_id:
+                    continue
+                updated = dict(item)
+                updated["session_id"] = session_id
+                rebound.append(updated)
+            return rebound
+
+        history = rebind_records(history)
+        exchanges = rebind_records(exchanges)
+        failed_exchanges = rebind_records(failed_exchanges)
+        state["history"] = history[-8:]
+        state["exchange_archive"] = exchanges[-32:]
+        state["failed_exchange_archive"] = failed_exchanges[-32:]
+        state["active_restored_session_id"] = None
+        state["active_restored_topic"] = None
+
+        if legacy_dialogue_state:
+            legacy_dialogue_state["session_id"] = session_id
+            for archive_key in (
+                "transcript_archive", "exchange_archive",
+                "failed_transcript_archive", "failed_exchange_archive",
+            ):
+                legacy_dialogue_state[archive_key] = rebind_records(
+                    legacy_dialogue_state.get(archive_key) or []
+                )
     # An explicitly empty dialogue snapshot represents a reset, not an
     # update to the previous dialogue session. Give it a new ID so the old
     # topic cannot remain the latest recoverable dialogue checkpoint.
@@ -1200,7 +1249,7 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
     # cause restore to select the wrong transcript.
     data = (
         {}
-        if empty_dialogue_reset
+        if empty_dialogue_reset or work_identity_collision
         else get_session_by_id(session_id)
     )
     if isinstance(data, dict):
@@ -1209,7 +1258,9 @@ def save_dialogue_checkpoint(*, dialogue_state: dict, version: str = "unknown",
         data.pop("_record_source", None)
         data.pop("_detail_available", None)
     previous_dialogue_state = (
-        data.get("dialogue_state") if isinstance(data, dict) else {}
+        legacy_dialogue_state
+        if work_identity_collision
+        else data.get("dialogue_state") if isinstance(data, dict) else {}
     )
     if not isinstance(previous_dialogue_state, dict):
         previous_dialogue_state = {}

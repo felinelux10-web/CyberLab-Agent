@@ -247,3 +247,67 @@ def test_saved_dialogue_search_includes_topics_older_than_live_exchange_window(m
 
     assert matches
     assert matches[0]["session_id"] == session_id
+
+
+
+def test_legacy_mixed_work_dialogue_checkpoint_is_split_without_overwriting_work(tmp_path, monkeypatch):
+    session_id = "legacy-shared-work-dialogue"
+    legacy_exchange = {
+        "session_id": session_id,
+        "exchange_id": "legacy-exchange-1",
+        "user": "ناقشنا الفن التجريدي.",
+        "assistant": "تحدثنا عن الألوان والتكوين.",
+        "context_kind": "dialogue",
+        "conversation_domain": "general",
+    }
+    work_record = {
+        "session_id": session_id,
+        "session_type": "work",
+        "active_goal": "مهمة تنفيذية محفوظة",
+        "context_state": {"current_file": "run.py"},
+        "dialogue_state": {
+            "session_id": session_id,
+            "last_topic": "الفن التجريدي",
+            "transcript_archive": [legacy_exchange],
+            "exchange_archive": [legacy_exchange],
+        },
+    }
+    index_record = {
+        "session_id": session_id,
+        "session_type": "dialogue",
+        "title": "حوار قديم",
+    }
+    captured = []
+    monkeypatch.setattr(session_state, "get_session_index", lambda: [index_record])
+    monkeypatch.setattr(session_state, "load_session", lambda: work_record)
+    monkeypatch.setattr(
+        session_state,
+        "get_session_by_id",
+        lambda requested_id: work_record if requested_id == session_id else {},
+    )
+    monkeypatch.setattr(
+        session_state,
+        "_write_session_detail",
+        lambda data: captured.append(data) or True,
+    )
+    monkeypatch.setattr(session_state, "_append_recent_archive", lambda _data: None)
+    monkeypatch.setattr(session_state, "_enrich_session_fields", lambda data: data)
+
+    saved = session_state.save_dialogue_checkpoint(
+        dialogue_state={
+            "session_id": session_id,
+            "last_topic": "الفن التجريدي",
+            "history": [],
+            "exchange_archive": [legacy_exchange],
+            "failed_exchange_archive": [],
+        },
+        version="test",
+    )
+
+    assert saved["session_id"] != session_id
+    assert saved["dialogue_state"]["session_id"] == saved["session_id"]
+    assert saved["dialogue_state"]["transcript_archive"][0]["session_id"] == saved["session_id"]
+    assert work_record["session_id"] == session_id
+    assert work_record["session_type"] == "work"
+    assert work_record["context_state"]["current_file"] == "run.py"
+    assert captured[0]["session_id"] == saved["session_id"]

@@ -281,11 +281,26 @@ class Agent:
             from lab_v4_dev.core.project_context import get_active_project_root
             dialogue = self.dialogue_memory.snapshot() if self.dialogue_memory else None
             version = self._meta.get_version() if getattr(self, "_meta", None) else "unknown"
-            save_dialogue_checkpoint(
+            saved = save_dialogue_checkpoint(
                 dialogue_state=dialogue,
                 version=version,
                 project_root=get_active_project_root(),
             )
+            persisted_dialogue = (
+                saved.get("dialogue_state") if isinstance(saved, dict) else None
+            )
+            if (
+                isinstance(persisted_dialogue, dict)
+                and str(persisted_dialogue.get("session_id") or "").strip()
+                != str(dialogue.get("session_id") or "").strip()
+            ):
+                # save_dialogue_checkpoint may split a legacy mixed work/dialogue
+                # identity. Rebind the live owner to the new dialogue ID so the
+                # next turn does not collide with or overwrite the work record.
+                self.dialogue_memory.restore_snapshot(
+                    persisted_dialogue,
+                    explicit_saved_session=False,
+                )
         except Exception as exc:
             log.debug(f"Dialogue checkpoint skipped: {exc}")
 
