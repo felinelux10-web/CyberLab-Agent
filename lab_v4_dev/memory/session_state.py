@@ -2168,7 +2168,7 @@ def summarize_dialogue_exchanges(
     meaningful = [item for item in records if not _is_dialogue_control_exchange(item)]
     sid = str(session_id or "").strip() or next(
         (str(item.get("session_id") or "").strip() for item in meaningful if item.get("session_id")),
-        "",
+        "dialogue-summary",
     )
     analysis_records = [dict(item) for item in meaningful]
     if sid:
@@ -2484,6 +2484,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         lines.extend(["", "ملحق الأدلة الأصلية المرتبة زمنيًا:"])
         for evidence in semantic_summary.get("evidence_timeline", []):
             exchange_index = evidence.get("exchange_index") or "?"
+            lines.append(f"[التبادل {exchange_index}] مساهمة المستخدم:")
             lines.append(f"[التبادل {exchange_index}] معلومات المستخدم:")
             user_items = evidence.get("user_information") or []
             lines.extend([f"- {item}" for item in user_items] if user_items else [

@@ -402,11 +402,17 @@ def _exchange_summary_insight(
         for item in assistant_records if str(item.get("knowledge_type") or "")
     ]
     if comparison:
-        content = f"قارن الحوار بين «{topic[:150]}»؛ وردّ الوكيل: {answer}"
+        comparison_answer = re.sub(
+            r"^(?:الفرق|الاختلاف)\s+(?:هو|يتمثل\s+في)\s+",
+            "",
+            answer,
+            flags=re.IGNORECASE,
+        )
+        content = f"قارن الحوار بين «{topic[:150]}»؛ ويوضح الرد أن {comparison_answer}"
     elif is_question_or_request and topic:
         content = f"تناول الحوار «{topic[:120]}»؛ وردّ الوكيل: {answer}"
     elif is_question_or_request:
-        content = f"استجاب الوكيل لطلب المستخدم: {answer}"
+        content = f"استجاب الوكيل للطلب: {answer}"
     else:
         content = f"مساهمة الوكيل في التبادل: {answer}"
 
