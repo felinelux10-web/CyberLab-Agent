@@ -2233,6 +2233,7 @@ def summarize_dialogue_exchanges(
     user_facts = [
         item for item in analysis.get("user_information", [])
         if str(item.get("source_exchange_id") or "") == last_exchange_id
+        and str(item.get("knowledge_type") or "") not in {"question", "user_request"}
     ]
     corrected_targets = {
         str(item.get("target_knowledge_id") or "")
@@ -2369,6 +2370,10 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     # Saved-session identity and dialogue-state identity are separate scopes.
     # Exchange provenance belongs to dialogue_state.session_id.
     dialogue_session_id = str(dialogue.get("session_id") or data.get("session_id") or "").strip()
+    dialogue_session_data = dict(data)
+    dialogue_session_data["session_id"] = dialogue_session_id
+    dialogue_session_data["dialogue_state"] = dict(dialogue)
+    dialogue_session_data["dialogue_state"]["session_id"] = dialogue_session_id
     semantic_summary = summarize_dialogue_exchanges(
         summary_exchanges,
         topic="",
@@ -2381,7 +2386,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
 
     if report_mode == "transcript":
         from lab_v4_dev.memory.dialogue_knowledge import _raw_exchange_archive
-        _, transcript_exchanges = _raw_exchange_archive(data)
+        _, transcript_exchanges = _raw_exchange_archive(dialogue_session_data)
         lines = [
             "=== نص الحوار المحفوظ حرفيًا ===",
             f"معرّف الجلسة: {report['session_id']}",
@@ -2505,7 +2510,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
                 "- لا توجد مساهمة موضوعية إضافية مستخرجة من رد الوكيل."
             ])
         from lab_v4_dev.memory.dialogue_knowledge import format_dialogue_analysis_report
-        lines.extend(["", format_dialogue_analysis_report(data)])
+        lines.extend(["", format_dialogue_analysis_report(dialogue_session_data)])
     return "\n".join(lines)
 
 

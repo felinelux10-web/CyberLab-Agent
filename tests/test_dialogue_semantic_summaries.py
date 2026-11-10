@@ -638,3 +638,28 @@ def test_summary_falls_back_when_full_transcript_contains_only_clarifications():
     assert "بحسب المستخدم، صببت الجبس" in brief["summary"]
     assert "ثلاثة سنتيمترات" in progress
     assert "ما المقصود بالسماكة" not in brief["summary"]
+
+
+def test_transcript_restore_uses_dialogue_state_identity_not_saved_record_identity():
+    saved = _saved_dialogue([
+        _exchange(
+            "dialogue-state-1",
+            "ما الفرق بين الرسم والنحت؟",
+            "الرسم يعالج الصورة على سطح مستو، بينما النحت يبني شكلًا مجسمًا.",
+            "الرسم والنحت",
+        )
+    ], topic="الفنون")
+    transcript = build_session_restore_summary(saved, report_mode="transcript")
+    assert "ما الفرق بين الرسم والنحت؟" in transcript
+    assert "الرسم يعالج الصورة على سطح مستو" in transcript
+    assert "لا يحتوي سجل الجلسة على تبادلات أصلية" not in transcript
+
+
+def test_dialogue_stop_point_does_not_treat_a_request_as_a_user_fact():
+    summary = summarize_dialogue_exchanges(
+        [_exchange("dialogue-state-1", "أعطني اقتراحات", "اقتراح أول محدد")],
+        session_id="dialogue-state-1",
+    )
+    assert "آخر معلومة موثقة صرّح بها المستخدم" not in summary["stop_point"]
+    assert "اقتراح أول محدد" in summary["stop_point"]
+
