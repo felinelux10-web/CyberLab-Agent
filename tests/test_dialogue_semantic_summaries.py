@@ -107,6 +107,42 @@ def test_shared_dialogue_summarizer_reports_topic_and_stop_point():
     assert all("المستخدم:" not in item and "الوكيل:" not in item for item in report["insights"])
 
 
+def test_summary_stop_point_uses_last_user_evidence_not_target_metadata():
+    exchanges = [
+        _exchange(
+            "dialogue-state-1",
+            "سأصب الجبس داخل الإطار بسماكة خمسة سنتيمترات.",
+            "سجلت هذه الخطة ويمكن تشكيل السطح بعد الجفاف.",
+            "موضوع عام عن الفن",
+        ),
+    ]
+    report = summarize_dialogue_exchanges(exchanges, limit=4)
+    assert "آخر معلومة موثقة صرّح بها المستخدم" in report["stop_point"]
+    assert "خمسة سنتيمترات" in report["stop_point"]
+    assert "موضوع عام عن الفن" not in report["stop_point"]
+    assert report["next_step"]
+
+
+def test_summary_does_not_use_legacy_exchange_insight_heuristics(monkeypatch):
+    import lab_v4_dev.memory.session_state as session_state_module
+    monkeypatch.setattr(
+        session_state_module,
+        "_dialogue_exchange_insights",
+        lambda _exchange: ["مضمون قديم غير مثبت من مسار التلخيص السابق"],
+    )
+    report = summarize_dialogue_exchanges(
+        [_exchange(
+            "dialogue-state-1",
+            "ما الفرق بين الرسم والنحت؟",
+            "الرسم يعالج الصورة على سطح مستو، بينما النحت يبني شكلًا مجسمًا.",
+            "الرسم والنحت",
+        )],
+        limit=4,
+    )
+    assert any("قارن الحوار بين" in item for item in report["insights"])
+    assert all("مضمون قديم غير مثبت" not in item for item in report["insights"])
+
+
 def test_live_dialogue_summary_is_narrative_not_a_message_dump():
     context = ContextStore()
     memory = DialogueMemory(context)

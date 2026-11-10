@@ -54,6 +54,44 @@ def test_current_project_question_preserves_existing_retrieval():
     assert result["entry_points"] == ["run.py"]
 
 
+def test_capability_retrieval_combines_code_handlers_with_observed_operations(monkeypatch):
+    from lab_v4_dev.core import audit as audit_module
+    monkeypatch.setattr(audit_module, "get_events", lambda **_kwargs: [{
+        "event": "project.external_scan",
+        "timestamp": "2026-11-10T12:00:00+00:00",
+        "source": "orchestrator",
+        "context": {"project_root": "/external/demo"},
+        "details": {"total_files": 12, "project_type": "typescript"},
+    }])
+    result = _retriever().retrieve(
+        "ما قدراتك في التعامل مع المشاريع؟", evidence_scope="project_state",
+    )
+    assert result["type"] == "capability"
+    assert result["observed_operation_count"] == 1
+    assert result["observed_operations"][0]["confidence"] == "runtime_verified"
+    assert result["observed_operations"][0]["project_root"] == "/external/demo"
+    assert any(item["intent"] == "READ_EXTERNAL_PROJECT" for item in result["supported_project_operations"])
+
+
+def test_capability_history_does_not_expose_current_snapshot_for_external_scope(monkeypatch):
+    from lab_v4_dev.core import audit as audit_module
+    monkeypatch.setattr(audit_module, "get_events", lambda **_kwargs: [{
+        "event": "project.external_scan",
+        "timestamp": "2026-11-10T12:00:00+00:00",
+        "source": "orchestrator",
+        "context": {"project_root": "/external/demo"},
+        "details": {"total_files": 12},
+    }])
+    result = _retriever().retrieve(
+        "ما قدراتك بشكل عام في قراءة المشاريع الخارجية؟",
+        evidence_scope="project_state",
+    )
+    assert result["type"] == "capability"
+    assert result["current_project_knowledge"] is False
+    assert "layers" not in result
+    assert result["observed_operation_count"] == 1
+
+
 def test_authorized_project_context_resolves_ambiguous_architecture_without_scope_leak():
     retriever = _retriever()
 

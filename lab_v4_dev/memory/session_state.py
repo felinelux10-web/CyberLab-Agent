@@ -2071,6 +2071,7 @@ def _dialogue_knowledge_summary_insights(
     *,
     limit: int = 6,
     session_id: str = "",
+    analysis: dict | None = None,
 ) -> list[str]:
     """Build summary points from source-attributed knowledge, not assistant-only heuristics."""
     records = [dict(item) for item in exchanges if isinstance(item, dict)]
@@ -2084,22 +2085,23 @@ def _dialogue_knowledge_summary_insights(
     # before analysis so provenance IDs also match the completion filter below.
     for index, item in enumerate(records, 1):
         item.setdefault("exchange_id", f"{session_id}:{index}")
-    from lab_v4_dev.memory.dialogue_knowledge import analyze_dialogue_session
-
-    analysis = analyze_dialogue_session({
-        "session_id": session_id,
-        "session_type": "dialogue",
-        "dialogue_state": {
+    if not isinstance(analysis, dict):
+        from lab_v4_dev.memory.dialogue_knowledge import analyze_dialogue_session
+        analysis = analyze_dialogue_session({
             "session_id": session_id,
-            "transcript_archive": records,
-        },
-    })
+            "session_type": "dialogue",
+            "dialogue_state": {
+                "session_id": session_id,
+                "transcript_archive": records,
+            },
+        })
     completed_ids = {
         str(item.get("exchange_id") or "")
         for item in records
         if not item.get("response_failed")
         and not item.get("recall_only")
         and not item.get("state_boundary_only")
+        and str(item.get("response_status") or "").casefold() != "needs_clarification"
         and str(item.get("assistant") or "").strip()
     }
     corrected_ids = {
@@ -2151,7 +2153,7 @@ def summarize_dialogue_exchanges(
     limit: int = 6,
     session_id: str = "",
 ) -> dict:
-    """Build a concise narrative summary from the meaning of bounded exchanges."""
+    """Project one canonical dialogue-knowledge analysis into a concise view."""
     records = [
         item for item in (exchanges or [])
         if isinstance(item, dict)
@@ -2160,159 +2162,159 @@ def summarize_dialogue_exchanges(
         and not item.get("recall_only")
         and not item.get("state_boundary_only")
         and not item.get("response_failed")
+        and str(item.get("response_status") or "").casefold() != "needs_clarification"
     ]
-    meaningful = [
-        item for item in records
-        if not _is_dialogue_control_exchange(item)
+    meaningful = [item for item in records if not _is_dialogue_control_exchange(item)]
+    sid = str(session_id or "").strip() or next(
+        (str(item.get("session_id") or "").strip() for item in meaningful if item.get("session_id")),
+        "",
+    )
+    analysis_records = [dict(item) for item in meaningful]
+    if sid:
+        for index, item in enumerate(analysis_records, 1):
+            item.setdefault("session_id", sid)
+            item.setdefault("exchange_id", f"{sid}:{index}")
+
+    from lab_v4_dev.memory.dialogue_knowledge import analyze_dialogue_session
+    analysis = analyze_dialogue_session({
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {"session_id": sid, "transcript_archive": analysis_records},
+    })
+    knowledge_insights = _dialogue_knowledge_summary_insights(
+        analysis_records,
+        limit=max(1, int(limit)),
+        session_id=sid,
+        analysis=analysis,
+    )
+    paired_insights = [
+        " ".join(str(item.get("content") or "").split()).strip()
+        for item in analysis.get("exchange_insights", [])
+        if isinstance(item, dict) and str(item.get("content") or "").strip()
     ]
+    # User-owned facts and corrections have priority; paired Q/A insights are
+    # produced by the same analyzer and carry both speaker sources.
+    insights = []
+    for insight in [*knowledge_insights, *paired_insights]:
+        if insight and insight not in insights:
+            insights.append(insight)
+        if len(insights) >= max(1, int(limit)):
+            break
 
     selected_topic = " ".join(str(topic or "").split()).strip()
-    if (
-        not selected_topic
-        or _is_dialogue_control_text(selected_topic)
-        or _is_generated_dialogue_label(selected_topic)
-    ):
-        selected_topic = next(
-            (
-                " ".join(str(item.get("target") or "").split()).strip()
-                for item in reversed(meaningful)
-                if str(item.get("target") or "").strip()
-                and not _is_dialogue_control_text(item.get("target"))
-                and not _is_generated_dialogue_label(item.get("target"))
-            ),
-            "",
-        )
-
-    legacy_insights = []
-    for exchange in meaningful:
-        for insight in (
-            *_dialogue_exchange_insights(exchange),
-            _dialogue_assistant_insight(exchange),
-        ):
-            insight = " ".join(str(insight or "").split()).strip()
-            if insight and insight not in legacy_insights:
-                legacy_insights.append(insight)
-    knowledge_insights = _dialogue_knowledge_summary_insights(
-        meaningful,
-        limit=max(1, int(limit)),
-        session_id=session_id,
-    )
-    # Retain the established concise narrative lead where available, then
-    # ground the remaining summary points in speaker-attributed source records.
-    insights = []
-    if legacy_insights:
-        insights.append(legacy_insights[0])
-    for insight in knowledge_insights:
-        if insight not in insights:
-            insights.append(insight)
-        if len(insights) >= max(1, int(limit)):
-            break
-    for insight in legacy_insights[1:]:
-        if insight not in insights:
-            insights.append(insight)
-        if len(insights) >= max(1, int(limit)):
-            break
-    insights = insights[:max(1, int(limit))]
-
-    if not selected_topic and meaningful:
-        selected_topic = next(
-            (
-                " ".join(str(item.get("target") or "").split()).strip()
-                for item in meaningful
-                if str(item.get("target") or "").strip()
-                and not _is_generated_dialogue_label(item.get("target"))
-            ),
-            "",
-        )
+    if not selected_topic or _is_dialogue_control_text(selected_topic) or _is_generated_dialogue_label(selected_topic):
+        selected_topic = next((
+            " ".join(str(value or "").split()).strip()
+            for value in reversed(analysis.get("topics", []))
+            if str(value or "").strip()
+            and not _is_dialogue_control_text(value)
+            and not _is_generated_dialogue_label(value)
+        ), "")
+    if not selected_topic:
+        selected_topic = next((
+            str(item.get("topic") or "").strip()
+            for item in reversed(analysis.get("exchange_insights", []))
+            if str(item.get("topic") or "").strip()
+        ), "")
     if not selected_topic and insights:
         selected_topic = insights[0][:100].rstrip(" .،؛:")
     if not selected_topic and records:
         selected_topic = "حوار افتتاحي عن التحية والتعارف"
 
-    last = meaningful[-1] if meaningful else {}
-    last_target = " ".join(str(last.get("target") or "").split()).strip()
-    last_insights = _dialogue_exchange_insights(last) if last else []
+    last_exchange = analysis.get("last_exchange") or {}
+    last_exchange_id = str(last_exchange.get("exchange_id") or "")
+    user_facts = [
+        item for item in analysis.get("user_information", [])
+        if str(item.get("source_exchange_id") or "") == last_exchange_id
+    ]
+    corrected_targets = {
+        str(item.get("target_knowledge_id") or "")
+        for item in analysis.get("relationships", [])
+        if item.get("relation") == "corrects"
+    }
+    user_facts = [
+        item for item in user_facts
+        if str(item.get("knowledge_id") or "") not in corrected_targets
+    ]
+    last_exchange_insights = [
+        item for item in analysis.get("exchange_insights", [])
+        if str(item.get("source_exchange_id") or "") == last_exchange_id
+    ]
+    assistant_facts = [
+        item for item in analysis.get("assistant_information", [])
+        if str(item.get("source_exchange_id") or "") == last_exchange_id
+        and item.get("knowledge_type") != "assistant_non_answer"
+    ]
+
     if not meaningful:
         stop_point = "لم يتجاوز السجل تبادل التحية أو الحديث الاجتماعي القصير؛ لم يُسجّل موضوع نقاش فعلي."
-    elif (
-        last_target
-        and not _is_dialogue_control_text(last_target)
-        and not _is_generated_dialogue_label(last_target)
-    ):
-        stop_point = f"توقف الحوار عند مناقشة «{last_target}»؛ ولا توجد متابعة محفوظة بعد آخر تبادل مكتمل."
-    elif last_insights:
-        stop_point = f"آخر مضمون موثق في السجل: {last_insights[0]}"
-    elif insights:
-        stop_point = f"آخر نقطة يمكن إثباتها من السجل: {insights[-1]}"
+    elif user_facts:
+        fact = " ".join(str(user_facts[-1].get("content") or "").split()).strip()
+        stop_point = f"آخر معلومة موثقة صرّح بها المستخدم: {fact}"
+    elif last_exchange_insights:
+        stop_point = f"آخر مضمون موثق من تحليل السؤال والجواب: {last_exchange_insights[-1]['content']}"
+    elif assistant_facts:
+        fact = " ".join(str(assistant_facts[-1].get("content") or "").split()).strip()
+        stop_point = f"آخر توضيح موضوعي محفوظ من الوكيل: {fact}"
+    elif selected_topic:
+        stop_point = f"تناول آخر تبادل مكتمل موضوع «{selected_topic}»، لكن لا توجد معلومة إضافية كافية لإثبات نقطة أدق."
     else:
-        stop_point = "توجد تبادلات محفوظة، لكن لا تكفي بياناتها لتحديد نقطة توقف موضوعية دون تخمين."
+        stop_point = "توجد تبادلات محفوظة، لكن لا تكفي الأدلة لتحديد نقطة توقف موضوعية دون تخمين."
+
+    explicit_next_step = " ".join(str(analysis.get("explicit_next_step") or "").split()).strip()
+    if explicit_next_step:
+        next_step = explicit_next_step
+    elif meaningful and selected_topic:
+        next_step = f"استكمال النقاش حول «{selected_topic}» انطلاقًا من آخر مضمون موثق."
+    elif meaningful:
+        next_step = "استكمال الحوار بعد تحديد الموضوع الذي يراد متابعته."
+    else:
+        next_step = "اختيار موضوع واضح للبدء؛ السجل لا يثبت وجود نقاش موضوعي سابق."
+
+    topics = []
+    for value in analysis.get("topics", []):
+        value = " ".join(str(value or "").split()).strip()
+        if value and not _is_dialogue_control_text(value) and not _is_generated_dialogue_label(value) and value not in topics:
+            topics.append(value)
+
+    def attributed(items):
+        result = []
+        for item in items:
+            content = " ".join(str(item.get("content") or "").split()).strip()
+            if content and content not in result:
+                result.append(content)
+        return result
 
     return {
         "topic": selected_topic,
+        "topics": topics,
         "insights": insights,
         "stop_point": stop_point,
+        "next_step": next_step,
+        "conclusions": attributed(analysis.get("conclusions", [])),
+        "decisions": attributed(analysis.get("decisions", [])),
         "exchange_count": len(records),
         "meaningful_exchange_count": len(meaningful),
-        "has_substantive_content": bool(meaningful and insights),
+        "last_exchange_id": last_exchange_id or None,
+        "has_substantive_content": bool(meaningful and (insights or analysis.get("knowledge"))),
     }
+
 
 def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
-    """Summarize the selected dialogue and its stop point without mixing work state."""
+    """Render every dialogue summary/report from one provenance-backed analysis."""
     report = analyze_session(data)
     exchanges = _dialogue_exchanges(data)
+    summary_exchanges = [item for item in exchanges if not _is_dialogue_control_exchange(item)]
     dialogue = data.get("dialogue_state") or {}
-    # Keep all exchanges for literal transcript mode, but exclude greetings and
-    # session-management commands from semantic topic extraction and summaries.
-    summary_exchanges = [
-        item for item in exchanges if not _is_dialogue_control_exchange(item)
-    ]
-    stored_topic = str(
-        dialogue.get("last_topic")
-        or next((item.get("target") for item in reversed(summary_exchanges) if item.get("target")), "")
-        or report.get("topic")
-    ).strip()
-    generic_topics = {
-        "حفظ سياق الحوار", "جلسة حوار", "حوار محفوظ", "غير محدد من سجل الحوار",
-        "حوار بلا موضوع محدد", "جلسة بلا عنوان",
-    }
-    content_topic = next(
-        (_dialogue_exchange_subject(item) for item in reversed(summary_exchanges) if _dialogue_exchange_subject(item)),
-        "",
+    if not isinstance(dialogue, dict):
+        dialogue = {}
+    session_id = str(data.get("session_id") or dialogue.get("session_id") or "").strip()
+    semantic_summary = summarize_dialogue_exchanges(
+        summary_exchanges, limit=12, session_id=session_id,
     )
-    stored_topic_is_control = _is_dialogue_control_text(stored_topic)
-    stored_topic_is_generic = (
-        stored_topic in generic_topics or _is_generated_dialogue_label(stored_topic)
-    )
-    # Prefer the latest substantive archive evidence over stale metadata.
-    topic = (
-        content_topic
-        or (stored_topic if stored_topic and not stored_topic_is_generic and not stored_topic_is_control else "")
-    )
-    topic = topic or "حوار افتتاحي أو إداري بلا موضوع معرف في السجل"
-    last = (summary_exchanges or exchanges)[-1] if (summary_exchanges or exchanges) else {}
-    last_insights = _dialogue_exchange_insights(last) if last else []
-    if last:
-        last_target = str(last.get("target") or "").strip()
-        if last_target and not _is_dialogue_control_text(last_target):
-            stop_detail = f"كان موضوع التبادل «{last_target}»."
-        elif last_insights:
-            stop_detail = f"آخر مضمون موثق: {last_insights[0]}"
-        else:
-            stop_detail = f"لا يحمل آخر تبادل موضوعًا فرعيًا محددًا؛ الموضوع العام المسجل هو «{topic}»."
-        stop_point = (
-            "توقف الحوار بعد آخر تبادل مكتمل محفوظ؛ "
-            + stop_detail
-            + " يوجد رد محفوظ من الوكيل، ولم تُنشأ متابعة جديدة أثناء الاستعادة."
-        )
-        next_step = f"استكمال الحوار من آخر تبادل محفوظ حول «{topic}»."
-    else:
-        stop_point = "لا توجد تبادلات مكتملة محفوظة يمكن تحديد نقطة التوقف منها."
-        next_step = "حدّد الموضوع أو اختر جلسة أخرى إذا كان هذا السجل غير مكتمل."
+    topic = semantic_summary.get("topic") or "حوار افتتاحي أو إداري بلا موضوع معرف في السجل"
 
     if report_mode == "transcript":
-        # A literal transcript includes every persisted raw turn, including
-        # clarification-only and failed turns. Semantic summaries continue to
-        # use _dialogue_exchanges(), which deliberately excludes those records.
         from lab_v4_dev.memory.dialogue_knowledge import _raw_exchange_archive
         _, transcript_exchanges = _raw_exchange_archive(data)
         lines = [
@@ -2337,111 +2339,73 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
             "=== ملخص الحوار المحفوظ ===",
             f"المعرّف: {report['session_id']}",
             f"الموضوع: {topic}",
-            f"عدد التبادلات المكتملة: {len(exchanges)}",
+            f"عدد التبادلات المكتملة: {semantic_summary['exchange_count']}",
         ])
+
     if report_mode == "brief":
-        brief = summarize_dialogue_exchanges(
-            summary_exchanges, topic=topic, limit=3,
-            session_id=str(data.get("session_id") or ""),
-        )
-        details = "؛ ".join(brief["insights"][:2]) or (
-            "لا يتضمن السجل مضمونًا موضوعيًا كافيًا يمكن إثباته."
-        )
+        brief = summarize_dialogue_exchanges(summary_exchanges, limit=3, session_id=session_id)
+        details = "؛ ".join(brief["insights"][:2]) or "لا يتضمن السجل مضمونًا موضوعيًا كافيًا يمكن إثباته."
         return "\n".join([
             "=== موجز الحوار المحفوظ ===",
             f"الموضوع: {brief['topic'] or topic}",
             f"الخلاصة: {details}",
             f"نقطة التوقف: {brief['stop_point']}",
+            f"الخطوة التالية: {brief['next_step']}",
         ])
+
     if report_mode == "progress":
-        progress_summary = summarize_dialogue_exchanges(
-            summary_exchanges,
-            topic=topic,
-            limit=12,
-            session_id=str(data.get("session_id") or ""),
-        )
-        progress_stop_point = progress_summary["stop_point"]
-        progress_next_step = (
-            f"استكمال النقاش من آخر مضمون موثق حول «{progress_summary['topic']}»."
-            if progress_summary["meaningful_exchange_count"]
-            else "اختيار موضوع واضح للبدء؛ السجل الحالي لا يثبت وجود نقاش موضوعي سابق."
-        )
-        progress_insights = progress_summary["insights"]
+        progress_insights = semantic_summary["insights"]
         progress_lines = [
             "=== ملخص الحوار ونقطة التوقف ===",
-            f"الموضوع: {progress_summary['topic'] or topic}",
-            f"التبادلات المكتملة المحفوظة: {len(exchanges)}",
+            f"الموضوع: {semantic_summary['topic'] or topic}",
+            f"التبادلات المكتملة المحفوظة: {semantic_summary['exchange_count']}",
             "",
             "ما ناقشناه فعليًا:",
         ]
         progress_lines.extend(
             [f"- {insight}" for insight in progress_insights]
-            if progress_insights
-            else ["- لا يتضمن السجل مضمونًا موضوعيًا كافيًا لتلخيصه."]
+            if progress_insights else ["- لا يتضمن السجل مضمونًا موضوعيًا كافيًا لتلخيصه."]
         )
         progress_lines.extend([
             "",
-            f"نقطة التوقف: {progress_stop_point}",
-            f"الخطوة التالية: {progress_next_step}",
+            f"نقطة التوقف: {semantic_summary['stop_point']}",
+            f"الخطوة التالية: {semantic_summary['next_step']}",
             "لم يتم تنفيذ أي خطوة جديدة أثناء الاستعادة.",
         ])
         return "\n".join(progress_lines)
 
-    topics = []
-    for exchange in summary_exchanges:
-        value = " ".join(str(exchange.get("target") or "").split()).strip()
-        if value and not _is_dialogue_control_text(value) and value not in topics:
-            topics.append(value)
-
-    # Summarize the meaningful bounded archive semantically. Control turns stay
-    # available in transcript mode but cannot become the report's subject.
-    semantic_summary = summarize_dialogue_exchanges(
-        summary_exchanges,
-        topic=topic,
-        limit=12,
-        session_id=str(data.get("session_id") or ""),
-    )
+    topics = semantic_summary.get("topics") or []
+    explicit_conclusions = [
+        *semantic_summary.get("conclusions", []),
+        *[f"قرار المستخدم: {item}" for item in semantic_summary.get("decisions", [])],
+    ]
     content_lines = semantic_summary["insights"]
-    explicit_conclusions = _dialogue_explicit_conclusions(summary_exchanges)
-
     detailed_report = report_mode == "full"
     lines = [
-        (
-            "=== التقرير الدلالي للحوار المحفوظ ==="
-            if detailed_report else "=== ملخص الحوار المحفوظ ==="
-        ),
+        "=== التقرير الدلالي للحوار المحفوظ ===" if detailed_report else "=== ملخص الحوار المحفوظ ===",
         f"معرّف الجلسة: {report['session_id']}",
         f"آخر تحديث: {report['last_updated']}",
-        (
-            f"1) الموضوع والنطاق: {topic}"
-            if detailed_report
-            else f"الموضوع الحالي داخل هذا الحوار: {topic}"
-        ),
-        f"عدد التبادلات المكتملة المحفوظة: {len(exchanges)}",
+        f"1) الموضوع والنطاق: {topic}" if detailed_report else f"الموضوع الحالي داخل هذا الحوار: {topic}",
+        f"عدد التبادلات المكتملة المحفوظة: {semantic_summary['exchange_count']}",
         "",
-        (
-            "2) ما نوقش فعليًا في الحوار:"
-            if detailed_report else "ما نوقش فعليًا في الحوار:"
-        ),
+        "2) ما نوقش فعليًا في الحوار:" if detailed_report else "ما نوقش فعليًا في الحوار:",
     ]
     lines.extend([f"- {item}" for item in content_lines] if content_lines else [
         "- لا توجد تبادلات مكتملة ذات مضمون قابل للتلخيص في البيانات المحفوظة."
     ])
     lines.extend([
         "",
-        "3) الموضوعات المثبتة في سجل الحوار:"
-        if detailed_report else "الموضوعات المثبتة في سجل الحوار:",
+        "3) الموضوعات المثبتة في تحليل الأدلة:" if detailed_report else "الموضوعات المثبتة في تحليل الأدلة:",
     ])
     lines.extend([f"- {item}" for item in topics] if topics else [
-        "- لا توجد موضوعات فرعية محددة في البيانات المحفوظة."
+        "- لا توجد موضوعات فرعية محددة في الأدلة المحفوظة."
     ])
     lines.extend([
         "",
-        "4) الخلاصات والقرارات المسجلة صراحة:"
-        if detailed_report else "الخلاصات والقرارات المسجلة صراحة:",
+        "4) الخلاصات والقرارات المستخرجة من الأدلة:" if detailed_report else "الخلاصات والقرارات المستخرجة من الأدلة:",
     ])
     lines.extend([f"- {item}" for item in explicit_conclusions] if explicit_conclusions else [
-        "- لا توجد خلاصات أو قرارات منفصلة محفوظة في الحقول المنظمة."
+        "- لا توجد خلاصات أو قرارات موضوعية منفصلة مثبتة في الأدلة."
     ])
     lines.extend([
         "",
@@ -2449,49 +2413,15 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         semantic_summary["stop_point"],
         "",
         "6) الخطوة التالية:" if detailed_report else "الخطوة التالية المقترحة:",
-        next_step,
+        semantic_summary["next_step"],
         "",
         "حدود الاستعادة: هذا ملخص للسجل المحدد فقط؛ لم تُدمج معه الجلسة الحية أو جلسة العمل. لم يُنشأ أي رد جديد.",
     ])
     if detailed_report:
         from lab_v4_dev.memory.dialogue_knowledge import format_dialogue_analysis_report
         lines.extend(["", format_dialogue_analysis_report(data)])
-
-    if detailed_report:
-        # Keep analytical prose distinct from attributed evidence. Questions are
-        # represented by grounded semantic points rather than copied verbatim;
-        # declarative user statements remain available as source evidence.
-        lines.extend([
-            "",
-            "ملحق الأدلة الأصلية المرتبة زمنيًا:",
-            "تُفصل مساهمات المستخدم عن ردود الوكيل، مع استبعاد تبادلات التحية والإدارة من التحليل الموضوعي.",
-        ])
-        for index, exchange in enumerate(summary_exchanges, 1):
-            user_text = str(exchange.get("user") or "").strip()
-            assistant_text = str(exchange.get("assistant") or "").strip()
-            if not user_text and not assistant_text:
-                continue
-            is_question = bool(
-                "؟" in user_text or "?" in user_text
-                or re.match(r"^(?:ما|ماذا|من|هل|كيف|اين|أين|لماذا|كم)\b", user_text)
-            )
-            if user_text and is_question:
-                user_points = _dialogue_exchange_insights(exchange)
-                user_text = "؛ ".join(user_points) or (
-                    "طرح المستخدم سؤالًا موضوعيًا محفوظًا في التبادل الأصلي."
-                )
-            assistant_insight = _dialogue_assistant_insight(exchange)
-            if assistant_insight:
-                assistant_text = assistant_insight
-            lines.extend([
-                "",
-                f"التبادل الموضوعي {index}:",
-                "مساهمة المستخدم:",
-                user_text or "لا توجد مساهمة مستخدم محفوظة.",
-                "رد الوكيل:",
-                assistant_text or "لا يوجد رد موضوعي محفوظ.",
-            ])
     return "\n".join(lines)
+
 
 
 def build_session_restore_summary(data: dict | None = None, *, report_mode: str = "standard") -> str:
@@ -2861,17 +2791,16 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
         # Let the semantic extractor infer a subject from the exchange evidence.
         semantic_summary = summarize_dialogue_exchanges(
             meaningful_exchanges,
-            topic=topic,
+            topic="",
             limit=4,
-            session_id=str(session.get("session_id") or ""),
+            session_id=str(session.get("session_id") or dialogue.get("session_id") or ""),
         )
+        inferred_topic = str(semantic_summary.get("topic") or "").strip()
+        if useful_topic(inferred_topic) and not _is_generated_dialogue_label(inferred_topic):
+            # Prefer the topic derived from the same evidence projection over stale metadata.
+            topic = clean(inferred_topic, 100)
         if not topic:
-            inferred_topic = str(semantic_summary.get("topic") or "").strip()
-            topic = (
-                clean(inferred_topic, 100)
-                if useful_topic(inferred_topic) and not _is_generated_dialogue_label(inferred_topic)
-                else "حوار بلا موضوع محدد"
-            )
+            topic = "حوار بلا موضوع محدد"
         insights = semantic_summary["insights"]
         if insights:
             summary = "الخلاصة الدلالية للحوار: " + "؛ ".join(
@@ -2888,10 +2817,7 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
             summary = "حوار افتتاحي للتحية والتعارف؛ لا تظهر في السجل تبادلات موضوعية أخرى مكتملة."
         else:
             summary = "لا يحتوي السجل على تبادلات مكتملة ذات مضمون يمكن تلخيصه بثقة."
-        next_step = clean(
-            session.get("next_step") or (report.get("next_step") if report.get("next_step") != "غير محدد من البيانات المتاحة" else ""),
-            120,
-        )
+        next_step = clean(semantic_summary.get("next_step"), 120)
         return {
             "session_id": str(session.get("session_id") or report.get("session_id") or ""),
             "session_type": "dialogue",

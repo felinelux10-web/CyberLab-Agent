@@ -199,6 +199,26 @@ def test_self_description_is_grounded_and_uses_chat_not_orchestrator(
     assert "tokenizer" not in system
 
 
+def test_agent_capability_route_uses_local_project_evidence_scope():
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+    manager = ConversationManager(RecordingOrchestrator(), DialogueMemory(ContextStore()))
+    decision = manager.finalize_route(
+        parsed={
+            "intent": Intent.AGENT_CAPABILITIES,
+            "conversation_domain": "agent_self",
+            "conversation_act": "ASSISTANT_CAPABILITY_QUERY",
+            "confidence": 1.0,
+        },
+        selected_session={"kind": "none"},
+        saved_session_request=False,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+    assert decision.route == "L-FACT"
+    assert decision.evidence_scope == "project_state"
+    assert decision.provider_allowed is True
+
+
 def test_self_knowledge_scope_changes_with_question_type():
     identity = build_agent_self_knowledge(Intent.AGENT_IDENTITY)
     capabilities = build_agent_self_knowledge(Intent.AGENT_CAPABILITIES)

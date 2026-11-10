@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 from typing import Any, Dict, List, Optional
@@ -177,6 +178,7 @@ class KnowledgeRetriever:
         question: str,
         *,
         authorized_current_project: bool = False,
+        evidence_scope: str = "none",
     ) -> Dict[str, Any]:
         """Retrieve project facts only inside an explicitly resolved scope.
 
@@ -187,10 +189,18 @@ class KnowledgeRetriever:
         scope = resolve_project_scope(question)
         if scope == ProjectScope.UNKNOWN and authorized_current_project:
             scope = ProjectScope.CURRENT_PROJECT
+        question_type = QuestionClassifier.classify(question)
         if scope != ProjectScope.CURRENT_PROJECT:
+            # Capability/history questions may read the shared operation ledger,
+            # but never inherit the current project's source snapshot.
+            if question_type == "capability" and evidence_scope in {"project_state", "work_state"}:
+                result = self._retrieve_capability(question)
+                result["project_scope"] = scope
+                result["current_project_knowledge"] = False
+                result["provenance"]["scope"] = "capability_history_only"
+                return result
             return self._scope_safe_result(scope)
 
-        question_type = QuestionClassifier.classify(question)
         
         if question_type == "architecture":
             result = self._retrieve_architecture(question)
@@ -456,41 +466,84 @@ class KnowledgeRetriever:
         }
     
     def _retrieve_capability(self, question: str) -> Dict[str, Any]:
-        """Retrieve capability-related knowledge."""
-        intent_files = [
-            e for e in self.model.entities.values()
-            if "intent" in e.path.lower()
+        """Combine source-backed handlers with observed runtime operations."""
+        intent_files = [entity for entity in self.model.entities.values() if "intent" in entity.path.lower()]
+        orchestrator_files = [entity for entity in self.model.entities.values() if "orchestrator" in entity.path.lower()]
+
+        implemented_intents = []
+        try:
+            source_path = os.path.realpath(os.path.join(
+                os.path.dirname(__file__), "..", "core", "orchestrator.py"
+            ))
+            with open(source_path, "r", encoding="utf-8") as source_file:
+                tree = ast.parse(source_file.read(), filename=source_path)
+            implemented_intents = sorted({
+                node.attr for node in ast.walk(tree)
+                if isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "Intent"
+            })
+        except (OSError, SyntaxError):
+            implemented_intents = []
+
+        operation_names = (
+            "READ_FILE", "PROJECT_SCAN", "READ_EXTERNAL_PROJECT",
+            "SWITCH_PROJECT", "RETURN_BASE_PROJECT", "MODIFY_CODE",
+            "RUN_TESTS", "TEST_PROJECT",
+        )
+        supported_operations = [
+            {
+                "intent": name,
+                "handler_source": "lab_v4_dev/core/orchestrator.py",
+                "evidence_type": "source_handler_reference",
+                "confidence": ConfidenceLevel.STATIC_VERIFIED,
+            }
+            for name in operation_names if name in implemented_intents
         ]
-        
-        orchestrator_files = [
-            e for e in self.model.entities.values()
-            if "orchestrator" in e.path.lower()
-        ]
-        
+
+        observed_operations = []
+        try:
+            from lab_v4_dev.core.audit import get_events
+            for event in get_events(limit=100):
+                event_name = str(event.get("event") or "")
+                if not event_name.startswith(("project.", "project_knowledge.", "safe_pipeline.")):
+                    continue
+                context = event.get("context") if isinstance(event.get("context"), dict) else {}
+                details = event.get("details") if isinstance(event.get("details"), dict) else {}
+                observed_operations.append({
+                    "event": event_name,
+                    "timestamp": event.get("timestamp"),
+                    "source": event.get("source"),
+                    "project_root": context.get("project_root") or context.get("root"),
+                    "file_path": context.get("file_path") or context.get("file"),
+                    "details": details,
+                    "confidence": ConfidenceLevel.RUNTIME_VERIFIED,
+                })
+        except Exception:
+            observed_operations = []
+
         return {
             "type": "capability",
             "intent_handling": {
-                "files": [e.path for e in intent_files],
-                "functions": sum(
-                    [e.metadata.get("functions", []) for e in intent_files],
-                    []
-                )[:10],
+                "files": [entity.path for entity in intent_files],
+                "functions": sum([entity.metadata.get("functions", []) for entity in intent_files], [])[:10],
+                "implemented_intents": implemented_intents,
             },
             "execution_capability": {
-                "files": [e.path for e in orchestrator_files],
-                "functions": sum(
-                    [e.metadata.get("functions", []) for e in orchestrator_files],
-                    []
-                )[:10],
+                "files": [entity.path for entity in orchestrator_files],
+                "functions": sum([entity.metadata.get("functions", []) for entity in orchestrator_files], [])[:10],
             },
+            "supported_project_operations": supported_operations,
+            "observed_operations": observed_operations[:20],
+            "observed_operation_count": len(observed_operations),
             "provenance": {
-                "source": "project knowledge model",
+                "source": "Orchestrator AST and shared persistent audit journal",
                 "confidence": ConfidenceLevel.STATIC_VERIFIED,
-                "evidence": "component analysis",
+                "evidence": "Intent references in dispatch source; observed operations are separately marked runtime_verified.",
             },
             "recommendation": (
-                "استخدم المكونات والدوال المستخرجة فعلاً من الكود. "
-                "لا تفترض قدرات غير مثبتة بالمصدر."
+                "ميّز بين العملية المدعومة في الشفرة والعملية التي يثبت سجل التشغيل "
+                "أنها نُفذت. لا تعتبر وجود Intent أو ملف وحده دليلًا على نجاح التنفيذ."
             ),
         }
     
@@ -517,6 +570,7 @@ def retrieve_for_question(
     question: str,
     *,
     authorized_current_project: bool = False,
+    evidence_scope: str = "none",
 ) -> Dict[str, Any]:
     """Convenience entry point with an optional, caller-authorized project scope."""
     retriever = KnowledgeRetriever()
@@ -524,5 +578,6 @@ def retrieve_for_question(
         return retriever.retrieve(
             question,
             authorized_current_project=True,
+            evidence_scope=evidence_scope,
         )
-    return retriever.retrieve(question)
+    return retriever.retrieve(question, evidence_scope=evidence_scope)

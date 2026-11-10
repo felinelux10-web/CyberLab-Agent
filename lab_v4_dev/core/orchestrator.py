@@ -393,6 +393,9 @@ class Orchestrator:
                                 full_path = candidate_path
 
                 text = open(full_path, encoding="utf-8").read()
+                from lab_v4_dev.core.project_context import get_active_project_root
+                from lab_v4_dev.core.audit import emit_event
+                emit_event("project.file_read", source="orchestrator", context={"project_root": get_active_project_root(), "file_path": full_path}, details={"characters_read": len(text), "bytes_read": len(text.encode("utf-8")), "output_truncated": len(text) > 2000})
 
                 return {"status": "success", "intent": intent,
                         "output": text[:2000], "file": full_path}
@@ -451,6 +454,8 @@ class Orchestrator:
             for layer, files in layers.items():
                 lines.append(f"  {layer}: {len(files)} ملف")
             text = chr(10).join(lines)
+            from lab_v4_dev.core.audit import emit_event
+            emit_event("project.scan", source="orchestrator", context={"project_root": active.root}, details={"project_name": active.name, "total_files": total, "entry_points": list(entries), "critical_files": list(critical), "layers": {str(layer): len(files) for layer, files in layers.items()}})
             return {
                 "status"     : "success",
                 "intent"     : intent,
@@ -1422,12 +1427,16 @@ class Orchestrator:
             if not os.path.exists(path):
                 return {"status":"success","intent":intent,
                         "text":f"المسار غير موجود: {path}"}
-            from lab_v4_dev.core.project_context import set_active_project
+            from lab_v4_dev.core.project_context import set_active_project, get_active_project
+            previous_project = get_active_project()
             switched = set_active_project(path)
             if switched["status"] != "success":
                 return {"status":"failed","intent":intent,"text":switched["message"]}
             from lab_v4_dev.awareness.ts_reader import scan_project
             snapshot = scan_project(path)
+            from lab_v4_dev.core.audit import emit_event
+            emit_event("project.switched", source="orchestrator", context={"project_root": path}, details={"previous_root": previous_project.root, "new_root": path, "reason": "read_external_project"})
+            emit_event("project.external_scan", source="orchestrator", context={"project_root": path}, details={"project_type": snapshot.get("project_type"), "total_files": snapshot.get("total_files"), "entry_points": snapshot.get("entry_points", []), "critical_files": snapshot.get("critical_files", [])[:10]})
             lines = [f"تم قراءة المشروع: {path}"]
             lines.append(f"النوع: {snapshot['project_type']}")
             lines.append(f"الملفات: {snapshot['total_files']}")
@@ -3148,6 +3157,7 @@ SOURCE CODE:
                 proj = get_active_project()
                 return {"status":"success","intent":intent,
                         "text": f"المشروع النشط حالياً: {proj.name} ({proj.root})"}
+            previous_project = get_active_project()
             r = set_active_project(path)
             if r["status"] != "success":
                 return {"status":"failed","intent":intent,"text":r["message"]}
@@ -3207,25 +3217,44 @@ SOURCE CODE:
                 hist["history"] = hist["history"][:10]
                 save_project_history(hist)
             except: pass
+            from lab_v4_dev.core.audit import emit_event
+            emit_event("project.switched", source="orchestrator", context={"project_root": p["root"]}, details={"previous_root": previous_project.root, "new_root": p["root"], "project_name": p["name"], "index_result": indexed.strip()})
             return {"status":"success","intent":intent,
                     "text": f"✅ تم التبديل إلى: {p['name']}\nالمسار: {p['root']}{indexed}"}
 
         # ─── Audit Log ───
         elif intent == Intent.AUDIT_LOG:
-            from lab_v4_dev.core.safe_io import get_audit_log
-            events = get_audit_log(10)
+            from lab_v4_dev.core.audit import get_events
+            events = get_events(limit=20)
             if not events:
-                return {"status":"success","intent":intent,
-                        "text":"لا توجد عمليات كتابة مسجلة بعد ✅"}
-            lines = ["=== سجل العمليات (آخر 10) ==="]
-            for e in events:
-                status_icon = "✅" if e.get("status")=="success" else "❌"
-                ts = e.get("timestamp","")[:16]
-                lines.append(f"{status_icon} {ts} | {e.get('path','')}")
-                if e.get("reason"):
-                    lines.append(f"    سبب: {e['reason']}")
-                if e.get("backup"):
-                    lines.append(f"    نسخة احتياطية: {e['backup']}")
+                from lab_v4_dev.core.safe_io import get_audit_log
+                legacy_events = get_audit_log(10)
+                if not legacy_events:
+                    return {"status":"success","intent":intent,"text":"لا توجد عمليات موثقة في سجل الأدلة حتى الآن."}
+                lines = ["=== سجل عمليات الكتابة السابق (آخر 10) ==="]
+                for item in legacy_events:
+                    status_icon = "✅" if item.get("status") == "success" else "❌"
+                    lines.append(f"{status_icon} {item.get('timestamp', '')[:16]} | {item.get('path', '')}")
+                return {"status":"success","intent":intent,"text":"\n".join(lines)}
+            lines = ["=== سجل الأدلة والعمليات (آخر 20) ==="]
+            for item in events:
+                context = item.get("context") if isinstance(item.get("context"), dict) else {}
+                details = item.get("details") if isinstance(item.get("details"), dict) else {}
+                event_name = str(item.get("event") or "event")
+                status_icon = "❌" if event_name.endswith((".failed", ".failure")) else "✅"
+                timestamp = str(item.get("timestamp") or "")[:16]
+                source = str(item.get("source") or "unknown")
+                lines.append(f"{status_icon} {timestamp} | {event_name} [{source}]")
+                file_path = context.get("file_path") or context.get("file") or details.get("file")
+                project_root = context.get("project_root") or context.get("root")
+                if file_path:
+                    lines.append(f"    الملف: {file_path}")
+                if project_root:
+                    lines.append(f"    المشروع: {project_root}")
+                for key in ("project_name", "project_type", "total_files", "files_modified", "reason"):
+                    value = details.get(key)
+                    if value not in (None, "", [], {}):
+                        lines.append(f"    {key}: {value}")
             return {"status":"success","intent":intent,"text":"\n".join(lines)}
 
         # ─── Save/Skip Knowledge Base ───

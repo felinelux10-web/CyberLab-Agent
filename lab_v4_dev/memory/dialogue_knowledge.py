@@ -317,6 +317,98 @@ def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
         )
     return session_id, [item for _, item in ordered_records]
 
+def _exchange_summary_insight(
+    exchange: dict,
+    user_records: list[dict],
+    assistant_records: list[dict],
+    exchange_index: int,
+) -> dict | None:
+    """Derive a concise question/answer view from the same provenance records."""
+    if (
+        exchange.get("response_failed")
+        or exchange.get("recall_only")
+        or exchange.get("state_boundary_only")
+        or str(exchange.get("response_status") or "").casefold() == "needs_clarification"
+    ):
+        return None
+    user_text = " ".join(str(exchange.get("user") or "").split()).strip()
+    assistant_text = " ".join(str(exchange.get("assistant") or "").split()).strip()
+    if not user_text or not assistant_text:
+        return None
+    normalized_user = _normalize(user_text)
+    normalized_answer = _normalize(assistant_text)
+    if any(marker in normalized_answer for marker in (
+        "لا املك سجل", "لا املك تفاصيل", "لا استطيع تاكيد",
+        "لا استطيع تحديد", "تعذر الوصول", "تعذر توليد",
+        "لا توجد ادله كافيه", "لم استطع",
+    )):
+        return None
+    if any(marker in normalized_user for marker in (
+        "كيف الحال", "كيفك", "كيف حالك", "اخبارك", "كيف امورك",
+    )):
+        return None
+    comparison = re.search(
+        r"(?:ما\s+)?(?:الفرق|الفروق|الاختلاف)\s+بين\s+(.+?)(?:[؟?!.،؛]|$)",
+        user_text,
+        flags=re.IGNORECASE,
+    )
+    question_markers = (
+        "ما ", "ماذا ", "من ", "هل ", "كيف ", "لماذا ",
+        "كم ", "اين ", "ما معنى", "اشرح ", "وضح ",
+        "حدثني عن", "تحدث عن", "ما علاقه", "ما علاقة",
+    )
+    is_question = bool(
+        comparison or "؟" in user_text or "?" in user_text
+        or any(normalized_user.startswith(_normalize(marker)) for marker in question_markers)
+    )
+    if not is_question:
+        return None
+    substantive_answers = [
+        item for item in assistant_records
+        if item.get("knowledge_type") != "assistant_non_answer"
+        and str(item.get("content") or "").strip()
+    ]
+    answer = str(substantive_answers[0].get("content") if substantive_answers else "").strip()
+    if not answer:
+        answer_sentences = _split_knowledge_sentences(assistant_text)
+        answer = answer_sentences[0] if answer_sentences else ""
+    answer = " ".join(answer.split()).strip()[:200].rstrip()
+    if not answer:
+        return None
+    topic = ""
+    if comparison:
+        topic = " ".join(comparison.group(1).split()).strip(" \t\r\n.,،؛:!?؟")
+    if not topic:
+        topic = str(exchange.get("target") or "").strip()
+    if not topic:
+        match = re.search(
+            r"(?:ما\s+معنى|معنى|ما\s+هو|ما\s+هي|اشرح|وضح|حدثني\s+عن|تحدث\s+عن|"
+            r"كيف\s+(?:يعمل|تعمل|يتم|يمكن)|لماذا|ما\s+السبب)\s+(.+?)(?:[؟?!.،؛]|$)",
+            user_text,
+            flags=re.IGNORECASE,
+        )
+        topic = match.group(1).strip() if match else ""
+    if topic and any(marker in _normalize(topic) for marker in (
+        "جلسه حوار", "حوار محفوظ", "غير محدد", "حفظ سياق الحوار",
+    )):
+        topic = ""
+    if comparison:
+        content = f"قارن الحوار بين «{topic[:150]}»؛ وتركز التوضيح على {answer}."
+    elif topic:
+        content = f"تناول الحوار «{topic[:120]}»؛ وتركز التوضيح على {answer}."
+    else:
+        content = f"تناول الحوار سؤالًا موضوعيًا؛ وتركز التوضيح على {answer}."
+    return {
+        "content": content,
+        "topic": topic or None,
+        "source_exchange_id": str(exchange.get("exchange_id") or ""),
+        "source_exchange_index": exchange_index,
+        "source": "paired_user_question_and_assistant_answer",
+        "speaker_sources": ["user", "assistant"],
+        "confidence": 0.72,
+    }
+
+
 def analyze_dialogue_session(data: dict) -> dict:
     """Build a traceable local knowledge view while retaining raw exchanges as truth."""
     session_id, exchanges = _raw_exchange_archive(data if isinstance(data, dict) else {})
@@ -327,6 +419,7 @@ def analyze_dialogue_session(data: dict) -> dict:
     previous_suggestion = None
     relationships = []
     unresolved = []
+    exchange_insights = []
     failure_markers = (
         "لم افهم", "لا املك سجل", "لا املك تفاصيل",
         "لا استطيع تأكيد", "لا استطيع تحديد", "تعذر توليد",
@@ -381,7 +474,12 @@ def analyze_dialogue_session(data: dict) -> dict:
             "response_failed": bool(exchange.get("response_failed")),
             "response_status": str(exchange.get("response_status") or ""),
             "failure_message": str(exchange.get("failure_message") or ""),
+            "recall_only": bool(exchange.get("recall_only")),
+            "state_boundary_only": bool(exchange.get("state_boundary_only")),
         })
+        insight = _exchange_summary_insight(exchange, user_records, assistant_records, index + 1)
+        if insight:
+            exchange_insights.append(insight)
 
         for item in user_records:
             kind = str(item.get("knowledge_type") or "")
@@ -493,6 +591,7 @@ def analyze_dialogue_session(data: dict) -> dict:
             item for item in knowledge if item.get("knowledge_type") == "question"
         ],
         "unresolved_questions": unresolved,
+        "exchange_insights": exchange_insights,
         "failed_exchanges": [
             item for item in timeline if item.get("response_failed")
         ],

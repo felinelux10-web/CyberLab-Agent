@@ -122,3 +122,33 @@ def emit_event(event: str, source: str = "system", context: Optional[Dict[str, A
         _write_audit_file(path, entries)
 
     return rec
+
+
+def get_events(
+    limit: int = 100,
+    *,
+    source: Optional[str] = None,
+    event_prefix: Optional[str] = None,
+    project_root: Optional[str] = None,
+) -> list[dict]:
+    """Read persisted audit evidence newest-first without exposing file contents."""
+    entries = _load_audit_file(_audit_path())
+    selected = []
+    expected_root = os.path.realpath(str(project_root)) if project_root else None
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        if source and str(item.get("source") or "") != str(source):
+            continue
+        event_name = str(item.get("event") or "")
+        if event_prefix and not event_name.startswith(str(event_prefix)):
+            continue
+        if expected_root:
+            context = item.get("context") if isinstance(item.get("context"), dict) else {}
+            details = item.get("details") if isinstance(item.get("details"), dict) else {}
+            roots = {os.path.realpath(str(value)) for value in (context.get("project_root"), context.get("root"), details.get("project_root")) if value}
+            if expected_root not in roots:
+                continue
+        selected.append(dict(item))
+    bounded_limit = max(1, min(1000, int(limit)))
+    return list(reversed(selected[-bounded_limit:]))

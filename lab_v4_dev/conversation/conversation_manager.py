@@ -166,6 +166,12 @@ class ConversationManager:
             route = "L-SESSION"
         elif history_request:
             route = "L-LIVE"
+        elif intent_value in {
+            str(getattr(item, "value", item)).casefold()
+            for item in _AGENT_SELF_INTENTS
+        }:
+            # Agent self-queries need local evidence; the provider remains a response composer.
+            route = "L-FACT"
         elif intent_value == "cyber_explain":
             if domain == "project":
                 route = "L-FACT"
@@ -6501,10 +6507,15 @@ class ConversationManager:
                 and not explicitly_general_scope
                 and user_question
                 and (
-                    intent in _AGENT_SELF_INTENTS
+                    intent in {
+                        Intent.AGENT_CAPABILITIES,
+                        Intent.AGENT_ARCHITECTURE,
+                        Intent.AGENT_EXECUTION_FLOW,
+                        Intent.AGENT_LIMITS,
+                    }
                     or knowledge_type in {
                         "component", "relationship", "execution", "file",
-                        "architecture",
+                        "architecture", "capability",
                     }
                 )
                 and project_scope == ProjectScope.CURRENT_PROJECT
@@ -6515,9 +6526,13 @@ class ConversationManager:
                         project_knowledge = retrieve_for_question(
                             user_question,
                             authorized_current_project=True,
+                            evidence_scope=evidence_scope,
                         )
                     else:
-                        project_knowledge = retrieve_for_question(user_question)
+                        project_knowledge = retrieve_for_question(
+                            user_question,
+                            evidence_scope=evidence_scope,
+                        )
                 except Exception as exc:
                     # Preserve a truthful, evidence-empty result instead of
                     # silently falling through to an apparently grounded LLM

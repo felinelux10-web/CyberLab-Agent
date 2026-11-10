@@ -34,25 +34,36 @@ _MAX_EVENTS = 100
 
 
 def _emit(event: str, payload: dict = None):
-    """تسجيل حدث داخلي"""
+    """Record a project-knowledge mutation in the shared durable audit journal."""
     global _events
-    _events.append({
-        "event": event,
-        "time": _time.time(),
-        "payload": payload or {},
-    })
+    safe_payload = payload if isinstance(payload, dict) else {}
+    entry = {"event": event, "time": _time.time(), "payload": safe_payload}
+    _events.append(entry)
     if len(_events) > _MAX_EVENTS:
         _events = _events[-_MAX_EVENTS:]
+    try:
+        from lab_v4_dev.core.project_context import get_active_project_root
+        from lab_v4_dev.core.audit import emit_event
+        emit_event(f"project_knowledge.{event}", source="project_knowledge", context={"project_root": get_active_project_root()}, details=safe_payload)
+    except Exception:
+        pass
 
 
 def get_events() -> list:
-    """إرجاع جميع الأحداث المسجلة"""
-    return list(_events)
+    """Return persisted project-knowledge events, newest first."""
+    try:
+        from lab_v4_dev.core.audit import get_events as read_audit_events
+        persisted = read_audit_events(limit=_MAX_EVENTS, source="project_knowledge")
+        if persisted:
+            return persisted
+    except Exception:
+        pass
+    return list(reversed(_events))
 
 
 def get_last_event() -> dict:
-    """إرجاع آخر حدث"""
-    return _events[-1] if _events else {}
+    events = get_events()
+    return events[0] if events else {}
 
 
 def clear_events():
