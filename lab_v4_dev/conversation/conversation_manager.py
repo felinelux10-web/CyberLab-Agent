@@ -6577,8 +6577,17 @@ class ConversationManager:
                             "ولا تستبدلها بوصف عام."
                         ),
                     }
+            project_capability_scope = any(
+                marker in normalize_text(user_question or text)
+                for marker in (
+                    "مشروع", "مشاريع", "مستودع", "مستودعات",
+                    "ملف", "ملفات", "مجلد", "اختبار", "اختبارات",
+                    "تعديل", "فحص", "شيفره", "كود",
+                )
+            )
             if (
                 intent == Intent.AGENT_CAPABILITIES
+                and project_capability_scope
                 and isinstance(project_knowledge, dict)
                 and project_knowledge.get("type") == "capability"
                 and not project_knowledge.get("retrieval_error")
