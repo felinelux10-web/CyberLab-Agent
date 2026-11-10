@@ -339,3 +339,71 @@ def test_self_description_output_guard_preserves_requested_architecture_detail()
     assert "EventLoop" in bounded
     assert len(bounded) <= 900
 
+
+def test_agent_capability_query_uses_local_evidence_before_provider(monkeypatch):
+    from lab_v4_dev.conversation.semantic_contract import ContextTransition
+
+    manager = ConversationManager(RecordingOrchestrator(), DialogueMemory(ContextStore()))
+    parsed = {
+        "intent": Intent.AGENT_CAPABILITIES,
+        "conversation_domain": "agent_self",
+        "conversation_act": "ASSISTANT_CAPABILITY_QUERY",
+        "confidence": 1.0,
+        "target": "المشاريع الخارجية",
+    }
+    decision = manager.finalize_route(
+        parsed=parsed,
+        selected_session={"kind": "none"},
+        saved_session_request=False,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+    parsed["route_decision"] = decision
+    evidence = {
+        "type": "capability",
+        "supported_project_operations": [
+            {"intent": "READ_EXTERNAL_PROJECT"},
+            {"intent": "SWITCH_PROJECT"},
+        ],
+        "observed_operations": [
+            {
+                "event": "project.external_scan",
+                "timestamp": "2026-11-10T10:00:00Z",
+                "project_root": "/tmp/example-project",
+                "file_path": "",
+            }
+        ],
+        "observed_operation_count": 1,
+        "provenance": {
+            "source": "Orchestrator AST and shared persistent audit journal",
+        },
+    }
+    monkeypatch.setattr(
+        conversation_module,
+        "retrieve_for_question",
+        lambda *args, **kwargs: evidence,
+    )
+    gateway_calls = []
+
+    def forbidden_gateway(*args, **kwargs):
+        gateway_calls.append((args, kwargs))
+        raise AssertionError("provider must not compose an answer when local capability evidence exists")
+
+    monkeypatch.setattr(conversation_module, "gateway_ask", forbidden_gateway)
+    result = manager._handle_chat(
+        "ما قدراتك في التعامل مع المشاريع الخارجية؟",
+        "SYSTEM",
+        parsed=parsed,
+        user_question="ما قدراتك في التعامل مع المشاريع الخارجية؟",
+        history=[],
+    )
+
+    assert result["status"] == "success"
+    assert result["source"] == "local_capability_evidence"
+    assert result["provider_used"] is False
+    assert gateway_calls == []
+    assert "قراءة وفحص مشروع خارجي" in result["text"]
+    assert "التبديل إلى مشروع مسجل" in result["text"]
+    assert "فحص مشروع خارجي" in result["text"]
+    assert "لا أصف عملية بأنها نُفذت" in result["text"]
+

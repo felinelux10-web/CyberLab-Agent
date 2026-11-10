@@ -6577,7 +6577,38 @@ class ConversationManager:
                             "ولا تستبدلها بوصف عام."
                         ),
                     }
-            
+            if (
+                intent == Intent.AGENT_CAPABILITIES
+                and isinstance(project_knowledge, dict)
+                and project_knowledge.get("type") == "capability"
+                and not project_knowledge.get("retrieval_error")
+            ):
+                local_capability = answer_local_response(
+                    user_question or text,
+                    parsed,
+                    {
+                        "intent": getattr(intent, "value", intent),
+                        "conversation_domain": (parsed or {}).get("conversation_domain", "agent_self"),
+                        "conversation_act": (parsed or {}).get("conversation_act", "ASSISTANT_CAPABILITY_QUERY"),
+                        "target": (parsed or {}).get("target") or "",
+                        "response_attributes": response_attributes,
+                    },
+                    history=list(history or []),
+                    context_entity=project_knowledge,
+                )
+                if local_capability is not None:
+                    local_capability = dict(local_capability)
+                    local_capability.update({
+                        "mode": mode,
+                        "source": "local_capability_evidence",
+                        "provider_used": False,
+                        "evidence_scope": evidence_scope,
+                        "executed": False,
+                    })
+                    if isinstance(route_decision, RouteDecision):
+                        return self._attach_route_decision(local_capability, route_decision)
+                    return local_capability
+
             system, prompt = build_chat_prompt(
                 text,
                 list(history or []),

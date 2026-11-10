@@ -249,6 +249,80 @@ def _result(text: str, parsed: dict, source: str = "local_unified_response") -> 
     }
 
 
+_CAPABILITY_OPERATION_LABELS = {
+    "READ_FILE": "قراءة الملفات المحددة",
+    "PROJECT_SCAN": "فحص المشروع وبناء صورته المحلية",
+    "READ_EXTERNAL_PROJECT": "قراءة وفحص مشروع خارجي",
+    "SWITCH_PROJECT": "التبديل إلى مشروع مسجل",
+    "RETURN_BASE_PROJECT": "العودة إلى المشروع الأساسي",
+    "MODIFY_CODE": "تعديل الشيفرة عبر مسار التعديل",
+    "RUN_TESTS": "تشغيل اختبارات المشروع",
+    "TEST_PROJECT": "اختبار المشروع",
+}
+_CAPABILITY_EVENT_LABELS = {
+    "project.scan": "فحص المشروع",
+    "project.external_scan": "فحص مشروع خارجي",
+    "project.switched": "التبديل بين المشاريع",
+    "project.file_read": "قراءة ملف",
+    "project_knowledge.write": "تحديث معرفة المشروع",
+    "safe_pipeline.applied": "تطبيق تعديل على ملف",
+    "safe_pipeline.failed": "فشل تطبيق تعديل على ملف",
+}
+
+
+def _capability_evidence_response(parsed: dict, evidence: Any) -> dict | None:
+    if not isinstance(evidence, dict) or evidence.get("type") != "capability":
+        return None
+    supported = [
+        item for item in evidence.get("supported_project_operations", [])
+        if isinstance(item, dict) and item.get("intent")
+    ]
+    observed = [
+        item for item in evidence.get("observed_operations", [])
+        if isinstance(item, dict) and item.get("event")
+    ]
+    lines = ["وفق الأدلة المحلية المتاحة عن قدرات الوكيل:"]
+    if supported:
+        lines.append("مسارات الدعم التي تشير إليها الشيفرة:")
+        for item in supported[:10]:
+            name = str(item.get("intent") or "")
+            label = _CAPABILITY_OPERATION_LABELS.get(name, name)
+            lines.append(f"- {label}")
+    else:
+        lines.append("لم أتمكن من إثبات مسارات دعم محددة من مصدر الشيفرة المتاح.")
+
+    if observed:
+        lines.append("عمليات يؤكد سجل التشغيل وقوعها:")
+        for item in observed[:6]:
+            event = str(item.get("event") or "")
+            label = _CAPABILITY_EVENT_LABELS.get(event, event.replace(".", " "))
+            details = []
+            file_path = str(item.get("file_path") or "").strip()
+            project_root = str(item.get("project_root") or "").strip()
+            if file_path:
+                details.append(file_path.rsplit("/", 1)[-1])
+            if project_root:
+                details.append(project_root)
+            suffix = f" ({' — '.join(details)})" if details else ""
+            lines.append(f"- {label}{suffix}")
+        total = int(evidence.get("observed_operation_count") or len(observed))
+        if total > len(observed):
+            lines.append(f"- عدد الأحداث المسجلة في نافذة الاسترجاع: {total}")
+    else:
+        lines.append(
+            "لا تظهر في سجل التشغيل المتاح أحداث تثبت تنفيذ هذه العمليات؛ "
+            "وهذا لا يثبت أنها لم تُنفذ خارج نطاق السجل المتاح."
+        )
+
+    lines.extend([
+        "",
+        "حدود الإثبات: وجود مسار في الشيفرة يثبت وجود دعم برمجي مبدئي، "
+        "ولا يثبت نجاح التنفيذ. لا أصف عملية بأنها نُفذت إلا إذا سجلها "
+        "سجل التشغيل بوصفها حدثًا فعليًا.",
+    ])
+    return _result("\n".join(lines), parsed, "local_capability_evidence")
+
+
 def answer_local_response(
     text: str,
     parsed: dict | None = None,
@@ -271,6 +345,8 @@ def answer_local_response(
         or semantic.get("conversation_domain")
         or "general"
     ).casefold()
+    if intent == "agent_capabilities":
+        return _capability_evidence_response(parsed, context_entity)
     if act not in _LOCAL_ACTS:
         return None
     if domain in {"work", "system", "execution", "project"} or intent in {
