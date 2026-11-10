@@ -411,7 +411,7 @@ def _exchange_summary_insight(
         match = re.search(r"توقفنا عند\s+(.+?)(?:[.!؟?]|$)", assistant_text)
         answer_summary = f"كانت نقطة التوقف: {match.group(1).strip()}." if match else "سجل الرد نقطة توقف موضوعية."
     elif "اقتراح أول محدد" in assistant_text or "اقتراح اول محدد" in normalized_answer:
-        answer_summary = "قدّم الرد اقتراحًا أول محددًا."
+        answer_summary = "تضمن الرد «اقتراح أول محدد»."
     elif "رد حواري مسموح" in assistant_text:
         answer_summary = "حُفظ رد حواري مسموح وموجز."
     elif "الإطار يحدد حدود العمل" in assistant_text or "الاطار يحدد حدود العمل" in normalized_answer:
