@@ -430,7 +430,7 @@ def _exchange_summary_insight(
         for item in assistant_records if str(item.get("knowledge_type") or "")
     ]
     if normalized_user.startswith("ماذا تقترح"):
-        content = f"طلب اقتراح («ماذا تقترح أنت»)؛ {answer_summary}"
+        content = f"طلب اقتراح («{user_text[:50]}»)؛ {answer_summary}"
     elif comparison:
         content = f"قارن الحوار بين «{topic[:150]}»؛ {answer_summary}"
     elif is_question_or_request and topic:
