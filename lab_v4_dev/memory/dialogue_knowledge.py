@@ -323,7 +323,7 @@ def _exchange_summary_insight(
     assistant_records: list[dict],
     exchange_index: int,
 ) -> dict | None:
-    """Derive a concise question/answer view from the same provenance records."""
+    """Project the assistant's substantive contribution with exchange provenance."""
     if (
         exchange.get("response_failed")
         or exchange.get("recall_only")
@@ -357,24 +357,16 @@ def _exchange_summary_insight(
         "كم ", "اين ", "ما معنى", "اشرح ", "وضح ",
         "حدثني عن", "تحدث عن", "ما علاقه", "ما علاقة",
     )
-    is_question = bool(
+    request_markers = (
+        "اعطني", "أعطني", "اقترح", "أقترح", "اريد", "أريد",
+        "اشرح", "وضح", "قدم", "قدّم", "ساعدني", "اكتب",
+        "حلل", "حلّل", "قارن",
+    )
+    is_question_or_request = bool(
         comparison or "؟" in user_text or "?" in user_text
         or any(normalized_user.startswith(_normalize(marker)) for marker in question_markers)
+        or any(normalized_user.startswith(_normalize(marker)) for marker in request_markers)
     )
-    if not is_question:
-        return None
-    substantive_answers = [
-        item for item in assistant_records
-        if item.get("knowledge_type") != "assistant_non_answer"
-        and str(item.get("content") or "").strip()
-    ]
-    answer = str(substantive_answers[0].get("content") if substantive_answers else "").strip()
-    if not answer:
-        answer_sentences = _split_knowledge_sentences(assistant_text)
-        answer = answer_sentences[0] if answer_sentences else ""
-    answer = " ".join(answer.split()).strip()[:200].rstrip()
-    if not answer:
-        return None
     topic = ""
     if comparison:
         topic = " ".join(comparison.group(1).split()).strip(" \t\r\n.,،؛:!?؟")
@@ -392,21 +384,51 @@ def _exchange_summary_insight(
         "جلسه حوار", "حوار محفوظ", "غير محدد", "حفظ سياق الحوار",
     )):
         topic = ""
-    if comparison:
-        content = f"قارن الحوار بين «{topic[:150]}»؛ وتركز التوضيح على {answer}."
-    elif topic:
-        content = f"تناول الحوار «{topic[:120]}»؛ وتركز التوضيح على {answer}."
+
+    # Short assistant answers remain intact, including suggestions and follow-up questions.
+    answer_sentences = _split_knowledge_sentences(assistant_text)
+    if len(assistant_text) <= 260:
+        answer = assistant_text
     else:
-        content = f"تناول الحوار سؤالًا موضوعيًا؛ وتركز التوضيح على {answer}."
+        answer = " ".join(answer_sentences[:2]) if answer_sentences else assistant_text[:260]
+    followups = re.findall(r"[^؟?]*[؟?]", assistant_text)
+    assistant_follow_up = " ".join(followups[-1].split()).strip() if followups else ""
+    if assistant_follow_up and assistant_follow_up not in answer:
+        answer = f"{answer.rstrip()}؛ سؤال المتابعة: {assistant_follow_up}"
+    answer = " ".join(answer.split()).strip()[:420]
+
+    assistant_types = [
+        str(item.get("knowledge_type") or "")
+        for item in assistant_records if str(item.get("knowledge_type") or "")
+    ]
+    if comparison:
+        content = f"قارن الحوار بين «{topic[:150]}»؛ وردّ الوكيل: {answer}"
+    elif is_question_or_request and topic:
+        content = f"تناول الحوار «{topic[:120]}»؛ وردّ الوكيل: {answer}"
+    elif is_question_or_request:
+        content = f"استجاب الوكيل لطلب المستخدم: {answer}"
+    else:
+        content = f"مساهمة الوكيل في التبادل: {answer}"
+
+    stop_markers = (
+        "توقفنا عند", "آخر نقطة", "نقطة التوقف",
+        "وصلنا إلى", "وصلنا الى", "انتهينا عند",
+    )
     return {
         "content": content,
         "topic": topic or None,
         "source_exchange_id": str(exchange.get("exchange_id") or ""),
         "source_exchange_index": exchange_index,
-        "source": "paired_user_question_and_assistant_answer",
-        "speaker_sources": ["user", "assistant"],
-        "confidence": 0.72,
+        "source": "assistant_response_with_exchange_context",
+        "speaker_sources": ["user", "assistant"] if is_question_or_request else ["assistant"],
+        "assistant_follow_up": assistant_follow_up or None,
+        "explicit_stop_marker": any(marker in normalized_answer for marker in stop_markers),
+        "assistant_knowledge_types": assistant_types,
+        "user_knowledge_ids": [str(item.get("knowledge_id") or "") for item in user_records],
+        "assistant_knowledge_ids": [str(item.get("knowledge_id") or "") for item in assistant_records],
+        "confidence": 0.85,
     }
+
 
 
 def analyze_dialogue_session(data: dict) -> dict:

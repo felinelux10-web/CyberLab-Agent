@@ -71,7 +71,8 @@ def resolve_project_scope(question: str, intent: str | None = None) -> str:
     )
     external_markers = (
         "غير مشروعنا", "مشروع اخر", "مشروع آخر", "مشروع خارجي",
-        "مشروع خارج", "خارج cyberlab", "المشروع الموجود عندي",
+        "مشروع خارج", "مشاريع خارجية", "المشاريع الخارجية",
+        "مشروعات خارجية", "خارج cyberlab", "المشروع الموجود عندي",
         "مشروع في الفضاء", "مشروع خارج الكرة", "مشروع وهمي", "مشروع عالمي",
         "external project", "another project", "outside cyberlab",
     )

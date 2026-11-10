@@ -2150,6 +2150,7 @@ def summarize_dialogue_exchanges(
     exchanges: list[dict] | None,
     *,
     topic: str = "",
+    next_step: str = "",
     limit: int = 6,
     session_id: str = "",
 ) -> dict:
@@ -2201,15 +2202,16 @@ def summarize_dialogue_exchanges(
         if len(insights) >= max(1, int(limit)):
             break
 
-    selected_topic = " ".join(str(topic or "").split()).strip()
-    if not selected_topic or _is_dialogue_control_text(selected_topic) or _is_generated_dialogue_label(selected_topic):
-        selected_topic = next((
-            " ".join(str(value or "").split()).strip()
-            for value in reversed(analysis.get("topics", []))
-            if str(value or "").strip()
-            and not _is_dialogue_control_text(value)
-            and not _is_generated_dialogue_label(value)
-        ), "")
+    evidence_topic = next((
+        " ".join(str(value or "").split()).strip()
+        for value in reversed(analysis.get("topics", []))
+        if str(value or "").strip()
+        and not _is_dialogue_control_text(value)
+        and not _is_generated_dialogue_label(value)
+    ), "")
+    selected_topic = evidence_topic or " ".join(str(topic or "").split()).strip()
+    if _is_dialogue_control_text(selected_topic) or _is_generated_dialogue_label(selected_topic):
+        selected_topic = ""
     if not selected_topic:
         selected_topic = next((
             str(item.get("topic") or "").strip()
@@ -2246,13 +2248,24 @@ def summarize_dialogue_exchanges(
         and item.get("knowledge_type") != "assistant_non_answer"
     ]
 
+    explicit_stop_insights = [item for item in last_exchange_insights if item.get("explicit_stop_marker")]
+    latest_follow_up = next(
+        (str(item.get("assistant_follow_up") or "").strip()
+         for item in reversed(last_exchange_insights)
+         if str(item.get("assistant_follow_up") or "").strip()),
+        "",
+    )
     if not meaningful:
         stop_point = "لم يتجاوز السجل تبادل التحية أو الحديث الاجتماعي القصير؛ لم يُسجّل موضوع نقاش فعلي."
+    elif explicit_stop_insights:
+        stop_point = explicit_stop_insights[-1]["content"]
     elif user_facts:
         fact = " ".join(str(user_facts[-1].get("content") or "").split()).strip()
         stop_point = f"آخر معلومة موثقة صرّح بها المستخدم: {fact}"
+        if latest_follow_up:
+            stop_point += f"؛ وسؤال المتابعة الذي طرحه الوكيل: {latest_follow_up}"
     elif last_exchange_insights:
-        stop_point = f"آخر مضمون موثق من تحليل السؤال والجواب: {last_exchange_insights[-1]['content']}"
+        stop_point = last_exchange_insights[-1]["content"]
     elif assistant_facts:
         fact = " ".join(str(assistant_facts[-1].get("content") or "").split()).strip()
         stop_point = f"آخر توضيح موضوعي محفوظ من الوكيل: {fact}"
@@ -2262,8 +2275,13 @@ def summarize_dialogue_exchanges(
         stop_point = "توجد تبادلات محفوظة، لكن لا تكفي الأدلة لتحديد نقطة توقف موضوعية دون تخمين."
 
     explicit_next_step = " ".join(str(analysis.get("explicit_next_step") or "").split()).strip()
+    stored_next_step = " ".join(str(next_step or "").split()).strip()
     if explicit_next_step:
         next_step = explicit_next_step
+    elif stored_next_step:
+        next_step = stored_next_step
+    elif latest_follow_up:
+        next_step = latest_follow_up
     elif meaningful and selected_topic:
         next_step = f"استكمال النقاش حول «{selected_topic}» انطلاقًا من آخر مضمون موثق."
     elif meaningful:
@@ -2285,6 +2303,40 @@ def summarize_dialogue_exchanges(
                 result.append(content)
         return result
 
+    evidence_timeline = []
+    for item in analysis.get("timeline", []):
+        exchange_id = str(item.get("exchange_id") or "")
+        user_evidence = [
+            str(record.get("content") or "").strip()
+            for record in analysis.get("user_information", [])
+            if str(record.get("source_exchange_id") or "") == exchange_id
+            and str(record.get("content") or "").strip()
+        ]
+        assistant_evidence = [
+            str(record.get("content") or "").strip()
+            for record in analysis.get("assistant_information", [])
+            if str(record.get("source_exchange_id") or "") == exchange_id
+            and str(record.get("content") or "").strip()
+            and record.get("knowledge_type") != "assistant_non_answer"
+        ]
+        exchange_evidence = [
+            str(record.get("content") or "").strip()
+            for record in analysis.get("exchange_insights", [])
+            if str(record.get("source_exchange_id") or "") == exchange_id
+            and str(record.get("content") or "").strip()
+        ]
+        assistant_evidence.extend(value for value in exchange_evidence if value not in assistant_evidence)
+        evidence_timeline.append({
+            "exchange_id": exchange_id,
+            "exchange_index": item.get("exchange_index"),
+            "topic": item.get("topic"),
+            "user_information": list(dict.fromkeys(user_evidence)),
+            "assistant_contributions": list(dict.fromkeys(assistant_evidence)),
+        })
+
+    if selected_topic and selected_topic not in topics:
+        topics.append(selected_topic)
+
     return {
         "topic": selected_topic,
         "topics": topics,
@@ -2293,6 +2345,7 @@ def summarize_dialogue_exchanges(
         "next_step": next_step,
         "conclusions": attributed(analysis.get("conclusions", [])),
         "decisions": attributed(analysis.get("decisions", [])),
+        "evidence_timeline": evidence_timeline,
         "exchange_count": len(records),
         "meaningful_exchange_count": len(meaningful),
         "last_exchange_id": last_exchange_id or None,
@@ -2310,7 +2363,11 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         dialogue = {}
     session_id = str(data.get("session_id") or dialogue.get("session_id") or "").strip()
     semantic_summary = summarize_dialogue_exchanges(
-        summary_exchanges, limit=12, session_id=session_id,
+        summary_exchanges,
+        topic=str(dialogue.get("last_topic") or data.get("last_topic") or report.get("topic") or ""),
+        next_step=str(dialogue.get("next_step") or data.get("next_step") or ""),
+        limit=12,
+        session_id=session_id,
     )
     topic = semantic_summary.get("topic") or "حوار افتتاحي أو إداري بلا موضوع معرف في السجل"
 
@@ -2343,7 +2400,13 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         ])
 
     if report_mode == "brief":
-        brief = summarize_dialogue_exchanges(summary_exchanges, limit=3, session_id=session_id)
+        brief = summarize_dialogue_exchanges(
+            summary_exchanges,
+            topic=topic,
+            next_step=semantic_summary.get("next_step", ""),
+            limit=3,
+            session_id=session_id,
+        )
         details = "؛ ".join(brief["insights"][:2]) or "لا يتضمن السجل مضمونًا موضوعيًا كافيًا يمكن إثباته."
         return "\n".join([
             "=== موجز الحوار المحفوظ ===",
@@ -2418,6 +2481,19 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
         "حدود الاستعادة: هذا ملخص للسجل المحدد فقط؛ لم تُدمج معه الجلسة الحية أو جلسة العمل. لم يُنشأ أي رد جديد.",
     ])
     if detailed_report:
+        lines.extend(["", "ملحق الأدلة الأصلية المرتبة زمنيًا:"])
+        for evidence in semantic_summary.get("evidence_timeline", []):
+            exchange_index = evidence.get("exchange_index") or "?"
+            lines.append(f"[التبادل {exchange_index}] معلومات المستخدم:")
+            user_items = evidence.get("user_information") or []
+            lines.extend([f"- {item}" for item in user_items] if user_items else [
+                "- لا توجد معلومة مستقلة مستخرجة من المستخدم في هذا التبادل."
+            ])
+            lines.append(f"[التبادل {exchange_index}] مساهمات الوكيل واقتراحاته:")
+            assistant_items = evidence.get("assistant_contributions") or []
+            lines.extend([f"- {item}" for item in assistant_items] if assistant_items else [
+                "- لا توجد مساهمة موضوعية إضافية مستخرجة من رد الوكيل."
+            ])
         from lab_v4_dev.memory.dialogue_knowledge import format_dialogue_analysis_report
         lines.extend(["", format_dialogue_analysis_report(data)])
     return "\n".join(lines)
@@ -2791,7 +2867,8 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
         # Let the semantic extractor infer a subject from the exchange evidence.
         semantic_summary = summarize_dialogue_exchanges(
             meaningful_exchanges,
-            topic="",
+            topic=topic,
+            next_step=str(session.get("next_step") or ""),
             limit=4,
             session_id=str(session.get("session_id") or dialogue.get("session_id") or ""),
         )

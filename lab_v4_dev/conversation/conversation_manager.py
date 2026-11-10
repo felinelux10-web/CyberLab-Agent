@@ -6502,27 +6502,43 @@ class ConversationManager:
             # sent layer questions to generic provider prose.
             project_knowledge = None
             knowledge_type = QuestionClassifier.classify(user_question or text)
+            is_agent_capability_query = (
+                intent == Intent.AGENT_CAPABILITIES or knowledge_type == "capability"
+            )
+            is_agent_architecture_query = intent in {
+                Intent.AGENT_ARCHITECTURE,
+                Intent.AGENT_EXECUTION_FLOW,
+                Intent.AGENT_LIMITS,
+            }
             if (
                 not compound_request
-                and not explicitly_general_scope
                 and user_question
                 and (
-                    intent in {
-                        Intent.AGENT_CAPABILITIES,
-                        Intent.AGENT_ARCHITECTURE,
-                        Intent.AGENT_EXECUTION_FLOW,
-                        Intent.AGENT_LIMITS,
-                    }
-                    or knowledge_type in {
-                        "component", "relationship", "execution", "file",
-                        "architecture", "capability",
-                    }
+                    (
+                        is_agent_capability_query
+                        and evidence_scope in {"project_state", "work_state"}
+                    )
+                    or (
+                        not explicitly_general_scope
+                        and project_scope == ProjectScope.CURRENT_PROJECT
+                        and (
+                            is_agent_architecture_query
+                            or knowledge_type in {
+                                "component", "relationship", "execution", "file",
+                                "architecture",
+                            }
+                        )
+                    )
                 )
-                and project_scope == ProjectScope.CURRENT_PROJECT
                 and (route_decision is None or evidence_scope == "project_state")
             ):
                 try:
-                    if authorized_project_context:
+                    authorize_agent_snapshot = (
+                        is_agent_architecture_query
+                        and not explicitly_general_scope
+                        and project_scope != ProjectScope.CURRENT_PROJECT
+                    )
+                    if authorized_project_context or authorize_agent_snapshot:
                         project_knowledge = retrieve_for_question(
                             user_question,
                             authorized_current_project=True,
