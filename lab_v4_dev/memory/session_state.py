@@ -2368,14 +2368,16 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     dialogue = data.get("dialogue_state") or {}
     if not isinstance(dialogue, dict):
         dialogue = {}
-    session_id = str(data.get("session_id") or dialogue.get("session_id") or "").strip()
+    # Saved-session identity and dialogue-state identity are separate scopes.
+    # Exchange provenance belongs to dialogue_state.session_id.
+    dialogue_session_id = str(dialogue.get("session_id") or data.get("session_id") or "").strip()
     semantic_summary = summarize_dialogue_exchanges(
         summary_exchanges,
         topic="",
         topic_fallback=str(dialogue.get("last_topic") or data.get("last_topic") or report.get("topic") or ""),
         next_step=str(dialogue.get("next_step") or data.get("next_step") or ""),
         limit=12,
-        session_id=session_id,
+        session_id=dialogue_session_id,
     )
     topic = semantic_summary.get("topic") or "حوار افتتاحي أو إداري بلا موضوع معرف في السجل"
 
@@ -2413,7 +2415,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
             topic=topic,
             next_step=semantic_summary.get("next_step", ""),
             limit=3,
-            session_id=session_id,
+            session_id=dialogue_session_id,
         )
         details = "؛ ".join(brief["insights"][:2]) or "لا يتضمن السجل مضمونًا موضوعيًا كافيًا يمكن إثباته."
         return "\n".join([
@@ -2881,7 +2883,7 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
             topic_fallback=topic,
             next_step=str(session.get("next_step") or ""),
             limit=4,
-            session_id=str(session.get("session_id") or dialogue.get("session_id") or ""),
+            session_id=str(dialogue.get("session_id") or session.get("session_id") or ""),
         )
         inferred_topic = str(semantic_summary.get("topic") or "").strip()
         if useful_topic(inferred_topic) and not _is_generated_dialogue_label(inferred_topic):
@@ -3019,8 +3021,13 @@ def build_all_sessions_report(sessions: list[dict] | None = None, *, session_typ
                 item for item in _dialogue_exchanges(session)
                 if not _is_dialogue_control_exchange(item)
             ]
+            dialogue_state = session.get("dialogue_state")
+            dialogue_session_id = (
+                str(dialogue_state.get("session_id") or session_id)
+                if isinstance(dialogue_state, dict) else session_id
+            )
             dialogue_summary = summarize_dialogue_exchanges(
-                exchanges, topic=topic, limit=5, session_id=session_id
+                exchanges, topic=topic, limit=5, session_id=dialogue_session_id
             )
         records.append({
             "number": stable_numbers.get(session_id, "?"),
