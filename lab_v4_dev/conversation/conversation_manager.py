@@ -5858,24 +5858,38 @@ class ConversationManager:
 
         # Offline/provider-failure fallback: compact and explicitly bounded,
         # not a full transcript and not a fabricated semantic interpretation.
-        if response_mode == "summary":
-            lines = []
-            seen = set()
-            for item in relevant[-5:]:
-                user_turn = " ".join(str(item.get("user") or "").split())
-                if not user_turn or user_turn.casefold() in seen:
-                    continue
-                seen.add(user_turn.casefold())
-                assistant_turn = " ".join(str(item.get("assistant") or "").split())
-                line = f"- طلب المستخدم: {user_turn[:110]}"
-                if assistant_turn:
-                    first_sentence = assistant_turn.split("。", 1)[0].split(". ", 1)[0]
-                    line += f"؛ رد الوكيل باختصار: {first_sentence[:110]}"
-                lines.append(line)
+        if response_mode in {"summary", "brief", "topic_summary", "report"}:
+            from lab_v4_dev.memory.session_state import summarize_dialogue_exchanges
+
+            summary_limit = 3 if response_mode == "brief" else 8
+            semantic_summary = summarize_dialogue_exchanges(
+                relevant,
+                limit=summary_limit,
+                session_id=current_session_id,
+            )
+            lines = [
+                "ملخص موثّق للحوار المسجّل:",
+                f"الموضوع: {semantic_summary.get('topic') or 'حوار بلا موضوع محدد'}",
+                "",
+                "ماذا تناول الحوار:",
+            ]
+            insights = semantic_summary.get("insights") or []
+            lines.extend(
+                [f"- {item}" for item in insights]
+                if insights else [
+                    "- لا يحتوي السجل على مضمون موضوعي مكتمل يكفي لتلخيصه."
+                ]
+            )
+            lines.extend([
+                "",
+                f"نقطة التوقف: {semantic_summary.get('stop_point') or 'غير محددة من الأدلة.'}",
+                f"الخطوة التالية: {semantic_summary.get('next_step') or 'لا توجد خطوة تالية مثبتة.'}",
+            ])
             return {
                 **base,
-                "text": "ملخص موجز من سجل الحوار المتاح:\n" + "\n".join(lines),
-                "summary_fallback": True,
+                "text": "\n".join(lines),
+                "dialogue_turns": relevant[-6:],
+                "summary_fallback": False,
             }
         return {
             **base,

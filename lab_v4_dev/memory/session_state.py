@@ -2225,10 +2225,8 @@ def summarize_dialogue_exchanges(
             for item in reversed(analysis.get("exchange_insights", []))
             if str(item.get("topic") or "").strip()
         ), "")
-    if not selected_topic and insights:
-        selected_topic = insights[0][:100].rstrip(" .،؛:")
     if not selected_topic and records:
-        selected_topic = "حوار افتتاحي عن التحية والتعارف"
+        selected_topic = "حوار بلا موضوع محدد"
 
     last_exchange = analysis.get("last_exchange") or {}
     last_exchange_id = str(last_exchange.get("exchange_id") or "")
