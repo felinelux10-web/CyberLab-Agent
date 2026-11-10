@@ -2118,6 +2118,8 @@ def _dialogue_knowledge_summary_insights(
     for item in analysis.get("user_information", []):
         if str(item.get("knowledge_id") or "") in superseded_ids:
             continue
+        if str(item.get("knowledge_type") or "") in {"question", "user_request"}:
+            continue
         if str(item.get("source_exchange_id") or "") not in completed_ids:
             continue
         content = " ".join(str(item.get("content") or "").split()).strip()
@@ -2150,6 +2152,7 @@ def summarize_dialogue_exchanges(
     exchanges: list[dict] | None,
     *,
     topic: str = "",
+    topic_fallback: str = "",
     next_step: str = "",
     limit: int = 6,
     session_id: str = "",
@@ -2212,7 +2215,10 @@ def summarize_dialogue_exchanges(
         and not _is_dialogue_control_text(value)
         and not _is_generated_dialogue_label(value)
     ), "")
-    selected_topic = provided_topic or evidence_topic
+    fallback_topic = " ".join(str(topic_fallback or "").split()).strip()
+    if _is_dialogue_control_text(fallback_topic) or _is_generated_dialogue_label(fallback_topic):
+        fallback_topic = ""
+    selected_topic = provided_topic or evidence_topic or fallback_topic
     if not selected_topic:
         selected_topic = next((
             str(item.get("topic") or "").strip()
@@ -2365,7 +2371,8 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
     session_id = str(data.get("session_id") or dialogue.get("session_id") or "").strip()
     semantic_summary = summarize_dialogue_exchanges(
         summary_exchanges,
-        topic=str(dialogue.get("last_topic") or data.get("last_topic") or report.get("topic") or ""),
+        topic="",
+        topic_fallback=str(dialogue.get("last_topic") or data.get("last_topic") or report.get("topic") or ""),
         next_step=str(dialogue.get("next_step") or data.get("next_step") or ""),
         limit=12,
         session_id=session_id,
@@ -2870,7 +2877,8 @@ def build_session_brief_summary(data: dict | None = None) -> dict:
         # Let the semantic extractor infer a subject from the exchange evidence.
         semantic_summary = summarize_dialogue_exchanges(
             meaningful_exchanges,
-            topic=topic,
+            topic="",
+            topic_fallback=topic,
             next_step=str(session.get("next_step") or ""),
             limit=4,
             session_id=str(session.get("session_id") or dialogue.get("session_id") or ""),

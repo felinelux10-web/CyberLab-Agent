@@ -418,6 +418,8 @@ def _exchange_summary_insight(
         answer_summary = "أكد الرد أن الإطار يحدد حدود العمل."
     elif assistant_follow_up:
         answer_summary = "انتهى التبادل بسؤال متابعة حول الموضوع."
+    elif len(assistant_text) <= 80:
+        answer_summary = re.sub(r"(?:الوكيل|المستخدم):\\s*", "", assistant_text).strip()
     elif topic:
         answer_summary = f"تضمن الرد توضيحًا مرتبطًا بموضوع «{topic[:100]}»."
     else:
