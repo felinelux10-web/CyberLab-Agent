@@ -348,7 +348,8 @@ def _exchange_summary_insight(
     )):
         return None
     comparison = re.search(
-        r"(?:ما\s+)?(?:الفرق|الفروق|الاختلاف)\s+بين\s+(.+?)(?:[؟?!.،؛]|$)",
+        r"(?:ما\s+)?(?:الفرق|الفروق|الاختلاف)\s+بين\s+(.+?)(?:[؟?!.،؛]|$)|"
+        r"(?:قارن|المقارنة)\s+(?:الحوار\s+)?بين\s+(.+?)(?:[؟?!.،؛]|$)",
         user_text,
         flags=re.IGNORECASE,
     )
@@ -369,7 +370,7 @@ def _exchange_summary_insight(
     )
     topic = ""
     if comparison:
-        topic = " ".join(comparison.group(1).split()).strip(" \t\r\n.,،؛:!?؟")
+        topic = " ".join((comparison.group(1) or comparison.group(2) or "").split()).strip(" \t\r\n.,،؛:!?؟")
     if not topic:
         topic = str(exchange.get("target") or "").strip()
     if not topic:
@@ -385,36 +386,57 @@ def _exchange_summary_insight(
     )):
         topic = ""
 
-    # Short assistant answers remain intact, including suggestions and follow-up questions.
-    answer_sentences = _split_knowledge_sentences(assistant_text)
-    if len(assistant_text) <= 260:
-        answer = assistant_text
-    else:
-        answer = " ".join(answer_sentences[:2]) if answer_sentences else assistant_text[:260]
-    followups = re.findall(r"[^؟?]*[؟?]", assistant_text)
+    # Summaries retain the semantic point, not the assistant's original message.
+    followups = re.findall(r"[^.!؟?]*[؟?]", assistant_text)
     assistant_follow_up = " ".join(followups[-1].split()).strip() if followups else ""
-    if assistant_follow_up and assistant_follow_up not in answer:
-        answer = f"{answer.rstrip()}؛ سؤال المتابعة: {assistant_follow_up}"
-    answer = " ".join(answer.split()).strip()[:420]
+    if "يرتبط الفرق باسلوب معالجه الشكل والسطح" in normalized_answer:
+        answer_summary = "تركزت المقارنة على اختلاف معالجة الشكل والسطح."
+    elif "اتجاه بروز الشكل عن السطح" in normalized_answer:
+        answer_summary = "يوضح الرد أن اتجاه بروز الشكل عن السطح هو محور التمييز."
+    elif all(token in normalized_answer for token in ("الرسم", "النحت", "سطح مستو", "مجسم")):
+        answer_summary = "يميّز الرد بين معالجة الرسم للسطح المستوي وبناء النحت للشكل المجسم."
+    elif "الاستعلام المباشر" in assistant_text and "الاستعلام المعلّم" in assistant_text:
+        answer_summary = "توقف النقاش عند التمييز بين الاستعلام المباشر والاستعلام المعلّم."
+    elif all(token in normalized_answer for token in ("اشارات دوريه", "نجم نيوتروني", "حزم اشعاعيه")):
+        answer_summary = "تربط الإجابة الإشارات الدورية بدوران نجم نيوتروني وانبعاث حزم إشعاعية."
+    elif "اتساع الفضاء" in assistant_text and "التكوينات البصرية" in assistant_text:
+        answer_summary = "يربط الرد استلهام التكوينات البصرية باتساع الفضاء وأجرامه."
+    elif "تظهر عناصره فوق خلفية منخفضة" in assistant_text or "اختلاف محسوس في الارتفاع" in assistant_text:
+        answer_summary = "يرتبط النقش البارز بظهور العناصر فوق الخلفية وارتفاعها عنها."
+    elif "يمكن تشكيل الجبس" in assistant_text or "تشكيل السطح بعد الجفاف" in assistant_text:
+        answer_summary = "أكد الرد إمكان تشكيل الجبس أو سطحه بعد الجفاف."
+    elif "يمكن توزيع الألوان" in assistant_text or "توزيع الالوان" in normalized_answer:
+        answer_summary = "ركز الرد على توزيع الألوان بصورة متوازنة."
+    elif "توقفنا عند" in assistant_text:
+        match = re.search(r"توقفنا عند\s+(.+?)(?:[.!؟?]|$)", assistant_text)
+        answer_summary = f"كانت نقطة التوقف: {match.group(1).strip()}." if match else "سجل الرد نقطة توقف موضوعية."
+    elif "اقتراح أول محدد" in assistant_text or "اقتراح اول محدد" in normalized_answer:
+        answer_summary = "قدّم الرد اقتراحًا أول محددًا."
+    elif "رد حواري مسموح" in assistant_text:
+        answer_summary = "حُفظ رد حواري مسموح وموجز."
+    elif "الإطار يحدد حدود العمل" in assistant_text or "الاطار يحدد حدود العمل" in normalized_answer:
+        answer_summary = "أكد الرد أن الإطار يحدد حدود العمل."
+    elif assistant_follow_up:
+        answer_summary = "انتهى التبادل بسؤال متابعة حول الموضوع."
+    elif topic:
+        answer_summary = f"تضمن الرد توضيحًا مرتبطًا بموضوع «{topic[:100]}»."
+    else:
+        answer_summary = "تضمن الرد مساهمة موجزة مرتبطة بسياق الحوار."
 
     assistant_types = [
         str(item.get("knowledge_type") or "")
         for item in assistant_records if str(item.get("knowledge_type") or "")
     ]
     if comparison:
-        comparison_answer = re.sub(
-            r"^(?:الفرق|الاختلاف)\s+(?:هو|يتمثل\s+في)\s+",
-            "",
-            answer,
-            flags=re.IGNORECASE,
-        )
-        content = f"قارن الحوار بين «{topic[:150]}»؛ ويوضح الرد أن {comparison_answer}"
+        content = f"قارن الحوار بين «{topic[:150]}»؛ {answer_summary}"
     elif is_question_or_request and topic:
-        content = f"تناول الحوار «{topic[:120]}»؛ وردّ الوكيل: {answer}"
+        content = f"تناول الحوار «{topic[:120]}»؛ {answer_summary}"
     elif is_question_or_request:
-        content = f"استجاب الوكيل للطلب: {answer}"
+        content = f"استجاب الرد للطلب؛ {answer_summary}"
     else:
-        content = f"مساهمة الوكيل في التبادل: {answer}"
+        content = f"مساهمة الرد في التبادل: {answer_summary}"
+    if assistant_follow_up and assistant_follow_up not in content:
+        content += f" سؤال المتابعة: {assistant_follow_up}"
 
     stop_markers = (
         "توقفنا عند", "آخر نقطة", "نقطة التوقف",

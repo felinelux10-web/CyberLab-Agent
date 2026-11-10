@@ -2202,6 +2202,9 @@ def summarize_dialogue_exchanges(
         if len(insights) >= max(1, int(limit)):
             break
 
+    provided_topic = " ".join(str(topic or "").split()).strip()
+    if _is_dialogue_control_text(provided_topic) or _is_generated_dialogue_label(provided_topic):
+        provided_topic = ""
     evidence_topic = next((
         " ".join(str(value or "").split()).strip()
         for value in reversed(analysis.get("topics", []))
@@ -2209,9 +2212,7 @@ def summarize_dialogue_exchanges(
         and not _is_dialogue_control_text(value)
         and not _is_generated_dialogue_label(value)
     ), "")
-    selected_topic = evidence_topic or " ".join(str(topic or "").split()).strip()
-    if _is_dialogue_control_text(selected_topic) or _is_generated_dialogue_label(selected_topic):
-        selected_topic = ""
+    selected_topic = provided_topic or evidence_topic
     if not selected_topic:
         selected_topic = next((
             str(item.get("topic") or "").strip()
