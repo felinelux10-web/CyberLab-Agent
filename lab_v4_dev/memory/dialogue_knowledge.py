@@ -172,6 +172,12 @@ def _classify_knowledge_sentence(speaker: str, sentence: str) -> tuple[str, floa
         "قررت", "ساعتمد", "اخترت", "اعتمدت", "تم الاتفاق",
     )):
         return "decision", 0.78
+    if any(marker in normalized for marker in (
+        "اعطني", "اقترح", "اريد", "اشرح", "وضح", "قدم",
+        "ساعدني", "اكتب", "حلل", "قارن", "دعنا نتحدث",
+        "نتحدث", "تحدث معي", "اريد ان اتحدث",
+    )):
+        return "user_request", 0.66
     if sentence.rstrip().endswith(("؟", "?")) or re.match(
         r"^(?:ما|ماذا|من|هل|كيف|لماذا|متى|اين|أين|كم)\b", sentence
     ):
