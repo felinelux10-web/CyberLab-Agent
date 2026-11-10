@@ -2491,6 +2491,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
                 "- لا توجد معلومة مستقلة مستخرجة من المستخدم في هذا التبادل."
             ])
             lines.append(f"[التبادل {exchange_index}] مساهمات الوكيل واقتراحاته:")
+            lines.append(f"[التبادل {exchange_index}] رد الوكيل:")
             assistant_items = evidence.get("assistant_contributions") or []
             lines.extend([f"- {item}" for item in assistant_items] if assistant_items else [
                 "- لا توجد مساهمة موضوعية إضافية مستخرجة من رد الوكيل."
