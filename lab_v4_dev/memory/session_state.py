@@ -479,7 +479,12 @@ def session_selector(raw: str) -> dict:
         # Broad retrospective questions ask for the dialogue's subject matter,
         # not one atomic fact. Keep them on the saved-session summary path;
         # factual questions (tools, materials, dates, quantities) remain recall.
-        broad_dialogue_recall = any(marker in text for marker in (
+        topic_list_recall = any(marker in text for marker in (
+            "المحاور التي ناقشناها", "محاور الجلسة", "محاور الحوار",
+            "المواضيع التي ناقشناها", "الموضوعات التي ناقشناها",
+            "المحاور التي تحدثنا عنها",
+        ))
+        broad_dialogue_recall = topic_list_recall or any(marker in text for marker in (
             "ماذا كنا نقول", "ما كنا نقول", "ماذا قلنا", "ما قلنا",
             "ماذا ناقشنا", "ما ناقشنا", "ماذا كنا نتحدث", "ماذا تحدثنا",
             "ما المواضيع التي", "ما الموضوع الذي", "عن ماذا كنا نتحدث",
@@ -490,6 +495,8 @@ def session_selector(raw: str) -> dict:
         ))
         if saved_dialogue_continuation:
             report_mode = "continue_topic"
+        elif topic_list_recall and not explicit_report_request:
+            report_mode = "topic_summary"
         elif broad_dialogue_recall and not asks_for_summary and not explicit_report_request:
             report_mode = "summary"
         elif (
@@ -866,6 +873,8 @@ def session_route_contract(raw: str) -> dict:
         output_kind = "transcript"
     elif selection.get("report_mode") == "continue_topic":
         output_kind = "continue_topic"
+    elif selection.get("report_mode") == "topic_summary":
+        output_kind = "topic_summary"
     elif selection.get("report_mode") in {"recall", "summary"}:
         output_kind = "summary"
     elif selection.get("report_mode") == "progress" or any(
@@ -2468,6 +2477,20 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
             f"نقطة التوقف: {brief['stop_point']}",
             f"الخطوة التالية: {brief['next_step']}",
         ])
+
+    if report_mode == "topic_summary":
+        topics = semantic_summary.get("topics") or []
+        lines = [
+            "=== محاور الحوار المحفوظ ===",
+            f"الموضوع العام: {topic}",
+            "",
+            "المحاور التي نوقشت فعليًا:",
+        ]
+        lines.extend(
+            [f"- {item}" for item in topics]
+            if topics else ["- لا توجد محاور فرعية مثبتة في التبادلات الأصلية."]
+        )
+        return "\\n".join(lines)
 
     if report_mode == "progress":
         progress_insights = semantic_summary["insights"]
