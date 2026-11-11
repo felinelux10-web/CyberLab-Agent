@@ -121,3 +121,36 @@ def test_saved_session_choice_is_resolved_by_option_or_distinctive_topic():
         )
         is None
     )
+
+
+def test_numbered_session_dialogue_question_uses_summary_not_atomic_evidence_recall():
+    selected = session_state.session_selector(
+        "ماذا كنا نقول في الجلسة رقم 73؟"
+    )
+    assert selected["kind"] == "number"
+    assert selected["report_mode"] == "summary"
+
+    route = session_state.session_route_contract(
+        "ماذا كنا نقول في الجلسة رقم 73؟"
+    )
+    assert route["kind"] == "number"
+    assert route["report_mode"] == "summary"
+    assert route["output_kind"] == "summary"
+
+
+def test_numbered_session_stop_point_question_uses_progress_summary():
+    route = session_state.session_route_contract(
+        "أين توقف الحوار في الجلسة رقم 72؟"
+    )
+    assert route["kind"] == "number"
+    assert route["report_mode"] == "progress"
+    assert route["output_kind"] == "summary"
+
+
+def test_numbered_session_fact_question_keeps_evidence_recall():
+    route = session_state.session_route_contract(
+        "ما الأدوات التي ذكرتها في الجلسة رقم 72؟"
+    )
+    assert route["kind"] == "number"
+    assert route["report_mode"] == "recall"
+    assert route["output_kind"] == "summary"
