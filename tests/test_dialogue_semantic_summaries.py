@@ -663,3 +663,31 @@ def test_dialogue_stop_point_does_not_treat_a_request_as_a_user_fact():
     assert "آخر معلومة موثقة صرّح بها المستخدم" not in summary["stop_point"]
     assert "اقتراح أول محدد" in summary["stop_point"]
 
+
+
+def test_dialogue_archive_classifier_distinguishes_archive_requests_from_mentions_and_text():
+    classify = ConversationManager._dialogue_archive_request_kind
+
+    assert classify("اكتب ملخص الحوار في الجلسة رقم 72") == "archive_summary"
+    assert classify("ماذا كنا نقول في الجلسة رقم 73؟") == "evidence"
+    assert classify("لا تكتب ملخص الحوار") == "mention"
+    assert classify("لماذا تعرض ملخص الحوار كلما ذكرت هذه العبارة؟") == "mention"
+    assert classify("لخص هذا النص الذي كتبته أنت") == "text_summary"
+    assert classify("ما الأدوات التي ذكرتها في الجلسة رقم 72؟") == "evidence"
+
+
+def test_session_retrieval_questions_are_excluded_from_saved_dialogue_summary_tail():
+    from lab_v4_dev.memory.session_state import _is_dialogue_control_text
+
+    controls = (
+        "ما الأدوات التي ذكرتها في الجلسة رقم 72؟",
+        "أين توقف الحوار في الجلسة 72؟",
+        "أكمل الحديث من آخر نقطة توقفنا فيها في الجلسة رقم 72",
+        "ماذا كنا نقول في الجلسة رقم 73؟",
+    )
+    for request in controls:
+        assert _is_dialogue_control_text(request), request
+
+    assert not _is_dialogue_control_text(
+        "أستعمل صباغة مائية صديقة للبيئة وأضع طبقة حماية شفافة."
+    )
