@@ -706,6 +706,7 @@ def test_category_question_retrieves_original_exchange_with_named_hand_tools():
             "النقش البارز بالجبس",
         )
     ], topic="النقش البارز بالجبس")
+    saved["session_id"] = sid
 
     evidence = retrieve_dialogue_evidence(saved, "ما الأدوات التي ذكرتها؟")
 
