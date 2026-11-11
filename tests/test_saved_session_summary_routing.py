@@ -166,3 +166,12 @@ def test_numbered_saved_dialogue_continuation_has_a_dedicated_output_contract():
     assert route["kind"] == "number"
     assert route["report_mode"] == "continue_topic"
     assert route["output_kind"] == "continue_topic"
+
+
+def test_numbered_session_topic_question_uses_topic_summary_contract():
+    route = session_state.session_route_contract(
+        "ماذا قلنا في الجلسة رقم 72 يعني المحاور التي ناقشناها"
+    )
+    assert route["kind"] == "number"
+    assert route["report_mode"] == "topic_summary"
+    assert route["output_kind"] == "topic_summary"
