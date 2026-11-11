@@ -704,7 +704,13 @@ def test_category_question_retrieves_original_exchange_with_named_hand_tools():
             "سأشكل سطح الجبس بسكين ومفك براغ وملعقة.",
             "يمكن تنفيذ التشكيل بهذه الأدوات اليدوية.",
             "النقش البارز بالجبس",
-        )
+        ),
+        _exchange(
+            sid,
+            "ما الأدوات التي ذكرتها؟",
+            "لا أملك سجلًا كافيًا لتحديد ذلك.",
+            "النقش البارز بالجبس",
+        ),
     ], topic="النقش البارز بالجبس")
 
     # The saved checkpoint ID and nested DialogueMemory ID are separate scopes.
@@ -712,6 +718,8 @@ def test_category_question_retrieves_original_exchange_with_named_hand_tools():
 
     assert evidence
     assert any("سكين" in item["user"] and "مفك" in item["user"] for item in evidence)
+    assert all("ما الأدوات التي ذكرتها" not in item["user"] for item in evidence)
+    assert all("لا أملك سجلًا كافيًا" not in item["assistant"] for item in evidence)
 
 
 def test_saved_dialogue_stop_point_ignores_later_archive_retrieval_questions():
