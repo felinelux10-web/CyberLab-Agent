@@ -1184,7 +1184,9 @@ class ConversationManager:
         exchanges = _dialogue_exchanges(saved)
         meaningful = [
             item for item in exchanges
-            if not item.get("recall_only") and not item.get("state_boundary_only")
+            if not item.get("recall_only")
+            and not item.get("state_boundary_only")
+            and not _is_dialogue_control_text(item.get("user"))
         ]
         if not meaningful:
             return None
@@ -1653,6 +1655,53 @@ class ConversationManager:
                     )
                 ),
             }
+
+        # A numbered saved-dialogue continuation must be resolved and continued
+        # from that exact saved record. Do not let the generic live-dialogue
+        # continuation path consume it or substitute the current session.
+        if (
+            selected_session.get("kind") == "number"
+            and selected_session.get("output_kind") == "continue_topic"
+        ):
+            from lab_v4_dev.memory.session_state import get_session_by_number
+            numbered = get_session_by_number(selected_session.get("number"))
+            saved_id = str((numbered or {}).get("session_id") or "").strip()
+            continuation = (
+                self._continue_saved_dialogue(user_input, saved_id)
+                if saved_id else None
+            )
+            if continuation is None:
+                return self._finalize_direct_result({
+                    "status": "needs_clarification",
+                    "intent": Intent.SESSION_RESTORE,
+                    "source": "saved_dialogue_continuation",
+                    "output_kind": "continue_topic",
+                    "evidence_scope": "saved_session",
+                    "executed": False,
+                    "text": (
+                        "تعذر استئناف الحوار من سجل الجلسة المحددة؛ "
+                        "لم أستخدم الحوار الحالي بديلًا عنها."
+                    ),
+                }, intent=Intent.SESSION_RESTORE, route="L-SESSION",
+                   selected_session={"kind": "number", "number": selected_session.get("number"),
+                                     "output_kind": "continue_topic"},
+                   saved_session_request=True)
+            decision = self.finalize_route(
+                parsed={
+                    "intent": Intent.PERSONAL_CHAT,
+                    "conversation_domain": "general",
+                    "output_kind": "continue_topic",
+                },
+                selected_session={
+                    "kind": "id", "session_id": saved_id,
+                    "output_kind": "continue_topic",
+                },
+                saved_session_request=True,
+                selected_saved_session_id=saved_id,
+                transition=ContextTransition.NEW_INDEPENDENT,
+            )
+            continuation = self._attach_route_decision(continuation, decision)
+            return continuation
 
         # Every turn receives one local output contract before any response
         # owner runs. Saved-session selection remains separate from live-dialogue
