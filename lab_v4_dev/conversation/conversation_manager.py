@@ -5016,70 +5016,116 @@ class ConversationManager:
 
     @staticmethod
     def _dialogue_archive_request_kind(raw: str) -> str:
-        """Classify archive requests by speech act, not by a summary keyword."""
+        """Classify dialogue-memory requests by their requested operation."""
         text = normalize_text(str(raw or "")).strip(" .!؟?")
         if not text:
             return "none"
-        # A request to summarize a supplied/current text is not an archive query.
+
+        # Summarizing a supplied assistant response or arbitrary text is not
+        # a request to summarize the dialogue archive.
         if re.search(
-            r"(?:لخص|تلخيص|اختصر|اختصار|موجز).{0,45}"
+            r"(?:لخص|تلخيص|اختصر|اختصار|موجز).{0,55}"
             r"(?:هذا|هذه|النص|الرد|الرسالة|الفقرة|المقطع|ما كتبته|ردك|الرد الاخير)",
             text,
         ) or re.search(
-            r"(?:اكتب|اعطني|قدم).{0,35}(?:ملخص|موجز|خلاصة).{0,45}"
+            r"(?:اكتب|اعطني|قدم).{0,40}(?:ملخص|موجز|خلاصة).{0,55}"
             r"(?:الرد|النص|الرسالة|الفقرة|ما كتبته)",
             text,
         ) or re.search(
-            r"(?:بشكل مختصر|باختصار|بايجاز).{0,45}"
+            r"(?:بشكل مختصر|باختصار|بايجاز).{0,55}"
             r"(?:الرد الاخير|ردك الاخير|النص|ما كتبته)",
             text,
         ) or re.search(
-            r"(?:اكتب|اعطني|قدم).{0,25}(?:بشكل مختصر|باختصار|بايجاز).{0,55}"
+            r"(?:اكتب|اعطني|قدم).{0,30}(?:بشكل مختصر|باختصار|بايجاز).{0,65}"
             r"(?:الرد الاخير|ردك الاخير|النص|ما كتبته)",
             text,
         ):
             return "text_summary"
-        # Negation and metalinguistic discussion must not activate archive output.
+
+        # Negation and discussion of the phrase itself must not activate recall.
         if re.search(
-            r"(?:لا|لم|ليس|بدون|دون|ما اريد|لا اريد).{0,55}"
-            r"(?:ملخص الحوار|ملخص الجلسة|تلخيص الحوار|عرض الملخص)",
+            r"(?:لا|لم|ليس|بدون|دون|ما اريد|لا اريد).{0,60}"
+            r"(?:ملخص الحوار|ملخص الجلسة|ملخص حوار الجلسة|تلخيص الحوار|عرض الملخص)",
             text,
         ) or re.search(
-            r"(?:لماذا|لما|سبب|عبارة|كلمة|ذكر|اقصد|اقصد عبارة|ما معنى|ماذا تعني|"
-            r"كيف تعمل|لماذا تظهر|لماذا تعرض|كلما ذكرت).{0,75}"
-            r"(?:ملخص الحوار|ملخص الجلسة|هذه العبارة|عبارة ملخص|العبارة)",
+            r"(?:لماذا|لما|سبب|عبارة|كلمة|ذكر|اقصد|المقصود|ما معنى|ماذا تعني|"
+            r"كيف تعمل|لماذا تظهر|لماذا تعرض|كلما ذكرت).{0,85}"
+            r"(?:ملخص الحوار|ملخص الجلسة|ملخص حوار الجلسة|هذه العبارة|عبارة ملخص|العبارة)",
             text,
         ) or re.search(
-            r"(?:ملخص الحوار|ملخص الجلسة).{0,45}(?:مجرد ذكر|ذكر العبارة|هذه الكلمة|في جملة)",
+            r"(?:ملخص الحوار|ملخص الجلسة|ملخص حوار الجلسة).{0,50}"
+            r"(?:مجرد ذكر|ذكر العبارة|هذه الكلمة|في جملة)",
             text,
         ):
             return "mention"
-        # A named saved session, or an affirmative request to recall the
-        # discussion, is an archive operation. Mere lexical occurrence is not.
-        if re.search(r"(?:الجلسة|جلسة)\s*(?:رقم\s*)?\d+", text):
-            if re.search(r"^(?:ما|ماذا|من|هل|كيف|اين|اذكر|حدد)", text):
-                return "evidence"
-            return "archive_summary" if re.search(
-                r"(?:ملخص|لخص|تلخيص|ماذا كنا نقول|ماذا قلنا|ماذا ناقشنا|اكمل الحديث|اين توقفنا)",
-                text,
-            ) else "evidence"
+
+        # Questions for one concrete fact from a saved session are evidence
+        # retrieval, not requests to render a whole-session summary.
         if re.search(
-            r"(?:اكتب|اعرض|اعطني|قدم|استرجع|اذكر).{0,45}"
-            r"(?:ملخص الحوار|ملخص الجلسة|ملخص النقاش|محاور الجلسة|محاور الحوار)",
+            r"(?:ما|ماذا|من|هل|كيف|اين)\\s+.{0,65}"
+            r"(?:اخر سؤال|آخر سؤال|السؤال الاخير|السؤال الأخير|"
+            r"الادوات|الأدوات|الالوان|الألوان|كم سماكة|اين توقف)",
             text,
         ) or re.search(
+            r"(?:اخر سؤال|آخر سؤال).{0,35}(?:سألتك|سالته|سألته|طرحته)",
+            text,
+        ):
+            return "evidence"
+
+        # Numbered-session questions asking what was said are evidence queries.
+        # The wording is intentionally distinguished from an explicit request
+        # to write a summary for that numbered session.
+        numbered_session = bool(re.search(
+            r"(?:الجلسة|جلسة)\\s*(?:رقم\\s*)?\\d+", text
+        ))
+        if numbered_session and re.search(
+            r"(?:ماذا|ما)\\s+كنا\\s+(?:نقول|نتحدث|نتكلم)", text
+        ):
+            return "evidence"
+        if numbered_session:
+            if re.search(
+                r"^(?:ما|ماذا|من|هل|كيف|اين|اذكر|حدد)", text
+            ):
+                return "evidence"
+            return "archive_summary" if re.search(
+                r"(?:ملخص|لخص|تلخيص|ماذا كنا نقول|ماذا قلنا|ماذا ناقشنا|"
+                r"اكمل الحديث|اين توقفنا)", text
+            ) else "evidence"
+
+        # Explicit archive-summary phrasing, including the common natural
+        # construction "اكتب ملخص حوار الجلسة".
+        if re.search(
+            r"(?:اكتب|اعرض|اعطني|قدم|استرجع|اذكر).{0,45}"
+            r"(?:ملخص|موجز|خلاصة).{0,45}"
+            r"(?:حوار|الحوار|الجلسة|الجلسه|النقاش)",
+            text,
+        ) or re.search(
+            r"(?:اكتب|اعرض|اعطني|قدم|استرجع|اذكر).{0,45}"
+            r"(?:ملخص الحوار|ملخص الجلسة|ملخص حوار الجلسة|"
+            r"ملخص النقاش|محاور الجلسة|محاور الحوار)",
+            text,
+        ):
+            return "archive_summary"
+
+        if re.search(
             r"(?:ماذا كنا نقول|ماذا قلنا|ما كنا نقول|ماذا ناقشنا|ما ناقشنا|"
             r"ماذا كنا نتحدث|ما كنا نتحدث|كنا نتحدث|كنا نتكلم|ماذا تحدثنا|"
             r"ما المواضيع التي ناقشنا|الموضوعين|المواضيع التي|الموضوعات التي|"
             r"هل تتذكر ما تحدثنا|استرجع الجلسة السابقة|استرجع الجلسه السابقه|"
-            r"الردود السابقة|الردود السابقه|قبل قليل|اخر سؤال|آخر سؤال|"
-            r"ملخص الحوار الحالي|ملخص الجلسة الحالية|محاور الحوار السابق)",
+            r"الردود السابقة|الردود السابقه|قبل قليل|ملخص الحوار الحالي|"
+            r"ملخص الجلسة الحالية|محاور الحوار السابق)",
             text,
         ):
             return "archive_summary"
-        if re.fullmatch(r"(?:ملخص الحوار|ملخص الجلسة|ملخص النقاش)", text):
+
+        if re.fullmatch(
+            r"(?:ملخص الحوار|ملخص الجلسة|ملخص حوار الجلسة|ملخص النقاش)", text
+        ):
             return "archive_summary"
-        if re.search(r"(?:ما الادوات|ما الالوان|كم سماكة|اين توقفنا|اكمل الحديث)", text):
+        if re.search(
+            r"(?:ما الادوات|ما الالوان|كم سماكة|اين توقفنا|اكمل الحديث|اخر سؤال)",
+            text,
+        ):
             return "evidence"
         return "none"
 
