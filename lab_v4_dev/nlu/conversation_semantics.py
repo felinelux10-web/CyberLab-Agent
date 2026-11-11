@@ -582,7 +582,7 @@ def classify_conversation_semantics(
     # evidence lookup, not a generic conversation or an archive summary.
     last_user_question_query = bool(
         re.search(
-            r"(?:^|\\s)(?:ما|ماذا)\\s+(?:هو\\s+)?(?:اخر|اخير)\\s+سؤال",
+            r"(?:^|\s)(?:ما|ماذا)\s+(?:هو\s+)?(?:اخر|اخير)\s+سؤال",
             normalized_phrase,
         )
         and re.search(r"(?:سالتك|سالته|طرحته|انا)", normalized_phrase)
