@@ -741,3 +741,29 @@ def test_saved_dialogue_stop_point_ignores_later_archive_retrieval_questions():
 
     assert "طبقة حماية شفافة" in report["stop_point"]
     assert "سؤال الاسترجاع" not in report["stop_point"]
+
+
+def test_saved_dialogue_topic_summary_lists_topics_without_transcript():
+    sid = "dialogue-state-topic-list"
+    saved = _saved_dialogue([
+        _exchange(
+            sid,
+            "ناقشنا الفن التجريدي وعلاقته بالأشكال الهندسية.",
+            "تطرقنا إلى التكوين والتوازن البصري.",
+            "الفن التجريدي",
+        ),
+        _exchange(
+            sid,
+            "ثم انتقلنا إلى النقش البارز وتشكيل الجبس.",
+            "ناقشنا البروز والعمق والملمس.",
+            "النقش البارز بالجبس",
+        ),
+    ], topic="الفن التجريدي والنقش البارز")
+    rendered = build_session_restore_summary(saved, report_mode="topic_summary")
+
+    assert "محاور الحوار المحفوظ" in rendered
+    assert "المحاور التي نوقشت فعليًا" in rendered
+    assert "الفن التجريدي" in rendered
+    assert "النقش البارز" in rendered
+    assert "المستخدم:" not in rendered
+    assert "الوكيل:" not in rendered
