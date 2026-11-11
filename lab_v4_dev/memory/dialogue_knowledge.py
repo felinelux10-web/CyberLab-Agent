@@ -64,6 +64,19 @@ def _tokens(value: Any) -> set[str]:
     return set(_token_list(value))
 
 
+def _is_retrieval_control_exchange(exchange: dict) -> bool:
+    """Exclude archive-management and retrospective test prompts from evidence."""
+    user = _normalize(exchange.get("user") or "")
+    return bool(re.search(
+        r"(?:ماذا كنا نقول|ماذا قلنا في الجلسة|ما كنا نقول|ماذا ناقشنا في الجلسة|"
+        r"اين توقف الحوار|اين توقفنا في الجلسة|اكمل الحديث من اخر نقطة|"
+        r"ملخص الحوار|ملخص الجلسة|لخص الجلسة|"
+        r"ما الادوات التي ذكرتها|ما الالوان التي ذكرتها|"
+        r"ما الذي ذكرته في الجلسة|كم سماكة الجبس)",
+        user,
+    ))
+
+
 def _exchange_archive(data: dict) -> tuple[str, list[dict]]:
     dialogue = data.get("dialogue_state")
     if not isinstance(dialogue, dict):
@@ -86,7 +99,12 @@ def _exchange_archive(data: dict) -> tuple[str, list[dict]]:
             item_id = str(item.get("session_id") or "").strip()
             if item_id and item_id != session_id:
                 continue
-            if item.get("recall_only") or item.get("state_boundary_only") or item.get("response_failed"):
+            if (
+                item.get("recall_only")
+                or item.get("state_boundary_only")
+                or item.get("response_failed")
+                or _is_retrieval_control_exchange(item)
+            ):
                 continue
             if not str(item.get("user") or "").strip() and not str(item.get("assistant") or "").strip():
                 continue
