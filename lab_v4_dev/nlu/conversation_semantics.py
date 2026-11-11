@@ -578,6 +578,25 @@ def classify_conversation_semantics(
             "conversational": True,
         }
 
+    # Asking for the last question the user asked is a single-item dialogue
+    # evidence lookup, not a generic conversation or an archive summary.
+    last_user_question_query = bool(
+        re.search(
+            r"(?:^|\\s)(?:ما|ماذا)\\s+(?:هو\\s+)?(?:اخر|اخير)\\s+سؤال",
+            normalized_phrase,
+        )
+        and re.search(r"(?:سالتك|سالته|طرحته|انا)", normalized_phrase)
+        and not _has_any(bases, work_context_markers)
+    )
+    if last_user_question_query:
+        return {
+            "conversation_domain": "general",
+            "conversation_act": "CONVERSATION_HISTORY_QUERY",
+            "confidence": 0.99,
+            "response_attributes": {"dialogue_response_mode": "last_question"},
+            "conversational": True,
+        }
+
     # "What does this have to do with what we were saying?" asks the current
     # dialogue owner for a contextual reply; it is not a request to dump the
     # archive or produce a fixed summary.
