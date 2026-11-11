@@ -673,6 +673,7 @@ def test_dialogue_archive_classifier_distinguishes_archive_requests_from_mention
     assert classify("لا تكتب ملخص الحوار") == "mention"
     assert classify("لماذا تعرض ملخص الحوار كلما ذكرت هذه العبارة؟") == "mention"
     assert classify("لخص هذا النص الذي كتبته أنت") == "text_summary"
+    assert classify("اكتب بشكل مختصر ماذا مكتوب في الرد الاخير الذي كتبته أنت") == "text_summary"
     assert classify("ما الأدوات التي ذكرتها في الجلسة رقم 72؟") == "evidence"
 
 
