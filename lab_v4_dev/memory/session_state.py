@@ -1641,7 +1641,7 @@ def _is_dialogue_control_text(value: object) -> bool:
     # not new subject matter. Keep them in the transcript, but exclude them
     # from semantic summaries and the substantive stop-point calculation.
     if re.search(
-        r"^(?:ما|ماذا|من|هل|كيف|اين|كم|اذكر|حدد|اكمل|استكمل|استرجع)\\b.*"
+        r"^(?:ما|ماذا|من|هل|كيف|اين|كم|اذكر|حدد|اكمل|استكمل|استرجع)\b.*"
         r"(?:جلسة|الجلسة|جلسه|الجلسه|حوار|الحوار|محادثة|المحادثة)",
         text,
     ):
