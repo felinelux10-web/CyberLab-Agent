@@ -5062,7 +5062,7 @@ class ConversationManager:
         # Questions for one concrete fact from a saved session are evidence
         # retrieval, not requests to render a whole-session summary.
         if re.search(
-            r"(?:ما|ماذا|من|هل|كيف|اين)\\s+.{0,65}"
+            r"(?:ما|ماذا|من|هل|كيف|اين)\s+.{0,65}"
             r"(?:اخر سؤال|آخر سؤال|السؤال الاخير|السؤال الأخير|"
             r"الادوات|الأدوات|الالوان|الألوان|كم سماكة|اين توقف)",
             text,
@@ -5076,10 +5076,10 @@ class ConversationManager:
         # The wording is intentionally distinguished from an explicit request
         # to write a summary for that numbered session.
         numbered_session = bool(re.search(
-            r"(?:الجلسة|جلسة)\\s*(?:رقم\\s*)?\\d+", text
+            r"(?:الجلسة|جلسة)\s*(?:رقم\s*)?\d+", text
         ))
         if numbered_session and re.search(
-            r"(?:ماذا|ما)\\s+كنا\\s+(?:نقول|نتحدث|نتكلم)", text
+            r"(?:ماذا|ما)\s+كنا\s+(?:نقول|نتحدث|نتكلم)", text
         ):
             return "evidence"
         if numbered_session:
