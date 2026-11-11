@@ -5024,7 +5024,7 @@ class ConversationManager:
         # Summarizing a supplied assistant response or arbitrary text is not
         # a request to summarize the dialogue archive.
         if re.search(
-            r"(?:^|\\s)(?:لخص|تلخيص|اختصر|اختصار|موجز).{0,55}"
+            r"(?:^| )(?:لخص|تلخيص|اختصر|اختصار|موجز).{0,55}"
             r"(?:هذا|هذه|النص|الرد|الرسالة|الفقرة|المقطع|ما كتبته|ردك|الرد الاخير)",
             text,
         ) or re.search(
