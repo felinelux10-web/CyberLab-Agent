@@ -154,3 +154,15 @@ def test_numbered_session_fact_question_keeps_evidence_recall():
     assert route["kind"] == "number"
     assert route["report_mode"] == "recall"
     assert route["output_kind"] == "summary"
+
+
+def test_numbered_saved_dialogue_continuation_has_a_dedicated_output_contract():
+    request = "اكمل الحديث من آخر نقطة توقفنا فيها في الجلسة رقم 72"
+    selected = session_state.session_selector(request)
+    assert selected["kind"] == "number"
+    assert selected["report_mode"] == "continue_topic"
+
+    route = session_state.session_route_contract(request)
+    assert route["kind"] == "number"
+    assert route["report_mode"] == "continue_topic"
+    assert route["output_kind"] == "continue_topic"
