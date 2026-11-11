@@ -712,3 +712,24 @@ def test_category_question_retrieves_original_exchange_with_named_hand_tools():
 
     assert evidence
     assert any("سكين" in item["user"] and "مفك" in item["user"] for item in evidence)
+
+
+def test_saved_dialogue_stop_point_ignores_later_archive_retrieval_questions():
+    sid = "dialogue-state-stop-point"
+    report = summarize_dialogue_exchanges([
+        _exchange(
+            sid,
+            "أستعمل صباغة مائية وأضع طبقة حماية شفافة تشبه الورنيش الخشبي.",
+            "هذه الطبقة تحمي السطح وتحافظ على مظهره.",
+            "الفن التجريدي والنقش البارز",
+        ),
+        _exchange(
+            sid,
+            "أين توقف الحوار في الجلسة رقم 72؟",
+            "توقفنا عند سؤال الاسترجاع.",
+            "الفن التجريدي والنقش البارز",
+        ),
+    ], session_id=sid)
+
+    assert "طبقة حماية شفافة" in report["stop_point"]
+    assert "سؤال الاسترجاع" not in report["stop_point"]
