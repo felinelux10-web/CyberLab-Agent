@@ -692,3 +692,22 @@ def test_session_retrieval_questions_are_excluded_from_saved_dialogue_summary_ta
     assert not _is_dialogue_control_text(
         "أستعمل صباغة مائية صديقة للبيئة وأضع طبقة حماية شفافة."
     )
+
+
+def test_category_question_retrieves_original_exchange_with_named_hand_tools():
+    from lab_v4_dev.memory.dialogue_knowledge import retrieve_dialogue_evidence
+
+    sid = "dialogue-state-1"
+    saved = _saved_dialogue([
+        _exchange(
+            sid,
+            "سأشكل سطح الجبس بسكين ومفك براغ وملعقة.",
+            "يمكن تنفيذ التشكيل بهذه الأدوات اليدوية.",
+            "النقش البارز بالجبس",
+        )
+    ], topic="النقش البارز بالجبس")
+
+    evidence = retrieve_dialogue_evidence(saved, "ما الأدوات التي ذكرتها؟")
+
+    assert evidence
+    assert any("سكين" in item["user"] and "مفك" in item["user"] for item in evidence)
