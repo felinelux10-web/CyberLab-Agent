@@ -2490,7 +2490,7 @@ def _build_dialogue_session_summary(data: dict, report_mode: str) -> str:
             [f"- {item}" for item in topics]
             if topics else ["- لا توجد محاور فرعية مثبتة في التبادلات الأصلية."]
         )
-        return "\\n".join(lines)
+        return "\n".join(lines)
 
     if report_mode == "progress":
         progress_insights = semantic_summary["insights"]
