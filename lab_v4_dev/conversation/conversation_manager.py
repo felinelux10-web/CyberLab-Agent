@@ -5024,7 +5024,7 @@ class ConversationManager:
         # Summarizing a supplied assistant response or arbitrary text is not
         # a request to summarize the dialogue archive.
         if re.search(
-            r"(?:لخص|تلخيص|اختصر|اختصار|موجز).{0,55}"
+            r"(?:^|\\s)(?:لخص|تلخيص|اختصر|اختصار|موجز).{0,55}"
             r"(?:هذا|هذه|النص|الرد|الرسالة|الفقرة|المقطع|ما كتبته|ردك|الرد الاخير)",
             text,
         ) or re.search(
@@ -5648,7 +5648,7 @@ class ConversationManager:
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
         current_session_id = str(getattr(state, "session_id", "") or "")
         normalized_history_query = str(text or "").casefold()
-        allow_untagged_legacy = response_mode == "answer" or (
+        allow_untagged_legacy = response_mode in {"answer", "last_question"} or (
             response_mode == "summary"
             and not any(marker in normalized_history_query for marker in (
                 "ماذا كنا نقول", "ماذا قلنا", "ما كنا نقول", "ما كنا نتحدث",
