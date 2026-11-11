@@ -5076,7 +5076,7 @@ class ConversationManager:
         # The wording is intentionally distinguished from an explicit request
         # to write a summary for that numbered session.
         numbered_session = bool(re.search(
-            r"(?:الجلسة|جلسة)\s*(?:رقم\s*)?\d+", text
+            r"(?:الجلسة|الجلسه|جلسة|جلسه)\s*(?:رقم\s*)?\d+", text
         ))
         if numbered_session and re.search(
             r"(?:ماذا|ما)\s+كنا\s+(?:نقول|نتحدث|نتكلم)", text
@@ -5201,7 +5201,7 @@ class ConversationManager:
             "ناقشنا", "سجل المحادث", "تاريخ المحادث",
             "ملخص", "لخص", "تلخيص", "مضمون الحوار", "مضمون الجلسة",
             "تقرير", "موجز", "باختصار شديد", "هل هذا هو التقرير",
-            "هل هذا التقرير",
+            "هل هذا التقرير", "اخر سؤال", "السؤال الاخير",
         )
         if (
             history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
@@ -5243,6 +5243,13 @@ class ConversationManager:
         requested_output_kind = str((parsed or {}).get("output_kind") or "").casefold()
         if requested_output_kind in {"brief", "summary", "topic_summary", "report"}:
             response_mode = requested_output_kind
+        if (
+            re.search(r"(?:اخر سؤال|السؤال الاخير)", normalized_query)
+            and re.search(r"(?:سالتك|سالته|طرحته|انا)", normalized_query)
+        ):
+            # This is a single-item evidence query, not a request to summarize
+            # or render the complete dialogue archive.
+            response_mode = "last_question"
         topic_filter = str((parsed or {}).get("topic_filter") or "").strip()
         if (
             topic_filter
