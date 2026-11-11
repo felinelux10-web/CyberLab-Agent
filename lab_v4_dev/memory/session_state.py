@@ -414,7 +414,10 @@ def session_selector(raw: str) -> dict:
         report_mode = "transcript"
     elif any(token in text for token in ("فقط", "المعرف والحالة", "المعرّف والموضوع والحالة")):
         report_mode = "compact"
-    elif any(token in text for token in ("أين توقفنا", "اين توقفنا", "الخطوة التالية", "ما الذي أُنجز", "ما الذي انجز")):
+    elif any(token in text for token in (
+        "أين توقفنا", "اين توقفنا", "اين توقف الحوار", "اين توقفنا في الجلسة",
+        "الخطوة التالية", "ما الذي أُنجز", "ما الذي انجز",
+    )):
         report_mode = "progress"
     elif any(token in text for token in (
         "ملخصات كل الجلسات", "ملخصات جميع الجلسات", "ملخصات الجلسات",
@@ -471,18 +474,25 @@ def session_selector(raw: str) -> dict:
     if number_match and (
         explicit_question or session_action_request
     ):
-        # A numbered content question is evidence recall, not a generic
-        # summary/report and not a request to restore the selected session.
-        # Action verbs and summary/report requests retain their own output mode.
-        if (
+        # Broad retrospective questions ask for the dialogue's subject matter,
+        # not one atomic fact. Keep them on the saved-session summary path;
+        # factual questions (tools, materials, dates, quantities) remain recall.
+        broad_dialogue_recall = any(marker in text for marker in (
+            "ماذا كنا نقول", "ما كنا نقول", "ماذا قلنا", "ما قلنا",
+            "ماذا ناقشنا", "ما ناقشنا", "ماذا كنا نتحدث", "ماذا تحدثنا",
+            "ما المواضيع التي", "ما الموضوع الذي", "عن ماذا كنا نتحدث",
+        ))
+        if broad_dialogue_recall and not asks_for_summary and not explicit_report_request:
+            report_mode = "summary"
+        elif (
             explicit_question
             and not asks_for_summary
             and not explicit_report_request
             and not session_action_request
             and report_mode != "progress"
         ):
-            # Stop-point questions are summary/progress requests, not factual
-            # detail lookups. Preserve their dedicated progress submode.
+            # Atomic factual questions retrieve evidence; stop-point and broad
+            # dialogue questions have their own semantic summary modes.
             report_mode = "recall"
         return {
             "kind": "number",
@@ -846,7 +856,7 @@ def session_route_contract(raw: str) -> dict:
         output_kind = "transcript"
     elif selection.get("report_mode") == "transcript":
         output_kind = "transcript"
-    elif selection.get("report_mode") == "recall":
+    elif selection.get("report_mode") in {"recall", "summary"}:
         output_kind = "summary"
     elif selection.get("report_mode") == "progress" or any(
         marker in text for marker in (
