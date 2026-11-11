@@ -467,6 +467,8 @@ def session_selector(raw: str) -> dict:
     )) or "؟" in text or "?" in text
     session_action_request = any(token in text for token in (
         "استرجع", "استرجاع", "استعد", "استعادة", "استكمل", "استكمال",
+        "اكمل الحديث", "اكمل الحوار", "تابع الحديث", "واصل الحديث",
+        "استأنف الحديث", "استئناف الحوار",
         "اعرض", "اكتب", "اقرا", "حلل", "ملخص", "تلخيص", "لخص", "موجز",
         "باختصار", "مضمون", "محتوى", "تقرير", "restore", "resume",
         "summarize", "summary", "report",
@@ -482,7 +484,13 @@ def session_selector(raw: str) -> dict:
             "ماذا ناقشنا", "ما ناقشنا", "ماذا كنا نتحدث", "ماذا تحدثنا",
             "ما المواضيع التي", "ما الموضوع الذي", "عن ماذا كنا نتحدث",
         ))
-        if broad_dialogue_recall and not asks_for_summary and not explicit_report_request:
+        saved_dialogue_continuation = any(marker in text for marker in (
+            "اكمل الحديث", "اكمل الحوار", "تابع الحديث", "واصل الحديث",
+            "استأنف الحديث", "استئناف الحوار",
+        ))
+        if saved_dialogue_continuation:
+            report_mode = "continue_topic"
+        elif broad_dialogue_recall and not asks_for_summary and not explicit_report_request:
             report_mode = "summary"
         elif (
             explicit_question
@@ -856,6 +864,8 @@ def session_route_contract(raw: str) -> dict:
         output_kind = "transcript"
     elif selection.get("report_mode") == "transcript":
         output_kind = "transcript"
+    elif selection.get("report_mode") == "continue_topic":
+        output_kind = "continue_topic"
     elif selection.get("report_mode") in {"recall", "summary"}:
         output_kind = "summary"
     elif selection.get("report_mode") == "progress" or any(
