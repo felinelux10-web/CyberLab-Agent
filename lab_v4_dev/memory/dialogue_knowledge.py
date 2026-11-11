@@ -70,11 +70,11 @@ def _exchange_archive(data: dict) -> tuple[str, list[dict]]:
         dialogue = data
     record_session_id = str(data.get("session_id") or "").strip()
     dialogue_session_id = str(dialogue.get("session_id") or "").strip()
-    if record_session_id and dialogue_session_id and record_session_id != dialogue_session_id:
-        # A nested transcript from another session must never be attributed to
-        # the outer record merely because it was found in the selected file.
-        return "", []
-    session_id = record_session_id or dialogue_session_id
+    # The outer saved-record ID selects the checkpoint file. The nested
+    # DialogueMemory ID owns exchange provenance and may legitimately differ.
+    # Validate every exchange against that nested identity below; never rewrite
+    # its ID to the outer checkpoint ID.
+    session_id = dialogue_session_id or record_session_id
     if not session_id:
         return "", []
 
