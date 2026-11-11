@@ -4976,6 +4976,14 @@ class ConversationManager:
             r"(?:لخص|تلخيص|اختصر|اختصار|موجز).{0,45}"
             r"(?:هذا|هذه|النص|الرد|الرسالة|الفقرة|المقطع|ما كتبته|ردك|الرد الاخير)",
             text,
+        ) or re.search(
+            r"(?:اكتب|اعطني|قدم).{0,35}(?:ملخص|موجز|خلاصة).{0,45}"
+            r"(?:الرد|النص|الرسالة|الفقرة|ما كتبته)",
+            text,
+        ) or re.search(
+            r"(?:بشكل مختصر|باختصار|بايجاز).{0,45}"
+            r"(?:الرد الاخير|ردك الاخير|النص|ما كتبته)",
+            text,
         ):
             return "text_summary"
         # Negation and metalinguistic discussion must not activate archive output.
