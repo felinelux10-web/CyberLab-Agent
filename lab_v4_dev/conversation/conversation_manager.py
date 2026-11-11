@@ -3683,6 +3683,7 @@ class ConversationManager:
             and not explicit_live_branch_return
             and not specific_dialogue_return
             and not saved_session_request
+            and self._dialogue_archive_request_kind(user_input) not in {"text_summary", "mention"}
         ):
             history_result = self._conversation_history_answer(user_input, parsed)
             if history_result is None:
@@ -4964,11 +4965,62 @@ class ConversationManager:
             return True
         return bool(user and any(assistant.startswith(prefix) for prefix in social_reply_prefixes))
 
+    @staticmethod
+    def _dialogue_archive_request_kind(raw: str) -> str:
+        """Classify archive requests by speech act, not by a summary keyword."""
+        text = normalize_text(str(raw or "")).strip(" .!؟?")
+        if not text:
+            return "none"
+        # A request to summarize a supplied/current text is not an archive query.
+        if re.search(
+            r"(?:لخص|تلخيص|اختصر|اختصار|موجز).{0,45}"
+            r"(?:هذا|هذه|النص|الرد|الرسالة|الفقرة|المقطع|ما كتبته|ردك|الرد الاخير)",
+            text,
+        ):
+            return "text_summary"
+        # Negation and metalinguistic discussion must not activate archive output.
+        if re.search(
+            r"(?:لا|لم|ليس|بدون|دون|ما اريد|لا اريد).{0,55}"
+            r"(?:ملخص الحوار|ملخص الجلسة|تلخيص الحوار|عرض الملخص)",
+            text,
+        ) or re.search(
+            r"(?:لماذا|لما|سبب|عبارة|كلمة|ذكر|اقصد|اقصد عبارة).{0,65}"
+            r"(?:ملخص الحوار|ملخص الجلسة|هذه العبارة|عبارة ملخص)",
+            text,
+        ):
+            return "mention"
+        # A named saved session, or an affirmative request to recall the
+        # discussion, is an archive operation. Mere lexical occurrence is not.
+        if re.search(r"(?:الجلسة|جلسة)\s*(?:رقم\s*)?\d+", text):
+            if re.search(r"^(?:ما|ماذا|من|هل|كيف|اين|اذكر|حدد)", text):
+                return "evidence"
+            return "archive_summary" if re.search(
+                r"(?:ملخص|لخص|تلخيص|ماذا كنا نقول|ماذا قلنا|ماذا ناقشنا|اكمل الحديث|اين توقفنا)",
+                text,
+            ) else "evidence"
+        if re.search(
+            r"(?:اكتب|اعرض|اعطني|قدم|استرجع|اذكر).{0,35}"
+            r"(?:ملخص الحوار|ملخص الجلسة|ملخص النقاش|محاور الجلسة|محاور الحوار)",
+            text,
+        ) or re.search(
+            r"(?:ماذا كنا نقول|ماذا قلنا|ما كنا نقول|ماذا ناقشنا|ما المواضيع التي ناقشنا)",
+            text,
+        ):
+            return "archive_summary"
+        if re.fullmatch(r"(?:ملخص الحوار|ملخص الجلسة|ملخص النقاش)", text):
+            return "archive_summary"
+        if re.search(r"(?:ما الادوات|ما الالوان|كم سماكة|اين توقفنا|اكمل الحديث)", text):
+            return "evidence"
+        return "none"
+
     def _conversation_history_answer(self, text: str, parsed: dict | None = None) -> dict | None:
         """Answer recent-dialogue questions from bounded dialogue memory only."""
         normalized = str(text or "").casefold()
         history_act = str((parsed or {}).get("conversation_act") or "").upper()
         normalized_query = normalize_text(text)
+        archive_request_kind = self._dialogue_archive_request_kind(text)
+        if archive_request_kind in {"text_summary", "mention", "none"}:
+            return None
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
         live_previous_session_recall = (
             normalized_query.strip(" .!؟?") in {
@@ -5330,6 +5382,16 @@ class ConversationManager:
             ):
                 return True
             user = normalized_user(item)
+            # Retrieval/testing turns are evidence requests, not continuation
+            # of the artistic/social subject. Exclude them from branch tails.
+            if re.search(
+                r"(?:ماذا كنا نقول|ماذا قلنا|ما كنا نقول|ماذا ناقشنا|"
+                r"ما الادوات التي|ما الالوان التي|كم سماكة|اين توقفنا|"
+                r"اكمل الحديث من اخر نقطة|ملخص الحوار|ملخص الجلسة|"
+                r"اكتب ملخص|لخص الجلسة|ماذا يوجد في الجلسة)",
+                user,
+            ):
+                return True
             return user == "حفظ" or user.startswith("حفظ ")
 
         substantive = [item for item in valid if not excluded(item)]
