@@ -35,10 +35,12 @@ class BootUI:
 
     def _frame_text(self, value=""):
         value = str(value)
-        if len(value) > self._inner_width:
-            value = value[: max(0, self._inner_width - 1)] + "…"
-        print(f"║{value:<{self._inner_width}}║")
-
+        visible = value.replace(GREEN, "").replace(RED, "").replace(RESET, "")
+        if len(visible) > self._inner_width:
+            value = visible[: max(0, self._inner_width - 1)] + "…"
+            visible = value
+        padding = " " * max(0, self._inner_width - len(visible))
+        print(f"║{value}{padding}║")
     def _status_marker(self, state):
         markers = {
             "OK": GREEN,
