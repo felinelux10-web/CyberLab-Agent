@@ -117,8 +117,8 @@ class BootUI:
 
         if str(title).strip().casefold() == "saved sessions":
             session_width = 10
-            type_width = 8
-            topic_width = max(1, self._inner_width - 26)
+            type_width = 10
+            topic_width = max(1, self._inner_width - 28)
             content = (
                 f" {'SESSION':<{session_width}} │ "
                 f"{'TYPE/STATE':<{type_width}} │ "
@@ -148,8 +148,8 @@ class BootUI:
             type_state = "WORK"
 
         session_width = 10
-        type_width = 8
-        topic_width = max(1, self._inner_width - 26)
+        type_width = 10
+        topic_width = max(1, self._inner_width - 28)
         topic = " ".join(topic.split())
         if len(topic) > topic_width:
             topic = topic[: max(0, topic_width - 1)].rstrip() + "…"
