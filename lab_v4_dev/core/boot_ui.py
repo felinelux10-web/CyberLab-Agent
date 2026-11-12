@@ -1,4 +1,4 @@
-"""Professional terminal UI for startup status and command entry."""
+"""Compact, aligned terminal dashboard for startup status and saved sessions."""
 
 import select
 import shutil
@@ -11,10 +11,10 @@ RED = "\033[31m"
 
 
 class BootUI:
-    """Render a compact, bordered startup dashboard for Termux and terminals."""
+    """Render compact horizontal/vertical tables for Termux and terminals."""
 
     def __init__(self):
-        self.width = max(40, min(shutil.get_terminal_size((56, 20)).columns, 78))
+        self.width = max(32, min(shutil.get_terminal_size((56, 20)).columns, 78))
         self.color = bool(getattr(sys.stdout, "isatty", lambda: False)())
 
     def _paint(self, text, color):
@@ -22,7 +22,7 @@ class BootUI:
 
     @property
     def _inner_width(self):
-        return max(34, self.width - 2)
+        return max(30, self.width - 2)
 
     def _rule(self, char="─"):
         print(self._paint(char * self._inner_width, GREEN))
@@ -30,89 +30,155 @@ class BootUI:
     def _box_line(self, left="│", right="│", fill=" "):
         return f"{left}{fill * self._inner_width}{right}"
 
-    def _table_border(self, left, junction, right):
-        return self._paint(
-            f"{left}{'─' * self._inner_width}{right}", GREEN
-        )
+    def _table_border(self, left="╠", junction="╬", right="╣"):
+        return self._paint(f"{left}{'─' * self._inner_width}{right}", GREEN)
+
+    def _frame_text(self, value=""):
+        value = str(value)
+        if len(value) > self._inner_width:
+            value = value[: max(0, self._inner_width - 1)] + "…"
+        print(f"║{value:<{self._inner_width}}║")
 
     def _status_marker(self, state):
         markers = {
-            "OK": self._paint("●", GREEN),
-            "FAIL": self._paint("●", RED),
-            "WARN": self._paint("●", RED),
-            "PENDING": self._paint("●", RED),
-            "INFO": self._paint("·", GREEN),
+            "OK": GREEN,
+            "FAIL": RED,
+            "WARN": RED,
+            "PENDING": RED,
+            "INFO": GREEN,
         }
-        return markers.get(state, self._paint("·", GREEN))
+        return self._paint("●" if state != "INFO" else "·", markers.get(state, GREEN))
+
+    def _status_widths(self):
+        component_width = min(12, max(8, self._inner_width // 5))
+        status_width = 6
+        detail_width = max(
+            6, self._inner_width - (1 + status_width + 3 + component_width + 3 + 1)
+        )
+        return status_width, component_width, detail_width
+
+    def _print_status_header(self):
+        status_width, component_width, detail_width = self._status_widths()
+        content = (
+            f" {'STATUS':<{status_width}} │ "
+            f"{'COMPONENT':<{component_width}} │ "
+            f"{'DETAILS':<{detail_width}} "
+        )
+        self._frame_text(content)
+        print(self._table_border())
 
     def start(self):
         print()
-        self._rule("═")
-        print(self._box_line("║", "║", " "))
-        print(f"║  {self._paint('CYBERLAB AGENT', GREEN):<{self._inner_width - 2}}║")
-        print(f"║  {'STARTUP STATUS':<{self._inner_width - 2}}║")
-        print(self._box_line("║", "║", " "))
-        print(self._table_border("╠", "╬", "╣"))
-        print(f"║  {'STATUS':<9} │ {'COMPONENT':<13} │ {'DETAILS':<{max(8, self._inner_width - 31)}}║")
-        print(self._table_border("╠", "╬", "╣"))
+        print(self._table_border("╔", "═", "╗"))
+        self._frame_text(f"  {self._paint('CYBERLAB AGENT', GREEN)}")
+        self._frame_text("  STARTUP STATUS")
+        print(self._table_border())
+        self._print_status_header()
 
     def row(self, component, detail, state="OK"):
-        """Print one wrapped row in the startup status table."""
-        marker = self._status_marker(state)
-        component_text = str(component)
+        """Print one compact, aligned status row with wrapped details."""
+        if str(component).upper() == "SESSIONS":
+            self._frame_text(f"  {detail}")
+            print(self._table_border())
+            return
+
+        status_width, component_width, detail_width = self._status_widths()
         detail_lines = textwrap.wrap(
             str(detail),
-            width=max(8, self._inner_width - 31),
+            width=detail_width,
             break_long_words=True,
+            break_on_hyphens=False,
         ) or [""]
-        status = f"{marker} {state:<5}"
+
+        marker = self._status_marker(state)
+        visible_status = f"● {state}" if state != "INFO" else "· INFO"
+        status_cell = marker + f" {state}"
+        status_cell += " " * max(0, status_width - len(visible_status))
+
         for index, line in enumerate(detail_lines):
-            status_cell = status if index == 0 else " " * 7
-            component_cell = component_text if index == 0 else ""
-            print(
-                f"║  {status_cell:<9} │ {component_cell:<13} │ "
-                f"{line:<{max(8, self._inner_width - 31)}}║"
+            current_status = status_cell if index == 0 else " " * status_width
+            component_cell = str(component) if index == 0 else ""
+            content = (
+                f" {current_status} │ "
+                f"{component_cell:<{component_width}} │ "
+                f"{line:<{detail_width}} "
             )
-        print(self._table_border("╠", "╬", "╣"))
+            self._frame_text(content)
+        print(self._table_border())
 
     def section(self, title, state="INFO"):
-        """Start a titled section while keeping headings in default text."""
+        """Start a titled section; saved sessions use a compact data table."""
         print()
         print(self._table_border("╔", "═", "╗"))
-        title_text = str(title).upper()
-        print(f"║  {title_text:<{self._inner_width - 2}}║")
-        print(self._table_border("╠", "═", "╣"))
+        self._frame_text(f"  {str(title).upper()}")
+        print(self._table_border())
+
+        if str(title).strip().casefold() == "saved sessions":
+            session_width = 10
+            type_width = 8
+            topic_width = max(1, self._inner_width - 26)
+            content = (
+                f" {'SESSION':<{session_width}} │ "
+                f"{'TYPE/STATE':<{type_width}} │ "
+                f"{'TOPIC':<{topic_width}} "
+            )
+            self._frame_text(content)
+            print(self._table_border())
 
     def session_card(self, number, summary, state="INFO"):
-        """Render one saved-session summary in its own bordered card."""
+        """Render a saved session as one compact row, not a separate card."""
+        raw_summary = str(summary).strip()
+        if " — " in raw_summary:
+            topic, label = raw_summary.rsplit(" — ", 1)
+        elif " - " in raw_summary:
+            topic, label = raw_summary.rsplit(" - ", 1)
+        else:
+            topic, label = raw_summary, ""
+
+        normalized_label = label.strip().upper()
+        if "DIALOGUE" in normalized_label:
+            type_state = "DIALOGUE"
+        elif "RESUMABLE" in normalized_label:
+            type_state = "WORK-RES"
+        elif "REVIEW" in normalized_label:
+            type_state = "WORK-REV"
+        else:
+            type_state = "WORK"
+
+        session_width = 10
+        type_width = 8
+        topic_width = max(1, self._inner_width - 26)
+        topic = " ".join(topic.split())
+        if len(topic) > topic_width:
+            topic = topic[: max(0, topic_width - 1)].rstrip() + "…"
+
         marker = self._status_marker(state)
-        title = f"{marker} SESSION {number}"
-        summary_lines = textwrap.wrap(
-            str(summary),
-            width=max(12, self._inner_width - 6),
-            break_long_words=True,
-        ) or [""]
-        print(f"║  {title:<{self._inner_width - 2}}║")
-        for line in summary_lines:
-            print(f"║  {line:<{self._inner_width - 2}}║")
-        print(self._table_border("╠", "═", "╣"))
+        type_cell = marker + " " + type_state
+        type_cell += " " * max(0, type_width - len("● " + type_state))
+        content = (
+            f" SESSION {number:<{max(1, session_width - 8)}} │ "
+            f"{type_cell} │ "
+            f"{topic:<{topic_width}} "
+        )
+        self._frame_text(content)
+        print(self._table_border())
 
     def close_section(self):
         print(self._table_border("╚", "═", "╝"))
 
     def detail_card(self, title, lines):
-        """Render localized saved-session details in one separate card."""
+        """Render localized saved-session details after explicit selection."""
         print()
         print(self._table_border("╔", "═", "╗"))
-        print(f"║  {str(title):<{self._inner_width - 2}}║")
-        print(self._table_border("╠", "═", "╣"))
+        self._frame_text(f"  {title}")
+        print(self._table_border())
         for label, value in lines:
             text = f"{label}: {value}"
             wrapped = textwrap.wrap(
                 text, width=max(12, self._inner_width - 4), break_long_words=True
             ) or [""]
             for line in wrapped:
-                print(f"║  {line:<{self._inner_width - 2}}║")
+                self._frame_text(f"  {line}")
         print(self._table_border("╚", "═", "╝"))
 
     def ready(self):
