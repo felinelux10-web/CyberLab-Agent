@@ -52,6 +52,9 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.RUN_HISTORY, Intent.ANALYZE_CODE, Intent.GENERATE_CODE,
         Intent.SHOW_CHANGES, Intent.CLEAN, Intent.CLEANUP_CODE,
         Intent.PLAN_CHANGE, Intent.REPAIR_REJECT, Intent.PENDING_FIXES,
+        Intent.SELF_DIAGNOSE, Intent.FULL_DIAGNOSE, Intent.CLEAN_DEVICE,
+        Intent.DELETE_FILE, Intent.MODIFY_CODE, Intent.RUN_SCRIPT,
+        Intent.REPAIR_ANALYZE, Intent.REPAIR_APPROVE,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
