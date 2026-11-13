@@ -163,7 +163,8 @@
 | Scope | State |
 |---|---|
 | Dispatcher foundation | Implemented |
-| Read-only inspection pilot (5 intents) | Moved to `system_inspection.py` |\n| Audit/security log readers (2 intents) | Moved to `system_inspection.py` |\n| Project inspection (`READ_FILE`) | Moved to `project_inspection.py`; path lookup containment behavior preserved and covered by tests |
+| Read-only inspection pilot (5 intents) | Moved to `system_inspection.py` |
+| Audit/security log readers (2 intents) | Moved to `system_inspection.py` |\n| Project inspection (`READ_FILE`) | Moved to `project_inspection.py`; path lookup containment behavior preserved and covered by tests |
 | Remaining branch ownership | Legacy route; audit required before each migration |
 | Caller graph (TaskChain, Guard, direct callers) | Not certified complete |
 | Provider/evidence authorization matrix | Not certified complete |
