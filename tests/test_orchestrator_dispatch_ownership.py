@@ -1333,3 +1333,39 @@ def test_handler_facade_exposes_scoped_services_without_agent_object():
     assert modify_facade.services.analyzed_files is original._analyzed_files
     assert modify_facade.services.impact_analyzed is original._impact_analyzed
     assert modify_facade._get_pipeline() == "pipeline"
+
+
+def test_repository_has_no_legacy_orchestrator_execution_callers():
+    from pathlib import Path
+    import re
+
+    root = Path(__file__).resolve().parents[1] / "lab_v4_dev"
+    legacy_calls = []
+    for path in root.rglob("*.py"):
+        source = path.read_text(encoding="utf-8", errors="ignore")
+        for line_number, line in enumerate(source.splitlines(), 1):
+            if re.search(r"(?:self\.)?orchestrator\.handle\s*\(", line):
+                if path.name != "conversation_manager.py":
+                    legacy_calls.append(f"{path.relative_to(root)}:{line_number}")
+            if re.search(r"orchestrator\._route\s*\(", line):
+                legacy_calls.append(f"{path.relative_to(root)}:{line_number}")
+    assert legacy_calls == []
+
+
+def test_domain_handlers_do_not_reach_agent_gateway_or_cli():
+    from pathlib import Path
+    import re
+
+    root = Path(__file__).resolve().parents[1] / "lab_v4_dev/core/orchestrator_handlers"
+    violations = []
+    for path in root.glob("*.py"):
+        if path.name in {"context.py", "services.py", "dispatch.py"}:
+            continue
+        source = path.read_text(encoding="utf-8", errors="ignore")
+        if "orchestrator.agent" in source:
+            violations.append(f"{path.name}: full Agent access")
+        if re.search(r"(?<!authorized_)\bask\s*\(", source):
+            violations.append(f"{path.name}: direct provider call")
+        if re.search(r"^\s*(?:print|input)\s*\(", source, re.MULTILINE):
+            violations.append(f"{path.name}: CLI interaction")
+    assert violations == []

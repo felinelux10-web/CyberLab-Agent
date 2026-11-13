@@ -113,3 +113,16 @@ def test_orchestrator_rejects_saved_session_scope_on_project_route():
 
     assert result["status"] == "denied"
     assert result["source"] == "route_decision_project_evidence_guard"
+
+
+def test_code_engine_provider_helpers_require_authorized_capability():
+    from lab_v4_dev.core.code_engine import analyze_code, modify_code
+
+    analysis = analyze_code("value = 1")
+    modification = modify_code(
+        "def sample():\n    return 1\n",
+        "أعد تنظيم الدالة مع الحفاظ على السلوك",
+    )
+
+    assert analysis["status"] == "unavailable"
+    assert modification["status"] == "unavailable"
