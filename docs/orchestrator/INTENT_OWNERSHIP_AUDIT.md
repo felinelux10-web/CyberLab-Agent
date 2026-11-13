@@ -167,7 +167,8 @@
 | Audit/security log readers (2 intents) | Moved to `system_inspection.py` |
 | Project inspection (`READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`) | Moved to `project_inspection.py`; file lookup containment behavior preserved and tested; project scan remains local and audit-emitting; project registry/list, layer-map, local inventory-search, and explicit-path code-search behavior preserved; keyword code-search retains the central authorized-provider callback |
 | Project analysis and impact queries (9 intents) | Moved to `project_analysis.py`; dependency engine/map/query services remain the implementation owners; both `FILE_IMPACT` modes are preserved in one handler with specialized raw-text priority; `COMPARE_FILES` uses the authorized-provider callback and retains the existing path-resolution semantics |
-| Reports and work tracking (11 Intent values + literal `show_last_result`) | Moved to `reports.py`; current operational session summary remains distinct from saved dialogue-session reports; provider-backed reports use `authorized_ask` |\n| Knowledge and capability basics (3 intents) | `CAPABILITIES`, `SAVE_KB`, and `SKIP_KB` moved to `knowledge.py`; confirmed-only knowledge writes and pending-save clearing preserved |
+| Reports and work tracking (11 Intent values + literal `show_last_result`) | Moved to `reports.py`; current operational session summary remains distinct from saved dialogue-session reports; provider-backed reports use `authorized_ask` |
+| Knowledge and capability basics (3 intents) | `CAPABILITIES`, `SAVE_KB`, and `SKIP_KB` moved to `knowledge.py`; confirmed-only knowledge writes and pending-save clearing preserved |
 | Remaining branch ownership | Legacy route; audit required before each migration |
 | Caller graph (TaskChain, Guard, direct callers) | Not certified complete |
 | Provider/evidence authorization matrix | Not certified complete |
