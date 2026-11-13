@@ -1295,3 +1295,41 @@ def test_generate_code_non_template_requires_authorized_provider(monkeypatch):
         route_decision=decision,
     )
     assert result["status"] == "unavailable"
+
+
+def test_handler_facade_exposes_scoped_services_without_agent_object():
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator_handlers.context import (
+        HandlerContext, build_handler_facade,
+    )
+
+    state = object()
+    session = object()
+    memory = object()
+    db = object()
+    original = SimpleNamespace(
+        agent=SimpleNamespace(state=state, session=session, memory=memory, db=db),
+        context=object(),
+        pipeline=None,
+        _analyzed_files=set(),
+        _impact_analyzed=set(),
+        _get_pipeline=lambda: "pipeline",
+    )
+
+    status_facade = build_handler_facade(
+        original, HandlerContext(intent=Intent.STATUS)
+    )
+    assert not hasattr(status_facade, "agent")
+    assert status_facade.services.state is state
+    assert status_facade.services.session is session
+    assert status_facade.services.memory is None
+    assert status_facade.services.db is None
+
+    modify_facade = build_handler_facade(
+        original, HandlerContext(intent=Intent.MODIFY_CODE)
+    )
+    assert not hasattr(modify_facade, "agent")
+    assert modify_facade.services.db is db
+    assert modify_facade.services.analyzed_files is original._analyzed_files
+    assert modify_facade.services.impact_analyzed is original._impact_analyzed
+    assert modify_facade._get_pipeline() == "pipeline"
