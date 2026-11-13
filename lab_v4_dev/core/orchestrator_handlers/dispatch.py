@@ -98,16 +98,30 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
     handler = HANDLER_REGISTRY.get(intent)
     if handler is None:
         return None
+
+    from .context import HandlerContext, build_handler_facade
+    handler_context = HandlerContext(
+        intent=intent,
+        target=target,
+        raw=raw,
+        route_decision=route_decision,
+        session_selector=dict(session_selector or {}),
+        response_attributes=dict(response_attributes or {}),
+        conversation_history=list(conversation_history or []),
+        context_transition=context_transition,
+        authorized_provider=authorized_ask,
+    )
+    handler_orchestrator = build_handler_facade(orchestrator, handler_context)
     if intent in {Intent.RESUME, Intent.SESSION_RESTORE}:
         return handler(
-            orchestrator, intent, target=target, raw=raw,
+            handler_orchestrator, intent, target=target, raw=raw,
             route_decision=route_decision, session_selector=session_selector,
         )
     if intent == Intent.SESSION_SAVE:
-        return handler(orchestrator, intent, target=target, raw=raw)
+        return handler(handler_orchestrator, intent, target=target, raw=raw)
     if intent == Intent.CYBER_EXPLAIN:
         return handler(
-            orchestrator, intent, target=target, raw=raw,
+            handler_orchestrator, intent, target=target, raw=raw,
             authorized_ask=authorized_ask,
             response_attributes=response_attributes,
             conversation_history=conversation_history,
