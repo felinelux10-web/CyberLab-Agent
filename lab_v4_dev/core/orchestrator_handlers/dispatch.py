@@ -25,6 +25,14 @@ HANDLER_REGISTRY = build_registry((
     (Intent.SYSTEM_STATUS, system_inspection.handle_system_status),
     (Intent.AUDIT_LOG, system_inspection.handle_audit_log),
     (Intent.SECURITY_LOG, system_inspection.handle_security_log),
+    (Intent.SELF_DIAGNOSE, system_inspection.handle_diagnostics),
+    (Intent.FULL_DIAGNOSE, system_inspection.handle_diagnostics),
+    (Intent.CLEAN_DEVICE, maintenance.handle_clean_device),
+    (Intent.DELETE_FILE, maintenance.handle_delete_file),
+    (Intent.MODIFY_CODE, code_authoring.handle_modify_code),
+    (Intent.RUN_SCRIPT, execution.handle_run_script),
+    (Intent.REPAIR_ANALYZE, repair.handle_repair_analyze),
+    (Intent.REPAIR_APPROVE, repair.handle_repair_approve),
     (Intent.READ_FILE, project_inspection.handle_read_file),
     (Intent.PROJECT_SCAN, project_inspection.handle_project_scan),
     (Intent.PROJECT_INDEX, project_inspection.handle_project_index),
@@ -105,7 +113,7 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
             conversation_history=conversation_history,
             context_transition=context_transition,
         )
-    if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES, Intent.PROGRESS_REPORT, Intent.REMAINING_WORK, Intent.PROJECT_REPORT, Intent.ANALYZE_RELEASE, Intent.COMPARE_VERSIONS, Intent.ANALYZE_CODE, Intent.GENERATE_CODE}:
+    if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES, Intent.PROGRESS_REPORT, Intent.REMAINING_WORK, Intent.PROJECT_REPORT, Intent.ANALYZE_RELEASE, Intent.COMPARE_VERSIONS, Intent.ANALYZE_CODE, Intent.GENERATE_CODE, Intent.MODIFY_CODE, Intent.REPAIR_ANALYZE, Intent.SELF_DIAGNOSE, Intent.FULL_DIAGNOSE}:
         return handler(
             orchestrator, intent, target=target, raw=raw,
             authorized_ask=authorized_ask,
