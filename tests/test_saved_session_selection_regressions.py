@@ -11,6 +11,26 @@ from lab_v4_dev.memory.session_state import session_selector, session_route_cont
 from lab_v4_dev.memory.dialogue_knowledge import retrieve_dialogue_evidence
 
 
+def _saved_session_decision(selector, *, intent=Intent.SESSION_RESTORE, session_id=None):
+    kind = str(selector.get("kind") or "none")
+    if kind == "list":
+        return RouteDecision(route="L-SESSION", output_kind="report", evidence_scope="saved_sessions", intent=intent)
+    if kind == "number":
+        number = int(selector["number"])
+        return RouteDecision(
+            route="L-SESSION", session_scope="saved_number",
+            session_ref=SessionRef(session_id=session_id or f"session-{number}", number=number),
+            output_kind="summary", evidence_scope="saved_session", intent=intent,
+        )
+    if kind == "previous_dialogue":
+        return RouteDecision(
+            route="L-SESSION", session_scope="previous_saved",
+            session_ref=SessionRef(session_id=session_id or "prior-dialogue-record"),
+            output_kind="summary", evidence_scope="saved_session", intent=intent,
+        )
+    raise AssertionError(f"unsupported saved-session selector in test: {selector!r}")
+
+
 def test_session_selector_keeps_explicit_number_and_saved_session_list():
     assert session_selector("استرجع الجلسة 3") == {
         "kind": "number", "number": 3, "report_mode": "standard"
@@ -65,6 +85,7 @@ def test_orchestrator_restores_the_selected_number_not_the_latest(monkeypatch):
             "context": "system",
             "session_selector": {"kind": "number", "number": 1, "report_mode": "standard"},
         },
+        route_decision=_saved_session_decision({"kind": "number", "number": 1}, session_id="session-1"),
     )
 
     assert result["status"] == "success"
@@ -201,6 +222,7 @@ def test_previous_dialogue_report_skips_live_dialogue_and_work_checkpoint(monkey
             "context": "general",
             "session_selector": session_selector("حسنا ماذا كنا نقول في الجلسة السابقة"),
         },
+        route_decision=_saved_session_decision(session_selector("حسنا ماذا كنا نقول في الجلسة السابقة"), session_id="prior-dialogue-record"),
     )
 
     assert result["status"] == "success"
@@ -346,6 +368,7 @@ def test_orchestrator_returns_semantic_summary_for_each_saved_session(monkeypatc
             "context": "system",
             "session_selector": session_selector(request),
         },
+        route_decision=_saved_session_decision(session_selector(request)),
     )
 
     assert result["status"] == "success"
@@ -793,6 +816,7 @@ def test_explicit_session_number_never_falls_back_to_current_when_identity_misma
                 "report_mode": "full",
             },
         },
+        route_decision=_saved_session_decision({"kind": "number", "number": 1}, session_id="saved-session-1"),
     )
 
     assert result["status"] == "needs_clarification"
@@ -1110,6 +1134,7 @@ def test_numbered_factual_question_uses_read_only_evidence_retrieval(monkeypatch
             "context": "system",
             "session_selector": session_route_contract(request),
         },
+        route_decision=_saved_session_decision(session_route_contract(request), session_id="saved-72"),
     )
     assert result["status"] == "success"
     assert result["source"] == "saved_session_evidence_retrieval"

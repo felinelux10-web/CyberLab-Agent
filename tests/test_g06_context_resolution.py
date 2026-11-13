@@ -6,6 +6,7 @@ from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.conversation.semantic_contract import ContextTransition
 from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.core.contracts import RouteDecision
 from lab_v4_dev.intent import intent_cache, llm_intent_resolver
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.nlu import context_resolver
@@ -262,6 +263,7 @@ def test_context_resolved_path_keeps_explicit_repeat_execution_context(monkeypat
         "كرر",
         parsed={"intent": Intent.READ_FILE, "target": "", "context": "general"},
         context_resolved=True,
+        route_decision=RouteDecision(route="L-EXEC", intent=Intent.READ_FILE),
     )
 
     assert routed == [(Intent.READ_FILE, "saved-result.py", "general", "كرر")]

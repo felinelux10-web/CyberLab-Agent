@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 
 from lab_v4_dev.memory import session_state
+from lab_v4_dev.core.contracts import RouteDecision
+from lab_v4_dev.intent.intents import Intent
 
 
 def _dialogue(session_id, title, user_text, assistant_text, target):
@@ -136,6 +138,7 @@ def test_orchestrator_returns_collection_report_locally_without_provider(monkeyp
             "context": "system",
             "session_selector": selector,
         },
+        route_decision=RouteDecision(route="L-SESSION", output_kind="report", evidence_scope="saved_sessions", intent=Intent.SESSION_RESTORE),
     )
 
     assert result["status"] == "success"

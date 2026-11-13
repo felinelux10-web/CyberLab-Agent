@@ -6,6 +6,7 @@ from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.core.contracts import RouteDecision
 from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
 
@@ -36,6 +37,7 @@ def test_resume_requires_actionable_checkpoint(tmp_path, monkeypatch):
     result = Orchestrator(agent).handle(
         "استكمال العمل",
         parsed={"intent": Intent.RESUME, "target": "", "raw": "استكمال العمل"},
+        route_decision=RouteDecision(route="L-EXEC", intent=Intent.RESUME),
     )
     assert result["status"] == "success"
     assert result["next_step"] == "استكمال تعديل اللعبة"

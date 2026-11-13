@@ -1,3 +1,6 @@
+from lab_v4_dev.core.contracts import RouteDecision
+from lab_v4_dev.intent.intents import Intent
+
 from pathlib import Path
 
 
@@ -119,6 +122,7 @@ def test_session_restore_command_reports_recoverable_context(monkeypatch):
             "context": "general",
             "raw": "استكمل الجلسة",
         },
+        route_decision=RouteDecision(route="L-SESSION", intent=Intent.SESSION_RESTORE),
     )
 
     assert result["status"] == "success"
