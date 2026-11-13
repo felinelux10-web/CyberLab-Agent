@@ -6110,8 +6110,9 @@ class ConversationManager:
                     max_tokens=900,
                     temperature=0.2,
                     routing_text=text,
+                    provider_allowed=True,
                 )
-                if route_decision is None or bool(
+                if route_decision is not None and bool(
                     getattr(route_decision, "provider_allowed", False)
                 ) else {}
             )
@@ -6925,8 +6926,9 @@ class ConversationManager:
                     max_tokens=4000 if self_knowledge else 1600,
                     temperature=0.7,
                     routing_text=text,
+                    provider_allowed=True,
                 )
-                if route_decision is None or bool(
+                if route_decision is not None and bool(
                     getattr(route_decision, "provider_allowed", False)
                 ) else {"status": "unavailable", "message": "provider denied by RouteDecision"}
             )

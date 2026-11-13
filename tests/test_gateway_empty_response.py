@@ -41,10 +41,23 @@ def test_gateway_falls_back_after_empty_successful_provider_response(monkeypatch
     monkeypatch.setattr(gateway, "is_provider_enabled", lambda _name: True)
     monkeypatch.setattr(gateway, "get_provider", lambda name: providers[name])
 
-    result = gateway.ask("hello", routing_text="hello")
+    result = gateway.ask("hello", routing_text="hello", provider_allowed=True)
 
     assert calls == ["openrouter", "gemini"]
     assert result["status"] == "success"
     assert result["text"] == "grounded answer"
     assert result["provider_used"] == "gemini"
     assert result["fallback_used"] is True
+
+
+
+def test_gateway_denies_provider_by_default(monkeypatch):
+    from lab_v4_dev.llm import gateway
+
+    calls = []
+    monkeypatch.setattr(gateway, "get_provider", lambda name: calls.append(name))
+    result = gateway.ask("must remain local without a provider grant")
+
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "ROUTE_PROVIDER_DENIED"
+    assert calls == []

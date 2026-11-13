@@ -48,7 +48,7 @@ def test_dummy_fallback_does_not_overwrite_the_real_provider_error(monkeypatch):
         ),
     )
 
-    result = gateway.ask("ordinary conversational question")
+    result = gateway.ask("ordinary conversational question", provider_allowed=True)
 
     assert result["status"] == "error"
     assert result["provider_used"] == "openrouter"

@@ -60,6 +60,6 @@ def test_dummy_provider_is_explicit_fallback_not_success(monkeypatch):
         )}
     )())
 
-    result = gateway.ask("hello")
+    result = gateway.ask("hello", provider_allowed=True)
     assert result["status"] == "fallback"
     assert result["fallback_used"] is True

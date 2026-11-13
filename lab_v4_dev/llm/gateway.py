@@ -176,7 +176,7 @@ def ask(
     temperature=0.3,
     routing_text=None,
     timeout_ms=None,
-    provider_allowed: bool = True,
+    provider_allowed: bool = False,
 ):
     """
     Canonical Gateway entry point.

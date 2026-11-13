@@ -34,10 +34,22 @@ def decide(intent: str, text: str, groq_available: bool = True) -> str:
     
     return "local"
 
-def ask_with_fallback(prompt: str, system: str = None, max_tokens: int = 300) -> dict:
+def ask_with_fallback(
+    prompt: str,
+    system: str = None,
+    max_tokens: int = 300,
+    *,
+    provider_allowed: bool = False,
+) -> dict:
+    if not provider_allowed:
+        return {
+            "status": "unavailable",
+            "text": "لم يُمنح هذا المسار صلاحية استخدام مزود خارجي.",
+            "source": "provider_policy",
+        }
     try:
         from lab_v4_dev.llm.gateway import ask
-        result = ask(prompt, system=system, max_tokens=max_tokens)
+        result = ask(prompt, system=system, max_tokens=max_tokens, provider_allowed=True)
         if result["status"] == "success":
             return result
         # Groq فشل → fallback
