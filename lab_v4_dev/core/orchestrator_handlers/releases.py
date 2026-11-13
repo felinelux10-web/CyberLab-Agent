@@ -1,5 +1,7 @@
 """Release metadata and timeline handlers."""
 
+from lab_v4_dev.intent.intents import Intent
+
 def handle_last_project(orchestrator, intent, *, target=None, raw=None):
     from lab_v4_dev.awareness.project_knowledge import get_project_history
     hist = get_project_history()
