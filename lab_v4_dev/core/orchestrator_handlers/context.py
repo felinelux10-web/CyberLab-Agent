@@ -24,7 +24,7 @@ class HandlerContext:
         object.__setattr__(self, "conversation_history", freeze_contract_value(self.conversation_history or []))
 
 
-@dataclass
+@dataclass(frozen=True)
 class HandlerFacade:
     """Narrow compatibility facade; intentionally exposes no Agent object."""
 
@@ -37,10 +37,11 @@ class HandlerFacade:
         if self.pipeline is None:
             factory = self.services.pipeline_factory
             if callable(factory):
-                self.pipeline = factory()
+                pipeline = factory()
             else:
                 from lab_v4_dev.executor.safe_pipeline import SafePipeline
-                self.pipeline = SafePipeline(self.services.db)
+                pipeline = SafePipeline(self.services.db)
+            object.__setattr__(self, "pipeline", pipeline)
         return self.pipeline
 
 
