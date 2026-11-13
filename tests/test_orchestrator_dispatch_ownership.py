@@ -46,6 +46,10 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.COMPARE_VERSIONS,
         Intent.PROJECT_TIMELINE, Intent.SWITCH_PROJECT, Intent.RETURN_BASE_PROJECT,
         Intent.RESUME, Intent.SESSION_RESTORE, Intent.SESSION_SAVE,
+        Intent.LIST_SCRIPTS,
+        Intent.ERROR_REPORT,
+        Intent.DRY_RUN,
+        Intent.RUN_HISTORY,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -1012,3 +1016,61 @@ def test_session_save_persists_work_and_dialogue_records_separately(monkeypatch)
     assert calls["work"][0]["active_goal"] == "current goal"
     assert calls["dialogue"][0]["dialogue_state"] == {"exchanges": []}
     assert calls["events"][0][0] == "v1"
+
+
+def test_list_scripts_uses_workspace_folders(monkeypatch, tmp_path):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.project_context as project_module
+
+    workspace = tmp_path / "workspace"
+    for folder, filename in [("scripts", "a.py"), ("modified", "b.py"), ("analysis", "c.txt")]:
+        directory = workspace / folder
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / filename).write_text("x", encoding="utf-8")
+    monkeypatch.setattr(project_module, "CYBERLAB_ROOT", str(tmp_path))
+    result = Orchestrator._route(_fake_orchestrator(), Intent.LIST_SCRIPTS, "", None, "")
+    assert result["status"] == "success"
+    assert "scripts/a.py" in result["text"]
+    assert "modified/b.py" in result["text"]
+    assert "analysis/c.txt" in result["text"]
+
+
+def test_error_report_handler_formats_recent_errors(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.sandbox_executor as sandbox_module
+
+    monkeypatch.setattr(sandbox_module, "list_error_reports", lambda: [
+        {"approved": False, "file": "bad.py", "error": "SyntaxError"},
+    ])
+    result = Orchestrator._route(_fake_orchestrator(), Intent.ERROR_REPORT, "", None, "")
+    assert result["status"] == "success"
+    assert "bad.py" in result["text"]
+    assert "SyntaxError" in result["text"]
+
+
+def test_dry_run_handler_uses_latest_workspace_script(monkeypatch, tmp_path):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.project_context as project_module
+    import lab_v4_dev.core.sandbox_executor as sandbox_module
+
+    scripts = tmp_path / "workspace" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "latest.py").write_text("print('ok')", encoding="utf-8")
+    monkeypatch.setattr(project_module, "CYBERLAB_ROOT", str(tmp_path))
+    monkeypatch.setattr(sandbox_module, "dry_run", lambda path: {"status": "ok", "message": "safe"})
+    result = Orchestrator._route(_fake_orchestrator(), Intent.DRY_RUN, "", None, "")
+    assert result["status"] == "success"
+    assert "latest.py" in result["text"]
+    assert "safe" in result["text"]
+
+
+def test_run_history_handler_uses_execution_history_service(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.execution_history as history_module
+
+    monkeypatch.setattr(history_module, "get_history", lambda limit: [
+        {"status": "success", "script": "/workspace/a.py", "duration": 1.2},
+    ])
+    result = Orchestrator._route(_fake_orchestrator(), Intent.RUN_HISTORY, "", None, "")
+    assert result["status"] == "success"
+    assert "a.py" in result["text"]
