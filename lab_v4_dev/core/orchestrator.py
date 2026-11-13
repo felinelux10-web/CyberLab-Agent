@@ -360,6 +360,12 @@ class Orchestrator:
                 if cached:
                     return {"status":"success","intent":intent,"source":"cache","text":cached}
 
+        # Registered handlers run only after the legacy response-cache gate.
+        from lab_v4_dev.core.orchestrator_handlers.dispatch import dispatch as _dispatch_handler
+        _handled = _dispatch_handler(self, intent)
+        if _handled is not None:
+            return _handled
+
         # ─── قراءة ───
         if intent == Intent.READ_FILE:
             if not target:
@@ -567,41 +573,6 @@ class Orchestrator:
                 "executed": False,
             }
 
-        # ─── مساحة ───
-        elif intent == Intent.SPACE:
-            total, used, free = shutil.disk_usage(os.path.expanduser("~"))
-            return {
-                "status": "success", "intent": intent,
-                "total" : f"{total//(1024**3)}GB",
-                "used"  : f"{used//(1024**2)}MB",
-                "free"  : f"{free//(1024**2)}MB",
-            }
-
-        # ─── حالة ───
-        elif intent == Intent.STATUS:
-            s = self.agent.state
-            h = self.agent.session.summary()
-            lines = [
-                f"الوضع     : {s.mode}",
-                f"المهام    : {h['tasks_done']}",
-                f"الأخطاء   : {h['error_count']}",
-                f"الإخفاقات : {s.consecutive_failures}",
-            ]
-            return {
-                "status"  : "success", "intent": intent,
-                "text"    : chr(10).join(lines),
-                "mode"    : s.mode,
-                "failures": s.consecutive_failures,
-                "tasks"   : h["tasks_done"],
-                "errors"  : h["error_count"],
-            }
-
-        # ─── صحة النظام ───
-        elif intent == Intent.HEALTH:
-            from lab_v4_dev.monitor.health_check import check_health
-            h = check_health(self.agent.state)
-            return {"status": "success", "intent": intent, "health": h}
-
         # ─── تقرير ───
         elif intent in [Intent.REPORT, Intent.SESSION_REPORT]:
             h   = self.agent.session.summary()
@@ -610,15 +581,6 @@ class Orchestrator:
                 "status"  : "success", "intent": intent,
                 "time"    : now,
                 "session" : h,
-            }
-
-        # ─── ذاكرة المشروع ───
-        elif intent == Intent.MEMORY_STATUS:
-            memory = load_memory()
-            return {
-                "status"      : "success", "intent": intent,
-                "total_files" : memory.get("total_files", 0),
-                "last_updated": memory.get("last_updated", "unknown"),
             }
 
         # ─── تقارير المشروع ───
@@ -3320,32 +3282,6 @@ SOURCE CODE:
                     lines.append(f"  - {p['fix']}")
 
             return {"status":"success","intent":intent,"text":"\n".join(lines)}
-
-        # ─── System Status Report ───
-        elif intent == Intent.SYSTEM_STATUS:
-            # A status query is a read-only in-process diagnostic. Do not launch
-            # project_status.py through a shell: that script is tied to a local
-            # ~/cyberlab_agent path and its interpreter command can be blocked by
-            # the execution risk gate, turning a report request into a failure.
-            from lab_v4_dev.monitor.health_check import check_health
-
-            health = check_health(self.agent.state)
-            lines = [
-                f"حالة النظام: {'سليم' if health.get('healthy') else 'يحتاج إلى مراجعة'}",
-                f"وضع التشغيل: {health.get('state_mode', 'غير معروف')}",
-                f"الذاكرة: {'سليمة' if health.get('ram_ok') else 'تجاوزت الحد'}"
-                + (f" ({health.get('ram_mb')} MB)" if health.get("ram_mb") is not None else ""),
-                f"قاعدة البيانات: {'سليمة' if health.get('db_ok') else 'مشكلة في الفحص'}",
-                f"السجل: {'سليم' if health.get('log_ok') else 'تجاوز الحد'}",
-                f"الشجرة القديمة stable: {health.get('stable_status', 'غير محددة')}",
-            ]
-            return {
-                "status": "success",
-                "intent": intent,
-                "text": "\n".join(lines),
-                "health": health,
-            }
-
 
         # ─── Delete File ───
         elif intent == Intent.DELETE_FILE:
