@@ -77,7 +77,7 @@ def handle_system_status(orchestrator, intent, *, target=None, raw=None):
 __all__ = [
     "handle_space", "handle_status", "handle_health",
     "handle_memory_status", "handle_system_status",
-    "handle_audit_log", "handle_security_log",
+    "handle_audit_log", "handle_security_log", "handle_diagnostics",
 ]
 
 
@@ -130,3 +130,17 @@ def handle_security_log(orchestrator, intent, *, target=None, raw=None):
         lines.append(f"⚠️ {timestamp} | {event.get('type', '')} | {event.get('value', '')[:50]}")
         lines.append(f"    تطابق: {event.get('matched', '')}")
     return {"status": "success", "intent": intent, "text": chr(10).join(lines)}
+
+
+def handle_diagnostics(orchestrator, intent, *, target=None, raw=None, authorized_ask=None):
+    from lab_v4_dev.monitor.self_diagnostics import run_diagnostics, format_quick, format_full
+
+    quick = intent == Intent.SELF_DIAGNOSE
+    result = run_diagnostics(quick=quick, authorized_ask=authorized_ask)
+    text = format_quick(result) if quick else format_full(result, orchestrator.context)
+    return {
+        "status": "success",
+        "intent": intent,
+        "text": text,
+        "health": result["health"],
+    }
