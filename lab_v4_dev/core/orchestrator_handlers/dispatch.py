@@ -3,7 +3,7 @@
 from types import MappingProxyType
 
 from lab_v4_dev.intent.intents import Intent
-from . import system_inspection, project_inspection, project_analysis, reports, knowledge, releases
+from . import system_inspection, project_inspection, project_analysis, reports, knowledge, releases, sessions
 
 
 def build_registry(entries):
@@ -62,6 +62,9 @@ HANDLER_REGISTRY = build_registry((
     (Intent.PROJECT_TIMELINE, releases.handle_project_timeline),
     (Intent.SWITCH_PROJECT, releases.handle_switch_project),
     (Intent.RETURN_BASE_PROJECT, releases.handle_switch_project),
+    (Intent.RESUME, sessions.handle_session_restore),
+    (Intent.SESSION_RESTORE, sessions.handle_session_restore),
+    (Intent.SESSION_SAVE, sessions.handle_session_save),
     ("show_last_result", reports.handle_show_last_result),
 ))
 
@@ -70,10 +73,17 @@ def registered_intents():
     return frozenset(HANDLER_REGISTRY)
 
 
-def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None, response_attributes=None, conversation_history=None, context_transition=None):
+def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None, response_attributes=None, conversation_history=None, context_transition=None, route_decision=None, session_selector=None):
     handler = HANDLER_REGISTRY.get(intent)
     if handler is None:
         return None
+    if intent in {Intent.RESUME, Intent.SESSION_RESTORE}:
+        return handler(
+            orchestrator, intent, target=target, raw=raw,
+            route_decision=route_decision, session_selector=session_selector,
+        )
+    if intent == Intent.SESSION_SAVE:
+        return handler(orchestrator, intent, target=target, raw=raw)
     if intent == Intent.CYBER_EXPLAIN:
         return handler(
             orchestrator, intent, target=target, raw=raw,

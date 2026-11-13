@@ -45,6 +45,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.ANALYZE_RELEASE,
         Intent.COMPARE_VERSIONS,
         Intent.PROJECT_TIMELINE, Intent.SWITCH_PROJECT, Intent.RETURN_BASE_PROJECT,
+        Intent.RESUME, Intent.SESSION_RESTORE, Intent.SESSION_SAVE,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -979,3 +980,34 @@ def test_return_base_project_uses_base_root_and_propagates_failure(monkeypatch, 
     assert calls == [base_root]
     assert result["status"] == "failed"
     assert result["text"] == "denied"
+
+
+def test_session_save_persists_work_and_dialogue_records_separately(monkeypatch):
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.memory.session_state as session_module
+    import lab_v4_dev.data.project_timeline as timeline_module
+
+    calls = {"work": [], "dialogue": [], "events": []}
+    monkeypatch.setattr(session_module, "save_session", lambda **kwargs: (
+        calls["work"].append(kwargs) or {"session_id": "work-1", "active_goal": kwargs["active_goal"]}
+    ))
+    monkeypatch.setattr(session_module, "save_dialogue_checkpoint", lambda **kwargs: (
+        calls["dialogue"].append(kwargs) or {"session_id": "dialogue-1", "active_goal": "conversation"}
+    ))
+    monkeypatch.setattr(timeline_module, "add_event", lambda *args: calls["events"].append(args))
+
+    orchestrator = _fake_orchestrator()
+    orchestrator.context.current_subject = "current goal"
+    orchestrator.context.current_file = "main.py"
+    orchestrator.context.get_last = lambda: {"topic": "current goal"}
+    orchestrator.agent._meta = SimpleNamespace(get_version=lambda: "v1")
+    orchestrator.agent.dialogue_memory = SimpleNamespace(snapshot=lambda: {"exchanges": []})
+
+    result = Orchestrator._route(orchestrator, Intent.SESSION_SAVE, "", None, "")
+    assert result["status"] == "success"
+    assert result["work_session_id"] == "work-1"
+    assert result["dialogue_session_id"] == "dialogue-1"
+    assert calls["work"][0]["active_goal"] == "current goal"
+    assert calls["dialogue"][0]["dialogue_state"] == {"exchanges": []}
+    assert calls["events"][0][0] == "v1"
