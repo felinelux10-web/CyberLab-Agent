@@ -103,7 +103,7 @@ def handle_run_script(orchestrator, intent, *, target=None, raw=None):
         }
     meta = f"⏱ {result.get('duration', '?')}s | exit: {result.get('exit_code', '?')}"
     return {
-        "status": "error" if result.get("status") == "error" else result.get("status", "failed"),
+        "status": "error",
         "intent": intent,
         "text": f"❌ {target_script}\n{meta}\n{result.get('error', '')}\nتقرير: {result.get('report', '')}",
     }
