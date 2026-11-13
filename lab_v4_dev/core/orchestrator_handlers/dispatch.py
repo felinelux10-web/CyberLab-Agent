@@ -3,7 +3,7 @@
 from types import MappingProxyType
 
 from lab_v4_dev.intent.intents import Intent
-from . import system_inspection, project_inspection, project_analysis, reports, knowledge
+from . import system_inspection, project_inspection, project_analysis, reports, knowledge, releases
 
 
 def build_registry(entries):
@@ -54,6 +54,12 @@ HANDLER_REGISTRY = build_registry((
     (Intent.SAVE_KB, knowledge.handle_save_kb),
     (Intent.SKIP_KB, knowledge.handle_skip_kb),
     (Intent.CYBER_EXPLAIN, knowledge.handle_cyber_explain),
+    (Intent.LAST_PROJECT, releases.handle_last_project),
+    (Intent.CURRENT_VERSION, releases.handle_current_version),
+    (Intent.RELEASE_INDEX, releases.handle_release_index),
+    (Intent.ANALYZE_RELEASE, releases.handle_analyze_release),
+    (Intent.COMPARE_VERSIONS, releases.handle_compare_versions),
+    (Intent.PROJECT_TIMELINE, releases.handle_project_timeline),
     ("show_last_result", reports.handle_show_last_result),
 ))
 
@@ -74,7 +80,7 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
             conversation_history=conversation_history,
             context_transition=context_transition,
         )
-    if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES, Intent.PROGRESS_REPORT, Intent.REMAINING_WORK, Intent.PROJECT_REPORT}:
+    if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES, Intent.PROGRESS_REPORT, Intent.REMAINING_WORK, Intent.PROJECT_REPORT, Intent.ANALYZE_RELEASE, Intent.COMPARE_VERSIONS}:
         return handler(
             orchestrator, intent, target=target, raw=raw,
             authorized_ask=authorized_ask,

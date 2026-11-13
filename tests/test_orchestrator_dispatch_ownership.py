@@ -39,6 +39,12 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.HISTORY, Intent.WORK_STATUS, Intent.REMAINING_TASKS,
         Intent.NEXT_TASK, Intent.WORK_CONTEXT, "show_last_result",
         Intent.CAPABILITIES, Intent.SAVE_KB, Intent.SKIP_KB, Intent.CYBER_EXPLAIN,
+        Intent.LAST_PROJECT,
+        Intent.CURRENT_VERSION,
+        Intent.RELEASE_INDEX,
+        Intent.ANALYZE_RELEASE,
+        Intent.COMPARE_VERSIONS,
+        Intent.PROJECT_TIMELINE,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -820,3 +826,93 @@ def test_cyber_explain_success_sets_pending_save_confirmation(monkeypatch):
     assert result["pending_confirmation"]["kind"] == "save_kb"
     assert result["save_prompt"]
     assert orchestrator.context.current_subject == "اشرح HTTP"
+
+
+def test_last_project_handler_returns_saved_project_history(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.project_knowledge as knowledge_module
+
+    monkeypatch.setattr(knowledge_module, "get_project_history", lambda: {
+        "last_project": "demo", "last_root": "/projects/demo",
+        "history": [{"name": "demo", "last_used": "2026-11-13"}],
+    })
+    result = Orchestrator._route(_fake_orchestrator(), Intent.LAST_PROJECT, "", None, "")
+    assert "آخر مشروع: demo" in result["text"]
+    assert "/projects/demo" in result["text"]
+
+
+def test_current_version_and_release_index_handlers(monkeypatch):
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.project_metadata as metadata_module
+    import lab_v4_dev.awareness.release_analyzer as release_module
+
+    monkeypatch.setattr(metadata_module, "ProjectMetadata", lambda: SimpleNamespace(get_version=lambda: "4.7"))
+    monkeypatch.setattr(release_module, "get_available_versions", lambda: ["v4.6", "v4.7"])
+    version = Orchestrator._route(_fake_orchestrator(), Intent.CURRENT_VERSION, "", None, "")
+    index = Orchestrator._route(_fake_orchestrator(), Intent.RELEASE_INDEX, "", None, "")
+    assert "4.7" in version["text"]
+    assert index["versions"] == ["v4.6", "v4.7"]
+
+
+def test_analyze_release_uses_authorized_provider_callback(monkeypatch):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.release_analyzer as release_module
+    import lab_v4_dev.llm.prompt_builder as prompt_module
+
+    monkeypatch.setattr(release_module, "extract_version_from_text", lambda value: "v4.7")
+    monkeypatch.setattr(release_module, "load_release", lambda version: {"content": "release notes"})
+    monkeypatch.setattr(prompt_module, "build_release_prompt", lambda *args: "release prompt")
+    monkeypatch.setattr(orchestrator_module, "ask", lambda *args, **kwargs: {
+        "status": "success", "text": "release analysis", "provider_used": "test-provider",
+    })
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=True)
+    orchestrator = _fake_orchestrator()
+    result = Orchestrator._route(
+        orchestrator, Intent.ANALYZE_RELEASE, "", None, "حلل الإصدار 4.7",
+        route_decision=decision,
+    )
+    assert result["version"] == "v4.7"
+    assert result["source"] == "test-provider"
+    assert orchestrator.context.current_version == "v4.7"
+    assert orchestrator.context.current_subject == "version_v4.7"
+
+
+def test_compare_versions_provider_denial_is_enforced(monkeypatch):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.release_analyzer as release_module
+
+    monkeypatch.setattr(release_module, "compare_versions", lambda v1, v2: {
+        "both_ok": True, "v1": {"content": "one"}, "v2": {"content": "two"},
+    })
+    monkeypatch.setattr(
+        orchestrator_module, "ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
+    )
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
+    result = Orchestrator._route(
+        _fake_orchestrator(), Intent.COMPARE_VERSIONS, "", None,
+        "قارن بين 4.6 و 4.7",
+        route_decision=decision,
+    )
+    assert result["status"] == "unavailable"
+
+
+def test_project_timeline_uses_version_specific_events(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.data.project_timeline as timeline_module
+
+    calls = []
+    monkeypatch.setattr(timeline_module, "init_timeline", lambda: calls.append("init"))
+    monkeypatch.setattr(timeline_module, "get_version_events", lambda version: [{"event": "released"}])
+    monkeypatch.setattr(timeline_module, "get_full_history", lambda: "all history")
+    orchestrator = _fake_orchestrator()
+    orchestrator.context.current_version = "v4.6"
+    result = Orchestrator._route(orchestrator, Intent.PROJECT_TIMELINE, "", None, "")
+    assert "أحداث v4.6" in result["text"]
+    assert "released" in result["text"]
+    assert calls == ["init"]
