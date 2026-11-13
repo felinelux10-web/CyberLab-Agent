@@ -10,13 +10,13 @@
 
 ## Inventory totals
 
-- Top-level conditional statements found in the current `_route`: **44** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 41 remaining intent/fallback conditions).
-- Twenty-two branch conditions have been removed from `_route`, representing 21 unique registered intents: seven system-inspection/log intents, five project-inspection intents, and eight project-analysis intents in `project_analysis.py`.
-- Distinct `Intent.*` symbols referenced in `_route`: **47**.
+- Top-level conditional statements found in the current `_route`: **37** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 34 remaining intent/fallback conditions).
+- Twenty-nine branch conditions have been removed from `_route`, representing 32 unique registered Intent values plus the literal `show_last_result` key: seven system-inspection/log intents, five project-inspection intents, and eight project-analysis intents in `project_analysis.py`.
+- Distinct `Intent.*` symbols referenced in `_route`: **36**.
 - Literal `show_last_result` condition: present.
 - Explicit `needs_llm(intent)` fallback: present.
 - Response cache gate remains before Dispatcher in the migrated code.
-- Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`, `AUDIT_LOG`, `SECURITY_LOG`, `READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`, plus `DEPENDENCY_MAP`, `ENTRY_POINT_QUERY`, `DEPENDENTS_QUERY`, `DEPENDENCIES`, `IMPACT_CHAIN_QUERY`, `CRITICALITY_QUERY`, `IMPACT_ANALYSIS`, `FILE_IMPACT`, `COMPARE_FILES`.
+- Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`, `AUDIT_LOG`, `SECURITY_LOG`, `READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`, plus `DEPENDENCY_MAP`, `ENTRY_POINT_QUERY`, `DEPENDENTS_QUERY`, `DEPENDENCIES`, `IMPACT_CHAIN_QUERY`, `CRITICALITY_QUERY`, `IMPACT_ANALYSIS`, `FILE_IMPACT`, `COMPARE_FILES`, `REPORT`, `SESSION_REPORT`, `PROGRESS_REPORT`, `REMAINING_WORK`, `PROJECT_REPORT`, `CONTEXT_REPORT`, `HISTORY`, `WORK_STATUS`, `REMAINING_TASKS`, `NEXT_TASK`, `WORK_CONTEXT`, and literal `show_last_result`.
 
 ## Top-level branch inventory
 
@@ -166,7 +166,7 @@
 | Read-only inspection pilot (5 intents) | Moved to `system_inspection.py` |
 | Audit/security log readers (2 intents) | Moved to `system_inspection.py` |
 | Project inspection (`READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`) | Moved to `project_inspection.py`; file lookup containment behavior preserved and tested; project scan remains local and audit-emitting; project registry/list, layer-map, local inventory-search, and explicit-path code-search behavior preserved; keyword code-search retains the central authorized-provider callback |
-| Project analysis and impact queries (9 intents) | Moved to `project_analysis.py`; dependency engine/map/query services remain the implementation owners; both `FILE_IMPACT` modes are preserved in one handler with specialized raw-text priority; `COMPARE_FILES` uses the authorized-provider callback and retains the existing path-resolution semantics |
+| Project analysis and impact queries (9 intents) | Moved to `project_analysis.py`; dependency engine/map/query services remain the implementation owners; both `FILE_IMPACT` modes are preserved in one handler with specialized raw-text priority; `COMPARE_FILES` uses the authorized-provider callback and retains the existing path-resolution semantics |\n| Reports and work tracking (11 Intent values + literal `show_last_result`) | Moved to `reports.py`; current operational session summary remains distinct from saved dialogue-session reports; provider-backed reports use `authorized_ask` |
 | Remaining branch ownership | Legacy route; audit required before each migration |
 | Caller graph (TaskChain, Guard, direct callers) | Not certified complete |
 | Provider/evidence authorization matrix | Not certified complete |
@@ -206,7 +206,7 @@ Direct `ask()` calls were found outside the Orchestrator's local `authorized_ask
 - `llm/smart_router.py` — direct provider call.
 - `monitor/self_diagnostics.py` — `check_groq()` directly calls `ask()`; `FULL_DIAGNOSE` therefore cannot be classified as a pure read-only handler without a provider-policy decision.
 
-The `COMPARE_FILES` handler preserves the existing path-resolution semantics, including explicit absolute-path acceptance and index-match resolution; this migration does not claim that its path policy is hardened. These are not automatically safe merely because they are called by a service. Before migrating the associated intents, each call must either receive an authorized provider capability or remain behind a separately audited compatibility boundary.
+The `COMPARE_FILES` handler preserves the existing path-resolution semantics, including explicit absolute-path acceptance and index-match resolution; this migration does not claim that its path policy is hardened. The `needs_llm(intent)` fallback remains an explicit route branch after the provider-backed project-report handlers and continues to use `authorized_ask`. These are not automatically safe merely because they are called by a service. Before migrating the associated intents, each call must either receive an authorized provider capability or remain behind a separately audited compatibility boundary.
 
 ### Confirmed holdbacks
 
