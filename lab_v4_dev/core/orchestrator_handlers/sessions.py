@@ -174,7 +174,7 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
     if selector.get("kind") == "previous_dialogue":
         # A previous-dialogue request must select a persisted dialogue,
         # not the canonical work checkpoint or the active live dialogue.
-        memory = getattr(orchestrator.agent, "dialogue_memory", None)
+        memory = orchestrator.services.dialogue_memory
         state = getattr(memory, "state", None)
         current_dialogue_id = str(getattr(state, "session_id", "") or "").strip()
         selected_dialogue = None
@@ -299,7 +299,7 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                     f"[{option['session_id'] or '?'}]"
                 )
                 lines.append(f"  الملخص: {option['summary'] or 'لا توجد تفاصيل كافية في السجل.'}")
-            memory = getattr(orchestrator.agent, "dialogue_memory", None)
+            memory = orchestrator.services.dialogue_memory
             state = getattr(memory, "state", None)
             if state is not None:
                 state.pending_clarification = {
@@ -538,8 +538,8 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                 ),
                 "executed": False,
             }
-        restore_selected = getattr(orchestrator.agent, "restore_session_snapshot", None)
-        restore_context = getattr(orchestrator.agent, "restore_session_context", None)
+        restore_selected = orchestrator.services.restore_session_snapshot
+        restore_context = orchestrator.services.restore_session_context
         if selected_id and callable(restore_selected):
             restored = bool(restore_selected(s))
         else:
@@ -889,8 +889,8 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
             "session_summary": summary,
         }
 
-    restore_selected = getattr(orchestrator.agent, "restore_session_snapshot", None)
-    restore_context = getattr(orchestrator.agent, "restore_session_context", None)
+    restore_selected = orchestrator.services.restore_session_snapshot
+    restore_context = orchestrator.services.restore_session_context
     if selected_id and callable(restore_selected):
         restored = bool(restore_selected(s))
     else:
@@ -916,8 +916,8 @@ def handle_session_save(orchestrator, intent, *, target=None, raw=None):
     from lab_v4_dev.memory.session_state import save_session, save_dialogue_checkpoint
     from lab_v4_dev.data.project_timeline import add_event
 
-    version = orchestrator.agent._meta.get_version()
-    dialogue_memory = getattr(orchestrator.agent, "dialogue_memory", None)
+    version = orchestrator.services.metadata.get_version()
+    dialogue_memory = orchestrator.services.dialogue_memory
     dialogue_state = dialogue_memory.snapshot() if dialogue_memory else None
     dialogue_saved = (
         save_dialogue_checkpoint(

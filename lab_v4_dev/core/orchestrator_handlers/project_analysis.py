@@ -142,7 +142,7 @@ def handle_impact_analysis(orchestrator, intent, *, target=None, raw=None):
         return {"status": "needs_target", "message": "أي ملف؟"}
     impact = analyze_impact(target)
     if impact:
-        orchestrator._impact_analyzed.add(target)
+        orchestrator.services.impact_analyzed.add(target)
     return {"status": "success", "intent": intent, "impact": impact}
 
 
@@ -222,7 +222,7 @@ def handle_file_impact(orchestrator, intent, *, target=None, raw=None):
             f"يستخدمه  : {', '.join(imported_by[:3]) or 'لا أحد'}",
         ]
         if target:
-            orchestrator._impact_analyzed.add(target)
+            orchestrator.services.impact_analyzed.add(target)
         return {"status":"success","intent":intent,
                 "text":"\n".join(lines)}
     

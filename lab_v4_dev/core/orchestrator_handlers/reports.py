@@ -7,7 +7,7 @@ from lab_v4_dev.intent.intents import Intent
 
 
 def handle_session_report(orchestrator, intent, *, target=None, raw=None):
-    summary = orchestrator.agent.session.summary()
+    summary = orchestrator.services.session.summary()
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     return {
         "status": "success",
@@ -52,7 +52,7 @@ def handle_context_report(orchestrator, intent, *, target=None, raw=None):
     from lab_v4_dev.core.project_metadata import ProjectMetadata
 
     metadata = ProjectMetadata()
-    tasks = orchestrator.agent.memory.recent_tasks(10)
+    tasks = orchestrator.services.memory.recent_tasks(10)
     releases_dir = os.path.join(CYBERLAB_ROOT, "releases")
     releases = sorted([
         name for name in os.listdir(releases_dir)
@@ -74,7 +74,7 @@ def handle_context_report(orchestrator, intent, *, target=None, raw=None):
 
 
 def handle_history(orchestrator, intent, *, target=None, raw=None):
-    tasks = orchestrator.agent.memory.recent_tasks(10)
+    tasks = orchestrator.services.memory.recent_tasks(10)
     return {
         "status": "success",
         "intent": intent,
@@ -114,7 +114,7 @@ def handle_work_tracking(orchestrator, intent, *, target=None, raw=None):
 
 def handle_work_context(orchestrator, intent, *, target=None, raw=None):
     lines = ["=== سجل العمل الحالي ==="]
-    tasks = orchestrator.agent.memory.recent_tasks(8)
+    tasks = orchestrator.services.memory.recent_tasks(8)
     if tasks:
         lines.append("\n📋 العمليات المسجلة فعليًا:")
         for task in tasks:
@@ -146,7 +146,7 @@ def handle_show_last_result(orchestrator, intent, *, target=None, raw=None):
 
 
 def handle_show_changes(orchestrator, intent, *, target=None, raw=None):
-    tasks = orchestrator.agent.memory.recent_tasks(10)
+    tasks = orchestrator.services.memory.recent_tasks(10)
     lines = ["آخر التعديلات:"]
     for t in tasks:
         icon = "✅" if t["status"] == "success" else "❌"

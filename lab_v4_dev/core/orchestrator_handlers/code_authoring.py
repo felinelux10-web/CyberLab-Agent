@@ -46,7 +46,7 @@ def handle_analyze_code(orchestrator, intent, *, target=None, raw=None, authoriz
         rcache_save(str(intent), target or "", text)
     # ─── تسجيل الملف كمحلل ───
     if target and result.get("status") == "success":
-        orchestrator._analyzed_files.add(target)
+        orchestrator.services.analyzed_files.add(target)
     # ─── حفظ الموضوع في السياق ───
     if text and result.get("status") == "success":
         orchestrator.context.current_subject = raw
@@ -140,7 +140,7 @@ def handle_modify_code(orchestrator, intent, *, target=None, raw=None, authorize
         return {"status": "failed", "intent": intent, "text": "لم ينتج التعديل أي تغيير في الملف"}
 
     try:
-        database = orchestrator.agent.db
+        database = orchestrator.services.db
         if database is not None and getattr(database, "conn", None) is None:
             database.connect()
         pipeline = getattr(orchestrator, "pipeline", None) or SafePipeline(database)

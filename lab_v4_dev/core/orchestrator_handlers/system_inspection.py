@@ -18,8 +18,8 @@ def handle_space(orchestrator, intent, *, target=None, raw=None):
 
 
 def handle_status(orchestrator, intent, *, target=None, raw=None):
-    state = orchestrator.agent.state
-    summary = orchestrator.agent.session.summary()
+    state = orchestrator.services.state
+    summary = orchestrator.services.session.summary()
     lines = [
         f"الوضع     : {state.mode}",
         f"المهام    : {summary['tasks_done']}",
@@ -39,7 +39,7 @@ def handle_status(orchestrator, intent, *, target=None, raw=None):
 def handle_health(orchestrator, intent, *, target=None, raw=None):
     from lab_v4_dev.monitor.health_check import check_health
 
-    health = check_health(orchestrator.agent.state)
+    health = check_health(orchestrator.services.state)
     return {"status": "success", "intent": intent, "health": health}
 
 
@@ -57,7 +57,7 @@ def handle_system_status(orchestrator, intent, *, target=None, raw=None):
     # legacy project_status.py script through a shell.
     from lab_v4_dev.monitor.health_check import check_health
 
-    health = check_health(orchestrator.agent.state)
+    health = check_health(orchestrator.services.state)
     lines = [
         f"حالة النظام: {'سليم' if health.get('healthy') else 'يحتاج إلى مراجعة'}",
         f"وضع التشغيل: {health.get('state_mode', 'غير معروف')}",
