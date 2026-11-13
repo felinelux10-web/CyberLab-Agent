@@ -48,7 +48,7 @@ def test_modify_uses_current_generated_file_without_named_symbol(tmp_path, monke
 
     monkeypatch.setattr(
         "lab_v4_dev.core.code_engine.modify_code",
-        lambda code, instruction: {
+        lambda code, instruction, authorized_ask=None: {
             "status": "success",
             "code": code + "print('colored')\n",
             "explanation": "added colors",
