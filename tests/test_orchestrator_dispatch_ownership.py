@@ -49,7 +49,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.LIST_SCRIPTS,
         Intent.ERROR_REPORT,
         Intent.DRY_RUN,
-        Intent.RUN_HISTORY,
+        Intent.RUN_HISTORY, Intent.ANALYZE_CODE,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -1074,3 +1074,62 @@ def test_run_history_handler_uses_execution_history_service(monkeypatch):
     result = Orchestrator._route(_fake_orchestrator(), Intent.RUN_HISTORY, "", None, "")
     assert result["status"] == "success"
     assert "a.py" in result["text"]
+
+
+def test_analyze_code_vague_target_requests_clarification_without_provider(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+
+    monkeypatch.setattr(
+        orchestrator_module, "ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("vague request must not call provider")),
+    )
+    result = Orchestrator._route(_fake_orchestrator(), Intent.ANALYZE_CODE, "", None, "هذا الملف")
+    assert result["status"] == "needs_clarification"
+    assert "أي ملف" in result["text"]
+
+
+def test_analyze_code_uses_authorized_provider_and_updates_context(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.intent.response_cache as cache_module
+
+    source = tmp_path / "main.py"
+    source.write_text("print('ok')", encoding="utf-8")
+    cache_calls = []
+    monkeypatch.setattr(cache_module, "save", lambda *args: cache_calls.append(args))
+    monkeypatch.setattr(orchestrator_module, "ask", lambda *args, **kwargs: {
+        "status": "success", "text": "analysis result", "provider_used": "test-provider",
+    })
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=True)
+    orchestrator = _fake_orchestrator()
+    result = Orchestrator._route(
+        orchestrator, Intent.ANALYZE_CODE, str(source), None, "حلل هذا الملف",
+        route_decision=decision,
+    )
+    assert result["status"] == "success"
+    assert result["source"] == "test-provider"
+    assert result["text"] == "analysis result"
+    assert str(source) in orchestrator._analyzed_files
+    assert orchestrator.context.current_subject == "حلل هذا الملف"
+    assert cache_calls
+
+
+def test_analyze_code_provider_denial_does_not_call_gateway(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    source = tmp_path / "main.py"
+    source.write_text("print('ok')", encoding="utf-8")
+    monkeypatch.setattr(
+        orchestrator_module, "ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
+    )
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
+    result = Orchestrator._route(
+        _fake_orchestrator(), Intent.ANALYZE_CODE, str(source), None, "حلل هذا الملف",
+        route_decision=decision,
+    )
+    assert result["status"] == "unavailable"

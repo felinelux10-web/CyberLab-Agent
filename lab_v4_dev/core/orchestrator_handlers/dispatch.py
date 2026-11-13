@@ -3,7 +3,7 @@
 from types import MappingProxyType
 
 from lab_v4_dev.intent.intents import Intent
-from . import system_inspection, project_inspection, project_analysis, reports, knowledge, releases, sessions, execution
+from . import system_inspection, project_inspection, project_analysis, reports, knowledge, releases, sessions, execution, code_authoring
 
 
 def build_registry(entries):
@@ -69,6 +69,7 @@ HANDLER_REGISTRY = build_registry((
     (Intent.ERROR_REPORT, execution.handle_error_report),
     (Intent.DRY_RUN, execution.handle_dry_run),
     (Intent.RUN_HISTORY, execution.handle_run_history),
+    (Intent.ANALYZE_CODE, code_authoring.handle_analyze_code),
     ("show_last_result", reports.handle_show_last_result),
 ))
 
@@ -96,7 +97,7 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
             conversation_history=conversation_history,
             context_transition=context_transition,
         )
-    if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES, Intent.PROGRESS_REPORT, Intent.REMAINING_WORK, Intent.PROJECT_REPORT, Intent.ANALYZE_RELEASE, Intent.COMPARE_VERSIONS}:
+    if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES, Intent.PROGRESS_REPORT, Intent.REMAINING_WORK, Intent.PROJECT_REPORT, Intent.ANALYZE_RELEASE, Intent.COMPARE_VERSIONS, Intent.ANALYZE_CODE}:
         return handler(
             orchestrator, intent, target=target, raw=raw,
             authorized_ask=authorized_ask,
