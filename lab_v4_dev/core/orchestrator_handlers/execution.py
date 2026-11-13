@@ -2,11 +2,9 @@
 
 import os
 
-from lab_v4_dev.core.project_context import CYBERLAB_ROOT
-
-WORKSPACE_DIR = os.path.join(CYBERLAB_ROOT, "workspace")
-
 def handle_list_scripts(orchestrator, intent, *, target=None, raw=None):
+    from lab_v4_dev.core.project_context import CYBERLAB_ROOT
+    WORKSPACE_DIR = os.path.join(CYBERLAB_ROOT, "workspace")
 
     scripts = []
     for folder in ["scripts","modified","analysis"]:
@@ -35,6 +33,8 @@ def handle_error_report(orchestrator, intent, *, target=None, raw=None):
 
 
 def handle_dry_run(orchestrator, intent, *, target=None, raw=None):
+    from lab_v4_dev.core.project_context import CYBERLAB_ROOT
+    WORKSPACE_DIR = os.path.join(CYBERLAB_ROOT, "workspace")
     from lab_v4_dev.core.sandbox_executor import dry_run
 
     scripts_dir = os.path.join(WORKSPACE_DIR, "scripts")
