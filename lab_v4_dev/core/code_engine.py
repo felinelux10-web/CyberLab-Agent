@@ -210,7 +210,7 @@ def analyze_code(code, question=""):
     result = ask(prompt, system=SYSTEM, max_tokens=600)
     return {"status":result["status"],"language":lang,"analysis":result.get("text","")}
 
-def modify_code(code, instruction):
+def modify_code(code, instruction, authorized_ask=None):
     if not instruction or len(instruction.strip()) < 5:
         return {"status":"needs_clarification","text":"ماذا تريد أن أعدل؟ صف التعديل المطلوب بوضوح."}
     if not code or not code.strip():
@@ -232,7 +232,9 @@ def modify_code(code, instruction):
             }
     lang   = detect_language(code)
     prompt = "عدل هذا الكود:\n```" + lang + "\n" + code[:2000] + "\n```\nالتعديل: " + instruction + "\naكتب الكود المعدل داخل ```" + lang + "...``` ثم اشرح التغييرات."
-    result = ask(prompt, system=SYSTEM, max_tokens=800)
+    if authorized_ask is None:
+        return {"status": "unavailable", "text": "بوابة المزود المصرح بها غير متاحة لهذا المسار."}
+    result = authorized_ask(prompt, system=SYSTEM, max_tokens=800)
     if result["status"] != "success":
         return {"status":"failed","text":result.get("text","")}
     text = result.get("text","")

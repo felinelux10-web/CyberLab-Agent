@@ -1,7 +1,6 @@
 # CyberLab Agent v5.1
 # core/repair/error_analyzer.py
 
-from lab_v4_dev.llm.gateway import ask
 from lab_v4_dev.core.repair.error_reader import parse_traceback
 
 ANALYZER_SYSTEM = """أنت محلل أخطاء برمجية متخصص.
@@ -15,7 +14,7 @@ ANALYZER_SYSTEM = """أنت محلل أخطاء برمجية متخصص.
   "fixable": true|false
 }"""
 
-def analyze(error: dict, code_snippet: str = "") -> dict:
+def analyze(error: dict, code_snippet: str = "", authorized_ask=None) -> dict:
     error_type = error.get("type", "unknown")
     message    = error.get("message", "")
     line       = error.get("line")
@@ -37,8 +36,10 @@ def analyze(error: dict, code_snippet: str = "") -> dict:
     if code_snippet:
         prompt += f"\nالكود:\n{code_snippet[:300]}"
 
-    result = ask(prompt, system=ANALYZER_SYSTEM, max_tokens=200)
-    if result["status"] != "success":
+    if authorized_ask is None:
+        return local
+    result = authorized_ask(prompt, system=ANALYZER_SYSTEM, max_tokens=200)
+    if result.get("status") != "success":
         return local
 
     import json, re

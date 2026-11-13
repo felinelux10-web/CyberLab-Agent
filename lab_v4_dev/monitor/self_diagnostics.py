@@ -60,10 +60,12 @@ def check_work_tracker() -> dict:
     except Exception as e:
         return {"status": "FAIL", "score": 0.0, "error": str(e)}
 
-def check_groq() -> dict:
+def check_groq(authorized_ask=None) -> dict:
     try:
-        from lab_v4_dev.llm.gateway import ask
-        r = ask("قل OK فقط", max_tokens=10)
+        if authorized_ask is None:
+            return {"status": "WARN", "score": 0.5,
+                    "warning": "اختبار المزود غير مصرح به ضمن قرار التوجيه الحالي"}
+        r = authorized_ask("قل OK فقط", max_tokens=10)
         if r.get("status") == "success":
             return {"status": "OK", "score": 1.0}
         return {"status": "WARN", "score": 0.5,
@@ -73,7 +75,7 @@ def check_groq() -> dict:
 
 # ─── التشخيص الكامل ───
 
-def run_diagnostics(quick=False) -> dict:
+def run_diagnostics(quick=False, authorized_ask=None) -> dict:
     checks = {
         "routing"         : check_routing(),
         "context"         : check_context(),
@@ -81,7 +83,7 @@ def run_diagnostics(quick=False) -> dict:
         "work_tracker"    : check_work_tracker(),
     }
     if not quick:
-        checks[GROQ] = check_groq()
+        checks[GROQ] = check_groq(authorized_ask=authorized_ask)
 
     # حساب Health Score
     scores   = [c["score"] for c in checks.values()]

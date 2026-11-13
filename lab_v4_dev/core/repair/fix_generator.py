@@ -1,7 +1,6 @@
 # CyberLab Agent v5.1
 # core/repair/fix_generator.py
 
-from lab_v4_dev.llm.gateway import ask
 
 FIX_SYSTEM = """أنت مبرمج متخصص في إصلاح أخطاء Python.
 مهمتك: اقتراح إصلاح دقيق للخطأ.
@@ -14,7 +13,7 @@ FIX_SYSTEM = """أنت مبرمج متخصص في إصلاح أخطاء Python.
   "confidence": 0.0-1.0
 }"""
 
-def generate_fix(error: dict, analysis: dict, code: str = "") -> dict:
+def generate_fix(error: dict, analysis: dict, code: str = "", authorized_ask=None) -> dict:
     # إصلاح محلي للحالات البسيطة
     local = _local_fix(error, analysis)
     if local and local["confidence"] >= 0.9:
@@ -29,8 +28,10 @@ def generate_fix(error: dict, analysis: dict, code: str = "") -> dict:
 
 اقترح إصلاحاً دقيقاً."""
 
-    result = ask(prompt, system=FIX_SYSTEM, max_tokens=300)
-    if result["status"] != "success":
+    if authorized_ask is None:
+        return local or _unknown_fix()
+    result = authorized_ask(prompt, system=FIX_SYSTEM, max_tokens=300)
+    if result.get("status") != "success":
         return local or _unknown_fix()
 
     import json, re
