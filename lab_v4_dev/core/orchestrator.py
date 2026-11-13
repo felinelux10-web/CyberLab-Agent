@@ -902,6 +902,24 @@ SOURCE CODE:
             }
 
         # ─── Project Timeline ───
+        # ─── Explicit provider fallback (preserved after registered handlers) ───
+        elif needs_llm(intent):
+            from lab_v4_dev.llm.prompt_builder import build_project_context
+            system = build_project_context(
+                question=raw,
+                intent=intent,
+                project_scope=resolve_project_scope(raw, intent=intent),
+            )
+            result = authorized_ask(raw, system=system, max_tokens=300)
+            return {
+                "status": result["status"],
+                "intent": intent,
+                "source": result.get("provider_used", get_active_provider()),
+                "route": result.get("provider_used", get_active_provider()),
+                "text": result.get("text", result.get("message", "")),
+                "tokens": result.get("tokens", 0),
+            }
+
         elif intent == Intent.PROJECT_TIMELINE:
             from lab_v4_dev.data.project_timeline import (
                 init_timeline, get_full_history, get_version_events

@@ -679,3 +679,22 @@ def test_show_last_result_uses_context_last_result():
     orchestrator.context.last_result = {"text": "previous output"}
     result = Orchestrator._route(orchestrator, "show_last_result", "", None, "")
     assert result["text"] == "previous output"
+
+
+def test_needs_llm_fallback_remains_explicit_and_provider_gated(monkeypatch):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    monkeypatch.setattr(
+        orchestrator_module, "ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
+    )
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
+    result = Orchestrator._route(
+        _fake_orchestrator(), Intent.ARCHITECTURE, "", None,
+        "اشرح معمارية النظام",
+        route_decision=decision,
+    )
+    assert result["status"] == "unavailable"
+    assert result["intent"] == Intent.ARCHITECTURE
