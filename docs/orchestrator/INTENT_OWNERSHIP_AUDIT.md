@@ -4,7 +4,7 @@
 - Active branch: `work/FRIENDLY-DIALOGUE-REPAIR-01`
 - Baseline commit: `6f0f35f9a5907fba707128913c2a06513f358e2f`
 - Baseline `lab_v4_dev/core/orchestrator.py` blob: `28bafb091cd27b682ef83ef77c27a108e864eb02`
-- Audited implementation code HEAD: `08146e7bc941ecafd426df9aed85a7218e17b9b8`
+- Audited implementation and verification HEAD: `cf34361012b59640b516c187a31e93d032f5533c`
 - Audit date: 2026-11-13
 - Status: **Orchestrator decomposition and its eight final audit gates are verified by source inspection and CI. Residual boundaries are recorded below; no APK build is claimed.**
 
@@ -125,18 +125,18 @@ Verified active call paths:
 
 The PreparedExecutionRequest handoff is present but dormant: `submit_prepared()` is called only by `Orchestrator._submit_prepared_execution()`, and that helper has no internal caller. This is recorded as an unused compatibility path, not misrepresented as an integrated runtime path.
 
-The scan also identifies Guard's dynamic `getattr(manager, "process")` delegation. Test-only direct Orchestrator calls remain confined to tests.
+The scan also identifies Guard's dynamic `getattr(manager, "process")` delegation. Test modules may call Orchestrator directly for unit-level coverage; the active runtime scan found no additional direct callers.
 
 ## 9. CI evidence at the audited implementation HEAD
 
-GitHub Actions run `43438137467`, head SHA `08146e7bc941ecafd426df9aed85a7218e17b9b8`:
+GitHub Actions run `43438623863`, head SHA `cf34361012b59640b516c187a31e93d032f5533c`:
 
 - Focused dialogue regressions: **484 passed**.
 - Full-suite advisory job: **1,102 passed**.
 - Failed tests: **0**.
 - The job logs, not only the overall workflow conclusion, were inspected.
 
-The full suite includes the ownership, route authorization, provider-call inventory, deep immutability, caller graph, effect parity, exact legacy branch parity, response-cache ordering, and both FILE_IMPACT mode tests.
+The full suite includes the ownership, route authorization, repository-wide active-source provider-call inventory, deep immutability, repository-wide active-source caller graph, effect parity, exact legacy branch parity, response-cache ordering, and both FILE_IMPACT mode tests.
 
 ## 10. Execution phases and scope boundary
 
