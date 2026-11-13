@@ -80,6 +80,15 @@ class Orchestrator:
         request = Request.from_input(request)
         raw_request = request.raw_text
 
+        if route_decision is None:
+            return {
+                "status": "denied",
+                "intent": (parsed or {}).get("intent"),
+                "source": "route_decision_required",
+                "executed": False,
+                "text": "لا يمكن تنفيذ طلب تشغيلي دون قرار توجيه صادر عن ConversationManager.",
+            }
+
         if route_decision is not None:
             authorized_route = str(getattr(route_decision, "route", ""))
             if authorized_route not in {"L-EXEC", "L-SESSION", "L-FACT", "P-TOOL"}:
@@ -91,6 +100,17 @@ class Orchestrator:
                     "text": "قرار التوجيه لا يمنح Orchestrator ملكية هذا الطلب.",
                 }
             parsed_intent = (parsed or {}).get("intent")
+            decision_intent = getattr(route_decision, "intent", None)
+            parsed_value = str(getattr(parsed_intent, "value", parsed_intent) or "").casefold()
+            decision_value = str(getattr(decision_intent, "value", decision_intent) or "").casefold()
+            if not parsed_value or not decision_value or parsed_value != decision_value:
+                return {
+                    "status": "denied",
+                    "intent": parsed_intent,
+                    "source": "route_decision_intent_mismatch",
+                    "executed": False,
+                    "text": "النية الفعلية لا تطابق النية التي أجازها قرار التوجيه.",
+                }
             selector_kind = str(((parsed or {}).get("session_selector") or {}).get("kind") or "none")
             saved_session_operation = (
                 parsed_intent == Intent.SESSION_RESTORE
@@ -144,10 +164,10 @@ class Orchestrator:
         # DNI-10: task chains are executable work and may run only when the
         # immutable route explicitly grants execution ownership.
         from lab_v4_dev.core.task_chain import is_chain, detect_chain, execute_chain
-        if (route_decision is None or getattr(route_decision, "route", None) == "L-EXEC") and is_chain(raw_request):
+        if getattr(route_decision, "route", None) == "L-EXEC" and is_chain(raw_request):
             steps = detect_chain(raw_request)
             if len(steps) > 1:
-                return execute_chain(steps, self)
+                return execute_chain(steps, self, parent_route_decision=route_decision)
 
         timestamp = datetime.now().isoformat()
 

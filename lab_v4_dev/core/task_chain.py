@@ -20,8 +20,20 @@ def detect_chain(text: str) -> list:
 def is_chain(text: str) -> bool:
     return any(re.search(r'(?<!\w)' + re.escape(kw) + r'(?!\w)', text) for kw in CHAIN_KEYWORDS)
 
-def execute_chain(steps: list, orchestrator) -> dict:
-    """ينفذ الخطوات بالترتيب مع state passing حقيقي"""
+def execute_chain(steps: list, orchestrator, *, parent_route_decision=None) -> dict:
+    """Execute child steps only through ConversationManager-issued decisions."""
+    manager = getattr(getattr(orchestrator, "agent", None), "conv_manager", None)
+    if parent_route_decision is None or not callable(
+        getattr(manager, "process_execution_step", None)
+    ):
+        return {
+            "status": "denied",
+            "intent": "task_chain",
+            "executed": False,
+            "text": "لا تتوفر قناة تفويض معتمدة لخطوات سلسلة التنفيذ.",
+            "steps": 0,
+            "results": [],
+        }
     results    = []
     last_result = None
     chain_state = {}  # state مشترك بين الخطوات
@@ -79,7 +91,11 @@ def execute_chain(steps: list, orchestrator) -> dict:
         except Exception:
             pass
 
-        result = orchestrator.handle(step)
+        result = manager.process_execution_step(
+            step,
+            parsed=parsed_step if isinstance(parsed_step, dict) else None,
+            parent_route_decision=parent_route_decision,
+        )
         _step_text = result.get("text") or result.get("output") or ""
         results.append({
             "step"  : i + 1,

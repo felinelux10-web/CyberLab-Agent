@@ -106,6 +106,7 @@ class ConversationManager:
         selected_saved_session_id: str | None,
         transition: ContextTransition,
         route_override: str | None = None,
+        provider_allowed_ceiling: bool | None = None,
     ) -> RouteDecision:
         """Issue the immutable final route after semantic/context resolution.
 
@@ -380,6 +381,21 @@ class ConversationManager:
                 else None
             ),
         )
+        provider_allowed = (
+            route in {"L-FACT", "L-LIVE", "P-TOOL", "L-EXEC"}
+            or (
+                route == "L-SESSION"
+                and requested_output in {"summary", "report", "topic_summary"}
+                and bool(getattr(
+                    getattr(self.orchestrator, "agent", None),
+                    "allow_provider_session_synthesis",
+                    False,
+                ))
+            )
+        )
+        if provider_allowed_ceiling is not None:
+            provider_allowed = provider_allowed and bool(provider_allowed_ceiling)
+
         return RouteDecision(
             route=route,
             session_scope=session_scope,
@@ -388,18 +404,7 @@ class ConversationManager:
             topic_filter=str(selected_session.get("topic_filter") or "").strip() or None,
             context_lock=lock,
             evidence_scope=evidence_scope,
-            provider_allowed=(
-                route in {"L-FACT", "L-LIVE", "P-TOOL", "L-EXEC"}
-                or (
-                    route == "L-SESSION"
-                    and requested_output in {"summary", "report", "topic_summary"}
-                    and bool(getattr(
-                        getattr(self.orchestrator, "agent", None),
-                        "allow_provider_session_synthesis",
-                        False,
-                    ))
-                )
-            ),
+            provider_allowed=provider_allowed,
             intent=intent,
             confidence=float(parsed.get("confidence", 0.0) or 0.0),
             metadata={
@@ -4371,13 +4376,21 @@ class ConversationManager:
             )
 
         if intent not in _NON_EXECUTABLE_INTENTS:
-            result = self.orchestrator.handle(
-                text,
-                parsed=parsed,
-                context_resolved=True,
-                conversation_history=chat_history,
-                context_transition=context_transition,
-            )
+            handle = self.orchestrator.handle
+            handle_kwargs = {
+                "parsed": parsed,
+                "context_resolved": True,
+                "conversation_history": chat_history,
+                "context_transition": context_transition,
+            }
+            try:
+                if "route_decision" in inspect.signature(handle).parameters:
+                    handle_kwargs["route_decision"] = (
+                        route_decision if isinstance(route_decision, RouteDecision) else None
+                    )
+            except (TypeError, ValueError):
+                pass
+            result = handle(text, **handle_kwargs)
             result = dict(result)
             result["executed"] = result.get("status") != "needs_clarification"
             return result
@@ -4389,6 +4402,65 @@ class ConversationManager:
             parsed=parsed,
             user_question=user_question or text,
             history=chat_history,
+        )
+
+    def process_execution_step(
+        self,
+        text: str,
+        *,
+        parsed: dict | None = None,
+        parent_route_decision: RouteDecision,
+    ) -> dict:
+        """Authorize one task-chain child without inheriting broader parent rights."""
+        raw = str(text or "").strip()
+        if getattr(parent_route_decision, "route", None) != "L-EXEC":
+            return {
+                "status": "denied", "source": "task_chain_parent_route",
+                "executed": False, "text": "الطلب الأب لا يمنح صلاحية تنفيذ خطوات فرعية.",
+            }
+        if not raw:
+            return {
+                "status": "needs_clarification", "source": "task_chain_step",
+                "executed": False, "text": "خطوة فارغة في سلسلة التنفيذ.",
+            }
+        from lab_v4_dev.core.task_chain import is_chain
+        if is_chain(raw):
+            return {
+                "status": "denied", "source": "task_chain_nested",
+                "executed": False, "text": "السلاسل المتداخلة غير مسموح بها.",
+            }
+
+        resolved = dict(parsed) if isinstance(parsed, dict) else self._safe_parse(raw)
+        child_intent = resolved.get("intent")
+        if child_intent is None or child_intent in _NON_EXECUTABLE_INTENTS:
+            return {
+                "status": "denied", "intent": child_intent,
+                "source": "task_chain_child_intent",
+                "executed": False, "text": "خطوة السلسلة لا تمثل عملية تنفيذ معتمدة.",
+            }
+
+        child_decision = self.finalize_route(
+            parsed=resolved,
+            selected_session={},
+            saved_session_request=False,
+            selected_saved_session_id=None,
+            transition=ContextTransition.NEW_TOPIC,
+            provider_allowed_ceiling=bool(parent_route_decision.provider_allowed),
+        )
+        if child_decision.route != "L-EXEC":
+            return {
+                "status": "denied", "intent": child_intent,
+                "source": "task_chain_child_route",
+                "executed": False,
+                "text": "لا يمكن لخطوة فرعية توسيع مسار الطلب الأب أو تغيير مالك التنفيذ.",
+            }
+
+        resolved["route_decision"] = child_decision
+        return self.orchestrator.handle(
+            raw,
+            parsed=resolved,
+            context_resolved=True,
+            route_decision=child_decision,
         )
 
     def _safe_parse(self, text: str, *, context_entity: dict | None = None) -> dict:

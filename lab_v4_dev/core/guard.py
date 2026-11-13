@@ -37,29 +37,23 @@ def guard(parsed: dict) -> dict:
     }
 
 def execute(guarded: dict, agent) -> dict:
-    route  = guarded["route"]
-    intent = guarded["intent"]
-    raw    = guarded["raw"]
+    """Compatibility adapter; ConversationManager owns routing and provider policy."""
+    raw = str(guarded.get("raw") or "")
+    if guarded.get("route") == "clarify":
+        return {
+            "status": "needs_clarification",
+            "source": "guard_compatibility",
+            "executed": False,
+            "text": "لم يتضح الطلب؛ يلزم توضيح المقصود.",
+        }
 
-    if route == "clarify":
-        return {"status":"unclear","message":"؟ لم أفهم — حاول بطريقة أخرى"}
-
-    if route == get_active_provider():
-        try:
-            from lab_v4_dev.llm.gateway import ask
-            from lab_v4_dev.llm.context_builder import build_system_prompt
-            system = build_system_prompt(agent.db)
-            result = ask(raw, system=system, max_tokens=400)
-            if result["status"] == "success":
-                return {
-                    "status": "success",
-                    "source": get_active_provider(),
-                    "text"  : result["text"],
-                    "intent": intent,
-                }
-        except Exception:
-            pass
-        # Fallback محلي
-        return agent.orchestrator.handle(raw)
-
-    return agent.orchestrator.handle(raw)
+    manager = getattr(agent, "conv_manager", None)
+    process = getattr(manager, "process", None)
+    if not callable(process):
+        return {
+            "status": "denied",
+            "source": "guard_route_required",
+            "executed": False,
+            "text": "مسار Guard القديم لا يملك صلاحية استدعاء المزود أو Orchestrator مباشرة.",
+        }
+    return process(raw)
