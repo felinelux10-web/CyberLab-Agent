@@ -32,6 +32,7 @@ def build_handler_services(orchestrator, intent=None) -> HandlerServices:
         Intent.HISTORY, Intent.WORK_STATUS, Intent.REMAINING_TASKS,
         Intent.NEXT_TASK, Intent.SHOW_CHANGES, Intent.PROGRESS_REPORT,
         Intent.REMAINING_WORK, Intent.PROJECT_REPORT,
+        Intent.CONTEXT_REPORT, Intent.WORK_CONTEXT,
     }:
         fields.add("memory")
     if intent in {Intent.RESUME, Intent.SESSION_RESTORE, Intent.SESSION_SAVE}:
