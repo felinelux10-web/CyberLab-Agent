@@ -367,7 +367,7 @@ class Orchestrator:
             return _handled
 
         # ─── فحص المشروع — بيانات محلية أولاً ───
-        elif intent == Intent.PROJECT_SCAN:
+        if intent == Intent.PROJECT_SCAN:
             if any(
                 phrase in raw for phrase in [
                     "كم مشروع", "عدد المشاريع", "كم عدد المشاريع"
