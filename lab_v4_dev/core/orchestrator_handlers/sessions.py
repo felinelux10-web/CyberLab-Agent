@@ -1,6 +1,7 @@
 """Saved-session restore and checkpoint handlers."""
 
 from lab_v4_dev.intent.intents import Intent
+import re as _re_module
 
 def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route_decision=None, session_selector=None):
     from lab_v4_dev.memory.session_state import (
