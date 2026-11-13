@@ -256,7 +256,6 @@ def test_project_scan_returns_local_snapshot_and_audit_event(monkeypatch):
     import lab_v4_dev.awareness.dependency_engine as dependency_module
     import lab_v4_dev.awareness.project_index as index_module
     import lab_v4_dev.core.project_context as project_module
-    import lab_v4_dev.core.project_metadata as metadata_module
     import lab_v4_dev.core.audit as audit_module
 
     monkeypatch.setattr(dependency_module, "get_snapshot", lambda: {"total_files": 3})
@@ -926,7 +925,7 @@ def test_switch_project_preserves_index_build_history_and_audit(monkeypatch, tmp
     import lab_v4_dev.awareness.project_index as index_module
     import lab_v4_dev.awareness.project_knowledge as knowledge_module
     import lab_v4_dev.core.audit as audit_module
-    import lab_v4_dev.core.project_reader as reader_module
+    import lab_v4_dev.awareness.project_reader as reader_module
 
     root = tmp_path / "next-project"
     root.mkdir()
