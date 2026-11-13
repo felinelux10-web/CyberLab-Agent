@@ -39,7 +39,7 @@ def test_non_callable_handler_registration_is_rejected():
 
 
 def test_unregistered_intent_is_not_captured_by_a_default_handler():
-    assert dispatch(object(), Intent.READ_FILE) is None
+    assert dispatch(object(), Intent.UNKNOWN) is None
 
 
 def test_dispatch_calls_the_registered_owner():
