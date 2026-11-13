@@ -44,7 +44,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.RELEASE_INDEX,
         Intent.ANALYZE_RELEASE,
         Intent.COMPARE_VERSIONS,
-        Intent.PROJECT_TIMELINE,
+        Intent.PROJECT_TIMELINE, Intent.SWITCH_PROJECT, Intent.RETURN_BASE_PROJECT,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -916,3 +916,67 @@ def test_project_timeline_uses_version_specific_events(monkeypatch):
     assert "أحداث v4.6" in result["text"]
     assert "released" in result["text"]
     assert calls == ["init"]
+
+
+def test_switch_project_preserves_index_build_history_and_audit(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.project_context as project_module
+    import lab_v4_dev.core.project_metadata as metadata_module
+    import lab_v4_dev.awareness.project_index as index_module
+    import lab_v4_dev.awareness.project_knowledge as knowledge_module
+    import lab_v4_dev.core.audit as audit_module
+    import lab_v4_dev.core.project_reader as reader_module
+
+    root = tmp_path / "next-project"
+    root.mkdir()
+    (root / "main.py").write_text("print('ok')", encoding="utf-8")
+    index_dir = tmp_path / "index"
+    calls = {"set": [], "history": [], "audit": []}
+
+    monkeypatch.setattr(project_module, "get_active_project", lambda: SimpleNamespace(name="old", root="/projects/old"))
+    monkeypatch.setattr(project_module, "set_active_project", lambda path: (
+        calls["set"].append(path) or {
+            "status": "success",
+            "project": {"name": "next-project", "root": str(root)},
+        }
+    ))
+    monkeypatch.setattr(project_module, "project_index_dir", lambda path: str(index_dir))
+
+    class FakeReader:
+        def scan_files(self): calls.setdefault("scan", 0); calls["scan"] += 1
+        def build_graph(self): calls.setdefault("graph", 0); calls["graph"] += 1
+        def generate_outputs(self): calls.setdefault("outputs", 0); calls["outputs"] += 1
+
+    monkeypatch.setattr(reader_module, "ProjectReader", FakeReader)
+    monkeypatch.setattr(index_module, "save_index", lambda: calls.setdefault("save_index", 0))
+    monkeypatch.setattr(knowledge_module, "get_project_history", lambda: {
+        "last_project": "old", "last_root": "/projects/old", "history": [],
+    })
+    monkeypatch.setattr(knowledge_module, "save_project_history", lambda value: calls["history"].append(value))
+    monkeypatch.setattr(audit_module, "emit_event", lambda *args, **kwargs: calls["audit"].append((args, kwargs)))
+
+    result = Orchestrator._route(_fake_orchestrator(), Intent.SWITCH_PROJECT, "", None, str(root))
+    assert result["status"] == "success"
+    assert calls["set"] == [str(root)]
+    assert calls["scan"] == calls["graph"] == calls["outputs"] == 1
+    assert calls["history"][0]["last_project"] == "next-project"
+    assert calls["audit"][0][0][0] == "project.switched"
+
+
+def test_return_base_project_uses_base_root_and_propagates_failure(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.project_context as project_module
+
+    base_root = str(tmp_path / "base")
+    calls = []
+    monkeypatch.setattr(project_module, "BASE_PROJECT_ROOT", base_root)
+    monkeypatch.setattr(project_module, "get_active_project", lambda: SimpleNamespace(name="old", root="/old"))
+    monkeypatch.setattr(project_module, "set_active_project", lambda path: (
+        calls.append(path) or {"status": "failed", "message": "denied"}
+    ))
+    result = Orchestrator._route(_fake_orchestrator(), Intent.RETURN_BASE_PROJECT, "", None, "")
+    assert calls == [base_root]
+    assert result["status"] == "failed"
+    assert result["text"] == "denied"

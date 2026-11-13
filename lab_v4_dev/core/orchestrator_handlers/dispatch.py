@@ -60,6 +60,8 @@ HANDLER_REGISTRY = build_registry((
     (Intent.ANALYZE_RELEASE, releases.handle_analyze_release),
     (Intent.COMPARE_VERSIONS, releases.handle_compare_versions),
     (Intent.PROJECT_TIMELINE, releases.handle_project_timeline),
+    (Intent.SWITCH_PROJECT, releases.handle_switch_project),
+    (Intent.RETURN_BASE_PROJECT, releases.handle_switch_project),
     ("show_last_result", reports.handle_show_last_result),
 ))
 
