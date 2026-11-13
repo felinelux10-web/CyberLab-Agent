@@ -22,6 +22,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.SECURITY_LOG,
         Intent.READ_FILE,
         Intent.PROJECT_SCAN,
+        Intent.PROJECT_INDEX,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -252,3 +253,29 @@ def test_project_scan_returns_local_snapshot_and_audit_event(monkeypatch):
     assert "الإصدار: 1.2" in result["text"]
     assert len(events) == 1
     assert events[0][0][0] == "project.scan"
+
+
+def test_project_index_counts_unique_registered_projects(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.project_registry.project_loader as loader_module
+
+    monkeypatch.setattr(loader_module, "list_registered_projects", lambda: [
+        {"name": "one", "root": "/projects/one"},
+        {"name": "one-copy", "root": "/projects/one"},
+        {"name": "two", "root": "/projects/two"},
+    ])
+    result = Orchestrator._route(_fake_orchestrator(), Intent.PROJECT_INDEX, "", None, "عدد المشاريع")
+    assert result["status"] == "success"
+    assert result["text"] == "عدد المشاريع المسجلة: 2"
+
+
+def test_project_index_default_route_returns_layer_map(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.project_index as index_module
+
+    monkeypatch.setattr(index_module, "get_layer_map", lambda: {"core": ["a.py", "b.py"]})
+    result = Orchestrator._route(_fake_orchestrator(), Intent.PROJECT_INDEX, "", None, "خريطة المشروع")
+    assert result["status"] == "success"
+    assert "خريطة المشروع:" in result["text"]
+    assert "core" in result["text"]
+    assert "2 ملف" in result["text"]
