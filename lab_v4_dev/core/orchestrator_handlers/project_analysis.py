@@ -228,4 +228,160 @@ def handle_file_impact(orchestrator, intent, *, target=None, raw=None):
     
 
 
-__all__ = ["handle_dependency_map", "handle_entry_point_query", "handle_dependents_query", "handle_dependencies", "handle_impact_chain_query", "handle_criticality_query", "handle_impact_analysis", "handle_file_impact"]
+def handle_compare_files(orchestrator, intent, *, target=None, raw=None, authorized_ask=None):
+    if authorized_ask is None:
+        return {
+            "status": "unavailable", "intent": intent,
+            "source": "provider_policy",
+            "text": "بوابة المزود المصرح بها غير متاحة لهذا المسار.",
+        }
+    from lab_v4_dev.config.provider_config import get_active_provider
+    # Resolve comparison operands through the canonical project index.
+    # This follows the same project-file resolution contract used by
+    # READ_FILE and avoids stale/static inventory snapshots.
+    import re as _re3
+    from pathlib import Path as _Path
+    from lab_v4_dev.awareness.project_index import search_index
+
+    _files = _re3.findall(
+        r"[A-Za-z0-9_./~-]+\.[A-Za-z0-9_]+",
+        raw
+    )
+
+    if len(_files) < 2:
+        return {
+            "status": "needs_target",
+            "intent": intent,
+            "message": (
+                "حدد ملفين للمقارنة. مثال: "
+                "ما الفرق بين orchestrator.py و agent.py"
+            ),
+        }
+
+    _f1, _f2 = _files[0], _files[1]
+
+    def _resolve_compare_file(name):
+        candidate = _Path(name).expanduser()
+
+        # 1. Explicit absolute path.
+        if candidate.is_absolute() and candidate.is_file():
+            return candidate.resolve()
+
+        # 2. Direct path relative to CyberLab-Agent.
+        from lab_v4_dev.core.project_context import get_active_project_root
+        _project_root = _Path(get_active_project_root()).resolve()
+        direct = (_project_root / name).resolve()
+
+        try:
+            direct.relative_to(_project_root)
+            if direct.is_file():
+                return direct
+        except ValueError:
+            pass
+
+        # 3. Canonical project index lookup.
+        try:
+            matches = search_index(name)
+        except Exception:
+            matches = []
+
+        for match in matches:
+            candidate_path = match.get("path", "")
+            if candidate_path:
+                resolved = _Path(candidate_path).expanduser().resolve()
+                if resolved.is_file():
+                    return resolved
+
+        # 4. Dynamic fallback over the actual CyberLab-Agent tree.
+        # This handles basename requests such as cleaner.py/state.py
+        # when the active project index points elsewhere.
+        try:
+            matches = []
+
+            for path in _project_root.rglob(candidate.name):
+                if not path.is_file():
+                    continue
+
+                rel = path.resolve().relative_to(_project_root)
+                rel_s = str(rel).replace("\\", "/")
+
+                # Ignore generated/archive trees.
+                if any(
+                    part in rel.parts
+                    for part in ("__pycache__", ".git", "releases", "stable")
+                ):
+                    continue
+
+                wanted = str(candidate).replace("\\", "/").lstrip("./")
+
+                if (
+                    rel_s == wanted
+                    or rel_s.endswith("/" + wanted)
+                    or candidate.name == path.name
+                ):
+                    matches.append(path.resolve())
+
+            if matches:
+                return sorted(
+                    matches,
+                    key=lambda x: len(str(x.relative_to(_project_root)))
+                )[0]
+
+        except Exception:
+            pass
+
+        return None
+
+    _full1 = _resolve_compare_file(_f1)
+    _full2 = _resolve_compare_file(_f2)
+
+    if not _full1 or not _full2:
+        missing = _f1 if not _full1 else _f2
+        return {
+            "status": "failed",
+            "intent": intent,
+            "text": f"❌ لم أجد '{missing}' في ملفات المشروع",
+        }
+
+    try:
+        _c1 = _full1.read_text(encoding="utf-8")
+        _c2 = _full2.read_text(encoding="utf-8")
+    except Exception as _e:
+        return {
+            "status": "failed",
+            "intent": intent,
+            "message": str(_e),
+        }
+
+    prompt = (
+        "قارن بين هذين الملفين من مشروع Python:\n\n"
+        f"=== {_full1} ===\n{_c1[:6000]}\n\n"
+        f"=== {_full2} ===\n{_c2[:6000]}\n\n"
+        "أجب بالعربية: ما الفروقات الرئيسية "
+        "في الوظيفة والمسؤولية؟"
+    )
+
+    system = (
+        "أنت مساعد هندسي. قارن فقط بناءً على الكود المعطى. "
+        "لا تخترع معلومات."
+    )
+
+    result = authorized_ask(
+        prompt,
+        system=system,
+        max_tokens=400
+    )
+
+    return {
+        "status": result["status"],
+        "intent": intent,
+        "source": result.get(
+            "provider_used",
+            get_active_provider()
+        ),
+        "text": result.get("text", ""),
+    }
+
+
+
+__all__ = ["handle_dependency_map", "handle_entry_point_query", "handle_dependents_query", "handle_dependencies", "handle_impact_chain_query", "handle_criticality_query", "handle_impact_analysis", "handle_file_impact", "handle_compare_files"]

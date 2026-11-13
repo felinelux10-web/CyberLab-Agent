@@ -33,6 +33,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.CRITICALITY_QUERY,
         Intent.IMPACT_ANALYSIS,
         Intent.FILE_IMPACT,
+        Intent.COMPARE_FILES,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -517,3 +518,56 @@ def test_file_impact_general_question_keeps_full_impact_report(monkeypatch, tmp_
     assert "os" in result["text"]
     assert "consumer.py" in result["text"]
     assert "core.py" in orchestrator._impact_analyzed
+
+
+def _prepare_compare_files(monkeypatch, tmp_path):
+    import lab_v4_dev.core.project_context as project_module
+
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "a.py").write_text("def alpha(): return 1", encoding="utf-8")
+    (root / "b.py").write_text("def beta(): return 2", encoding="utf-8")
+    monkeypatch.setattr(project_module, "get_active_project_root", lambda: str(root))
+    return root
+
+
+def test_compare_files_uses_authorized_provider_callback(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    _prepare_compare_files(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        orchestrator_module, "ask",
+        lambda prompt, **kwargs: {
+            "status": "success", "text": "الفروق الرئيسية", "provider_used": "test-provider",
+        },
+    )
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=True)
+    result = Orchestrator._route(
+        _fake_orchestrator(), Intent.COMPARE_FILES, "", None,
+        "قارن بين a.py و b.py",
+        route_decision=decision,
+    )
+    assert result["status"] == "success"
+    assert result["source"] == "test-provider"
+    assert result["text"] == "الفروق الرئيسية"
+
+
+def test_compare_files_provider_denial_does_not_call_gateway(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    _prepare_compare_files(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        orchestrator_module, "ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
+    )
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
+    result = Orchestrator._route(
+        _fake_orchestrator(), Intent.COMPARE_FILES, "", None,
+        "قارن بين a.py و b.py",
+        route_decision=decision,
+    )
+    assert result["status"] == "unavailable"

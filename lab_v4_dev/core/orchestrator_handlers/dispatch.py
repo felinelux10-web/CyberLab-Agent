@@ -38,6 +38,7 @@ HANDLER_REGISTRY = build_registry((
     (Intent.CRITICALITY_QUERY, project_analysis.handle_criticality_query),
     (Intent.IMPACT_ANALYSIS, project_analysis.handle_impact_analysis),
     (Intent.FILE_IMPACT, project_analysis.handle_file_impact),
+    (Intent.COMPARE_FILES, project_analysis.handle_compare_files),
 ))
 
 
@@ -49,7 +50,7 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
     handler = HANDLER_REGISTRY.get(intent)
     if handler is None:
         return None
-    if intent == Intent.SEARCH_CODE:
+    if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES}:
         return handler(
             orchestrator, intent, target=target, raw=raw,
             authorized_ask=authorized_ask,
