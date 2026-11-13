@@ -136,6 +136,40 @@ class Orchestrator:
                     "text": "الطلب لا يطابق مسار استعادة الجلسة الذي أجازه قرار التوجيه.",
                 }
 
+            evidence_scope = str(getattr(route_decision, "evidence_scope", "none") or "none")
+            if authorized_route == "L-EXEC" and evidence_scope != "work_state":
+                return {
+                    "status": "denied", "intent": parsed_intent,
+                    "source": "route_decision_work_evidence_guard",
+                    "executed": False,
+                    "text": "مسار التنفيذ لا يملك نطاق الأدلة المطلوب لحالة العمل.",
+                }
+            if authorized_route == "L-FACT" and evidence_scope != "project_state":
+                return {
+                    "status": "denied", "intent": parsed_intent,
+                    "source": "route_decision_project_evidence_guard",
+                    "executed": False,
+                    "text": "مسار الحقائق المحلية لا يملك نطاق أدلة المشروع المطلوب.",
+                }
+            if authorized_route == "L-SESSION" and evidence_scope not in {
+                "none", "saved_session", "saved_sessions",
+            }:
+                return {
+                    "status": "denied", "intent": parsed_intent,
+                    "source": "route_decision_session_evidence_guard",
+                    "executed": False,
+                    "text": "مسار الجلسات لا يسمح بقراءة أدلة خارج نطاق الجلسات المحفوظة.",
+                }
+            if authorized_route in {"L-EXEC", "L-FACT", "P-TOOL"} and evidence_scope in {
+                "saved_session", "saved_sessions", "live_exchanges",
+            }:
+                return {
+                    "status": "denied", "intent": parsed_intent,
+                    "source": "route_decision_cross_scope_guard",
+                    "executed": False,
+                    "text": "لا يمكن توسيع نطاق الأدلة خارج المجال الذي أجازه قرار التوجيه.",
+                }
+
         if route_decision is not None and authorized_route == "L-SESSION":
             output_kind = str(getattr(route_decision, "output_kind", "none") or "none")
             evidence_scope = str(getattr(route_decision, "evidence_scope", "none") or "none")
