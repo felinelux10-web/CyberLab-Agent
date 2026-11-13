@@ -24,6 +24,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.PROJECT_SCAN,
         Intent.PROJECT_INDEX,
         Intent.SEARCH,
+        Intent.SEARCH_CODE,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -308,3 +309,62 @@ def test_search_handler_reports_missing_inventory_match(monkeypatch):
     result = Orchestrator._route(_fake_orchestrator(), Intent.SEARCH, "not-there", None, "ابحث عن not-there")
     assert result["status"] == "success"
     assert "غير موجود" in result["text"]
+
+
+def _prepare_search_code_project(monkeypatch, tmp_path):
+    import lab_v4_dev.core.project_context as project_module
+    import lab_v4_dev.awareness.project_index as index_module
+
+    root = tmp_path / "project"
+    (root / "src").mkdir(parents=True)
+    (root / "src" / "main.py").write_text("print('ok')", encoding="utf-8")
+    index_dir = root / ".index"
+    index_dir.mkdir()
+    (index_dir / "project_index.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(project_module, "get_active_project_root", lambda: str(root))
+    monkeypatch.setattr(project_module, "project_index_dir", lambda active_root: str(index_dir))
+    return root, index_module
+
+
+def test_search_code_explicit_path_uses_filesystem_and_local_index(monkeypatch, tmp_path):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    root, index_module = _prepare_search_code_project(monkeypatch, tmp_path)
+    monkeypatch.setattr(index_module, "search_index", lambda query: [])
+    monkeypatch.setattr(index_module, "save_index", lambda: None)
+
+    result = Orchestrator._route(
+        _fake_orchestrator(), Intent.SEARCH_CODE, "src/main.py", None,
+        "ابحث عن src/main.py",
+    )
+    assert result["status"] == "success"
+    assert result["source"] == "local_index+filesystem"
+    assert result["target"] == "src/main.py"
+    assert result["evidence"] == "filesystem_check_and_project_index"
+
+
+def test_search_code_provider_call_remains_behind_authorized_ask(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.project_index as index_module
+    import lab_v4_dev.llm.prompt_builder as prompt_module
+
+    _prepare_search_code_project(monkeypatch, tmp_path)
+    monkeypatch.setattr(index_module, "search_index", lambda query: [
+        {"path": "src/main.py", "role": "entry", "score": 1},
+    ])
+    monkeypatch.setattr(prompt_module, "build_search_prompt", lambda query, results: "prompt")
+    monkeypatch.setattr(
+        orchestrator_module, "ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
+    )
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
+
+    result = Orchestrator._route(
+        _fake_orchestrator(), Intent.SEARCH_CODE, "", None,
+        "ابحث عن ملفات التشغيل",
+        route_decision=decision,
+    )
+    assert result["status"] == "success"
+    assert "src/main.py" in result["text"]

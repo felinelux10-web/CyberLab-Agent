@@ -372,4 +372,79 @@ def handle_search(orchestrator, intent, *, target=None, raw=None):
 
 
 
-__all__ = ["handle_read_file", "handle_project_scan", "handle_project_index", "handle_search"]
+def handle_search_code(orchestrator, intent, *, target=None, raw=None, authorized_ask=None):
+    from lab_v4_dev.awareness.project_index import search_index, save_index
+    import re
+    from lab_v4_dev.core.project_context import get_active_project_root, project_index_dir
+    active_root = os.path.abspath(get_active_project_root())
+    if not os.path.exists(os.path.join(
+        project_index_dir(active_root), "project_index.json"
+    )):
+        save_index()
+    # An explicit path is authoritative; never replace it with the
+    # last natural-language token (e.g. "المشروع؟").
+    explicit_target = str(target or "").strip().strip(".,،؛:!?؟()[]{}\"'")
+    is_explicit_path = bool(
+        explicit_target
+        and ("/" in explicit_target or "\\" in explicit_target
+             or re.search(r"\.[A-Za-z0-9_-]+$", explicit_target))
+    )
+    if is_explicit_path:
+        candidate = os.path.abspath(
+            os.path.expanduser(explicit_target)
+            if os.path.isabs(os.path.expanduser(explicit_target))
+            else os.path.join(active_root, explicit_target)
+        )
+        try:
+            real_root = os.path.realpath(active_root)
+            real_candidate = os.path.realpath(candidate)
+            inside_root = os.path.commonpath([real_root, real_candidate]) == real_root
+        except ValueError:
+            inside_root = False
+        if not inside_root or not os.path.isfile(candidate):
+            return {
+                "status": "success", "intent": intent,
+                "text": f"❌ الملف '{explicit_target}' غير موجود في ملفات المشروع الحقيقية",
+                "target": explicit_target,
+                "evidence": "filesystem_check",
+            }
+        q = os.path.relpath(candidate, active_root).replace(os.sep, "/")
+        results = search_index(q)
+        if not results:
+            results = [{"path": q, "role": "", "score": 0}]
+        lines = [f"✅ الملف '{q}' موجود في المشروع الحقيقي:"]
+        for item in results[:3]:
+            role = f" — {item['role']}" if item.get("role") else ""
+            lines.append(f"  📄 {item['path']}{role}")
+        return {
+            "status": "success", "intent": intent,
+            "source": "local_index+filesystem", "target": q,
+            "evidence": "filesystem_check_and_project_index",
+            "text": "\n".join(lines),
+        }
+
+    # Keyword search remains available when no explicit path exists.
+    stop_words = ["أين","اين","وين","يوجد","في","اي","ملف","ابحث","عن","عن","ما","الملف","المسؤول"]
+    words = [w for w in raw.split() if w not in stop_words and len(w) > 2]
+    q = words[-1] if words else raw
+    results = search_index(q)
+    if not results:
+        return {"status":"success","intent":intent,
+                "text":f"لم أجد '{q}' في ملفات المشروع الحقيقية"}
+    from lab_v4_dev.llm.prompt_builder import build_search_prompt
+    prompt = build_search_prompt(q, results)
+    result = authorized_ask(prompt, system="أنت مساعد هندسي. أجب فقط بناءً على البيانات المعطاة.", max_tokens=200)
+    # إضافة الملفات الحقيقية دائماً
+    lines = [f"الملفات الحقيقية المرتبطة بـ '{q}':"]
+    for r in results[:3]:
+        role = f" — {r['role']}" if r['role'] else ""
+        lines.append(f"  📄 {r['path']}{role}")
+    if result.get("text"):
+        lines.append(f"\n{result['text']}")
+    return {"status":"success","intent":intent,"source":"local+" + get_active_provider(),
+            "text":"\n".join(lines)}
+
+# ─── Dependency Query ───
+
+
+__all__ = ["handle_read_file", "handle_project_scan", "handle_project_index", "handle_search", "handle_search_code"]

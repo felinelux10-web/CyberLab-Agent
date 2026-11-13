@@ -29,6 +29,7 @@ HANDLER_REGISTRY = build_registry((
     (Intent.PROJECT_SCAN, project_inspection.handle_project_scan),
     (Intent.PROJECT_INDEX, project_inspection.handle_project_index),
     (Intent.SEARCH, project_inspection.handle_search),
+    (Intent.SEARCH_CODE, project_inspection.handle_search_code),
 ))
 
 
@@ -36,11 +37,11 @@ def registered_intents():
     return frozenset(HANDLER_REGISTRY)
 
 
-def dispatch(orchestrator, intent, *, target=None, raw=None):
+def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None):
     handler = HANDLER_REGISTRY.get(intent)
     if handler is None:
         return None
-    return handler(orchestrator, intent, target=target, raw=raw)
+    if intent == Intent.SEARCH_CODE:\n        return handler(\n            orchestrator, intent, target=target, raw=raw,\n            authorized_ask=authorized_ask,\n        )\n    return handler(orchestrator, intent, target=target, raw=raw)
 
 
 __all__ = ["HANDLER_REGISTRY", "build_registry", "registered_intents", "dispatch"]
