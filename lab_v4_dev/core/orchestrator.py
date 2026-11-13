@@ -418,24 +418,6 @@ class Orchestrator:
                 "tokens": result.get("tokens", 0),
             }
 
-        # ─── Code Engine ───
-        elif intent == Intent.GENERATE_CODE:
-            from lab_v4_dev.core.code_engine import generate_code
-            # نمرر raw دائماً لأنه يحتوي الوصف الكامل
-            result = generate_code(raw)
-            if result["status"] != "success":
-                return {"status":"failed","intent":intent,
-                        "text":"فشل في كتابة الكود"}
-            self.context.current_file = result["saved_to"]
-            self.context.current_subject = f"كتابة سكريبت: {raw[:60]}"
-            return {
-                "status"     : "success",
-                "intent"     : intent,
-                "text"       : result["explanation"][:600],
-                "code"       : result["code"],
-                "saved_to"   : result["saved_to"],
-            }
-
         elif intent == Intent.MODIFY_CODE:
             from lab_v4_dev.core.symbol_resolver import resolve as sym_resolve
             from lab_v4_dev.core.surgical_editor import extract_symbol, patch_symbol

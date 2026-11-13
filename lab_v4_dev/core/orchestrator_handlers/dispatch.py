@@ -71,6 +71,7 @@ HANDLER_REGISTRY = build_registry((
     (Intent.DRY_RUN, execution.handle_dry_run),
     (Intent.RUN_HISTORY, execution.handle_run_history),
     (Intent.ANALYZE_CODE, code_authoring.handle_analyze_code),
+    (Intent.GENERATE_CODE, code_authoring.handle_generate_code),
     (Intent.SHOW_CHANGES, reports.handle_show_changes),
     (Intent.CLEAN, maintenance.handle_clean),
     (Intent.CLEANUP_CODE, planning.handle_cleanup_code),
@@ -104,7 +105,7 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
             conversation_history=conversation_history,
             context_transition=context_transition,
         )
-    if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES, Intent.PROGRESS_REPORT, Intent.REMAINING_WORK, Intent.PROJECT_REPORT, Intent.ANALYZE_RELEASE, Intent.COMPARE_VERSIONS, Intent.ANALYZE_CODE}:
+    if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES, Intent.PROGRESS_REPORT, Intent.REMAINING_WORK, Intent.PROJECT_REPORT, Intent.ANALYZE_RELEASE, Intent.COMPARE_VERSIONS, Intent.ANALYZE_CODE, Intent.GENERATE_CODE}:
         return handler(
             orchestrator, intent, target=target, raw=raw,
             authorized_ask=authorized_ask,

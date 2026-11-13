@@ -58,4 +58,19 @@ def handle_analyze_code(orchestrator, intent, *, target=None, raw=None, authoriz
     }
 
 
-__all__ = ["handle_analyze_code"]
+def handle_generate_code(orchestrator, intent, *, target=None, raw=None, authorized_ask=None):
+    from lab_v4_dev.core.code_engine import generate_code
+    result = generate_code(raw, authorized_ask=authorized_ask)
+    if result["status"] != "success":
+        return {"status": result["status"], "intent": intent, "text": result.get("text", "فشل في كتابة الكود")}
+    return {
+        "success": True,
+        "status": "success",
+        "intent": intent,
+        "text": result.get("explanation", ""),
+        "code": result.get("code", ""),
+        "saved_to": result.get("saved_to"),
+    }
+
+
+__all__ = ["handle_analyze_code", "handle_generate_code"]

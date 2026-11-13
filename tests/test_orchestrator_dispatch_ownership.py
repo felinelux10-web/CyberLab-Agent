@@ -49,7 +49,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.LIST_SCRIPTS,
         Intent.ERROR_REPORT,
         Intent.DRY_RUN,
-        Intent.RUN_HISTORY, Intent.ANALYZE_CODE,
+        Intent.RUN_HISTORY, Intent.ANALYZE_CODE, Intent.GENERATE_CODE,
         Intent.SHOW_CHANGES, Intent.CLEAN, Intent.CLEANUP_CODE,
         Intent.PLAN_CHANGE, Intent.REPAIR_REJECT, Intent.PENDING_FIXES,
     }
@@ -1253,3 +1253,42 @@ def test_read_external_project_missing_path_does_not_switch(monkeypatch, tmp_pat
     assert result["status"] == "success"
     assert missing in result["text"]
     assert calls == []
+
+
+def test_generate_code_template_works_without_provider_permission(monkeypatch):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.code_engine as engine_module
+
+    monkeypatch.setattr(engine_module, "save_file", lambda code, filename, folder: "/workspace/scripts/template.py")
+    monkeypatch.setattr(
+        orchestrator_module, "ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("template must not call provider")),
+    )
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
+    result = Orchestrator._route(
+        _fake_orchestrator(), Intent.GENERATE_CODE, "", None, "اكتب لعبة تخمين",
+        route_decision=decision,
+    )
+    assert result["status"] == "success"
+    assert result["saved_to"] == "/workspace/scripts/template.py"
+
+
+def test_generate_code_non_template_requires_authorized_provider(monkeypatch):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.code_engine as engine_module
+
+    monkeypatch.setattr(
+        orchestrator_module, "ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
+    )
+    monkeypatch.setattr(engine_module, "save_file", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not save without generated code")))
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
+    result = Orchestrator._route(
+        _fake_orchestrator(), Intent.GENERATE_CODE, "", None, "اكتب دالة لمعالجة JSON",
+        route_decision=decision,
+    )
+    assert result["status"] == "unavailable"

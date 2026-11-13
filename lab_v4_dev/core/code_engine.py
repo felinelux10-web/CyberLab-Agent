@@ -155,7 +155,7 @@ def _match_template(description: str) -> str:
 
     return None
 
-def generate_code(description):
+def generate_code(description, authorized_ask=None):
     # جرب template أولاً — أدق وأسرع
     t = _match_template(description)
     if t:
@@ -187,7 +187,9 @@ def check_port(host, port):
     return result == 0
 print(check_port('127.0.0.1', 80))
 ```"""
-    result = ask(prompt, system=SYSTEM, max_tokens=800)
+    if authorized_ask is None:
+        return {"status": "unavailable", "text": "بوابة المزود المصرح بها غير متاحة لهذا المسار."}
+    result = authorized_ask(prompt, system=SYSTEM, max_tokens=800)
     if result["status"] != "success":
         return {"status": "failed", "text": result.get("text","")}
     text = result.get("text","")
