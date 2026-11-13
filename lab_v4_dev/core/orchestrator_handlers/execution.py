@@ -64,3 +64,49 @@ def handle_run_history(orchestrator, intent, *, target=None, raw=None):
 
 
 __all__ = ["handle_list_scripts", "handle_error_report", "handle_dry_run", "handle_run_history"]
+
+
+def handle_run_script(orchestrator, intent, *, target=None, raw=None):
+    from lab_v4_dev.core.project_context import CYBERLAB_ROOT
+    from lab_v4_dev.core.sandbox_executor import run_code
+
+    workspace_dir = os.path.join(CYBERLAB_ROOT, "workspace")
+    scripts_dir = os.path.join(workspace_dir, "scripts")
+    scripts = sorted(
+        [name for name in os.listdir(scripts_dir) if name.endswith(".py")],
+        key=lambda name: os.path.getmtime(os.path.join(scripts_dir, name)),
+        reverse=True,
+    ) if os.path.exists(scripts_dir) else []
+    if not scripts:
+        return {"status": "failed", "intent": intent, "text": "لا توجد سكريبتات محفوظة"}
+
+    target_script = None
+    raw_text = str(raw or "")
+    for name in scripts:
+        if name in raw_text:
+            target_script = os.path.join(scripts_dir, name)
+            break
+    if not target_script:
+        last_result = getattr(orchestrator.context, "last_result", None) or {}
+        saved = last_result.get("saved_to", "")
+        if saved and os.path.exists(saved):
+            target_script = saved
+    if not target_script:
+        target_script = os.path.join(scripts_dir, scripts[0])
+
+    result = run_code(target_script, timeout=10)
+    if result.get("status") == "success":
+        meta = f"⏱ {result.get('duration', '?')}s | exit: {result.get('exit_code', 0)}"
+        return {
+            "status": "success", "intent": intent,
+            "text": f"✅ {target_script}\n{meta}\n\n{result.get('output', 'لا يوجد output')}",
+        }
+    meta = f"⏱ {result.get('duration', '?')}s | exit: {result.get('exit_code', '?')}"
+    return {
+        "status": "error" if result.get("status") == "error" else result.get("status", "failed"),
+        "intent": intent,
+        "text": f"❌ {target_script}\n{meta}\n{result.get('error', '')}\nتقرير: {result.get('report', '')}",
+    }
+
+
+__all__ = ["handle_list_scripts", "handle_error_report", "handle_dry_run", "handle_run_history", "handle_run_script"]
