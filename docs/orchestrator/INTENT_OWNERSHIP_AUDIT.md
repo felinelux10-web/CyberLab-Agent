@@ -10,13 +10,13 @@
 
 ## Inventory totals
 
-- Top-level conditional statements found in the current `_route`: **48** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 45 remaining intent/fallback conditions).
-- Eighteen intent branches have been removed from `_route`: seven system-inspection/log intents, five project-inspection intents (`READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`), and six project-analysis intents in `project_analysis.py`.
-- Distinct `Intent.*` symbols referenced in `_route`: **50**.
+- Top-level conditional statements found in the current `_route`: **45** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 42 remaining intent/fallback conditions).
+- Twenty-one branch conditions have been removed from `_route`, representing 20 unique registered intents: seven system-inspection/log intents, five project-inspection intents, and eight project-analysis intents in `project_analysis.py`.
+- Distinct `Intent.*` symbols referenced in `_route`: **48**.
 - Literal `show_last_result` condition: present.
 - Explicit `needs_llm(intent)` fallback: present.
 - Response cache gate remains before Dispatcher in the migrated code.
-- Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`, `AUDIT_LOG`, `SECURITY_LOG`, `READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`, plus `DEPENDENCY_MAP`, `ENTRY_POINT_QUERY`, `DEPENDENTS_QUERY`, `DEPENDENCIES`, `IMPACT_CHAIN_QUERY`, `CRITICALITY_QUERY`.
+- Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`, `AUDIT_LOG`, `SECURITY_LOG`, `READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`, plus `DEPENDENCY_MAP`, `ENTRY_POINT_QUERY`, `DEPENDENTS_QUERY`, `DEPENDENCIES`, `IMPACT_CHAIN_QUERY`, `CRITICALITY_QUERY`, `IMPACT_ANALYSIS`, `FILE_IMPACT`.
 
 ## Top-level branch inventory
 
@@ -152,7 +152,7 @@
 
 ## Mandatory special-path notes
 
-1. `FILE_IMPACT` still occurs in specialized and general branches in the legacy route. The specialized raw-text condition remains ahead of the general branch; do not register or move this intent until both branches are migrated together.
+1. `FILE_IMPACT` previously had specialized and general branches; both now live in one handler, with the specialized raw-text condition evaluated first.
 2. `show_last_result` is a literal string condition, not an `Intent.SHOW_LAST_RESULT` reference.
 3. `needs_llm(intent)` remains an independent fallback and must not become a catch-all registered handler.
 4. The response-cache gate must execute before explicit handler dispatch. In particular, `HEALTH` remains cache-eligible.
@@ -166,7 +166,7 @@
 | Read-only inspection pilot (5 intents) | Moved to `system_inspection.py` |
 | Audit/security log readers (2 intents) | Moved to `system_inspection.py` |
 | Project inspection (`READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`) | Moved to `project_inspection.py`; file lookup containment behavior preserved and tested; project scan remains local and audit-emitting; project registry/list, layer-map, local inventory-search, and explicit-path code-search behavior preserved; keyword code-search retains the central authorized-provider callback |
-| Project analysis queries (6 intents) | Moved to `project_analysis.py`; dependency engine/map/query services remain the implementation owners |
+| Project analysis and impact queries (8 intents) | Moved to `project_analysis.py`; dependency engine/map/query services remain the implementation owners; both `FILE_IMPACT` modes are preserved in one handler with specialized raw-text priority |
 | Remaining branch ownership | Legacy route; audit required before each migration |
 | Caller graph (TaskChain, Guard, direct callers) | Not certified complete |
 | Provider/evidence authorization matrix | Not certified complete |
