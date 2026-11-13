@@ -690,6 +690,10 @@ def test_needs_llm_fallback_remains_explicit_and_provider_gated(monkeypatch):
         orchestrator_module, "ask",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
     )
+    import lab_v4_dev.llm.prompt_builder as prompt_module
+    import lab_v4_dev.awareness.knowledge_retriever as retriever_module
+    monkeypatch.setattr(prompt_module, "build_project_context", lambda **kwargs: "test context")
+    monkeypatch.setattr(retriever_module, "resolve_project_scope", lambda *args, **kwargs: None)
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
     result = Orchestrator._route(
         _fake_orchestrator(), Intent.ARCHITECTURE, "", None,
