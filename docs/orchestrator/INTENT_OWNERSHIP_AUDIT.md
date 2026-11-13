@@ -10,13 +10,13 @@
 
 ## Inventory totals
 
-- Top-level conditional statements found in the current `_route`: **56** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 53 remaining intent/fallback conditions).
-- Ten intent branches have been removed from `_route`: seven system-inspection/log intents and `READ_FILE`, `PROJECT_SCAN`, plus `PROJECT_INDEX` in `project_inspection.py`.
-- Distinct `Intent.*` symbols referenced in `_route`: **58**.
+- Top-level conditional statements found in the current `_route`: **55** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 52 remaining intent/fallback conditions).
+- Eleven intent branches have been removed from `_route`: seven system-inspection/log intents and `READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, plus `SEARCH` in `project_inspection.py`.
+- Distinct `Intent.*` symbols referenced in `_route`: **57**.
 - Literal `show_last_result` condition: present.
 - Explicit `needs_llm(intent)` fallback: present.
 - Response cache gate remains before Dispatcher in the migrated code.
-- Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`, `AUDIT_LOG`, `SECURITY_LOG`, `READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`.
+- Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`, `AUDIT_LOG`, `SECURITY_LOG`, `READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`.
 
 ## Top-level branch inventory
 
@@ -165,7 +165,7 @@
 | Dispatcher foundation | Implemented |
 | Read-only inspection pilot (5 intents) | Moved to `system_inspection.py` |
 | Audit/security log readers (2 intents) | Moved to `system_inspection.py` |
-| Project inspection (`READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`) | Moved to `project_inspection.py`; file lookup containment behavior preserved and tested; project scan remains local and audit-emitting; project registry/list and layer-map behavior preserved |
+| Project inspection (`READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`) | Moved to `project_inspection.py`; file lookup containment behavior preserved and tested; project scan remains local and audit-emitting; project registry/list, layer-map, and local inventory-search behavior preserved |
 | Remaining branch ownership | Legacy route; audit required before each migration |
 | Caller graph (TaskChain, Guard, direct callers) | Not certified complete |
 | Provider/evidence authorization matrix | Not certified complete |
