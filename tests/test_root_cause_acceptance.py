@@ -161,6 +161,7 @@ def test_session_restore_returns_structured_semantic_summary(monkeypatch):
     result = Orchestrator(agent).handle(
         "استكمل الجلسة",
         parsed={"intent": Intent.SESSION_RESTORE, "target": "", "context": "general"},
+        route_decision=RouteDecision(route="L-SESSION", intent=Intent.SESSION_RESTORE),
     )
     text = result["text"]
     assert result["status"] == "success"
