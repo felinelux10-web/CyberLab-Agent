@@ -17,13 +17,19 @@ from lab_v4_dev.llm.router import needs_llm
 from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
 from lab_v4_dev.awareness.knowledge_retriever import resolve_project_scope
 from lab_v4_dev.config.provider_config import get_active_provider
-from lab_v4_dev.llm.gateway import ask
+from lab_v4_dev.llm import gateway as _gateway
 import os
 import re
 _re_module = re
 import shutil
 import uuid
 import inspect
+
+# Stable module-level compatibility seam. The actual gateway is resolved at
+# call time so integrations may instrument it without bypassing route grants.
+def ask(*args, **kwargs):
+    return _gateway.ask(*args, **kwargs)
+
 
 CYBERLAB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 WORKSPACE_DIR = os.path.join(CYBERLAB_ROOT, "workspace")

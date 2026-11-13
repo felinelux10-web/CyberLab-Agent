@@ -29,6 +29,10 @@ def test_gateway_imports_are_confined_to_audited_policy_boundaries():
                 for item in node.names:
                     if item.name == "ask":
                         aliases.add(item.asname or item.name)
+            elif isinstance(node, ast.ImportFrom) and node.module == "lab_v4_dev.llm":
+                for item in node.names:
+                    if item.name == "gateway":
+                        aliases.add(item.asname or item.name)
 
         if not aliases:
             continue
@@ -42,8 +46,15 @@ def test_gateway_imports_are_confined_to_audited_policy_boundaries():
         calls = [
             node for node in ast.walk(tree)
             if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id in aliases
+            and (
+                (isinstance(node.func, ast.Name) and node.func.id in aliases)
+                or (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "ask"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id in aliases
+                )
+            )
         ]
         if not calls:
             violations.append(f"{relative}: gateway import has no visible authorized call")

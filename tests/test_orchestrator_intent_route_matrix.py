@@ -13,10 +13,11 @@ def test_intent_route_matrix_covers_every_declared_intent_value():
         value for name, value in vars(Intent).items()
         if name.isupper() and isinstance(value, str)
     }
+    inventory_section = matrix.split("## Per-intent inventory", 1)[1].split("## Interpretation notes", 1)[0]
     rows = {
         line.split("`", 2)[1]
-        for line in matrix.splitlines()
-        if line.startswith("| `") and line.count("|") == 6
+        for line in inventory_section.splitlines()
+        if line.startswith("| `")
     }
 
     assert len(declared) == 166

@@ -588,6 +588,12 @@ def test_gateway_error_does_not_guess_that_connectivity_is_the_cause(monkeypatch
             "conversation_domain": "general",
             "conversation_act": "CONVERSATION_CONTINUATION",
             "response_attributes": {},
+            "route_decision": RouteDecision(
+                route="L-LIVE",
+                evidence_scope="live_exchanges",
+                provider_allowed=True,
+                intent=Intent.PERSONAL_CHAT,
+            ),
         },
         user_question="أكمل من حيث توقفنا في موضوع تعلم استخدام أدوات الذكاء الاصطناعي.",
         history=[],
