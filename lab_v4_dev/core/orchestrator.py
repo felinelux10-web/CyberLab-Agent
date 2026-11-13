@@ -909,36 +909,6 @@ class Orchestrator:
                 "health": result["health"],
             }
 
-        elif intent == Intent.SEARCH:
-            import re as _re2
-            import os as _os2
-            # استخرج اسم الملف أو الكلمة المفتاحية
-            stop = ["هل","يوجد","ملف","دالة","كلاس","في","هل يوجد","ابحث","عن","أين"]
-            words = [w for w in raw.split() if w not in stop and len(w) > 1]
-            q = words[-1] if words else target or raw
-            # ابحث في inventory.json أولاً
-            found_files = []
-            inv_path = "lab_v4_dev/project_knowledge/inventory.json"
-            try:
-                import json as _jj
-                inv = _jj.load(open(inv_path, encoding="utf-8"))
-                found_files = [
-                    f["path"] for f in inv.get("files", [])
-                    if q.lower() in f["path"].lower() or q.lower() in f["filename"].lower()
-                ]
-            except Exception:
-                pass
-            if found_files:
-                lines = [f"✅ وجدت '{q}' في المشروع:"]
-                for fp in found_files[:5]:
-                    lines.append(f"  📄 {fp}")
-                if len(found_files) > 5:
-                    lines.append(f"  ... و{len(found_files)-5} نتيجة أخرى")
-                return {"status":"success","intent":intent,"text":"\n".join(lines)}
-            else:
-                return {"status":"success","intent":intent,
-                        "text":f"❌ '{q}' غير موجود في ملفات المشروع"}
-
         elif intent == Intent.SEARCH_CODE:
             from lab_v4_dev.awareness.project_index import search_index, save_index
             import re

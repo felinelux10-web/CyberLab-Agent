@@ -23,6 +23,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.READ_FILE,
         Intent.PROJECT_SCAN,
         Intent.PROJECT_INDEX,
+        Intent.SEARCH,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -279,3 +280,31 @@ def test_project_index_default_route_returns_layer_map(monkeypatch):
     assert "خريطة المشروع:" in result["text"]
     assert "core" in result["text"]
     assert "2 ملف" in result["text"]
+
+
+def test_search_handler_reads_inventory_and_returns_matching_files(monkeypatch):
+    import builtins
+    import io
+    import json
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    inventory = {"files": [
+        {"path": "core/agent.py", "filename": "agent.py"},
+        {"path": "core/orchestrator.py", "filename": "orchestrator.py"},
+    ]}
+    monkeypatch.setattr(builtins, "open", lambda *args, **kwargs: io.StringIO(json.dumps(inventory)))
+    result = Orchestrator._route(_fake_orchestrator(), Intent.SEARCH, "agent", None, "ابحث عن agent")
+    assert result["status"] == "success"
+    assert "core/agent.py" in result["text"]
+
+
+def test_search_handler_reports_missing_inventory_match(monkeypatch):
+    import builtins
+    import io
+    import json
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    monkeypatch.setattr(builtins, "open", lambda *args, **kwargs: io.StringIO(json.dumps({"files": []})))
+    result = Orchestrator._route(_fake_orchestrator(), Intent.SEARCH, "not-there", None, "ابحث عن not-there")
+    assert result["status"] == "success"
+    assert "غير موجود" in result["text"]
