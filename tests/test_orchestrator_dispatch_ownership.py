@@ -80,7 +80,7 @@ def test_route_delegates_status_without_changing_result_contract():
     result = Orchestrator._route(orchestrator, Intent.STATUS, None, None, "")
     assert result == {
         "status": "success", "intent": Intent.STATUS,
-        "text": "الوضع     : test\\nالمهام    : 7\\nالأخطاء   : 1\\nالإخفاقات : 2",
+        "text": chr(10).join(["الوضع     : test", "المهام    : 7", "الأخطاء   : 1", "الإخفاقات : 2"]),
         "mode": "test", "failures": 2, "tasks": 7, "errors": 1,
     }
 
