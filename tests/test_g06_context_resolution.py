@@ -263,7 +263,7 @@ def test_context_resolved_path_keeps_explicit_repeat_execution_context(monkeypat
         "كرر",
         parsed={"intent": Intent.READ_FILE, "target": "", "context": "general"},
         context_resolved=True,
-        route_decision=RouteDecision(route="L-EXEC", intent=Intent.READ_FILE),
+        route_decision=RouteDecision(route="L-EXEC", evidence_scope="work_state", intent=Intent.READ_FILE),
     )
 
     assert routed == [(Intent.READ_FILE, "saved-result.py", "general", "كرر")]

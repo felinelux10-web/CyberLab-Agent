@@ -84,3 +84,32 @@ def test_task_chain_propagates_child_failure_and_stops():
     assert result["executed"] is False
     assert result["failed_step"] == 1
     assert len(calls) == 1
+
+
+def test_orchestrator_rejects_execution_with_wrong_evidence_scope():
+    orchestrator = object.__new__(Orchestrator)
+    decision = RouteDecision(
+        route="L-EXEC", evidence_scope="saved_session", intent=Intent.STATUS
+    )
+
+    result = orchestrator.handle(
+        "status", parsed={"intent": Intent.STATUS}, route_decision=decision
+    )
+
+    assert result["status"] == "denied"
+    assert result["source"] == "route_decision_work_evidence_guard"
+
+
+def test_orchestrator_rejects_saved_session_scope_on_project_route():
+    orchestrator = object.__new__(Orchestrator)
+    decision = RouteDecision(
+        route="L-FACT", evidence_scope="saved_sessions", intent=Intent.AGENT_CAPABILITIES
+    )
+
+    result = orchestrator.handle(
+        "capabilities", parsed={"intent": Intent.AGENT_CAPABILITIES},
+        route_decision=decision,
+    )
+
+    assert result["status"] == "denied"
+    assert result["source"] == "route_decision_project_evidence_guard"

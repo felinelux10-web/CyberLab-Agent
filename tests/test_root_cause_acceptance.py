@@ -37,7 +37,7 @@ def test_resume_requires_actionable_checkpoint(tmp_path, monkeypatch):
     result = Orchestrator(agent).handle(
         "استكمال العمل",
         parsed={"intent": Intent.RESUME, "target": "", "raw": "استكمال العمل"},
-        route_decision=RouteDecision(route="L-EXEC", intent=Intent.RESUME),
+        route_decision=RouteDecision(route="L-EXEC", evidence_scope="work_state", intent=Intent.RESUME),
     )
     assert result["status"] == "success"
     assert result["next_step"] == "استكمال تعديل اللعبة"
@@ -62,7 +62,7 @@ def test_resume_rejects_dialogue_only_checkpoint(monkeypatch):
     result = Orchestrator(agent).handle(
         "استكمال العمل",
         parsed={"intent": Intent.RESUME, "target": "", "raw": "استكمال العمل"},
-        route_decision=RouteDecision(route="L-EXEC", intent=Intent.RESUME),
+        route_decision=RouteDecision(route="L-EXEC", evidence_scope="work_state", intent=Intent.RESUME),
     )
     assert result["status"] == "needs_clarification"
     assert "قابلة للاستئناف" in result["text"]
