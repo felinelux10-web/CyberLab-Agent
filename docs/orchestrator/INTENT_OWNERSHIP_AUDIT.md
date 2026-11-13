@@ -172,3 +172,42 @@
 ## Policy
 
 No unregistered intent is captured by a default handler. The dispatcher returns `None` for unregistered intents so the existing route continues to own them during the Strangler migration.
+
+
+## Caller and authorization trace (scoped source inspection)
+
+The following call sites were verified in the current branch source. This is a scoped trace of the core, conversation, intent, LLM, loop, and root entry-point modules inspected for the migration; it is not a certification that every Python file in the repository has been exhaustively scanned.
+
+| File / location | Observed behavior | Migration consequence |
+|---|---|---|
+| `lab_v4_dev/core/agent.py:94` | Constructs `Orchestrator(self, context=self.context)` | Preserve the public constructor and import path |
+| `lab_v4_dev/conversation/conversation_manager.py:383` | Creates the authoritative `RouteDecision` | ConversationManager remains the decision owner |
+| `lab_v4_dev/conversation/conversation_manager.py` SYSTEM dispatch | Conditionally forwards `route_decision` to `Orchestrator.handle` | Compatibility path is conditional on the handle signature |
+| `lab_v4_dev/conversation/conversation_manager.py:4374` | Generic executable-intent dispatch calls `orchestrator.handle` without forwarding `route_decision` | Confirmed authorization gap; must be handled in caller migration, not hidden by handler movement |
+| `lab_v4_dev/core/orchestrator.py:150` | Calls `execute_chain(steps, self)` | Task-chain coordinator remains coupled to the facade |
+| `lab_v4_dev/core/task_chain.py:82` | Executes each step using `orchestrator.handle(step)` | Child steps re-enter the raw-text facade without an inherited decision |
+| `lab_v4_dev/core/guard.py:52` | Calls provider `ask(raw, ...)` directly | Provider-policy bypass candidate |
+| `lab_v4_dev/core/guard.py:63,65` | Calls `agent.orchestrator.handle(raw)` without a RouteDecision | Legacy compatibility path requires explicit migration/retirement decision |
+| `lab_v4_dev/core/orchestrator.py:59,67` | Builds `PreparedExecutionRequest` and calls `loop.submit_prepared` inside `_submit_prepared_execution` | Prepared handoff exists |
+| `lab_v4_dev/loop/event_loop.py:43` | Defines `submit_prepared` | No other call site was found in the scoped source scan |
+| `lab_v4_dev/core/orchestrator.py` | `_submit_prepared_execution` has no internal caller in the inspected file | Do not infer that the helper is unused repository-wide |
+
+### Provider-call findings in inspected modules
+
+Direct `ask()` calls were found outside the Orchestrator's local `authorized_ask` closure:
+
+- `core/guard.py` — direct raw-request provider call.
+- `core/code_engine.py` — three direct provider calls in code-generation/analysis/modification services.
+- `core/repair/error_analyzer.py` and `core/repair/fix_generator.py` — direct provider calls in repair services.
+- `intent/llm_intent_resolver.py` — direct provider call in intent resolution.
+- `llm/smart_router.py` — direct provider call.
+- `monitor/self_diagnostics.py` — `check_groq()` directly calls `ask()`; `FULL_DIAGNOSE` therefore cannot be classified as a pure read-only handler without a provider-policy decision.
+
+These are not automatically safe merely because they are called by a service. Before migrating the associated intents, each call must either receive an authorized provider capability or remain behind a separately audited compatibility boundary.
+
+### Confirmed holdbacks
+
+- `SELF_DIAGNOSE` and `FULL_DIAGNOSE` remain in the legacy route because `run_diagnostics(quick=False)` can call `check_groq()`, and the diagnostics service also writes diagnostic history.
+- `CYBER_EXPLAIN`, `GENERATE_CODE`, `ANALYZE_CODE`, `MODIFY_CODE`, `REPAIR_ANALYZE`, and repair application paths require provider/effect audits before migration.
+- TaskChain and Guard remain unchanged in this stage. Their known authorization gaps are recorded for the caller-migration stage.
+- The scoped scan did not fetch every Python module in `lab_v4_dev` or every test file; the remaining repository-wide caller audit is still an explicit gate.
