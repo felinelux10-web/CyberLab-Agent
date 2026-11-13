@@ -4444,7 +4444,7 @@ class ConversationManager:
             selected_session={},
             saved_session_request=False,
             selected_saved_session_id=None,
-            transition=ContextTransition.NEW_TOPIC,
+            transition=ContextTransition.NEW_INDEPENDENT,
             provider_allowed_ceiling=bool(parent_route_decision.provider_allowed),
         )
         if child_decision.route != "L-EXEC":
