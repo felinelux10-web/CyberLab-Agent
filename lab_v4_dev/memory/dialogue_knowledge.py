@@ -77,6 +77,40 @@ def _is_retrieval_control_exchange(exchange: dict) -> bool:
     ))
 
 
+
+def _nested_dialogue_archive_has_provenance(dialogue: dict, nested_session_id: str) -> bool:
+    """Validate a nested DialogueMemory archive when checkpoint IDs differ.
+
+    Saved-checkpoint IDs and live DialogueMemory IDs are separate identity
+    domains. A differing nested ID is accepted only when archived exchanges
+    consistently carry that nested ID and DialogueMemory provenance fields.
+    Sparse or mixed-identity nested payloads fail closed.
+    """
+    archives = (
+        dialogue.get("transcript_archive"),
+        dialogue.get("exchange_archive"),
+    )
+    records = [
+        item
+        for archive in archives
+        if isinstance(archive, list)
+        for item in archive
+        if isinstance(item, dict)
+        and (
+            str(item.get("user") or "").strip()
+            or str(item.get("assistant") or "").strip()
+        )
+    ]
+    if not records:
+        return False
+    return all(
+        str(item.get("session_id") or "").strip() == nested_session_id
+        and bool(str(item.get("context_kind") or "").strip())
+        and bool(str(item.get("conversation_domain") or "").strip())
+        for item in records
+    )
+
+
 def _exchange_archive(data: dict) -> tuple[str, list[dict]]:
     dialogue = data.get("dialogue_state")
     if not isinstance(dialogue, dict):
@@ -85,15 +119,14 @@ def _exchange_archive(data: dict) -> tuple[str, list[dict]]:
     dialogue_session_id = str(dialogue.get("session_id") or "").strip()
     # The outer saved-record ID selects the checkpoint file. The nested
     # DialogueMemory ID owns exchange provenance and may legitimately differ.
-    # Validate every exchange against that nested identity below; never rewrite
-    # its ID to the outer checkpoint ID.
-    # The outer checkpoint identity and nested dialogue identity must agree.
-    # A mismatch means the embedded transcript cannot be attributed to this
-    # saved session, so fail closed rather than accepting a self-consistent but
-    # foreign nested archive.
+    # When they differ, require consistent DialogueMemory provenance before
+    # using the nested identity for exchange-level retrieval.
     if record_session_id and dialogue_session_id and record_session_id != dialogue_session_id:
-        return record_session_id, []
-    session_id = record_session_id or dialogue_session_id
+        if not _nested_dialogue_archive_has_provenance(dialogue, dialogue_session_id):
+            return record_session_id, []
+        session_id = dialogue_session_id
+    else:
+        session_id = record_session_id or dialogue_session_id
     if not session_id:
         return "", []
 
@@ -278,8 +311,11 @@ def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
     record_session_id = str(data.get("session_id") or "").strip()
     dialogue_session_id = str(dialogue.get("session_id") or "").strip()
     if record_session_id and dialogue_session_id and record_session_id != dialogue_session_id:
-        return "", []
-    session_id = record_session_id or dialogue_session_id
+        if not _nested_dialogue_archive_has_provenance(dialogue, dialogue_session_id):
+            return "", []
+        session_id = dialogue_session_id
+    else:
+        session_id = record_session_id or dialogue_session_id
     if not session_id:
         return "", []
 

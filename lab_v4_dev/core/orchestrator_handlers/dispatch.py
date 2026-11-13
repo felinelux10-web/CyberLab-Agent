@@ -116,6 +116,7 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
         return handler(
             handler_orchestrator, intent, target=target, raw=raw,
             route_decision=route_decision, session_selector=session_selector,
+            authorized_ask=authorized_ask,
         )
     if intent == Intent.SESSION_SAVE:
         return handler(handler_orchestrator, intent, target=target, raw=raw)

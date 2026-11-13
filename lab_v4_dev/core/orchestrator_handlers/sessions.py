@@ -3,7 +3,7 @@
 from lab_v4_dev.intent.intents import Intent
 import re as _re_module
 
-def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route_decision=None, session_selector=None):
+def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route_decision=None, session_selector=None, authorized_ask=None):
     from lab_v4_dev.memory.session_state import (
         load_session, recoverable_work_checkpoint,
         build_session_restore_summary, build_session_brief_summary,
@@ -442,6 +442,7 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
             route_decision is not None
             and getattr(route_decision, "route", None) == "L-SESSION"
             and getattr(route_decision, "provider_allowed", False)
+            and callable(authorized_ask)
         )
         if provider_allowed:
             synthesis_attempted = True
@@ -462,8 +463,7 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                 "\n\n".join(source_lines),
             ])
             try:
-                from lab_v4_dev.llm.gateway import ask as _gateway_ask
-                synthesis = _gateway_ask(
+                synthesis = authorized_ask(
                     prompt,
                     system=(
                         "أنت محلل أدلة حوارية. أجب مباشرة وبالعربية. "
@@ -736,6 +736,7 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                 route_decision is not None
                 and getattr(route_decision, "route", None) == "L-SESSION"
                 and getattr(route_decision, "provider_allowed", False)
+                and callable(authorized_ask)
             )
             provider_synthesis_allowed = allow_provider_synthesis
             provider_synthesis_attempted = bool(source_text and allow_provider_synthesis)
@@ -752,7 +753,6 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                     or "غير محدد في السجل"
                 ).strip()
                 try:
-                    from lab_v4_dev.llm.gateway import ask as _gateway_ask
                     prompt = "\n".join([
                         (
                             "حلّل السجل المحدد أدناه فقط واكتب تقريرًا منظمًا "
@@ -777,7 +777,7 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                         "السجل المحفوظ للجلسة المختارة:",
                         source_text,
                     ])
-                    synthesis = _gateway_ask(
+                    synthesis = authorized_ask(
                         prompt,
                         system=(
                             "أنت محلل حوارات ومحرر تقارير. التزم بالعربية الفصحى. "
