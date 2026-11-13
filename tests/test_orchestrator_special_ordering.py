@@ -1,6 +1,6 @@
 from types import SimpleNamespace
+import importlib
 
-import lab_v4_dev.core.orchestrator_handlers.dispatch as dispatch_module
 from lab_v4_dev.core.orchestrator import Orchestrator
 from lab_v4_dev.core.orchestrator_handlers import project_analysis
 from lab_v4_dev.intent.intents import Intent
@@ -8,6 +8,7 @@ from lab_v4_dev.intent.intents import Intent
 
 def test_response_cache_precedes_registered_handler_dispatch(monkeypatch):
     from lab_v4_dev.intent import response_cache
+    dispatch_module = importlib.import_module("lab_v4_dev.core.orchestrator_handlers.dispatch")
 
     monkeypatch.setattr(response_cache, "get", lambda intent, target: "cached answer")
     monkeypatch.setattr(
