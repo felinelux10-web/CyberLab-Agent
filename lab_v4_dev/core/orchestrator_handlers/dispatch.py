@@ -41,7 +41,12 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
     handler = HANDLER_REGISTRY.get(intent)
     if handler is None:
         return None
-    if intent == Intent.SEARCH_CODE:\n        return handler(\n            orchestrator, intent, target=target, raw=raw,\n            authorized_ask=authorized_ask,\n        )\n    return handler(orchestrator, intent, target=target, raw=raw)
+    if intent == Intent.SEARCH_CODE:
+        return handler(
+            orchestrator, intent, target=target, raw=raw,
+            authorized_ask=authorized_ask,
+        )
+    return handler(orchestrator, intent, target=target, raw=raw)
 
 
 __all__ = ["HANDLER_REGISTRY", "build_registry", "registered_intents", "dispatch"]

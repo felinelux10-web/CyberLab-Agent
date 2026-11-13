@@ -362,7 +362,9 @@ class Orchestrator:
 
         # Registered handlers run only after the legacy response-cache gate.
         from lab_v4_dev.core.orchestrator_handlers.dispatch import dispatch as _dispatch_handler
-        _handled = _dispatch_handler(\n            self, intent, target=target, raw=raw, authorized_ask=authorized_ask\n        )
+        _handled = _dispatch_handler(
+            self, intent, target=target, raw=raw, authorized_ask=authorized_ask
+        )
         if _handled is not None:
             return _handled
 
