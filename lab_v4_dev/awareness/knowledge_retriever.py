@@ -487,6 +487,18 @@ class KnowledgeRetriever:
         except (OSError, SyntaxError):
             implemented_intents = []
 
+        registered_intents = set()
+        try:
+            from lab_v4_dev.core.orchestrator_handlers.dispatch import registered_intents as get_registered_intents
+            registered_intents = {
+                getattr(value, "name", str(value))
+                for value in get_registered_intents()
+                if not isinstance(value, str)
+            }
+        except Exception:
+            registered_intents = set()
+        implemented_intents = sorted(set(implemented_intents) | registered_intents)
+
         operation_names = (
             "READ_FILE", "PROJECT_SCAN", "READ_EXTERNAL_PROJECT",
             "SWITCH_PROJECT", "RETURN_BASE_PROJECT", "MODIFY_CODE",
@@ -495,7 +507,7 @@ class KnowledgeRetriever:
         supported_operations = [
             {
                 "intent": name,
-                "handler_source": "lab_v4_dev/core/orchestrator.py",
+                "handler_source": ("lab_v4_dev/core/orchestrator_handlers/dispatch.py" if name in registered_intents else "lab_v4_dev/core/orchestrator.py"),
                 "evidence_type": "source_handler_reference",
                 "confidence": ConfidenceLevel.STATIC_VERIFIED,
             }
@@ -538,9 +550,9 @@ class KnowledgeRetriever:
             "observed_operations": observed_operations[:20],
             "observed_operation_count": len(observed_operations),
             "provenance": {
-                "source": "Orchestrator AST and shared persistent audit journal",
+                "source": "Orchestrator AST, Dispatcher registry, and shared persistent audit journal",
                 "confidence": ConfidenceLevel.STATIC_VERIFIED,
-                "evidence": "Intent references in dispatch source; observed operations are separately marked runtime_verified.",
+                "evidence": "Legacy Intent references and registered Dispatcher handlers; observed operations are separately marked runtime_verified.",
             },
             "recommendation": (
                 "ميّز بين العملية المدعومة في الشفرة والعملية التي يثبت سجل التشغيل "
