@@ -129,10 +129,10 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
         )
     if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES, Intent.PROGRESS_REPORT, Intent.REMAINING_WORK, Intent.PROJECT_REPORT, Intent.ANALYZE_RELEASE, Intent.COMPARE_VERSIONS, Intent.ANALYZE_CODE, Intent.GENERATE_CODE, Intent.MODIFY_CODE, Intent.REPAIR_ANALYZE, Intent.SELF_DIAGNOSE, Intent.FULL_DIAGNOSE}:
         return handler(
-            orchestrator, intent, target=target, raw=raw,
+            handler_orchestrator, intent, target=target, raw=raw,
             authorized_ask=authorized_ask,
         )
-    return handler(orchestrator, intent, target=target, raw=raw)
+    return handler(handler_orchestrator, intent, target=target, raw=raw)
 
 
 __all__ = ["HANDLER_REGISTRY", "build_registry", "registered_intents", "dispatch"]
