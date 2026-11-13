@@ -3,7 +3,7 @@
 from types import MappingProxyType
 
 from lab_v4_dev.intent.intents import Intent
-from . import system_inspection, project_inspection, project_analysis, reports
+from . import system_inspection, project_inspection, project_analysis, reports, knowledge
 
 
 def build_registry(entries):
@@ -50,6 +50,9 @@ HANDLER_REGISTRY = build_registry((
     (Intent.REMAINING_TASKS, reports.handle_work_tracking),
     (Intent.NEXT_TASK, reports.handle_work_tracking),
     (Intent.WORK_CONTEXT, reports.handle_work_context),
+    (Intent.CAPABILITIES, knowledge.handle_capabilities),
+    (Intent.SAVE_KB, knowledge.handle_save_kb),
+    (Intent.SKIP_KB, knowledge.handle_skip_kb),
     ("show_last_result", reports.handle_show_last_result),
 ))
 

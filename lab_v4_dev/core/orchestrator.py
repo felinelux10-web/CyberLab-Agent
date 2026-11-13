@@ -604,26 +604,6 @@ class Orchestrator:
                 return {"status":"failed","intent":intent,
                         "text":"خطأ في PIE: " + str(_e_pie)}
 
-        # ─── Capabilities ───
-        elif intent == Intent.CAPABILITIES:
-            from lab_v4_dev.core.project_context import get_active_project as _gap
-            _proj = _gap()
-            _mem  = load_memory()
-            _total = _mem.get("total_files", 0)
-            _lines = [
-                "=== CyberLab Agent ===",
-                "",
-                "فهم المشاريع: Python وTypeScript • الاعتماديات • نقاط الدخول • الملفات الحرجة",
-                "تحليل الأخطاء: كشف • تحليل • إصلاح • تعلم تلقائي",
-                "كتابة الكود: سكريبتات Python • تشغيل وتحليل",
-                "الأمن السيبراني: شرح مفاهيم • حفظ محلي",
-                "الذاكرة: حفظ الجلسات • سياق العمل",
-                "",
-                f"المشروع الحالي: {_proj.name} ({_total} ملف)",
-            ]
-            return {"status":"success","intent":intent,"source":"local",
-                    "text":"\n".join(_lines)}
-
         # ─── Self Diagnostics ───
         elif intent in [Intent.SELF_DIAGNOSE, Intent.FULL_DIAGNOSE]:
             from lab_v4_dev.monitor.self_diagnostics import (
@@ -2318,26 +2298,6 @@ SOURCE CODE:
             emit_event("project.switched", source="orchestrator", context={"project_root": p["root"]}, details={"previous_root": previous_project.root, "new_root": p["root"], "project_name": p["name"], "index_result": indexed.strip()})
             return {"status":"success","intent":intent,
                     "text": f"✅ تم التبديل إلى: {p['name']}\nالمسار: {p['root']}{indexed}"}
-
-        # ─── Save/Skip Knowledge Base ───
-        elif intent == Intent.SAVE_KB:
-            from lab_v4_dev.awareness.knowledge_base import store
-            pending = getattr(self.context, "pending_save", None)
-            last = self.context.last_result or {}
-            topic = pending or last.get("pending_save")
-            answer = last.get("text", "")
-            if topic and answer:
-                store(topic, answer, confirmed=True, confidence="EXPLICIT")
-                self.context.pending_save = None
-                return {"status":"success","intent":intent,
-                        "text":"✅ تم الحفظ في الذاكرة المحلية"}
-            return {"status":"success","intent":intent,
-                    "text":"⚠️ لا يوجد شرح معلق للحفظ"}
-
-        elif intent == Intent.SKIP_KB:
-            self.context.pending_save = None
-            return {"status":"success","intent":intent,
-                    "text":"⏭️ تم التجاوز — لن يُحفظ هذا الشرح"}
 
         # ─── Delete File ───
         elif intent == Intent.DELETE_FILE:

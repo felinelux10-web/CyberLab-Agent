@@ -38,6 +38,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.REMAINING_WORK, Intent.PROJECT_REPORT, Intent.CONTEXT_REPORT,
         Intent.HISTORY, Intent.WORK_STATUS, Intent.REMAINING_TASKS,
         Intent.NEXT_TASK, Intent.WORK_CONTEXT, "show_last_result",
+        Intent.CAPABILITIES, Intent.SAVE_KB, Intent.SKIP_KB,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -702,3 +703,47 @@ def test_needs_llm_fallback_remains_explicit_and_provider_gated(monkeypatch):
     )
     assert result["status"] == "unavailable"
     assert result["intent"] == Intent.ARCHITECTURE
+
+
+def test_capabilities_handler_reports_active_project_and_memory(monkeypatch):
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.project_context as project_module
+    import lab_v4_dev.awareness.project_memory as memory_module
+
+    monkeypatch.setattr(project_module, "get_active_project", lambda: SimpleNamespace(name="demo"))
+    monkeypatch.setattr(memory_module, "load_memory", lambda: {"total_files": 17})
+    result = Orchestrator._route(_fake_orchestrator(), Intent.CAPABILITIES, "", None, "")
+    assert result["status"] == "success"
+    assert result["source"] == "local"
+    assert "demo (17 ملف)" in result["text"]
+
+
+def test_save_kb_persists_only_confirmed_pending_explanation(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.knowledge_base as knowledge_module
+
+    calls = []
+    monkeypatch.setattr(knowledge_module, "store", lambda *args, **kwargs: calls.append((args, kwargs)))
+    orchestrator = _fake_orchestrator()
+    orchestrator.context.pending_save = "topic"
+    orchestrator.context.last_result = {"text": "verified explanation"}
+    result = Orchestrator._route(orchestrator, Intent.SAVE_KB, "", None, "")
+    assert result["status"] == "success"
+    assert calls == [(("topic", "verified explanation"), {"confirmed": True, "confidence": "EXPLICIT"})]
+    assert orchestrator.context.pending_save is None
+
+
+def test_skip_kb_clears_pending_confirmation_without_writing(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.knowledge_base as knowledge_module
+
+    monkeypatch.setattr(
+        knowledge_module, "store",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("skip must not write")),
+    )
+    orchestrator = _fake_orchestrator()
+    orchestrator.context.pending_save = "topic"
+    result = Orchestrator._route(orchestrator, Intent.SKIP_KB, "", None, "")
+    assert result["status"] == "success"
+    assert orchestrator.context.pending_save is None
