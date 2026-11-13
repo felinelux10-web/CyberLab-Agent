@@ -11,7 +11,7 @@
 ## Inventory totals
 
 - Top-level conditional statements found in the current `_route`: **19** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 16 remaining intent/fallback conditions).
-- Forty-six branch conditions have been removed from `_route`. The Dispatcher now registers 52 unique Intent values plus the literal `show_last_result` key. Of the original 68 Intent symbols, 50 are no longer referenced in `_route`; `RESUME` and `SESSION_RESTORE` remain referenced only by the saved-session route guards. seven system-inspection/log intents, five project-inspection intents, and nine project-analysis intents in `project_analysis.py`.
+- Forty-six branch conditions have been removed from `_route`. The Dispatcher now registers 52 unique Intent values plus the literal `show_last_result` key. Of the original 68 Intent symbols, 50 are no longer referenced in `_route`; `RESUME` and `SESSION_RESTORE` remain referenced only by the saved-session route guards.
 - Distinct `Intent.*` symbols referenced in `_route`: **18**.
 - Literal `show_last_result` key: registered in Dispatcher; its legacy `_route` condition has been removed.
 - Explicit `needs_llm(intent)` fallback: present.
