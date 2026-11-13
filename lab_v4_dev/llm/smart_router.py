@@ -39,17 +39,16 @@ def ask_with_fallback(
     system: str = None,
     max_tokens: int = 300,
     *,
-    provider_allowed: bool = False,
+    authorized_ask=None,
 ) -> dict:
-    if not provider_allowed:
+    if not callable(authorized_ask):
         return {
             "status": "unavailable",
             "text": "لم يُمنح هذا المسار صلاحية استخدام مزود خارجي.",
             "source": "provider_policy",
         }
     try:
-        from lab_v4_dev.llm.gateway import ask
-        result = ask(prompt, system=system, max_tokens=max_tokens, provider_allowed=True)
+        result = authorized_ask(prompt, system=system, max_tokens=max_tokens)
         if result["status"] == "success":
             return result
         # Groq فشل → fallback

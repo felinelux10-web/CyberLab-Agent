@@ -24,16 +24,16 @@ PROMPT_TEMPLATE = """أنت محدد نوايا (Intent Classifier) لوكيل �
 إذا لم تجد مناسباً اكتب: unclear
 لا تكتب أي شيء آخر."""
 
-def resolve(text: str, *, provider_allowed: bool = False) -> str:
+def resolve(text: str, *, nlu_provider=None) -> str:
     """يسأل LLM Gateway عن الـ intent، يحفظ النتيجة في Cache، يعيدها."""
-    if not provider_allowed:
+    if not callable(nlu_provider):
         return "unclear"
     try:
         prompt = PROMPT_TEMPLATE.format(
             intents="\n".join(f"- {i}" for i in VALID_INTENTS),
             text=text
         )
-        raw = ask(prompt, provider_allowed=True)
+        raw = nlu_provider(prompt)
         response = (raw.get("text","") if isinstance(raw, dict) else raw).strip().lower().replace("-","_")
         intent = response if response in VALID_INTENTS else "unclear"
         if intent != "unclear":

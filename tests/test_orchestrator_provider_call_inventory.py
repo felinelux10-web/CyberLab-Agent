@@ -6,8 +6,6 @@ ROOT = Path(__file__).resolve().parents[1] / "lab_v4_dev"
 AUTHORIZED_GATEWAY_MODULES = {
     "conversation/conversation_manager.py",
     "core/orchestrator.py",
-    "intent/llm_intent_resolver.py",
-    "llm/smart_router.py",
 }
 
 
@@ -102,3 +100,20 @@ def test_gateway_imports_are_confined_to_audited_policy_boundaries():
         )
 
     assert violations == []
+
+
+def test_pre_route_nlu_requires_an_injected_capability_and_has_no_gateway_import():
+    resolver = (ROOT / "intent" / "llm_intent_resolver.py").read_text(encoding="utf-8")
+    parser = (ROOT / "intent" / "intent_parser.py").read_text(encoding="utf-8")
+    smart_router = (ROOT / "llm" / "smart_router.py").read_text(encoding="utf-8")
+
+    assert "lab_v4_dev.llm.gateway" not in resolver
+    assert "nlu_provider=None" in resolver
+    assert "if not callable(nlu_provider):" in resolver
+    assert "raw = nlu_provider(prompt)" in resolver
+    assert "intent     = resolve(user_input)" in parser
+
+    assert "lab_v4_dev.llm.gateway" not in smart_router
+    assert "authorized_ask=None" in smart_router
+    assert "if not callable(authorized_ask):" in smart_router
+    assert "result = authorized_ask(" in smart_router
