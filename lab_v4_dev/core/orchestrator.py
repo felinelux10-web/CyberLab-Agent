@@ -368,17 +368,8 @@ class Orchestrator:
         if _handled is not None:
             return _handled
 
-        # ─── تحليل تأثير ───
-        if intent == Intent.IMPACT_ANALYSIS:
-            if not target:
-                return {"status": "needs_target", "message": "أي ملف؟"}
-            impact = analyze_impact(target)
-            if impact:
-                self._impact_analyzed.add(target)
-            return {"status": "success", "intent": intent, "impact": impact}
-
         # ─── التغييرات ───
-        elif intent == Intent.SHOW_CHANGES:
+        if intent == Intent.SHOW_CHANGES:
             tasks = self.agent.memory.recent_tasks(10)
             lines = ["آخر التعديلات:"]
             for t in tasks:
@@ -911,30 +902,6 @@ class Orchestrator:
                 "health": result["health"],
             }
 
-        # ─── Dependency Query ───
-        elif intent == Intent.FILE_IMPACT and any(w in raw for w in ["تعتمد على","يعتمد على","تستخدم","يستخدم","من يستورد","تستورد"]):
-            from lab_v4_dev.awareness.dependency_map import get_impact
-            import re
-            from lab_v4_dev.core.project_context import get_active_project_root, project_index_dir
-            if not os.path.exists(os.path.join(
-                project_index_dir(get_active_project_root()), "dependency_map.json"
-            )):
-                from lab_v4_dev.awareness.dependency_map import save_map
-                save_map()
-            # استخرج اسم الملف
-            m = re.search(r"[\w./]+\.py", raw)
-            q = m.group(0) if m else target or raw
-            impact = get_impact(q)
-            imported_by = impact.get("imported_by", [])
-            if not imported_by:
-                return {"status":"success","intent":intent,
-                        "text":f"لا يوجد ملف يعتمد على {q} بشكل مباشر"}
-            lines = [f"الملفات التي تعتمد على {q}:"]
-            for f in imported_by:
-                lines.append(f"  📄 {f}")
-            return {"status":"success","intent":intent,
-                    "text":"\n".join(lines)}
-
         # ─── Read External Project (v5.9) ───
         elif intent == Intent.READ_EXTERNAL_PROJECT:
             import re as _re, sys
@@ -1196,61 +1163,6 @@ SOURCE CODE:
                     else None
                 ),
             }
-
-        elif intent == Intent.FILE_IMPACT:
-            import re as _re2
-            stop = ["ما","تاثير","تعديل","ماذا","يحدث","لو","عدلت","على","في"]
-            words = [w for w in raw.split() if w not in stop and len(w) > 2]
-            q = words[-1] if words else target or raw
-            from lab_v4_dev.core.project_context import (
-                get_active_project,
-                project_index_dir,
-                CYBERLAB_ROOT as PROJECT_CONTEXT_ROOT,
-            )
-            _active = get_active_project()
-            _active_root = os.path.abspath(_active.root)
-            _base_root = os.path.abspath(PROJECT_CONTEXT_ROOT)
-            _is_external = os.path.commonpath([_active_root, _base_root]) != _base_root
-            if _is_external:
-                import json as _j
-                try:
-                    _graph_path = os.path.join(project_index_dir(_active.root), "dependency_graph.json")
-                    with open(_graph_path, encoding="utf-8") as _graph_file:
-                        _g = _j.load(_graph_file)
-                    _imp = _g.get("imports", {})
-                    _rev = _g.get("reverse_imports", {})
-                    _matches = [k for k in list(_imp.keys()) + list(_rev.keys()) if q in k]
-                    _key = _matches[0] if _matches else q
-                    _imported_by = _rev.get(_key, [])
-                    _imports = _imp.get(_key, [])
-                    _risk = "high" if len(_imported_by) >= 3 else "medium" if len(_imported_by) >= 1 else "low"
-                    impact = {"file": _key, "imports": _imports, "imported_by": _imported_by, "risk": _risk}
-                except Exception as _e:
-                    impact = {"file": q, "imports": [], "imported_by": [], "risk": "unknown"}
-            else:
-                from lab_v4_dev.awareness.dependency_map import get_impact
-                from lab_v4_dev.core.project_context import get_active_project_root, project_index_dir
-                if not os.path.exists(os.path.join(
-                    project_index_dir(get_active_project_root()), "dependency_map.json"
-                )):
-                    from lab_v4_dev.awareness.dependency_map import save_map
-                    save_map()
-                impact = get_impact(q)
-            risk_icon = "🔴" if impact["risk"]=="high" else "🟡" if impact["risk"]=="medium" else "🟢"
-            if not isinstance(impact, dict):
-                impact = {}
-            imports     = impact.get("imports", [])
-            imported_by = impact.get("imported_by", [])
-            lines = [
-                f"تأثير تعديل: {impact.get('file', q)}",
-                f"الخطورة: {risk_icon} {impact.get('risk','unknown')}",
-                f"يستورد من: {', '.join(imports[:3]) or 'لا شيء'}",
-                f"يستخدمه  : {', '.join(imported_by[:3]) or 'لا أحد'}",
-            ]
-            if target:
-                self._impact_analyzed.add(target)
-            return {"status":"success","intent":intent,
-                    "text":"\n".join(lines)}
 
         # ─── Project Timeline ───
         elif intent == Intent.PROJECT_TIMELINE:

@@ -31,6 +31,8 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.DEPENDENCIES,
         Intent.IMPACT_CHAIN_QUERY,
         Intent.CRITICALITY_QUERY,
+        Intent.IMPACT_ANALYSIS,
+        Intent.FILE_IMPACT,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -451,3 +453,67 @@ def test_criticality_query_preserves_risk_report(monkeypatch):
     result = Orchestrator._route(_fake_orchestrator(), Intent.CRITICALITY_QUERY, "", None, "ما خطورة core.py")
     assert "75/100" in result["text"]
     assert "نقطة دخول رئيسية" in result["text"]
+
+
+def test_impact_analysis_records_analyzed_target(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.planner.impact_analyzer as impact_module
+
+    monkeypatch.setattr(impact_module, "analyze_impact", lambda target: {"files": ["a.py"]})
+    orchestrator = _fake_orchestrator()
+    orchestrator._impact_analyzed = set()
+    result = Orchestrator._route(orchestrator, Intent.IMPACT_ANALYSIS, "core.py", None, "")
+    assert result["status"] == "success"
+    assert result["impact"] == {"files": ["a.py"]}
+    assert "core.py" in orchestrator._impact_analyzed
+
+
+def test_file_impact_specialized_dependency_question_keeps_priority(monkeypatch, tmp_path):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.dependency_map as map_module
+    import lab_v4_dev.core.project_context as project_module
+
+    index_dir = tmp_path / "index"
+    index_dir.mkdir()
+    (index_dir / "dependency_map.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(project_module, "get_active_project_root", lambda: str(tmp_path))
+    monkeypatch.setattr(project_module, "project_index_dir", lambda root: str(index_dir))
+    monkeypatch.setattr(map_module, "get_impact", lambda query: {"imported_by": ["consumer.py"]})
+
+    result = Orchestrator._route(
+        _fake_orchestrator(), Intent.FILE_IMPACT, "core.py", None,
+        "من يستورد core.py",
+    )
+    assert result["status"] == "success"
+    assert "الملفات التي تعتمد على core.py" in result["text"]
+    assert "consumer.py" in result["text"]
+
+
+def test_file_impact_general_question_keeps_full_impact_report(monkeypatch, tmp_path):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.dependency_map as map_module
+    import lab_v4_dev.core.project_context as project_module
+
+    index_dir = tmp_path / "index"
+    index_dir.mkdir()
+    (index_dir / "dependency_map.json").write_text("{}", encoding="utf-8")
+    project = type("Project", (), {"root": str(tmp_path)})()
+    monkeypatch.setattr(project_module, "get_active_project", lambda: project)
+    monkeypatch.setattr(project_module, "get_active_project_root", lambda: str(tmp_path))
+    monkeypatch.setattr(project_module, "project_index_dir", lambda root: str(index_dir))
+    monkeypatch.setattr(map_module, "get_impact", lambda query: {
+        "file": "core.py", "risk": "high",
+        "imports": ["os"], "imported_by": ["consumer.py"],
+    })
+    orchestrator = _fake_orchestrator()
+    orchestrator._impact_analyzed = set()
+
+    result = Orchestrator._route(
+        orchestrator, Intent.FILE_IMPACT, "core.py", None,
+        "ما تأثير تعديل core.py",
+    )
+    assert result["status"] == "success"
+    assert "الخطورة: 🔴 high" in result["text"]
+    assert "os" in result["text"]
+    assert "consumer.py" in result["text"]
+    assert "core.py" in orchestrator._impact_analyzed

@@ -36,6 +36,8 @@ HANDLER_REGISTRY = build_registry((
     (Intent.DEPENDENCIES, project_analysis.handle_dependencies),
     (Intent.IMPACT_CHAIN_QUERY, project_analysis.handle_impact_chain_query),
     (Intent.CRITICALITY_QUERY, project_analysis.handle_criticality_query),
+    (Intent.IMPACT_ANALYSIS, project_analysis.handle_impact_analysis),
+    (Intent.FILE_IMPACT, project_analysis.handle_file_impact),
 ))
 
 
