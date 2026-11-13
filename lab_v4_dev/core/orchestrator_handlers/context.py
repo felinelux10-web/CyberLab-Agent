@@ -42,7 +42,7 @@ def build_handler_facade(orchestrator, request: HandlerContext):
 
     return HandlerFacade(
         context=getattr(orchestrator, "context", None),
-        services=build_handler_services(orchestrator),
+        services=build_handler_services(orchestrator, intent=request.intent),
         request=request,
         pipeline=getattr(orchestrator, "pipeline", None),
     )
