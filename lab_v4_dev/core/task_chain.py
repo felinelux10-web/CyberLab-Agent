@@ -67,6 +67,7 @@ def execute_chain(steps: list, orchestrator, *, parent_route_decision=None) -> d
                     step = step + f" {subject}"
 
         # DNI-10: حفظ target من parser للسياق قبل تنفيذ الخطوة التالية
+        parsed_step = None
         try:
             from lab_v4_dev.intent.intent_parser import parse
             parsed_step = parse(step)
@@ -108,13 +109,20 @@ def execute_chain(steps: list, orchestrator, *, parent_route_decision=None) -> d
         chain_state[f"step_{i+1}"] = result.get("status","?")
 
         # توقف عند فشل حقيقي
-        if result.get("status") in ["failed","error","timeout"]:
+        if result.get("status") != "success":
             results[-1]["stopped_chain"] = True
             break
 
+    all_succeeded = bool(results) and all(
+        item.get("status") == "success" for item in results
+    )
     return {
-        "status" : "success",
-        "intent" : "task_chain",
-        "steps"  : len(results),
+        "status": "success" if all_succeeded else "failed",
+        "intent": "task_chain",
+        "steps": len(results),
+        "executed": any(item.get("status") == "success" for item in results),
+        "failed_step": (
+            next((item["step"] for item in results if item.get("status") != "success"), None)
+        ),
         "results": results,
     }
