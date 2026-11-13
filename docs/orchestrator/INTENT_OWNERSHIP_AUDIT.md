@@ -10,13 +10,13 @@
 
 ## Inventory totals
 
-- Top-level conditional statements found in the current `_route`: **34** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 31 remaining intent/fallback conditions).
-- Thirty-two branch conditions have been removed from `_route`, representing 35 unique registered Intent values plus the literal `show_last_result` key: seven system-inspection/log intents, five project-inspection intents, and nine project-analysis intents in `project_analysis.py`.
-- Distinct `Intent.*` symbols referenced in `_route`: **33**.
+- Top-level conditional statements found in the current `_route`: **27** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 24 remaining intent/fallback conditions).
+- Thirty-eight branch conditions have been removed from `_route`, representing 42 unique registered Intent values plus the literal `show_last_result` key: seven system-inspection/log intents, five project-inspection intents, and nine project-analysis intents in `project_analysis.py`.
+- Distinct `Intent.*` symbols referenced in `_route`: **26**.
 - Literal `show_last_result` key: registered in Dispatcher; its legacy `_route` condition has been removed.
 - Explicit `needs_llm(intent)` fallback: present.
 - Response cache gate remains before Dispatcher in the migrated code.
-- Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`, `AUDIT_LOG`, `SECURITY_LOG`, `READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`, plus `DEPENDENCY_MAP`, `ENTRY_POINT_QUERY`, `DEPENDENTS_QUERY`, `DEPENDENCIES`, `IMPACT_CHAIN_QUERY`, `CRITICALITY_QUERY`, `IMPACT_ANALYSIS`, `FILE_IMPACT`, `COMPARE_FILES`, `REPORT`, `SESSION_REPORT`, `PROGRESS_REPORT`, `REMAINING_WORK`, `PROJECT_REPORT`, `CONTEXT_REPORT`, `HISTORY`, `WORK_STATUS`, `REMAINING_TASKS`, `NEXT_TASK`, `WORK_CONTEXT`, `CAPABILITIES`, `SAVE_KB`, `SKIP_KB`, and literal `show_last_result`.
+- Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`, `AUDIT_LOG`, `SECURITY_LOG`, `READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`, plus `DEPENDENCY_MAP`, `ENTRY_POINT_QUERY`, `DEPENDENTS_QUERY`, `DEPENDENCIES`, `IMPACT_CHAIN_QUERY`, `CRITICALITY_QUERY`, `IMPACT_ANALYSIS`, `FILE_IMPACT`, `COMPARE_FILES`, `REPORT`, `SESSION_REPORT`, `PROGRESS_REPORT`, `REMAINING_WORK`, `PROJECT_REPORT`, `CONTEXT_REPORT`, `HISTORY`, `WORK_STATUS`, `REMAINING_TASKS`, `NEXT_TASK`, `WORK_CONTEXT`, `CAPABILITIES`, `SAVE_KB`, `SKIP_KB`, `CYBER_EXPLAIN`, `LAST_PROJECT`, `CURRENT_VERSION`, `RELEASE_INDEX`, `ANALYZE_RELEASE`, `COMPARE_VERSIONS`, `PROJECT_TIMELINE`, and literal `show_last_result`.
 
 ## Top-level branch inventory
 
@@ -167,8 +167,8 @@
 | Audit/security log readers (2 intents) | Moved to `system_inspection.py` |
 | Project inspection (`READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`) | Moved to `project_inspection.py`; file lookup containment behavior preserved and tested; project scan remains local and audit-emitting; project registry/list, layer-map, local inventory-search, and explicit-path code-search behavior preserved; keyword code-search retains the central authorized-provider callback |
 | Project analysis and impact queries (9 intents) | Moved to `project_analysis.py`; dependency engine/map/query services remain the implementation owners; both `FILE_IMPACT` modes are preserved in one handler with specialized raw-text priority; `COMPARE_FILES` uses the authorized-provider callback and retains the existing path-resolution semantics |
-| Reports and work tracking (11 Intent values + literal `show_last_result`) | Moved to `reports.py`; current operational session summary remains distinct from saved dialogue-session reports; provider-backed reports use `authorized_ask` |
-| Knowledge and capability basics (3 intents) | `CAPABILITIES`, `SAVE_KB`, and `SKIP_KB` moved to `knowledge.py`; confirmed-only knowledge writes and pending-save clearing preserved |
+| Reports and work tracking (11 Intent values + literal `show_last_result`) | Moved to `reports.py`; current operational session summary remains distinct from saved dialogue-session reports; provider-backed reports use `authorized_ask` |\n| Release metadata and timeline (6 intents) | Moved to `releases.py`; release-analysis and comparison calls use `authorized_ask`; timeline initialization and context version behavior preserved |
+| Knowledge and capability (4 intents) | `CAPABILITIES`, `SAVE_KB`, `SKIP_KB`, and `CYBER_EXPLAIN` moved to `knowledge.py`; confirmed-only writes, local-KB-first behavior, and authorized-provider callback preserved |
 | Remaining branch ownership | Legacy route; audit required before each migration |
 | Caller graph (TaskChain, Guard, direct callers) | Not certified complete |
 | Provider/evidence authorization matrix | Not certified complete |
@@ -208,7 +208,7 @@ Direct `ask()` calls were found outside the Orchestrator's local `authorized_ask
 - `llm/smart_router.py` — direct provider call.
 - `monitor/self_diagnostics.py` — `check_groq()` directly calls `ask()`; `FULL_DIAGNOSE` therefore cannot be classified as a pure read-only handler without a provider-policy decision.
 
-The `COMPARE_FILES` handler preserves the existing path-resolution semantics, including explicit absolute-path acceptance and index-match resolution; this migration does not claim that its path policy is hardened. The `needs_llm(intent)` fallback remains an explicit route branch after the provider-backed project-report handlers and continues to use `authorized_ask`. These are not automatically safe merely because they are called by a service. Before migrating the associated intents, each call must either receive an authorized provider capability or remain behind a separately audited compatibility boundary.
+The `COMPARE_FILES` handler preserves the existing path-resolution semantics, including explicit absolute-path acceptance and index-match resolution; this migration does not claim that its path policy is hardened. The `needs_llm(intent)` fallback remains an explicit route branch after the provider-backed project-report handlers and continues to use `authorized_ask`. `SELF_DIAGNOSE` and `FULL_DIAGNOSE` remain in the legacy route because the diagnostics service can call the gateway directly; `SWITCH_PROJECT` and `RETURN_BASE_PROJECT` remain legacy because they mutate active-project state and rebuild indexes. These are not automatically safe merely because they are called by a service. Before migrating the associated intents, each call must either receive an authorized provider capability or remain behind a separately audited compatibility boundary.
 
 ### Confirmed holdbacks
 
