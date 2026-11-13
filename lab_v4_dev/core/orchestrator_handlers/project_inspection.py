@@ -49,3 +49,80 @@ def handle_read_file(orchestrator, intent, *, target=None, raw=None):
 
 
 __all__ = ["handle_read_file"]
+
+
+def handle_project_scan(orchestrator, intent, *, target=None, raw=None):
+    raw_text = raw or ""
+    if any(
+        phrase in raw_text for phrase in ["كم مشروع", "عدد المشاريع", "كم عدد المشاريع"]
+    ):
+        from lab_v4_dev.project_registry.project_loader import list_registered_projects
+
+        projects = list_registered_projects()
+        unique = {}
+        for project in projects:
+            root = project.get("root")
+            if root:
+                unique[root] = project
+        return {
+            "status": "success",
+            "intent": intent,
+            "source": "local",
+            "text": f"عدد المشاريع المسجلة: {len(unique)}",
+        }
+
+    from lab_v4_dev.awareness.dependency_engine import (
+        get_entry_points, get_critical_files, get_snapshot,
+    )
+    from lab_v4_dev.awareness.project_index import get_layer_map
+    from lab_v4_dev.core.project_context import get_active_project
+
+    active = get_active_project()
+    snapshot = get_snapshot()
+    layers = get_layer_map()
+    entries = get_entry_points()
+    critical = get_critical_files()[:5]
+    total = snapshot.get("total_files", 0)
+    try:
+        from lab_v4_dev.core.project_metadata import ProjectMetadata
+        version = ProjectMetadata().get_version()
+    except Exception:
+        version = "?"
+
+    lines = [
+        f"المشروع: {active.name}",
+        f"الإصدار: {version}",
+        f"إجمالي الملفات: {total}",
+        f"نقاط الدخول: {', '.join(entries)}",
+        f"الملفات الحرجة: {', '.join(critical[:3])}",
+        "",
+        "الطبقات:",
+    ]
+    for layer, files in layers.items():
+        lines.append(f"  {layer}: {len(files)} ملف")
+    text = chr(10).join(lines)
+
+    from lab_v4_dev.core.audit import emit_event
+    emit_event(
+        "project.scan",
+        source="orchestrator",
+        context={"project_root": active.root},
+        details={
+            "project_name": active.name,
+            "total_files": total,
+            "entry_points": list(entries),
+            "critical_files": list(critical),
+            "layers": {str(layer): len(files) for layer, files in layers.items()},
+        },
+    )
+    return {
+        "status": "success",
+        "intent": intent,
+        "source": "local",
+        "text": text,
+        "total_files": total,
+        "critical": critical,
+    }
+
+
+__all__ = ["handle_read_file", "handle_project_scan"]

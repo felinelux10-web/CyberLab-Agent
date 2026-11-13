@@ -21,6 +21,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.AUDIT_LOG,
         Intent.SECURITY_LOG,
         Intent.READ_FILE,
+        Intent.PROJECT_SCAN,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -205,3 +206,49 @@ def test_read_file_rejects_project_index_candidate_outside_active_root(monkeypat
     result = Orchestrator._route(_fake_orchestrator(), Intent.READ_FILE, "missing.py", None, "")
     assert result["status"] == "failed"
     assert "غير موجود" in result["message"]
+
+
+def test_project_scan_registered_project_count_uses_unique_roots(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.project_registry.project_loader as loader_module
+
+    monkeypatch.setattr(loader_module, "list_registered_projects", lambda: [
+        {"name": "one", "root": "/projects/one"},
+        {"name": "one-alias", "root": "/projects/one"},
+        {"name": "two", "root": "/projects/two"},
+        {"name": "invalid", "root": ""},
+    ])
+    result = Orchestrator._route(_fake_orchestrator(), Intent.PROJECT_SCAN, "", None, "كم مشروع")
+    assert result == {
+        "status": "success", "intent": Intent.PROJECT_SCAN,
+        "source": "local", "text": "عدد المشاريع المسجلة: 2",
+    }
+
+
+def test_project_scan_returns_local_snapshot_and_audit_event(monkeypatch):
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.dependency_engine as dependency_module
+    import lab_v4_dev.awareness.project_index as index_module
+    import lab_v4_dev.core.project_context as project_module
+    import lab_v4_dev.core.project_metadata as metadata_module
+    import lab_v4_dev.core.audit as audit_module
+
+    monkeypatch.setattr(dependency_module, "get_snapshot", lambda: {"total_files": 3})
+    monkeypatch.setattr(dependency_module, "get_entry_points", lambda: ["run.py"])
+    monkeypatch.setattr(dependency_module, "get_critical_files", lambda: ["a.py", "b.py"])
+    monkeypatch.setattr(index_module, "get_layer_map", lambda: {"core": ["a.py", "b.py"], "ui": ["c.py"]})
+    monkeypatch.setattr(project_module, "get_active_project", lambda: SimpleNamespace(name="demo", root="/projects/demo"))
+    monkeypatch.setattr(metadata_module, "ProjectMetadata", lambda: SimpleNamespace(get_version=lambda: "1.2"))
+    events = []
+    monkeypatch.setattr(audit_module, "emit_event", lambda *args, **kwargs: events.append((args, kwargs)))
+
+    result = Orchestrator._route(_fake_orchestrator(), Intent.PROJECT_SCAN, "", None, "افحص المشروع")
+    assert result["status"] == "success"
+    assert result["source"] == "local"
+    assert result["total_files"] == 3
+    assert result["critical"] == ["a.py", "b.py"]
+    assert "المشروع: demo" in result["text"]
+    assert "الإصدار: 1.2" in result["text"]
+    assert len(events) == 1
+    assert events[0][0][0] == "project.scan"

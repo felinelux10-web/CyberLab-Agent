@@ -26,6 +26,7 @@ HANDLER_REGISTRY = build_registry((
     (Intent.AUDIT_LOG, system_inspection.handle_audit_log),
     (Intent.SECURITY_LOG, system_inspection.handle_security_log),
     (Intent.READ_FILE, project_inspection.handle_read_file),
+    (Intent.PROJECT_SCAN, project_inspection.handle_project_scan),
 ))
 
 
