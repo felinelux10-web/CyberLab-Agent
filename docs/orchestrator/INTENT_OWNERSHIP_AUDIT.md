@@ -3,7 +3,7 @@
 - Repository: `felinelux10-web/CyberLab-Agent`
 - Branch: `work/FRIENDLY-DIALOGUE-REPAIR-01`
 - Baseline HEAD: `6f0f35f9a5907fba707128913c2a06513f358e2f`
-- Audit source HEAD: `7c3e83f7f1ae579bd879a3feb451c7f286adb19f`b8a1642adaa863b2960c1475c1a596be0`
+- Audit source HEAD: `7c3e83f7f1ae579bd879a3feb451c7f286adb19f`
 - Source file: `lab_v4_dev/core/orchestrator.py`
 - Source blob SHA: `9d62424c96562c13d503da3ddc45d9b8224fa864`
 - Scope: complete top-level conditional inventory of the current `_route` body; this is an inventory, not a claim that all ownership/dependency/effect reviews are complete.
@@ -169,7 +169,9 @@
 | Project analysis and impact queries (9 intents) | Moved to `project_analysis.py`; dependency engine/map/query services remain the implementation owners; both `FILE_IMPACT` modes are preserved in one handler with specialized raw-text priority; `COMPARE_FILES` uses the authorized-provider callback and retains the existing path-resolution semantics |
 | Reports and work tracking (11 Intent values + literal `show_last_result`) | Moved to `reports.py`; current operational session summary remains distinct from saved dialogue-session reports; provider-backed reports use `authorized_ask` |
 | Release metadata and project lifecycle (8 intents) | Moved to `releases.py`; release-analysis and comparison calls use `authorized_ask`; timeline initialization, context version, active-project switching, index rebuild, project history, and audit event behavior preserved |
-| Sessions and memory (3 intents) | `RESUME`, `SESSION_RESTORE`, and `SESSION_SAVE` moved together to `sessions.py`; session selector and RouteDecision identity/evidence checks retained; work and dialogue checkpoints remain separate |\n| Code analysis (1 intent) | `ANALYZE_CODE` moved to `code_authoring.py`; file reads, response-cache writes, analyzed-file tracking, context updates, and provider use through `authorized_ask` preserved |\n| Execution inventory (4 intents) | `LIST_SCRIPTS`, `ERROR_REPORT`, `DRY_RUN`, and `RUN_HISTORY` moved to `execution.py`; actual `RUN_SCRIPT` remains in the legacy route |
+| Sessions and memory (3 intents) | `RESUME`, `SESSION_RESTORE`, and `SESSION_SAVE` moved together to `sessions.py`; session selector and RouteDecision identity/evidence checks retained; work and dialogue checkpoints remain separate |
+| Code analysis (1 intent) | `ANALYZE_CODE` moved to `code_authoring.py`; file reads, response-cache writes, analyzed-file tracking, context updates, and provider use through `authorized_ask` preserved |
+| Execution inventory (4 intents) | `LIST_SCRIPTS`, `ERROR_REPORT`, `DRY_RUN`, and `RUN_HISTORY` moved to `execution.py`; actual `RUN_SCRIPT` remains in the legacy route |
 | Knowledge and capability (4 intents) | `CAPABILITIES`, `SAVE_KB`, `SKIP_KB`, and `CYBER_EXPLAIN` moved to `knowledge.py`; confirmed-only writes, local-KB-first behavior, and authorized-provider callback preserved |
 | Remaining branch ownership | Legacy route; audit required before each migration |
 | Caller graph (TaskChain, Guard, direct callers) | Not certified complete |
