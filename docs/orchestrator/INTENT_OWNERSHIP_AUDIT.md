@@ -3,20 +3,20 @@
 - Repository: `felinelux10-web/CyberLab-Agent`
 - Branch: `work/FRIENDLY-DIALOGUE-REPAIR-01`
 - Baseline HEAD: `6f0f35f9a5907fba707128913c2a06513f358e2f`
-- Audit source HEAD: `7c3e83f7f1ae579bd879a3feb451c7f286adb19f`
+- Audit source HEAD: `e7fe450cf11eb5e4f60d29ff518cca7bcd271f62`
 - Source file: `lab_v4_dev/core/orchestrator.py`
-- Source blob SHA: `9d62424c96562c13d503da3ddc45d9b8224fa864`
+- Source blob SHA: `e89779e05e7f6899c75a00b1540f207b0c41ed1c`
 - Scope: complete top-level conditional inventory of the current `_route` body; this is an inventory, not a claim that all ownership/dependency/effect reviews are complete.
 
 ## Inventory totals
 
-- Top-level conditional statements found in the current `_route`: **19** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 16 remaining intent/fallback conditions).
-- Forty-six branch conditions have been removed from `_route`. The Dispatcher now registers 52 unique Intent values plus the literal `show_last_result` key. Of the original 68 Intent symbols, 50 are no longer referenced in `_route`; `RESUME` and `SESSION_RESTORE` remain referenced only by the saved-session route guards.
-- Distinct `Intent.*` symbols referenced in `_route`: **18**.
+- Top-level conditional statements found in the current `_route`: **11** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 8 remaining intent/fallback conditions).
+- Fifty-four branch conditions have been removed from `_route`. The Dispatcher now registers 60 unique Intent values plus the literal `show_last_result` key. Of the original 68 Intent symbols, 58 are no longer referenced in `_route`; `RESUME` and `SESSION_RESTORE` remain referenced only by the saved-session route guards.
+- Distinct `Intent.*` symbols referenced in `_route`: **10**.
 - Literal `show_last_result` key: registered in Dispatcher; its legacy `_route` condition has been removed.
 - Explicit `needs_llm(intent)` fallback: present.
 - Response cache gate remains before Dispatcher in the migrated code.
-- Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`, `AUDIT_LOG`, `SECURITY_LOG`, `READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`, plus `DEPENDENCY_MAP`, `ENTRY_POINT_QUERY`, `DEPENDENTS_QUERY`, `DEPENDENCIES`, `IMPACT_CHAIN_QUERY`, `CRITICALITY_QUERY`, `IMPACT_ANALYSIS`, `FILE_IMPACT`, `COMPARE_FILES`, `REPORT`, `SESSION_REPORT`, `PROGRESS_REPORT`, `REMAINING_WORK`, `PROJECT_REPORT`, `CONTEXT_REPORT`, `HISTORY`, `WORK_STATUS`, `REMAINING_TASKS`, `NEXT_TASK`, `WORK_CONTEXT`, `CAPABILITIES`, `SAVE_KB`, `SKIP_KB`, `CYBER_EXPLAIN`, `LAST_PROJECT`, `CURRENT_VERSION`, `RELEASE_INDEX`, `ANALYZE_RELEASE`, `COMPARE_VERSIONS`, `PROJECT_TIMELINE`, `SWITCH_PROJECT`, `RETURN_BASE_PROJECT`, `RESUME`, `SESSION_RESTORE`, `SESSION_SAVE`, `LIST_SCRIPTS`, `ERROR_REPORT`, `DRY_RUN`, `RUN_HISTORY`, `ANALYZE_CODE`, and literal `show_last_result`.
+- Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`, `AUDIT_LOG`, `SECURITY_LOG`, `READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`, plus `DEPENDENCY_MAP`, `ENTRY_POINT_QUERY`, `DEPENDENTS_QUERY`, `DEPENDENCIES`, `IMPACT_CHAIN_QUERY`, `CRITICALITY_QUERY`, `IMPACT_ANALYSIS`, `FILE_IMPACT`, `COMPARE_FILES`, `REPORT`, `SESSION_REPORT`, `PROGRESS_REPORT`, `REMAINING_WORK`, `PROJECT_REPORT`, `CONTEXT_REPORT`, `HISTORY`, `WORK_STATUS`, `REMAINING_TASKS`, `NEXT_TASK`, `WORK_CONTEXT`, `CAPABILITIES`, `SAVE_KB`, `SKIP_KB`, `CYBER_EXPLAIN`, `LAST_PROJECT`, `CURRENT_VERSION`, `RELEASE_INDEX`, `ANALYZE_RELEASE`, `COMPARE_VERSIONS`, `PROJECT_TIMELINE`, `SWITCH_PROJECT`, `RETURN_BASE_PROJECT`, `RESUME`, `SESSION_RESTORE`, `SESSION_SAVE`, `LIST_SCRIPTS`, `ERROR_REPORT`, `DRY_RUN`, `RUN_HISTORY`, `ANALYZE_CODE`, `GENERATE_CODE`, `SHOW_CHANGES`, `CLEAN`, `CLEANUP_CODE`, `PLAN_CHANGE`, `REPAIR_REJECT`, `PENDING_FIXES`, and literal `show_last_result`.
 
 ## Top-level branch inventory
 
@@ -165,15 +165,15 @@
 | Dispatcher foundation | Implemented |
 | Read-only inspection pilot (5 intents) | Moved to `system_inspection.py` |
 | Audit/security log readers (2 intents) | Moved to `system_inspection.py` |
-| Project inspection (`READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`) | Moved to `project_inspection.py`; file lookup containment behavior preserved and tested; project scan remains local and audit-emitting; project registry/list, layer-map, local inventory-search, and explicit-path code-search behavior preserved; keyword code-search retains the central authorized-provider callback |
+| Project inspection (6 intents, including `READ_EXTERNAL_PROJECT`) | Moved to `project_inspection.py`; file lookup containment behavior preserved and tested; project scan remains local and audit-emitting; project registry/list, layer-map, local inventory-search, and explicit-path code-search behavior preserved; keyword code-search retains the central authorized-provider callback |
 | Project analysis and impact queries (9 intents) | Moved to `project_analysis.py`; dependency engine/map/query services remain the implementation owners; both `FILE_IMPACT` modes are preserved in one handler with specialized raw-text priority; `COMPARE_FILES` uses the authorized-provider callback and retains the existing path-resolution semantics |
-| Reports and work tracking (11 Intent values + literal `show_last_result`) | Moved to `reports.py`; current operational session summary remains distinct from saved dialogue-session reports; provider-backed reports use `authorized_ask` |
+| Reports and work tracking (12 Intent values + literal `show_last_result`) | Moved to `reports.py`; current operational session summary remains distinct from saved dialogue-session reports; provider-backed reports use `authorized_ask` |
 | Release metadata and project lifecycle (8 intents) | Moved to `releases.py`; release-analysis and comparison calls use `authorized_ask`; timeline initialization, context version, active-project switching, index rebuild, project history, and audit event behavior preserved |
 | Sessions and memory (3 intents) | `RESUME`, `SESSION_RESTORE`, and `SESSION_SAVE` moved together to `sessions.py`; session selector and RouteDecision identity/evidence checks retained; work and dialogue checkpoints remain separate |
-| Code analysis (1 intent) | `ANALYZE_CODE` moved to `code_authoring.py`; file reads, response-cache writes, analyzed-file tracking, context updates, and provider use through `authorized_ask` preserved |
+| Code authoring (2 intents) | `ANALYZE_CODE` and `GENERATE_CODE` moved to `code_authoring.py`; local templates remain provider-independent while non-template generation uses `authorized_ask` | file reads, response-cache writes, analyzed-file tracking, context updates, and provider use through `authorized_ask` preserved |
 | Execution inventory (4 intents) | `LIST_SCRIPTS`, `ERROR_REPORT`, `DRY_RUN`, and `RUN_HISTORY` moved to `execution.py`; actual `RUN_SCRIPT` remains in the legacy route |
 | Knowledge and capability (4 intents) | `CAPABILITIES`, `SAVE_KB`, `SKIP_KB`, and `CYBER_EXPLAIN` moved to `knowledge.py`; confirmed-only writes, local-KB-first behavior, and authorized-provider callback preserved |
-| Remaining branch ownership | Legacy route; audit required before each migration |
+| Planning (2 intents) | `CLEANUP_CODE` and `PLAN_CHANGE` moved to `planning.py`; both remain review/preview-only and do not apply edits |\n| Non-destructive maintenance (1 intent) | `CLEAN` moved to `maintenance.py`; still requires an explicit target and does not delete anything |\n| Repair queue (2 intents) | `REPAIR_REJECT` and `PENDING_FIXES` moved to `repair.py`; approval and analysis remain in the legacy route |\n| Remaining branch ownership | Legacy route; audit required before each migration |
 | Caller graph (TaskChain, Guard, direct callers) | Not certified complete |
 | Provider/evidence authorization matrix | Not certified complete |
 | Legacy route removal | Prohibited until final parity criteria pass |
@@ -212,7 +212,7 @@ Direct `ask()` calls were found outside the Orchestrator's local `authorized_ask
 - `llm/smart_router.py` — direct provider call.
 - `monitor/self_diagnostics.py` — `check_groq()` directly calls `ask()`; `FULL_DIAGNOSE` therefore cannot be classified as a pure read-only handler without a provider-policy decision.
 
-The `COMPARE_FILES` handler preserves the existing path-resolution semantics, including explicit absolute-path acceptance and index-match resolution; this migration does not claim that its path policy is hardened. The `needs_llm(intent)` fallback remains an explicit route branch after the provider-backed project-report handlers and continues to use `authorized_ask`. `SELF_DIAGNOSE`, `FULL_DIAGNOSE`, `GENERATE_CODE`, `MODIFY_CODE`, and `RUN_SCRIPT` remain in the legacy route: diagnostics and CodeEngine can call the gateway directly, while modification and script execution have high-impact side effects. The remaining unregistered legacy intents are listed in the route inventory below. Session evidence synthesis still uses its explicit `provider_allowed` check around the legacy gateway call; centralizing that call through `authorized_ask` remains a separate policy hardening item. These are not automatically safe merely because they are called by a service. Before migrating the associated intents, each call must either receive an authorized provider capability or remain behind a separately audited compatibility boundary.
+The `COMPARE_FILES` handler preserves the existing path-resolution semantics, including explicit absolute-path acceptance and index-match resolution; this migration does not claim that its path policy is hardened. The `needs_llm(intent)` fallback remains an explicit route branch after the provider-backed project-report handlers and continues to use `authorized_ask`. `CLEAN_DEVICE`, `SELF_DIAGNOSE`, `FULL_DIAGNOSE`, `MODIFY_CODE`, `RUN_SCRIPT`, `REPAIR_ANALYZE`, `REPAIR_APPROVE`, and `DELETE_FILE` remain in the legacy route. These are retained because they involve direct provider use, file mutation, script execution, or destructive operations. Session evidence synthesis still uses its explicit `provider_allowed` check around the legacy gateway call; centralizing that call through `authorized_ask` remains a separate policy hardening item. These are not automatically safe merely because they are called by a service. Before migrating the associated intents, each call must either receive an authorized provider capability or remain behind a separately audited compatibility boundary.
 
 ### Confirmed holdbacks
 
