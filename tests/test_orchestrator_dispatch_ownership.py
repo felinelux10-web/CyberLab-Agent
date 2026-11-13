@@ -502,6 +502,7 @@ def test_file_impact_general_question_keeps_full_impact_report(monkeypatch, tmp_
     monkeypatch.setattr(project_module, "get_active_project", lambda: project)
     monkeypatch.setattr(project_module, "get_active_project_root", lambda: str(tmp_path))
     monkeypatch.setattr(project_module, "project_index_dir", lambda root: str(index_dir))
+    monkeypatch.setattr(project_module, "CYBERLAB_ROOT", str(tmp_path))
     monkeypatch.setattr(map_module, "get_impact", lambda query: {
         "file": "core.py", "risk": "high",
         "imports": ["os"], "imported_by": ["consumer.py"],
