@@ -53,6 +53,7 @@ HANDLER_REGISTRY = build_registry((
     (Intent.CAPABILITIES, knowledge.handle_capabilities),
     (Intent.SAVE_KB, knowledge.handle_save_kb),
     (Intent.SKIP_KB, knowledge.handle_skip_kb),
+    (Intent.CYBER_EXPLAIN, knowledge.handle_cyber_explain),
     ("show_last_result", reports.handle_show_last_result),
 ))
 
@@ -61,10 +62,18 @@ def registered_intents():
     return frozenset(HANDLER_REGISTRY)
 
 
-def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None):
+def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None, response_attributes=None, conversation_history=None, context_transition=None):
     handler = HANDLER_REGISTRY.get(intent)
     if handler is None:
         return None
+    if intent == Intent.CYBER_EXPLAIN:
+        return handler(
+            orchestrator, intent, target=target, raw=raw,
+            authorized_ask=authorized_ask,
+            response_attributes=response_attributes,
+            conversation_history=conversation_history,
+            context_transition=context_transition,
+        )
     if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES, Intent.PROGRESS_REPORT, Intent.REMAINING_WORK, Intent.PROJECT_REPORT}:
         return handler(
             orchestrator, intent, target=target, raw=raw,

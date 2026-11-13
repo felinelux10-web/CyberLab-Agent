@@ -38,7 +38,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.REMAINING_WORK, Intent.PROJECT_REPORT, Intent.CONTEXT_REPORT,
         Intent.HISTORY, Intent.WORK_STATUS, Intent.REMAINING_TASKS,
         Intent.NEXT_TASK, Intent.WORK_CONTEXT, "show_last_result",
-        Intent.CAPABILITIES, Intent.SAVE_KB, Intent.SKIP_KB,
+        Intent.CAPABILITIES, Intent.SAVE_KB, Intent.SKIP_KB, Intent.CYBER_EXPLAIN,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -747,3 +747,76 @@ def test_skip_kb_clears_pending_confirmation_without_writing(monkeypatch):
     result = Orchestrator._route(orchestrator, Intent.SKIP_KB, "", None, "")
     assert result["status"] == "success"
     assert orchestrator.context.pending_save is None
+
+
+def test_cyber_explain_uses_local_knowledge_before_provider(monkeypatch):
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.knowledge_base as knowledge_module
+
+    calls = []
+    monkeypatch.setattr(knowledge_module, "search", lambda raw: "cached explanation")
+    monkeypatch.setattr(knowledge_module, "hit", lambda raw: calls.append(raw))
+    monkeypatch.setattr(
+        orchestrator_module, "ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("local cache should win")),
+    )
+    orchestrator = _fake_orchestrator()
+    result = Orchestrator._route(
+        orchestrator, Intent.CYBER_EXPLAIN, "", None, "اشرح HTTP",
+        response_attributes=None, conversation_history=[], context_transition=None,
+    )
+    assert result["source"] == "local_kb"
+    assert "cached explanation" in result["text"]
+    assert orchestrator.context.current_subject == "اشرح HTTP"
+    assert calls == ["اشرح HTTP"]
+
+
+def test_cyber_explain_provider_denial_is_enforced(monkeypatch):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.knowledge_base as knowledge_module
+    import lab_v4_dev.llm.prompt_builder as prompt_module
+
+    monkeypatch.setattr(knowledge_module, "search", lambda raw: None)
+    monkeypatch.setattr(prompt_module, "build_cybersec_prompt", lambda *args, **kwargs: ("system", "prompt"))
+    monkeypatch.setattr(
+        orchestrator_module, "ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
+    )
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
+    result = Orchestrator._route(
+        _fake_orchestrator(), Intent.CYBER_EXPLAIN, "", None, "اشرح HTTP",
+        route_decision=decision, response_attributes=None,
+        conversation_history=[], context_transition=None,
+    )
+    assert result["status"] == "unavailable"
+    assert result["pending_save"] is None
+    assert result["save_prompt"] is None
+
+
+def test_cyber_explain_success_sets_pending_save_confirmation(monkeypatch):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.knowledge_base as knowledge_module
+    import lab_v4_dev.llm.prompt_builder as prompt_module
+
+    monkeypatch.setattr(knowledge_module, "search", lambda raw: None)
+    monkeypatch.setattr(prompt_module, "build_cybersec_prompt", lambda *args, **kwargs: ("system", "prompt"))
+    monkeypatch.setattr(orchestrator_module, "ask", lambda *args, **kwargs: {
+        "status": "success", "text": "verified explanation", "provider_used": "test-provider",
+    })
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=True)
+    orchestrator = _fake_orchestrator()
+    result = Orchestrator._route(
+        orchestrator, Intent.CYBER_EXPLAIN, "", None, "اشرح HTTP",
+        route_decision=decision, response_attributes=None,
+        conversation_history=[], context_transition=None,
+    )
+    assert result["status"] == "success"
+    assert result["pending_save"] == "اشرح HTTP"
+    assert result["pending_confirmation"]["kind"] == "save_kb"
+    assert result["save_prompt"]
+    assert orchestrator.context.current_subject == "اشرح HTTP"
