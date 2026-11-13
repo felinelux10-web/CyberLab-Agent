@@ -16,7 +16,7 @@ def test_intent_route_matrix_covers_every_declared_intent_value():
     rows = {
         line.split("`", 2)[1]
         for line in matrix.splitlines()
-        if line.startswith("| `")
+        if line.startswith("| `") and line.count("|") == 6
     }
 
     assert len(declared) == 166
