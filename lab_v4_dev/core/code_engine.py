@@ -191,7 +191,12 @@ print(check_port('127.0.0.1', 80))
         return {"status": "unavailable", "text": "بوابة المزود المصرح بها غير متاحة لهذا المسار."}
     result = authorized_ask(prompt, system=SYSTEM, max_tokens=800)
     if result["status"] != "success":
-        return {"status": "failed", "text": result.get("text","")}
+        # Preserve authorization denials (for example unavailable) instead
+        # of relabeling them as provider/execution failures.
+        return {
+            "status": result.get("status") or "failed",
+            "text": result.get("text", result.get("message", "")),
+        }
     text = result.get("text","")
     code = extract_code(text)
     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -491,9 +491,8 @@ class KnowledgeRetriever:
         try:
             from lab_v4_dev.core.orchestrator_handlers.dispatch import registered_intents as get_registered_intents
             registered_intents = {
-                getattr(value, "name", str(value))
+                str(getattr(value, "name", value)).upper()
                 for value in get_registered_intents()
-                if not isinstance(value, str)
             }
         except Exception:
             registered_intents = set()
