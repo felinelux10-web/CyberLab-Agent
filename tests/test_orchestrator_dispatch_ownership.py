@@ -47,3 +47,91 @@ def test_dispatch_calls_the_registered_owner():
     assert result["status"] == "success"
     assert result["intent"] == Intent.SPACE
     assert {"total", "used", "free"} <= result.keys()
+
+
+def _fake_orchestrator():
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    orchestrator = object.__new__(Orchestrator)
+    orchestrator.agent = SimpleNamespace(
+        state=SimpleNamespace(mode="test", consecutive_failures=2),
+        session=SimpleNamespace(summary=lambda: {
+            "tasks_done": 7, "error_count": 1,
+        }),
+    )
+    return orchestrator
+
+
+def test_route_delegates_space_to_registered_handler():
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    orchestrator = _fake_orchestrator()
+    result = Orchestrator._route(orchestrator, Intent.SPACE, None, None, "")
+    assert result["status"] == "success"
+    assert result["intent"] == Intent.SPACE
+    assert {"total", "used", "free"} <= result.keys()
+
+
+def test_route_delegates_status_without_changing_result_contract():
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    orchestrator = _fake_orchestrator()
+    result = Orchestrator._route(orchestrator, Intent.STATUS, None, None, "")
+    assert result == {
+        "status": "success", "intent": Intent.STATUS,
+        "text": "الوضع     : test\\nالمهام    : 7\\nالأخطاء   : 1\\nالإخفاقات : 2",
+        "mode": "test", "failures": 2, "tasks": 7, "errors": 1,
+    }
+
+
+def test_route_delegates_health_and_system_status(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.monitor.health_check as health_module
+
+    calls = []
+    monkeypatch.setattr(health_module, "check_health", lambda state: calls.append(state) or {
+        "healthy": True, "state_mode": "test", "ram_ok": True,
+        "ram_mb": 123, "db_ok": True, "log_ok": True,
+        "stable_status": "ok",
+    })
+    orchestrator = _fake_orchestrator()
+
+    health = Orchestrator._route(orchestrator, Intent.HEALTH, None, None, "")
+    system = Orchestrator._route(orchestrator, Intent.SYSTEM_STATUS, None, None, "")
+
+    assert health["health"]["healthy"] is True
+    assert system["health"]["healthy"] is True
+    assert "حالة النظام: سليم" in system["text"]
+    assert len(calls) == 2
+
+
+def test_route_delegates_memory_status(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.orchestrator_handlers.system_inspection as handler_module
+
+    monkeypatch.setattr(handler_module, "load_memory", lambda: {
+        "total_files": 19, "last_updated": "test-time",
+    })
+    result = Orchestrator._route(_fake_orchestrator(), Intent.MEMORY_STATUS, None, None, "")
+    assert result == {
+        "status": "success", "intent": Intent.MEMORY_STATUS,
+        "total_files": 19, "last_updated": "test-time",
+    }
+
+
+def test_response_cache_precedes_health_handler(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.intent.response_cache as cache_module
+    import lab_v4_dev.monitor.health_check as health_module
+
+    monkeypatch.setattr(cache_module, "get", lambda intent, target: "cached-health")
+    monkeypatch.setattr(
+        health_module, "check_health",
+        lambda state: (_ for _ in ()).throw(AssertionError("handler must not run before cache")),
+    )
+    result = Orchestrator._route(_fake_orchestrator(), Intent.HEALTH, None, None, "")
+    assert result == {
+        "status": "success", "intent": Intent.HEALTH,
+        "source": "cache", "text": "cached-health",
+    }
