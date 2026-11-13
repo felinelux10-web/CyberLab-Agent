@@ -27,9 +27,11 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
         }:
             # A topic-list request is distinct from a prose summary.
             report_mode = "topic_summary"
-        elif authorized_output == "summary" and report_mode not in {
-            "recall", "progress", "topic_summary",
-        }:
+        elif (
+            authorized_output == "summary"
+            and selector.get("kind") != "list"
+            and report_mode not in {"recall", "progress", "topic_summary"}
+        ):
             # The finalized output contract is authoritative. Preserve
             # narrower factual-recall, topic-list and stop-point submodes.
             report_mode = "summary"
