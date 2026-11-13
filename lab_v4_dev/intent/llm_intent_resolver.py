@@ -1,7 +1,7 @@
 """
 LLM Intent Resolver — P08 provider-neutral boundary
 يُستدعى فقط عند فشل القاموس والـ Cache.
-يسأل LLM Gateway: ما الـ intent المناسب لهذه الجملة؟
+يستخدم قدرة NLU محقونة صراحة إن توفرت؛ لا يستدعي مزودًا بنفسه.
 """
 from lab_v4_dev.llm.gateway import ask
 from lab_v4_dev.intent.intent_cache import save
