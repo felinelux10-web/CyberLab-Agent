@@ -105,6 +105,7 @@ def test_route_delegates_health_and_system_status(monkeypatch):
     assert health["health"]["healthy"] is True
     assert system["health"]["healthy"] is True
     assert "حالة النظام: سليم" in system["text"]
+    assert chr(10) in system["text"]
     assert len(calls) == 2
 
 

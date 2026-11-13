@@ -69,7 +69,7 @@ def handle_system_status(orchestrator, intent):
     ]
     return {
         "status": "success", "intent": intent,
-        "text": "\\n".join(lines),
+        "text": chr(10).join(lines),
         "health": health,
     }
 
@@ -77,6 +77,7 @@ def handle_system_status(orchestrator, intent):
 __all__ = [
     "handle_space", "handle_status", "handle_health",
     "handle_memory_status", "handle_system_status",
+    "handle_audit_log", "handle_security_log",
 ]
 
 
