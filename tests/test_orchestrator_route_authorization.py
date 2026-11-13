@@ -89,7 +89,7 @@ def test_task_chain_propagates_child_failure_and_stops():
 def test_orchestrator_rejects_execution_with_wrong_evidence_scope():
     orchestrator = object.__new__(Orchestrator)
     decision = RouteDecision(
-        route="L-EXEC", evidence_scope="saved_session", intent=Intent.STATUS
+        route="L-EXEC", evidence_scope="project_state", intent=Intent.STATUS
     )
 
     result = orchestrator.handle(
@@ -103,7 +103,7 @@ def test_orchestrator_rejects_execution_with_wrong_evidence_scope():
 def test_orchestrator_rejects_saved_session_scope_on_project_route():
     orchestrator = object.__new__(Orchestrator)
     decision = RouteDecision(
-        route="L-FACT", evidence_scope="saved_sessions", intent=Intent.AGENT_CAPABILITIES
+        route="L-FACT", evidence_scope="work_state", intent=Intent.AGENT_CAPABILITIES
     )
 
     result = orchestrator.handle(
