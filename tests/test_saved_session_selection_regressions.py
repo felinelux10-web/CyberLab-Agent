@@ -517,6 +517,7 @@ def test_work_session_summary_lists_work_records_without_dialogues(monkeypatch):
             "context": "system",
             "session_selector": session_selector(request),
         },
+        route_decision=_saved_session_decision(session_selector(request)),
     )
 
     assert result["status"] == "success"

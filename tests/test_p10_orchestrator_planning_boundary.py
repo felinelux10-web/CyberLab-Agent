@@ -2,7 +2,7 @@ import inspect
 
 from lab_v4_dev.core.orchestrator import Orchestrator
 from lab_v4_dev.core.orchestrator_handlers.planning import handle_plan_change
-import lab_v4_dev.core.orchestrator_handlers.dispatch as dispatch_module
+from lab_v4_dev.core.orchestrator_handlers.dispatch import HANDLER_REGISTRY
 from lab_v4_dev.intent.intents import Intent
 
 
@@ -11,7 +11,7 @@ def test_plan_change_handler_uses_p10_plan_factory():
     handler_source = inspect.getsource(handle_plan_change)
 
     assert "create_p10_plan_from_change" in handler_source
-    assert dispatch_module.HANDLER_REGISTRY[Intent.PLAN_CHANGE] is handle_plan_change
+    assert HANDLER_REGISTRY[Intent.PLAN_CHANGE] is handle_plan_change
 
 
 def test_orchestrator_does_not_directly_consume_legacy_change_plan():

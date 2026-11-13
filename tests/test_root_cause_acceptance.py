@@ -62,6 +62,7 @@ def test_resume_rejects_dialogue_only_checkpoint(monkeypatch):
     result = Orchestrator(agent).handle(
         "استكمال العمل",
         parsed={"intent": Intent.RESUME, "target": "", "raw": "استكمال العمل"},
+        route_decision=RouteDecision(route="L-EXEC", intent=Intent.RESUME),
     )
     assert result["status"] == "needs_clarification"
     assert "قابلة للاستئناف" in result["text"]
