@@ -10,13 +10,13 @@
 
 ## Inventory totals
 
-- Top-level conditional statements found in the current `_route`: **61** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 58 remaining intent/fallback conditions).
-- Five pilot intent branches have been removed from `_route` and are now registered in `system_inspection.py`.
-- Distinct `Intent.*` symbols referenced in `_route`: **63**.
+- Top-level conditional statements found in the current `_route`: **58** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 55 remaining intent/fallback conditions).
+- Eight intent branches have been removed from `_route`: seven system-inspection/log intents and `READ_FILE` in `project_inspection.py`.
+- Distinct `Intent.*` symbols referenced in `_route`: **60**.
 - Literal `show_last_result` condition: present.
 - Explicit `needs_llm(intent)` fallback: present.
 - Response cache gate remains before Dispatcher in the migrated code.
-- Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`.
+- Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`, `AUDIT_LOG`, `SECURITY_LOG`, `READ_FILE`.
 
 ## Top-level branch inventory
 
@@ -163,7 +163,7 @@
 | Scope | State |
 |---|---|
 | Dispatcher foundation | Implemented |
-| Read-only inspection pilot (5 intents) | Moved to `system_inspection.py` |
+| Read-only inspection pilot (5 intents) | Moved to `system_inspection.py` |\n| Audit/security log readers (2 intents) | Moved to `system_inspection.py` |\n| Project inspection (`READ_FILE`) | Moved to `project_inspection.py`; path lookup containment behavior preserved and covered by tests |
 | Remaining branch ownership | Legacy route; audit required before each migration |
 | Caller graph (TaskChain, Guard, direct callers) | Not certified complete |
 | Provider/evidence authorization matrix | Not certified complete |
