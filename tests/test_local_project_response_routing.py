@@ -251,6 +251,10 @@ def test_negated_or_descriptive_execution_words_do_not_trigger_project_execution
         "entity_type": "PROJECT",
         "conversation_domain": "project",
         "conversation_act": "CONVERSATION_CONTINUATION",
+        "route_decision": SimpleNamespace(
+            route="L-FACT", intent=Intent.CYBER_EXPLAIN,
+            evidence_scope="project_state", provider_allowed=True,
+        ),
     }
 
     for message in ("لا تشغل الاختبارات", "نتيجة الاختبار"):

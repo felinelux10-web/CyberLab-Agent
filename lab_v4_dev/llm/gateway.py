@@ -191,6 +191,10 @@ def ask(
     Provider-specific implementation details must not escape here.
     """
 
+    privacy_decision = _privacy_decision(prompt, system)
+    if not privacy_decision["allow_external"]:
+        return _privacy_blocked_response(privacy_decision)
+
     if not provider_allowed:
         return {
             "status": "error",
@@ -199,10 +203,6 @@ def ask(
             "provider_chain": [],
             "error": {"code": "ROUTE_PROVIDER_DENIED", "message": "provider_allowed is false"},
         }
-
-    privacy_decision = _privacy_decision(prompt, system)
-    if not privacy_decision["allow_external"]:
-        return _privacy_blocked_response(privacy_decision)
 
     request = _prepare_request(
         prompt=prompt,

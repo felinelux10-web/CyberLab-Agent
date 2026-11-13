@@ -17,6 +17,7 @@ from lab_v4_dev.llm.router import needs_llm
 from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
 from lab_v4_dev.awareness.knowledge_retriever import resolve_project_scope
 from lab_v4_dev.config.provider_config import get_active_provider
+from lab_v4_dev.llm.gateway import ask
 import os
 import re
 _re_module = re
@@ -396,9 +397,8 @@ class Orchestrator:
                     "status": "unavailable",
                     "message": "provider permission missing or denied by RouteDecision",
                 }
-            from lab_v4_dev.llm.gateway import ask as gateway_ask
             kwargs.setdefault("provider_allowed", True)
-            return gateway_ask(*args, **kwargs)
+            return ask(*args, **kwargs)
 
         # ─── Response Cache ───
         from lab_v4_dev.intent.response_cache import get as rcache_get

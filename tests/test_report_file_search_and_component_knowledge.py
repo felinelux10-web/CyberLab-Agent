@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 
 
 def test_process_routes_component_question_to_evidence_chat_not_orchestrator(monkeypatch):
@@ -191,6 +192,10 @@ def test_project_context_retrieves_architecture_for_ambiguous_follow_up(monkeypa
             "conversation_domain": "project",
             "conversation_act": "CONVERSATION_CONTINUATION",
             "response_attributes": {},
+            "route_decision": SimpleNamespace(
+                route="L-FACT", intent=Intent.PERSONAL_CHAT,
+                evidence_scope="project_state", provider_allowed=True,
+            ),
         },
         user_question=question,
         history=[],
