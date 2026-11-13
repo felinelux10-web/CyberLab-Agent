@@ -3,7 +3,7 @@
 from types import MappingProxyType
 
 from lab_v4_dev.intent.intents import Intent
-from . import system_inspection
+from . import system_inspection, project_inspection
 
 
 def build_registry(entries):
@@ -25,6 +25,7 @@ HANDLER_REGISTRY = build_registry((
     (Intent.SYSTEM_STATUS, system_inspection.handle_system_status),
     (Intent.AUDIT_LOG, system_inspection.handle_audit_log),
     (Intent.SECURITY_LOG, system_inspection.handle_security_log),
+    (Intent.READ_FILE, project_inspection.handle_read_file),
 ))
 
 
@@ -32,11 +33,11 @@ def registered_intents():
     return frozenset(HANDLER_REGISTRY)
 
 
-def dispatch(orchestrator, intent):
+def dispatch(orchestrator, intent, *, target=None, raw=None):
     handler = HANDLER_REGISTRY.get(intent)
     if handler is None:
         return None
-    return handler(orchestrator, intent)
+    return handler(orchestrator, intent, target=target, raw=raw)
 
 
 __all__ = ["HANDLER_REGISTRY", "build_registry", "registered_intents", "dispatch"]

@@ -7,7 +7,7 @@ from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.awareness.project_memory import load_memory
 
 
-def handle_space(orchestrator, intent):
+def handle_space(orchestrator, intent, *, target=None, raw=None):
     total, used, free = shutil.disk_usage(os.path.expanduser("~"))
     return {
         "status": "success", "intent": intent,
@@ -17,7 +17,7 @@ def handle_space(orchestrator, intent):
     }
 
 
-def handle_status(orchestrator, intent):
+def handle_status(orchestrator, intent, *, target=None, raw=None):
     state = orchestrator.agent.state
     summary = orchestrator.agent.session.summary()
     lines = [
@@ -36,14 +36,14 @@ def handle_status(orchestrator, intent):
     }
 
 
-def handle_health(orchestrator, intent):
+def handle_health(orchestrator, intent, *, target=None, raw=None):
     from lab_v4_dev.monitor.health_check import check_health
 
     health = check_health(orchestrator.agent.state)
     return {"status": "success", "intent": intent, "health": health}
 
 
-def handle_memory_status(orchestrator, intent):
+def handle_memory_status(orchestrator, intent, *, target=None, raw=None):
     memory = load_memory()
     return {
         "status": "success", "intent": intent,
@@ -52,7 +52,7 @@ def handle_memory_status(orchestrator, intent):
     }
 
 
-def handle_system_status(orchestrator, intent):
+def handle_system_status(orchestrator, intent, *, target=None, raw=None):
     # Keep this as an in-process, read-only diagnostic. Do not launch the
     # legacy project_status.py script through a shell.
     from lab_v4_dev.monitor.health_check import check_health
@@ -81,7 +81,7 @@ __all__ = [
 ]
 
 
-def handle_audit_log(orchestrator, intent):
+def handle_audit_log(orchestrator, intent, *, target=None, raw=None):
     from lab_v4_dev.core.audit import get_events
 
     events = get_events(limit=20)
@@ -118,7 +118,7 @@ def handle_audit_log(orchestrator, intent):
     return {"status": "success", "intent": intent, "text": chr(10).join(lines)}
 
 
-def handle_security_log(orchestrator, intent):
+def handle_security_log(orchestrator, intent, *, target=None, raw=None):
     from lab_v4_dev.core.security_guard import get_security_log
 
     events = get_security_log(20)

@@ -20,6 +20,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.SYSTEM_STATUS,
         Intent.AUDIT_LOG,
         Intent.SECURITY_LOG,
+        Intent.READ_FILE,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -167,3 +168,40 @@ def test_route_delegates_security_log(monkeypatch):
     assert result["status"] == "success"
     assert "blocked value" in result["text"]
     assert "تطابق: policy" in result["text"]
+
+
+def test_route_delegates_read_file_using_project_index_candidate(monkeypatch, tmp_path):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.project_index as index_module
+    import lab_v4_dev.core.project_context as project_module
+    import lab_v4_dev.core.audit as audit_module
+
+    project_root = tmp_path / "project"
+    source = project_root / "src" / "inside.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("print('inside')", encoding="utf-8")
+    monkeypatch.setattr(project_module, "get_active_project_root", lambda: str(project_root))
+    monkeypatch.setattr(index_module, "search_index", lambda target: [{"path": "src/inside.py"}])
+    monkeypatch.setattr(audit_module, "emit_event", lambda *args, **kwargs: None)
+
+    result = Orchestrator._route(_fake_orchestrator(), Intent.READ_FILE, "inside.py", None, "")
+    assert result["status"] == "success"
+    assert result["file"] == str(source)
+    assert result["output"] == "print('inside')"
+
+
+def test_read_file_rejects_project_index_candidate_outside_active_root(monkeypatch, tmp_path):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.project_index as index_module
+    import lab_v4_dev.core.project_context as project_module
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    outside = tmp_path / "outside.py"
+    outside.write_text("secret", encoding="utf-8")
+    monkeypatch.setattr(project_module, "get_active_project_root", lambda: str(project_root))
+    monkeypatch.setattr(index_module, "search_index", lambda target: [{"path": "../outside.py"}])
+
+    result = Orchestrator._route(_fake_orchestrator(), Intent.READ_FILE, "missing.py", None, "")
+    assert result["status"] == "failed"
+    assert "غير موجود" in result["message"]
