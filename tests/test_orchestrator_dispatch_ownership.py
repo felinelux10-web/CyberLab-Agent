@@ -25,6 +25,12 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.PROJECT_INDEX,
         Intent.SEARCH,
         Intent.SEARCH_CODE,
+        Intent.DEPENDENCY_MAP,
+        Intent.ENTRY_POINT_QUERY,
+        Intent.DEPENDENTS_QUERY,
+        Intent.DEPENDENCIES,
+        Intent.IMPACT_CHAIN_QUERY,
+        Intent.CRITICALITY_QUERY,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -368,3 +374,80 @@ def test_search_code_provider_call_remains_behind_authorized_ask(monkeypatch, tm
     )
     assert result["status"] == "success"
     assert "src/main.py" in result["text"]
+
+
+def test_dependency_map_uses_existing_index_and_returns_critical_and_orphan_files(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.project_context as project_module
+    import lab_v4_dev.awareness.dependency_map as map_module
+
+    index_dir = tmp_path / "index"
+    index_dir.mkdir()
+    (index_dir / "dependency_map.json").write_text("{}", encoding="utf-8")
+    project = SimpleNamespace(index_dir=lambda: str(index_dir))
+    monkeypatch.setattr(project_module, "get_active_project", lambda: project)
+    monkeypatch.setattr(map_module, "get_critical_files", lambda: [{"file": "core.py", "used_by": 4}])
+    monkeypatch.setattr(map_module, "get_orphans", lambda: ["unused.py"])
+
+    result = Orchestrator._route(_fake_orchestrator(), Intent.DEPENDENCY_MAP, "", None, "")
+    assert result["status"] == "success"
+    assert "core.py" in result["text"]
+    assert "unused.py" in result["text"]
+
+
+def test_entry_point_query_returns_entry_points_and_critical_files(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.dependency_engine as engine_module
+
+    monkeypatch.setattr(engine_module, "index_missing", lambda: False)
+    monkeypatch.setattr(engine_module, "get_entry_points", lambda: ["run.py"])
+    monkeypatch.setattr(engine_module, "get_critical_files", lambda: ["core.py"])
+    result = Orchestrator._route(_fake_orchestrator(), Intent.ENTRY_POINT_QUERY, "", None, "")
+    assert "run.py" in result["text"]
+    assert "core.py" in result["text"]
+
+
+def test_dependents_query_uses_dependency_engine(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.dependency_engine as engine_module
+
+    monkeypatch.setattr(engine_module, "who_depends_on", lambda path: ["a.py", "b.py"])
+    result = Orchestrator._route(_fake_orchestrator(), Intent.DEPENDENTS_QUERY, "", None, "من يستورد core.py")
+    assert "a.py" in result["text"] and "b.py" in result["text"]
+
+
+def test_dependencies_query_uses_dependency_engine(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.dependency_engine as engine_module
+
+    monkeypatch.setattr(engine_module, "what_imports", lambda path: ["os", "pathlib"])
+    result = Orchestrator._route(_fake_orchestrator(), Intent.DEPENDENCIES, "", None, "ما اعتمادات core.py")
+    assert "os" in result["text"] and "pathlib" in result["text"]
+
+
+def test_impact_chain_query_preserves_direct_and_indirect_results(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.dependency_engine as engine_module
+
+    monkeypatch.setattr(engine_module, "get_impact_chain", lambda path: {
+        "direct": ["a.py"], "indirect": ["b.py", "c.py"], "total_affected": 3,
+    })
+    result = Orchestrator._route(_fake_orchestrator(), Intent.IMPACT_CHAIN_QUERY, "", None, "حلل تأثير core.py")
+    assert "a.py" in result["text"]
+    assert "b.py" in result["text"]
+    assert "إجمالي الملفات المتأثرة: 3" in result["text"]
+
+
+def test_criticality_query_preserves_risk_report(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.awareness.query_engine as query_module
+
+    monkeypatch.setattr(query_module, "query_file", lambda path: {
+        "risk_score": 75, "risk_level": "high",
+        "direct_dependencies": ["a.py"], "indirect_dependencies": ["b.py"],
+        "total_affected": 2, "is_entry_point": True,
+    })
+    result = Orchestrator._route(_fake_orchestrator(), Intent.CRITICALITY_QUERY, "", None, "ما خطورة core.py")
+    assert "75/100" in result["text"]
+    assert "نقطة دخول رئيسية" in result["text"]

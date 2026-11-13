@@ -3,7 +3,7 @@
 from types import MappingProxyType
 
 from lab_v4_dev.intent.intents import Intent
-from . import system_inspection, project_inspection
+from . import system_inspection, project_inspection, project_analysis
 
 
 def build_registry(entries):
@@ -30,6 +30,12 @@ HANDLER_REGISTRY = build_registry((
     (Intent.PROJECT_INDEX, project_inspection.handle_project_index),
     (Intent.SEARCH, project_inspection.handle_search),
     (Intent.SEARCH_CODE, project_inspection.handle_search_code),
+    (Intent.DEPENDENCY_MAP, project_analysis.handle_dependency_map),
+    (Intent.ENTRY_POINT_QUERY, project_analysis.handle_entry_point_query),
+    (Intent.DEPENDENTS_QUERY, project_analysis.handle_dependents_query),
+    (Intent.DEPENDENCIES, project_analysis.handle_dependencies),
+    (Intent.IMPACT_CHAIN_QUERY, project_analysis.handle_impact_chain_query),
+    (Intent.CRITICALITY_QUERY, project_analysis.handle_criticality_query),
 ))
 
 
