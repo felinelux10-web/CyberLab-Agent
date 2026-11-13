@@ -4,7 +4,6 @@
 import os
 import re
 from datetime import datetime
-from lab_v4_dev.llm.gateway import ask
 
 WORKSPACE = "workspace"
 SYSTEM = """أنت مبرمج Python دقيق ومنضبط.
@@ -203,11 +202,13 @@ print(check_port('127.0.0.1', 80))
     path = save_file(code, "script_" + ts + ".py", "scripts")
     return {"status":"success","code":code,"explanation":text,"saved_to":path}
 
-def analyze_code(code, question=""):
+def analyze_code(code, question="", authorized_ask=None):
     lang   = detect_language(code)
     prompt = "حلل هذا الكود بالعربية:\n```" + lang + "\n" + code[:2000] + "\n```\n1.ماذا يفعل؟\n2.هل فيه اخطاء؟\n3.هل فيه ثغرات؟\n4.كيف يتحسن؟"
     if question: prompt += "\nسؤال: " + question
-    result = ask(prompt, system=SYSTEM, max_tokens=600)
+    if authorized_ask is None:
+        return {"status": "unavailable", "language": lang, "analysis": "بوابة المزود المصرح بها غير متاحة."}
+    result = authorized_ask(prompt, system=SYSTEM, max_tokens=600)
     return {"status":result["status"],"language":lang,"analysis":result.get("text","")}
 
 def modify_code(code, instruction, authorized_ask=None):

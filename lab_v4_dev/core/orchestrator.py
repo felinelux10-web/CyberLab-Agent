@@ -390,12 +390,12 @@ class Orchestrator:
                 }
 
         def authorized_ask(*args, **kwargs):
-            if route_decision is not None and not bool(
+            if route_decision is None or not bool(
                 getattr(route_decision, "provider_allowed", False)
             ):
                 return {
                     "status": "unavailable",
-                    "message": "provider denied by RouteDecision",
+                    "message": "provider permission missing or denied by RouteDecision",
                 }
             return ask(*args, **kwargs)
 
