@@ -10,7 +10,8 @@
 
 ## Inventory totals
 
-- Top-level conditional branches found: **61**.
+- Top-level conditional statements found in the current `_route`: **61** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 58 remaining intent/fallback conditions).
+- Five pilot intent branches have been removed from `_route` and are now registered in `system_inspection.py`.
 - Distinct `Intent.*` symbols referenced in `_route`: **63**.
 - Literal `show_last_result` condition: present.
 - Explicit `needs_llm(intent)` fallback: present.
