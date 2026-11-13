@@ -137,6 +137,7 @@ def handle_criticality_query(orchestrator, intent, *, target=None, raw=None):
 
 
 def handle_impact_analysis(orchestrator, intent, *, target=None, raw=None):
+    from lab_v4_dev.planner.impact_analyzer import analyze_impact
     if not target:
         return {"status": "needs_target", "message": "أي ملف؟"}
     impact = analyze_impact(target)
@@ -144,7 +145,6 @@ def handle_impact_analysis(orchestrator, intent, *, target=None, raw=None):
         orchestrator._impact_analyzed.add(target)
     return {"status": "success", "intent": intent, "impact": impact}
 
-        # ─── التغييرات ───
 
 
 def handle_file_impact(orchestrator, intent, *, target=None, raw=None):
@@ -171,7 +171,6 @@ def handle_file_impact(orchestrator, intent, *, target=None, raw=None):
         return {"status":"success","intent":intent,
                 "text":"\n".join(lines)}
     
-            # ─── Read External Project (v5.9) ───
     else:
         import re as _re2
         stop = ["ما","تاثير","تعديل","ماذا","يحدث","لو","عدلت","على","في"]
@@ -227,7 +226,6 @@ def handle_file_impact(orchestrator, intent, *, target=None, raw=None):
         return {"status":"success","intent":intent,
                 "text":"\n".join(lines)}
     
-            # ─── Project Timeline ───
 
 
 __all__ = ["handle_dependency_map", "handle_entry_point_query", "handle_dependents_query", "handle_dependencies", "handle_impact_chain_query", "handle_criticality_query", "handle_impact_analysis", "handle_file_impact"]
