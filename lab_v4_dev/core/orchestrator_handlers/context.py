@@ -28,8 +28,12 @@ class HandlerFacade:
 
     def _get_pipeline(self):
         if self.pipeline is None:
-            from lab_v4_dev.executor.safe_pipeline import SafePipeline
-            self.pipeline = SafePipeline(self.services.db)
+            factory = self.services.pipeline_factory
+            if callable(factory):
+                self.pipeline = factory()
+            else:
+                from lab_v4_dev.executor.safe_pipeline import SafePipeline
+                self.pipeline = SafePipeline(self.services.db)
         return self.pipeline
 
 

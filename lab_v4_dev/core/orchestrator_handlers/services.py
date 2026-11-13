@@ -16,6 +16,7 @@ class HandlerServices:
     db: Any = None
     analyzed_files: Any = None
     impact_analyzed: Any = None
+    pipeline_factory: Any = None
 
 
 def build_handler_services(orchestrator) -> HandlerServices:
@@ -42,6 +43,7 @@ def build_handler_services(orchestrator) -> HandlerServices:
         db=getattr(agent, "db", None),
         analyzed_files=analyzed_files,
         impact_analyzed=impact_analyzed,
+        pipeline_factory=getattr(orchestrator, "_get_pipeline", None),
     )
 
 

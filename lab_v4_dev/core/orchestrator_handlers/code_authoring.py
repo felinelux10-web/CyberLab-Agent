@@ -81,7 +81,6 @@ def handle_modify_code(orchestrator, intent, *, target=None, raw=None, authorize
     from lab_v4_dev.core.symbol_resolver import resolve as sym_resolve
     from lab_v4_dev.core.surgical_editor import extract_symbol, patch_symbol, clean_llm_output, validate_patch
     from lab_v4_dev.core.code_engine import modify_code
-    from lab_v4_dev.executor.safe_pipeline import SafePipeline
 
     raw_text = str(raw or "")
     if len(raw_text.strip().split()) < 2:
@@ -143,7 +142,7 @@ def handle_modify_code(orchestrator, intent, *, target=None, raw=None, authorize
         database = orchestrator.services.db
         if database is not None and getattr(database, "conn", None) is None:
             database.connect()
-        pipeline = getattr(orchestrator, "pipeline", None) or SafePipeline(database)
+        pipeline = getattr(orchestrator, "pipeline", None) or orchestrator._get_pipeline()
         pipeline_result = pipeline.execute(
             {"files": [file_path], "reason": raw_text},
             {file_path: final_code},
