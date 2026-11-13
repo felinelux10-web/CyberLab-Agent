@@ -377,6 +377,7 @@ def test_provider_failure_does_not_offer_to_save_missing_explanation(monkeypatch
 def test_privacy_block_is_not_reported_as_provider_outage(monkeypatch):
     from lab_v4_dev.core import orchestrator as orchestrator_module
     from lab_v4_dev.core.orchestrator import Orchestrator
+    from lab_v4_dev.core.contracts import RouteDecision
     from lab_v4_dev.intent.intents import Intent
 
     monkeypatch.setattr(

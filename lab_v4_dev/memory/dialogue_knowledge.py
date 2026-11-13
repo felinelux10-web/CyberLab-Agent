@@ -87,7 +87,13 @@ def _exchange_archive(data: dict) -> tuple[str, list[dict]]:
     # DialogueMemory ID owns exchange provenance and may legitimately differ.
     # Validate every exchange against that nested identity below; never rewrite
     # its ID to the outer checkpoint ID.
-    session_id = dialogue_session_id or record_session_id
+    # The outer checkpoint identity and nested dialogue identity must agree.
+    # A mismatch means the embedded transcript cannot be attributed to this
+    # saved session, so fail closed rather than accepting a self-consistent but
+    # foreign nested archive.
+    if record_session_id and dialogue_session_id and record_session_id != dialogue_session_id:
+        return record_session_id, []
+    session_id = record_session_id or dialogue_session_id
     if not session_id:
         return "", []
 

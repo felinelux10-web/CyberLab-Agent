@@ -5207,7 +5207,12 @@ class ConversationManager:
         history_act = str((parsed or {}).get("conversation_act") or "").upper()
         normalized_query = normalize_text(text)
         archive_request_kind = self._dialogue_archive_request_kind(text)
-        if archive_request_kind in {"text_summary", "mention", "none"}:
+        if archive_request_kind in {"text_summary", "mention"}:
+            return None
+        if (
+            archive_request_kind == "none"
+            and history_act not in {"CONVERSATION_HISTORY_QUERY"}
+        ):
             return None
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
         live_previous_session_recall = (
