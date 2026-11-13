@@ -3,47 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from lab_v4_dev.core.contracts import FrozenDict
-
-
-class FrozenList(list):
-    """List-compatible immutable container used by request contracts."""
-
-    def __init__(self, values=()):
-        list.__init__(self, (_freeze(value) for value in values))
-
-    def _immutable(self, *_args, **_kwargs):
-        raise TypeError("FrozenList does not support mutation")
-
-    __setitem__ = _immutable
-    __delitem__ = _immutable
-    append = _immutable
-    clear = _immutable
-    extend = _immutable
-    insert = _immutable
-    pop = _immutable
-    remove = _immutable
-    reverse = _immutable
-    sort = _immutable
-    __iadd__ = _immutable
-    __imul__ = _immutable
-
-    def __deepcopy__(self, memo):
-        return self
-
-
-def _freeze(value):
-    if isinstance(value, FrozenDict) or isinstance(value, FrozenList):
-        return value
-    if isinstance(value, dict):
-        return FrozenDict({key: _freeze(item) for key, item in value.items()})
-    if isinstance(value, list):
-        return FrozenList(value)
-    if isinstance(value, tuple):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, set):
-        return frozenset(_freeze(item) for item in value)
-    return value
+from lab_v4_dev.core.contracts import FrozenList, freeze_contract_value
 
 
 @dataclass(frozen=True)
@@ -59,9 +19,9 @@ class HandlerContext:
     authorized_provider: Any = None
 
     def __post_init__(self):
-        object.__setattr__(self, "session_selector", _freeze(self.session_selector or {}))
-        object.__setattr__(self, "response_attributes", _freeze(self.response_attributes or {}))
-        object.__setattr__(self, "conversation_history", _freeze(self.conversation_history or []))
+        object.__setattr__(self, "session_selector", freeze_contract_value(self.session_selector or {}))
+        object.__setattr__(self, "response_attributes", freeze_contract_value(self.response_attributes or {}))
+        object.__setattr__(self, "conversation_history", freeze_contract_value(self.conversation_history or []))
 
 
 @dataclass

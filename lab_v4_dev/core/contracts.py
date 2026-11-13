@@ -12,12 +12,44 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Dict
+from collections.abc import Mapping as MappingABC
+
+
+class FrozenList(list):
+    """List-compatible immutable container for frozen contracts."""
+
+    def __init__(self, values=()):
+        list.__init__(self, (freeze_contract_value(value) for value in values))
+
+    def _immutable(self, *_args, **_kwargs):
+        raise TypeError("FrozenList does not support mutation")
+
+    __setitem__ = _immutable
+    __delitem__ = _immutable
+    append = _immutable
+    clear = _immutable
+    extend = _immutable
+    insert = _immutable
+    pop = _immutable
+    remove = _immutable
+    reverse = _immutable
+    sort = _immutable
+    __iadd__ = _immutable
+    __imul__ = _immutable
+
+    def __deepcopy__(self, memo):
+        return self
 
 
 class FrozenDict(dict):
-    """Small JSON/deepcopy-compatible immutable mapping for frozen contracts."""
+    """JSON/deepcopy-compatible immutable mapping with recursively frozen values."""
+
     def __init__(self, value=()):
-        dict.__init__(self, value)
+        items = value.items() if isinstance(value, MappingABC) else value
+        dict.__init__(
+            self,
+            ((key, freeze_contract_value(item)) for key, item in items),
+        )
 
     def _immutable(self, *_args, **_kwargs):
         raise TypeError("FrozenDict does not support mutation")
@@ -35,6 +67,21 @@ class FrozenDict(dict):
         return self
 
 
+def freeze_contract_value(value):
+    """Recursively freeze JSON-like values crossing immutable contracts."""
+    if isinstance(value, (FrozenDict, FrozenList)):
+        return value
+    if isinstance(value, MappingABC):
+        return FrozenDict(value)
+    if isinstance(value, list):
+        return FrozenList(value)
+    if isinstance(value, tuple):
+        return tuple(freeze_contract_value(item) for item in value)
+    if isinstance(value, set):
+        return frozenset(freeze_contract_value(item) for item in value)
+    return value
+
+
 @dataclass(frozen=True)
 class Request:
     """Canonical representation of incoming user input."""
@@ -43,6 +90,9 @@ class Request:
     request_id: str | None = None
     source: str = "user"
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", FrozenDict(self.metadata or {}))
 
     @classmethod
     def from_input(cls, value: Any) -> "Request":
@@ -153,6 +203,9 @@ class RoutingDecision:
     route: str | None = None
     confidence: float | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", FrozenDict(self.metadata or {}))
 
 ROUTES = frozenset({
     "L-SOCIAL",
@@ -300,6 +353,9 @@ class PreparedExecutionRequest:
     request_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", FrozenDict(self.metadata or {}))
+
 
 @dataclass(frozen=True)
 class AuditEvent:
@@ -310,8 +366,15 @@ class AuditEvent:
     context: Dict[str, Any]
     details: Dict[str, Any]
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "context", FrozenDict(self.context or {}))
+        object.__setattr__(self, "details", FrozenDict(self.details or {}))
+
 
 __all__ = [
+    "FrozenDict",
+    "FrozenList",
+    "freeze_contract_value",
     "Request",
     "Context",
     "Result",
