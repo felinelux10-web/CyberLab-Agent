@@ -48,9 +48,6 @@ def handle_read_file(orchestrator, intent, *, target=None, raw=None):
         return {"status": "failed", "message": f"غير موجود: {target}"}
 
 
-__all__ = ["handle_read_file"]
-
-
 def handle_project_scan(orchestrator, intent, *, target=None, raw=None):
     raw_text = raw or ""
     if any(

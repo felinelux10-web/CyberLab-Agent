@@ -909,7 +909,7 @@ class Orchestrator:
                 "health": result["health"],
             }
 
-        if intent == Intent.SEARCH:
+        elif intent == Intent.SEARCH:
             import re as _re2
             import os as _os2
             # استخرج اسم الملف أو الكلمة المفتاحية
