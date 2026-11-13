@@ -74,3 +74,97 @@ def handle_generate_code(orchestrator, intent, *, target=None, raw=None, authori
 
 
 __all__ = ["handle_analyze_code", "handle_generate_code"]
+
+
+def handle_modify_code(orchestrator, intent, *, target=None, raw=None, authorized_ask=None):
+    import os
+    from lab_v4_dev.core.symbol_resolver import resolve as sym_resolve
+    from lab_v4_dev.core.surgical_editor import extract_symbol, patch_symbol, clean_llm_output, validate_patch
+    from lab_v4_dev.core.code_engine import modify_code
+    from lab_v4_dev.executor.safe_pipeline import SafePipeline
+
+    raw_text = str(raw or "")
+    if len(raw_text.strip().split()) < 2:
+        return {"status": "needs_target", "intent": intent, "text": "ماذا تريد أن أعدل؟"}
+
+    context_file = getattr(orchestrator.context, "current_file", None)
+    if context_file and not os.path.isfile(os.path.expanduser(str(context_file))):
+        context_file = ""
+    resolved = sym_resolve(raw_text, target or context_file or "")
+    if resolved.get("ambiguous"):
+        candidates = [item.get("file", "") for item in resolved.get("candidates", [])]
+        return {
+            "status": "needs_clarification", "intent": intent,
+            "text": "وجدت أكثر من ملف مرشح. حدّد الملف: " + "، ".join(candidates[:5]),
+            "candidates": candidates,
+        }
+    if not resolved.get("found"):
+        return {"status": "needs_target", "intent": intent, "text": "لم أجد الملف أو الدالة"}
+
+    file_path, symbol = resolved["file"], resolved["symbol"]
+    symbol_data = extract_symbol(file_path, symbol) if symbol else {}
+    is_surgical = bool(symbol_data.get("code"))
+    if is_surgical:
+        code_text = symbol_data["code"]
+    else:
+        try:
+            with open(file_path, encoding="utf-8", errors="ignore") as handle:
+                code_text = handle.read()
+        except OSError:
+            return {"status": "failed", "intent": intent, "text": "لا يمكن قراءة الملف"}
+    if not code_text:
+        return {"status": "failed", "intent": intent, "text": "لا يوجد كود"}
+
+    result = modify_code(code_text, raw_text, authorized_ask=authorized_ask)
+    if result.get("status") != "success" or not result.get("code"):
+        return {
+            "status": result.get("status", "failed"), "intent": intent,
+            "text": result.get("text", result.get("explanation", "")),
+        }
+
+    with open(file_path, encoding="utf-8") as handle:
+        original_source = handle.read()
+    if is_surgical:
+        clean_code = clean_llm_output(result["code"], symbol)
+        final_code = patch_symbol(
+            original_source, symbol, clean_code,
+            symbol_data["start_line"], symbol_data["end_line"],
+        )
+    else:
+        final_code = result["code"]
+
+    validation = validate_patch(original_source, final_code)
+    if not validation.get("ok"):
+        return {"status": "failed", "intent": intent, "text": "❌ غير آمن: " + str(validation)}
+    if final_code == original_source:
+        return {"status": "failed", "intent": intent, "text": "لم ينتج التعديل أي تغيير في الملف"}
+
+    try:
+        database = orchestrator.agent.db
+        if database is not None and getattr(database, "conn", None) is None:
+            database.connect()
+        pipeline = getattr(orchestrator, "pipeline", None) or SafePipeline(database)
+        pipeline_result = pipeline.execute(
+            {"files": [file_path], "reason": raw_text},
+            {file_path: final_code},
+        )
+        mode = "surgical" if is_surgical else "full"
+        if pipeline_result.get("status") == "success":
+            if not os.path.isfile(file_path):
+                return {"status": "failed", "intent": intent, "text": "فشل التحقق: الملف غير موجود بعد الكتابة"}
+            with open(file_path, encoding="utf-8") as handle:
+                after_source = handle.read()
+            if after_source != final_code:
+                return {"status": "failed", "intent": intent, "text": "فشل التحقق: المحتوى المكتوب لا يطابق التعديل"}
+            orchestrator.context.current_file = file_path
+            return {
+                "status": "success", "intent": intent,
+                "text": "✅ [" + mode + "] " + (symbol or file_path.split("/")[-1]),
+                "file": file_path, "verified": True,
+            }
+        return {"status": "failed", "intent": intent, "text": "❌ " + str(pipeline_result.get("reason", ""))}
+    except Exception as exc:
+        return {"status": "failed", "intent": intent, "text": str(exc)}
+
+
+__all__ = ["handle_analyze_code", "handle_generate_code", "handle_modify_code"]
