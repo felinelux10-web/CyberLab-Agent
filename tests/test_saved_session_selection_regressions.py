@@ -13,14 +13,25 @@ from lab_v4_dev.memory.dialogue_knowledge import retrieve_dialogue_evidence
 
 def _saved_session_decision(selector, *, intent=Intent.SESSION_RESTORE, session_id=None):
     kind = str(selector.get("kind") or "none")
+    report_mode = str(selector.get("report_mode") or "standard")
     if kind == "list":
-        return RouteDecision(route="L-SESSION", output_kind="report", evidence_scope="saved_sessions", intent=intent)
+        output_kind = "report" if report_mode == "full" else "summary"
+        return RouteDecision(
+            route="L-SESSION", output_kind=output_kind,
+            evidence_scope="saved_sessions", intent=intent,
+        )
     if kind == "number":
         number = int(selector["number"])
+        output_kind = selector.get("output_kind") or (
+            "summary" if report_mode in {"full", "recall", "progress", "topic_summary", "transcript"}
+            else "none"
+        )
         return RouteDecision(
             route="L-SESSION", session_scope="saved_number",
             session_ref=SessionRef(session_id=session_id or f"session-{number}", number=number),
-            output_kind="summary", evidence_scope="saved_session", intent=intent,
+            output_kind=output_kind,
+            evidence_scope="saved_session" if output_kind != "none" else "none",
+            intent=intent,
         )
     if kind == "previous_dialogue":
         return RouteDecision(
