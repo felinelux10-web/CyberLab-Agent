@@ -30,6 +30,7 @@ HANDLER_REGISTRY = build_registry((
     (Intent.PROJECT_INDEX, project_inspection.handle_project_index),
     (Intent.SEARCH, project_inspection.handle_search),
     (Intent.SEARCH_CODE, project_inspection.handle_search_code),
+    (Intent.READ_EXTERNAL_PROJECT, project_inspection.handle_read_external_project),
     (Intent.DEPENDENCY_MAP, project_analysis.handle_dependency_map),
     (Intent.ENTRY_POINT_QUERY, project_analysis.handle_entry_point_query),
     (Intent.DEPENDENTS_QUERY, project_analysis.handle_dependents_query),

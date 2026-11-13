@@ -400,37 +400,6 @@ class Orchestrator:
                 "health": result["health"],
             }
 
-        # ─── Read External Project (v5.9) ───
-        elif intent == Intent.READ_EXTERNAL_PROJECT:
-            import re as _re, sys
-            m = _re.search(r'(~/\S+|/\S+)', raw)
-            if m:
-                path = os.path.expanduser(m.group(1))
-            else:
-                path = os.path.expanduser("~/external_projects/dynamic-lab-app")
-            if not os.path.exists(path):
-                return {"status":"success","intent":intent,
-                        "text":f"المسار غير موجود: {path}"}
-            from lab_v4_dev.core.project_context import set_active_project, get_active_project
-            previous_project = get_active_project()
-            switched = set_active_project(path)
-            if switched["status"] != "success":
-                return {"status":"failed","intent":intent,"text":switched["message"]}
-            from lab_v4_dev.awareness.ts_reader import scan_project
-            snapshot = scan_project(path)
-            from lab_v4_dev.core.audit import emit_event
-            emit_event("project.switched", source="orchestrator", context={"project_root": path}, details={"previous_root": previous_project.root, "new_root": path, "reason": "read_external_project"})
-            emit_event("project.external_scan", source="orchestrator", context={"project_root": path}, details={"project_type": snapshot.get("project_type"), "total_files": snapshot.get("total_files"), "entry_points": snapshot.get("entry_points", []), "critical_files": snapshot.get("critical_files", [])[:10]})
-            lines = [f"تم قراءة المشروع: {path}"]
-            lines.append(f"النوع: {snapshot['project_type']}")
-            lines.append(f"الملفات: {snapshot['total_files']}")
-            lines.append(f"نقاط الدخول: {', '.join(snapshot['entry_points'])}")
-            lines.append(f"أهم الملفات:")
-            for f in snapshot['critical_files'][:5]:
-                lines.append(f"  🔴 {f}")
-            return {"status":"success","intent":intent,
-                    "text":"\n".join(lines)}
-
         # ─── Explicit provider fallback (preserved after registered handlers) ───
         elif needs_llm(intent):
             from lab_v4_dev.llm.prompt_builder import build_project_context

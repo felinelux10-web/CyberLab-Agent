@@ -24,7 +24,7 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.PROJECT_SCAN,
         Intent.PROJECT_INDEX,
         Intent.SEARCH,
-        Intent.SEARCH_CODE,
+        Intent.SEARCH_CODE, Intent.READ_EXTERNAL_PROJECT,
         Intent.DEPENDENCY_MAP,
         Intent.ENTRY_POINT_QUERY,
         Intent.DEPENDENTS_QUERY,
@@ -1213,3 +1213,43 @@ def test_pending_fixes_lists_only_pending_repairs(monkeypatch):
     result = Orchestrator._route(_fake_orchestrator(), Intent.PENDING_FIXES, "", None, "")
     assert result["status"] == "success"
     assert "main.py" in result["text"]
+
+
+def test_read_external_project_switches_scope_and_emits_audit(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.project_context as project_module
+    import lab_v4_dev.awareness.ts_reader as reader_module
+    import lab_v4_dev.core.audit as audit_module
+
+    root = tmp_path / "external"
+    root.mkdir()
+    calls = {"switch": [], "events": []}
+    monkeypatch.setattr(project_module, "get_active_project", lambda: SimpleNamespace(root="/old"))
+    monkeypatch.setattr(project_module, "set_active_project", lambda path: (
+        calls["switch"].append(path) or {"status": "success", "project": {"root": path}}
+    ))
+    monkeypatch.setattr(reader_module, "scan_project", lambda path: {
+        "project_type": "python", "total_files": 3,
+        "entry_points": ["main.py"], "critical_files": ["main.py", "core.py"],
+    })
+    monkeypatch.setattr(audit_module, "emit_event", lambda *args, **kwargs: calls["events"].append((args, kwargs)))
+
+    result = Orchestrator._route(_fake_orchestrator(), Intent.READ_EXTERNAL_PROJECT, "", None, str(root))
+    assert result["status"] == "success"
+    assert "تم قراءة المشروع" in result["text"]
+    assert calls["switch"] == [str(root)]
+    assert [event[0][0] for event in calls["events"]] == ["project.switched", "project.external_scan"]
+
+
+def test_read_external_project_missing_path_does_not_switch(monkeypatch, tmp_path):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.project_context as project_module
+
+    calls = []
+    monkeypatch.setattr(project_module, "set_active_project", lambda path: calls.append(path))
+    missing = str(tmp_path / "missing")
+    result = Orchestrator._route(_fake_orchestrator(), Intent.READ_EXTERNAL_PROJECT, "", None, missing)
+    assert result["status"] == "success"
+    assert missing in result["text"]
+    assert calls == []
