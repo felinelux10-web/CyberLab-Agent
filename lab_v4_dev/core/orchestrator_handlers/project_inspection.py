@@ -431,7 +431,14 @@ def handle_search_code(orchestrator, intent, *, target=None, raw=None, authorize
     if not results:
         return {"status":"success","intent":intent,
                 "text":f"لم أجد '{q}' في ملفات المشروع الحقيقية"}
+    if authorized_ask is None:
+        return {
+            "status": "unavailable", "intent": intent,
+            "source": "provider_policy",
+            "text": "بوابة المزود المصرح بها غير متاحة لهذا المسار.",
+        }
     from lab_v4_dev.llm.prompt_builder import build_search_prompt
+    from lab_v4_dev.config.provider_config import get_active_provider
     prompt = build_search_prompt(q, results)
     result = authorized_ask(prompt, system="أنت مساعد هندسي. أجب فقط بناءً على البيانات المعطاة.", max_tokens=200)
     # إضافة الملفات الحقيقية دائماً
