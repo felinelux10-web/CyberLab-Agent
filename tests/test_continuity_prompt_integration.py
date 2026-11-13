@@ -3,6 +3,7 @@ from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
 from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.core.contracts import RouteDecision
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.intent.intent_parser import parse
 
@@ -128,6 +129,7 @@ def test_provider_privacy_error_is_not_rendered_as_debug_dump(monkeypatch):
         "اشرح CSRF",
         conversation_history=[],
         context_transition="new_independent",
+        route_decision=RouteDecision(route="P-TOOL", intent=Intent.CYBER_EXPLAIN, provider_allowed=True),
     )
 
     assert "LLM ERROR DEBUG" not in result["text"]

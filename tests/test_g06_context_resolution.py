@@ -297,6 +297,7 @@ def test_targetless_cyber_explanation_bypasses_response_cache(monkeypatch):
         "",
         "general",
         "اشرح أكثر",
+        route_decision=RouteDecision(route="P-TOOL", intent=Intent.CYBER_EXPLAIN, provider_allowed=True),
     )
 
     assert cache_calls == []
