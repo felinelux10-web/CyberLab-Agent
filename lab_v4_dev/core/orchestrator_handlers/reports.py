@@ -145,6 +145,21 @@ def handle_show_last_result(orchestrator, intent, *, target=None, raw=None):
     return {"status": "success", "intent": intent, "text": output}
 
 
+def handle_show_changes(orchestrator, intent, *, target=None, raw=None):
+    tasks = orchestrator.agent.memory.recent_tasks(10)
+    lines = ["آخر التعديلات:"]
+    for t in tasks:
+        icon = "✅" if t["status"] == "success" else "❌"
+        lines.append(f"  {icon} {t['intent'][:40]}")
+    return {
+        "status": "success",
+        "intent": intent,
+        "text"  : chr(10).join(lines),
+        "tasks" : [{"intent": t["intent"][:40],
+                    "status": t["status"]} for t in tasks],
+    }
+
+
 __all__ = [
     "handle_session_report",
     "handle_project_reports",

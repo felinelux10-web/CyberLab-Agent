@@ -372,31 +372,8 @@ class Orchestrator:
         if _handled is not None:
             return _handled
 
-        # ─── التغييرات ───
-        if intent == Intent.SHOW_CHANGES:
-            tasks = self.agent.memory.recent_tasks(10)
-            lines = ["آخر التعديلات:"]
-            for t in tasks:
-                icon = "✅" if t["status"] == "success" else "❌"
-                lines.append(f"  {icon} {t['intent'][:40]}")
-            return {
-                "status": "success",
-                "intent": intent,
-                "text"  : chr(10).join(lines),
-                "tasks" : [{"intent": t["intent"][:40],
-                            "status": t["status"]} for t in tasks],
-            }
-
-        # ─── تنظيف عام: لا تفترض الجهاز عند غياب الهدف ───
-        elif intent == Intent.CLEAN:
-            return {
-                "status": "needs_clarification",
-                "intent": intent,
-                "text": "ما الذي تريد تنظيفه؟ حدّد الهدف قبل المتابعة.",
-            }
-
         # ─── تنظيف الجهاز: لا يصل إليه إلا action + device target ───
-        elif intent == Intent.CLEAN_DEVICE:
+        if intent == Intent.CLEAN_DEVICE:
             from lab_v4_dev.core.cleaner import run_full_clean
             result = run_full_clean()
             lines = ["=== تنظيف الهاتف ==="]
@@ -407,117 +384,6 @@ class Orchestrator:
             for d in result["details"]:
                 lines.append(f"  {d['type']}: حذف {d['removed']} عنصر — {d['size_kb']} KB")
             return {"status":"success","intent":intent,"text":chr(10).join(lines)}
-
-        # ─── تنظيف الكود: خطة مراجعة فقط، دون تعديل تلقائي ───
-        elif intent == Intent.CLEANUP_CODE:
-            from lab_v4_dev.planner.planner import Planner
-
-            scope = str(target or "").strip()
-            plan = Planner().from_actions(
-                {
-                    "action": getattr(intent, "value", intent),
-                    "target": scope or None,
-                },
-                [
-                    {
-                        "step_id": "step-1",
-                        "action": "confirm_scope",
-                        "parameters": {"target": scope or None},
-                        "description": "تأكيد ملف/مجلد ونطاق التنظيف المطلوب",
-                    },
-                    {
-                        "step_id": "step-2",
-                        "action": "prepare_reviewable_proposal",
-                        "parameters": {
-                            "target": scope or None,
-                            "requires_user_review": True,
-                        },
-                        "depends_on": ["step-1"],
-                        "description": "إعداد مقترح قابل للمراجعة دون تطبيقه",
-                    },
-                ],
-                plan_id=f"cleanup-code-{uuid.uuid4().hex}",
-                metadata={
-                    "execution_status": "not_started",
-                    "mutates_files": False,
-                    "user_review_required": True,
-                },
-            )
-            if scope:
-                message = (
-                    f"أعددت خطة مراجعة مبدئية للنطاق {scope}. هذه خطة فقط؛ "
-                    "لم يُعدّل أو يُحذف أي ملف. حدّد قواعد التنظيف المطلوبة "
-                    "أو اطلب مراجعة النطاق للمتابعة."
-                )
-            else:
-                message = (
-                    "تنظيف الكود يتطلب تحديد مسار ملف/مجلد أو نطاق واضح قبل إعداد "
-                    "مقترح قابل للمراجعة. الخطة المرفقة مبدئية فقط؛ لم يُعدّل "
-                    "أو يُحذف أي ملف."
-                )
-            return {
-                "status": "needs_clarification",
-                "intent": intent,
-                "target": scope or "",
-                "text": message,
-                "plan": plan.to_dict(),
-                "plan_only": True,
-                "executed": False,
-            }
-
-        # ─── Plan Change (PIE) ───
-        elif intent == Intent.PLAN_CHANGE:
-            import re as _re_pie
-            m = _re_pie.search(r'[\w./]+\.py', raw)
-            if not m:
-                return {"status":"needs_clarification","intent":intent,
-                        "text":"أي ملف تريد تخطيط تعديله؟ مثال: خطط لتعديل core/agent.py"}
-            target_file = m.group(0)
-            try:
-                from lab_v4_dev.project_knowledge.analysis_engine import AnalysisEngine
-                from lab_v4_dev.dni.knowledge_router import create_p10_plan_from_change
-
-                engine = AnalysisEngine()
-                if os.path.exists(target_file):
-                    engine.analyze_file(target_file)
-
-                plan = create_p10_plan_from_change(
-                    target_file,
-                    plan_id=f"pie-{target_file}",
-                    metadata={"source": "orchestrator.plan_change"},
-                )
-
-                impacted = [
-                    step.parameters.get("file")
-                    for step in plan.steps
-                    if step.parameters.get("file")
-                ]
-                exec_plan = plan.steps
-                lines = ["خطة تعديل " + target_file + ":"]
-                if impacted:
-                    lines.append("الملفات المتأثرة (" + str(len(impacted)) + "):")
-                    for f2 in impacted[:5]:
-                        lines.append("  ⚠️  " + f2)
-                else:
-                    lines.append("✅ لا توجد ملفات متأثرة مباشرة")
-                if exec_plan:
-                    lines.append("خطوات التنفيذ (" + str(len(exec_plan)) + "):")
-                    for index, step in enumerate(exec_plan[:3], start=1):
-                        file_path = step.parameters.get("file", "")
-                        priority = step.parameters.get("priority", "")
-                        lines.append(
-                            "  [" + str(index) + "] "
-                            + file_path
-                            + " — "
-                            + step.action
-                            + " (" + priority + ")"
-                        )
-                lines.append("ℹ️ هذه خطة معاينة فقط — لا يتم أي تعديل حتى الآن.")
-                return {"status":"success","intent":intent,"source":"pie",
-                        "text":"\n".join(lines)}
-            except Exception as _e_pie:
-                return {"status":"failed","intent":intent,
-                        "text":"خطأ في PIE: " + str(_e_pie)}
 
         # ─── Self Diagnostics ───
         elif intent in [Intent.SELF_DIAGNOSE, Intent.FULL_DIAGNOSE]:
@@ -775,22 +641,6 @@ class Orchestrator:
             result = apply_fix(pending_path, approved=True)
             return {"status":result["status"],"intent":intent,
                     "text":f"{'✅' if result['status']=='success' else '❌'} {result['message']}"}
-
-        elif intent == Intent.REPAIR_REJECT:
-            self.context.last_result = None
-            return {"status":"success","intent":intent,
-                    "text":"تم رفض الإصلاح — لم يتم تعديل أي شيء"}
-
-        elif intent == Intent.PENDING_FIXES:
-            from lab_v4_dev.core.repair.diff_approval import list_pending
-            pending = list_pending()
-            if not pending:
-                return {"status":"success","intent":intent,
-                        "text":"لا توجد إصلاحات معلقة ✅"}
-            lines = ["=== الإصلاحات المعلقة ==="]
-            for p in pending:
-                lines.append(f"⏳ {p['fix']}")
-            return {"status":"success","intent":intent,"text":"\n".join(lines)}
 
         # ─── Delete File ───
         elif intent == Intent.DELETE_FILE:

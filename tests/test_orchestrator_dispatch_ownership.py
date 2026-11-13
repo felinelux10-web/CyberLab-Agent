@@ -50,6 +50,8 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.ERROR_REPORT,
         Intent.DRY_RUN,
         Intent.RUN_HISTORY, Intent.ANALYZE_CODE,
+        Intent.SHOW_CHANGES, Intent.CLEAN, Intent.CLEANUP_CODE,
+        Intent.PLAN_CHANGE, Intent.REPAIR_REJECT, Intent.PENDING_FIXES,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -1134,3 +1136,80 @@ def test_analyze_code_provider_denial_does_not_call_gateway(monkeypatch, tmp_pat
         route_decision=decision,
     )
     assert result["status"] == "unavailable"
+
+
+def test_show_changes_reports_recent_operation_history():
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    orchestrator = _fake_orchestrator()
+    orchestrator.agent.memory.recent_tasks = lambda limit: [
+        {"status": "success", "intent": "READ_FILE"},
+        {"status": "failed", "intent": "RUN_SCRIPT"},
+    ]
+    result = Orchestrator._route(orchestrator, Intent.SHOW_CHANGES, "", None, "")
+    assert "آخر التعديلات" in result["text"]
+    assert "✅ READ_FILE" in result["text"]
+    assert "❌ RUN_SCRIPT" in result["text"]
+
+
+def test_clean_intent_requests_scope_without_cleaning():
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    result = Orchestrator._route(_fake_orchestrator(), Intent.CLEAN, "", None, "")
+    assert result["status"] == "needs_clarification"
+    assert "حدّد الهدف" in result["text"]
+
+
+def test_cleanup_code_creates_review_only_plan(monkeypatch):
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.planner.planner as planner_module
+
+    calls = []
+    monkeypatch.setattr(planner_module, "Planner", lambda: SimpleNamespace(from_actions=lambda *args, **kwargs: (
+        calls.append((args, kwargs)) or SimpleNamespace(to_dict=lambda: {"plan_id": kwargs["plan_id"]})
+    )))
+    result = Orchestrator._route(_fake_orchestrator(), Intent.CLEANUP_CODE, "src/", None, "")
+    assert result["status"] == "needs_clarification"
+    assert result["plan_only"] is True
+    assert result["executed"] is False
+    assert result["plan"]["plan_id"].startswith("cleanup-code-")
+
+
+def test_plan_change_creates_preview_without_applying_edits(monkeypatch):
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.project_knowledge.analysis_engine as analysis_module
+    import lab_v4_dev.dni.knowledge_router as router_module
+
+    monkeypatch.setattr(analysis_module, "AnalysisEngine", lambda: SimpleNamespace(analyze_file=lambda path: None))
+    plan = SimpleNamespace(steps=[
+        SimpleNamespace(parameters={"file": "src/consumer.py", "priority": "high"}, action="review"),
+    ])
+    monkeypatch.setattr(router_module, "create_p10_plan_from_change", lambda *args, **kwargs: plan)
+    result = Orchestrator._route(_fake_orchestrator(), Intent.PLAN_CHANGE, "", None, "خطط لتعديل src/core.py")
+    assert result["status"] == "success"
+    assert result["source"] == "pie"
+    assert "src/consumer.py" in result["text"]
+    assert "لا يتم أي تعديل" in result["text"]
+
+
+def test_repair_reject_clears_last_result_without_file_changes():
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    orchestrator = _fake_orchestrator()
+    orchestrator.context.last_result = {"pending": "fix"}
+    result = Orchestrator._route(orchestrator, Intent.REPAIR_REJECT, "", None, "")
+    assert result["status"] == "success"
+    assert orchestrator.context.last_result is None
+    assert "لم يتم تعديل أي شيء" in result["text"]
+
+
+def test_pending_fixes_lists_only_pending_repairs(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.repair.diff_approval as approval_module
+
+    monkeypatch.setattr(approval_module, "list_pending", lambda: [{"fix": "main.py"}])
+    result = Orchestrator._route(_fake_orchestrator(), Intent.PENDING_FIXES, "", None, "")
+    assert result["status"] == "success"
+    assert "main.py" in result["text"]
