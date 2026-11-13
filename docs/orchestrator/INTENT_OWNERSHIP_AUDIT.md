@@ -3,17 +3,17 @@
 - Repository: `felinelux10-web/CyberLab-Agent`
 - Branch: `work/FRIENDLY-DIALOGUE-REPAIR-01`
 - Baseline HEAD: `6f0f35f9a5907fba707128913c2a06513f358e2f`
-- Audit source HEAD: `1a67cf3dd5f8595c8c77cc3e61f833067759c371`
+- Audit source HEAD: `8834805b8a1642adaa863b2960c1475c1a596be0`
 - Source file: `lab_v4_dev/core/orchestrator.py`
-- Source blob SHA: `242d072593a805c482dad9b9e5dd5a86d1e31dda`
+- Source blob SHA: `d796b23a7d3a486c70a0553e5cc840e095d0269f`
 - Scope: complete top-level conditional inventory of the current `_route` body; this is an inventory, not a claim that all ownership/dependency/effect reviews are complete.
 
 ## Inventory totals
 
 - Top-level conditional statements found in the current `_route`: **37** (3 infrastructure gates: RouteDecision guard, Response Cache gate, Dispatcher result gate; 34 remaining intent/fallback conditions).
-- Twenty-nine branch conditions have been removed from `_route`, representing 32 unique registered Intent values plus the literal `show_last_result` key: seven system-inspection/log intents, five project-inspection intents, and eight project-analysis intents in `project_analysis.py`.
+- Twenty-nine branch conditions have been removed from `_route`, representing 32 unique registered Intent values plus the literal `show_last_result` key: seven system-inspection/log intents, five project-inspection intents, and nine project-analysis intents in `project_analysis.py`.
 - Distinct `Intent.*` symbols referenced in `_route`: **36**.
-- Literal `show_last_result` condition: present.
+- Literal `show_last_result` key: registered in Dispatcher; its legacy `_route` condition has been removed.
 - Explicit `needs_llm(intent)` fallback: present.
 - Response cache gate remains before Dispatcher in the migrated code.
 - Migrated registry currently owns: `SPACE`, `STATUS`, `HEALTH`, `MEMORY_STATUS`, `SYSTEM_STATUS`, `AUDIT_LOG`, `SECURITY_LOG`, `READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`, plus `DEPENDENCY_MAP`, `ENTRY_POINT_QUERY`, `DEPENDENTS_QUERY`, `DEPENDENCIES`, `IMPACT_CHAIN_QUERY`, `CRITICALITY_QUERY`, `IMPACT_ANALYSIS`, `FILE_IMPACT`, `COMPARE_FILES`, `REPORT`, `SESSION_REPORT`, `PROGRESS_REPORT`, `REMAINING_WORK`, `PROJECT_REPORT`, `CONTEXT_REPORT`, `HISTORY`, `WORK_STATUS`, `REMAINING_TASKS`, `NEXT_TASK`, `WORK_CONTEXT`, and literal `show_last_result`.
@@ -166,7 +166,8 @@
 | Read-only inspection pilot (5 intents) | Moved to `system_inspection.py` |
 | Audit/security log readers (2 intents) | Moved to `system_inspection.py` |
 | Project inspection (`READ_FILE`, `PROJECT_SCAN`, `PROJECT_INDEX`, `SEARCH`, `SEARCH_CODE`) | Moved to `project_inspection.py`; file lookup containment behavior preserved and tested; project scan remains local and audit-emitting; project registry/list, layer-map, local inventory-search, and explicit-path code-search behavior preserved; keyword code-search retains the central authorized-provider callback |
-| Project analysis and impact queries (9 intents) | Moved to `project_analysis.py`; dependency engine/map/query services remain the implementation owners; both `FILE_IMPACT` modes are preserved in one handler with specialized raw-text priority; `COMPARE_FILES` uses the authorized-provider callback and retains the existing path-resolution semantics |\n| Reports and work tracking (11 Intent values + literal `show_last_result`) | Moved to `reports.py`; current operational session summary remains distinct from saved dialogue-session reports; provider-backed reports use `authorized_ask` |
+| Project analysis and impact queries (9 intents) | Moved to `project_analysis.py`; dependency engine/map/query services remain the implementation owners; both `FILE_IMPACT` modes are preserved in one handler with specialized raw-text priority; `COMPARE_FILES` uses the authorized-provider callback and retains the existing path-resolution semantics |
+| Reports and work tracking (11 Intent values + literal `show_last_result`) | Moved to `reports.py`; current operational session summary remains distinct from saved dialogue-session reports; provider-backed reports use `authorized_ask` |
 | Remaining branch ownership | Legacy route; audit required before each migration |
 | Caller graph (TaskChain, Guard, direct callers) | Not certified complete |
 | Provider/evidence authorization matrix | Not certified complete |
