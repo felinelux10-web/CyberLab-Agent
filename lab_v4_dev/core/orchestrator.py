@@ -3189,41 +3189,6 @@ SOURCE CODE:
             return {"status":"success","intent":intent,
                     "text": f"✅ تم التبديل إلى: {p['name']}\nالمسار: {p['root']}{indexed}"}
 
-        # ─── Audit Log ───
-        elif intent == Intent.AUDIT_LOG:
-            from lab_v4_dev.core.audit import get_events
-            events = get_events(limit=20)
-            if not events:
-                from lab_v4_dev.core.safe_io import get_audit_log
-                legacy_events = get_audit_log(10)
-                if not legacy_events:
-                    return {"status":"success","intent":intent,"text":"لا توجد عمليات موثقة في سجل الأدلة حتى الآن."}
-                lines = ["=== سجل عمليات الكتابة السابق (آخر 10) ==="]
-                for item in legacy_events:
-                    status_icon = "✅" if item.get("status") == "success" else "❌"
-                    lines.append(f"{status_icon} {item.get('timestamp', '')[:16]} | {item.get('path', '')}")
-                return {"status":"success","intent":intent,"text":"\n".join(lines)}
-            lines = ["=== سجل الأدلة والعمليات (آخر 20) ==="]
-            for item in events:
-                context = item.get("context") if isinstance(item.get("context"), dict) else {}
-                details = item.get("details") if isinstance(item.get("details"), dict) else {}
-                event_name = str(item.get("event") or "event")
-                status_icon = "❌" if event_name.endswith((".failed", ".failure")) else "✅"
-                timestamp = str(item.get("timestamp") or "")[:16]
-                source = str(item.get("source") or "unknown")
-                lines.append(f"{status_icon} {timestamp} | {event_name} [{source}]")
-                file_path = context.get("file_path") or context.get("file") or details.get("file")
-                project_root = context.get("project_root") or context.get("root")
-                if file_path:
-                    lines.append(f"    الملف: {file_path}")
-                if project_root:
-                    lines.append(f"    المشروع: {project_root}")
-                for key in ("project_name", "project_type", "total_files", "files_modified", "reason"):
-                    value = details.get(key)
-                    if value not in (None, "", [], {}):
-                        lines.append(f"    {key}: {value}")
-            return {"status":"success","intent":intent,"text":"\n".join(lines)}
-
         # ─── Save/Skip Knowledge Base ───
         elif intent == Intent.SAVE_KB:
             from lab_v4_dev.awareness.knowledge_base import store
@@ -3243,20 +3208,6 @@ SOURCE CODE:
             self.context.pending_save = None
             return {"status":"success","intent":intent,
                     "text":"⏭️ تم التجاوز — لن يُحفظ هذا الشرح"}
-
-        # ─── Security Log (v5.6) ───
-        elif intent == Intent.SECURITY_LOG:
-            from lab_v4_dev.core.security_guard import get_security_log
-            events = get_security_log(20)
-            if not events:
-                return {"status":"success","intent":intent,
-                        "text":"✅ لا توجد تهديدات مسجلة"}
-            lines = ["=== سجل الأمان ==="]
-            for e in events:
-                ts = e.get("timestamp","")[:16]
-                lines.append(f"⚠️ {ts} | {e.get('type','')} | {e.get('value','')[:50]}")
-                lines.append(f"    تطابق: {e.get('matched','')}")
-            return {"status":"success","intent":intent,"text":"\n".join(lines)}
 
         # ─── Work Context Report ───
         elif intent == Intent.WORK_CONTEXT:

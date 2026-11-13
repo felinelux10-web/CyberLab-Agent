@@ -23,6 +23,8 @@ HANDLER_REGISTRY = build_registry((
     (Intent.HEALTH, system_inspection.handle_health),
     (Intent.MEMORY_STATUS, system_inspection.handle_memory_status),
     (Intent.SYSTEM_STATUS, system_inspection.handle_system_status),
+    (Intent.AUDIT_LOG, system_inspection.handle_audit_log),
+    (Intent.SECURITY_LOG, system_inspection.handle_security_log),
 ))
 
 

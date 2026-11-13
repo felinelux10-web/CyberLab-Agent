@@ -18,6 +18,8 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.HEALTH,
         Intent.MEMORY_STATUS,
         Intent.SYSTEM_STATUS,
+        Intent.AUDIT_LOG,
+        Intent.SECURITY_LOG,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -135,3 +137,32 @@ def test_response_cache_precedes_health_handler(monkeypatch):
         "status": "success", "intent": Intent.HEALTH,
         "source": "cache", "text": "cached-health",
     }
+
+
+def test_route_delegates_audit_log(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.audit as audit_module
+    import lab_v4_dev.core.safe_io as safe_io_module
+
+    monkeypatch.setattr(audit_module, "get_events", lambda limit: [{
+        "event": "file.updated", "source": "test", "timestamp": "2026-11-13T07:00:00",
+        "context": {"file_path": "demo.py"}, "details": {"reason": "test"},
+    }])
+    result = Orchestrator._route(_fake_orchestrator(), Intent.AUDIT_LOG, None, None, "")
+    assert result["status"] == "success"
+    assert "file.updated [test]" in result["text"]
+    assert "demo.py" in result["text"]
+
+
+def test_route_delegates_security_log(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.security_guard as security_module
+
+    monkeypatch.setattr(security_module, "get_security_log", lambda limit: [{
+        "timestamp": "2026-11-13T07:00:00", "type": "test", "value": "blocked value",
+        "matched": "policy",
+    }])
+    result = Orchestrator._route(_fake_orchestrator(), Intent.SECURITY_LOG, None, None, "")
+    assert result["status"] == "success"
+    assert "blocked value" in result["text"]
+    assert "تطابق: policy" in result["text"]
