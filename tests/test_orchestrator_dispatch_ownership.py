@@ -1104,6 +1104,7 @@ def test_analyze_code_uses_authorized_provider_and_updates_context(monkeypatch, 
     })
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=True)
     orchestrator = _fake_orchestrator()
+    orchestrator._analyzed_files = set()
     result = Orchestrator._route(
         orchestrator, Intent.ANALYZE_CODE, str(source), None, "حلل هذا الملف",
         route_decision=decision,
