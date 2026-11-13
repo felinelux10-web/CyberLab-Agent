@@ -34,6 +34,10 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.IMPACT_ANALYSIS,
         Intent.FILE_IMPACT,
         Intent.COMPARE_FILES,
+        Intent.REPORT, Intent.SESSION_REPORT, Intent.PROGRESS_REPORT,
+        Intent.REMAINING_WORK, Intent.PROJECT_REPORT, Intent.CONTEXT_REPORT,
+        Intent.HISTORY, Intent.WORK_STATUS, Intent.REMAINING_TASKS,
+        Intent.NEXT_TASK, Intent.WORK_CONTEXT, "show_last_result",
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -75,7 +79,9 @@ def _fake_orchestrator():
         session=SimpleNamespace(summary=lambda: {
             "tasks_done": 7, "error_count": 1,
         }),
+        memory=SimpleNamespace(recent_tasks=lambda limit: []),
     )
+    orchestrator.context = SimpleNamespace(last_result=None)
     return orchestrator
 
 
@@ -572,3 +578,104 @@ def test_compare_files_provider_denial_does_not_call_gateway(monkeypatch, tmp_pa
         route_decision=decision,
     )
     assert result["status"] == "unavailable"
+
+
+def test_session_report_keeps_current_session_summary_contract():
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    result = Orchestrator._route(_fake_orchestrator(), Intent.REPORT, "", None, "")
+    assert result["status"] == "success"
+    assert result["intent"] == Intent.REPORT
+    assert result["session"] == {"tasks_done": 7, "error_count": 1}
+    assert len(result["time"]) == 16
+
+
+def test_project_report_provider_permission_is_enforced(monkeypatch):
+    from types import SimpleNamespace
+    import lab_v4_dev.core.orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    monkeypatch.setattr(
+        orchestrator_module, "ask",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
+    )
+    decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
+    result = Orchestrator._route(
+        _fake_orchestrator(), Intent.PROJECT_REPORT, "", None, "اكتب تقرير المشروع",
+        route_decision=decision,
+    )
+    assert result["status"] == "unavailable"
+
+
+def test_context_report_keeps_project_metadata_and_task_snapshot(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.project_metadata as metadata_module
+    import lab_v4_dev.core.project_context as project_module
+
+    releases = tmp_path / "releases"
+    (releases / "v1").mkdir(parents=True)
+    monkeypatch.setattr(project_module, "CYBERLAB_ROOT", str(tmp_path))
+    monkeypatch.setattr(metadata_module, "ProjectMetadata", lambda: SimpleNamespace(
+        get_current_phase=lambda: {"name": "phase-a"},
+        get_version=lambda: "1.0",
+        get_project_name=lambda: "demo",
+    ))
+    orchestrator = _fake_orchestrator()
+    orchestrator.agent.memory.recent_tasks = lambda limit: [{"status": "success", "intent": "READ_FILE"}]
+    result = Orchestrator._route(orchestrator, Intent.CONTEXT_REPORT, "", None, "")
+    assert result["version"] == "1.0"
+    assert result["focus"] == "demo"
+    assert result["releases"] == ["v1"]
+    assert result["tasks"][0]["intent"] == "READ_FILE"
+
+
+def test_history_report_reads_recent_tasks():
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    orchestrator = _fake_orchestrator()
+    orchestrator.agent.memory.recent_tasks = lambda limit: [{"status": "success", "intent": "SEARCH"}]
+    result = Orchestrator._route(orchestrator, Intent.HISTORY, "", None, "")
+    assert result["tasks"] == [{"status": "success", "intent": "SEARCH"}]
+
+
+def test_work_tracking_handlers_keep_three_output_modes(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.data.work_tracker as tracker_module
+
+    monkeypatch.setattr(tracker_module, "get_status", lambda: {
+        "version": "1.0", "current_focus": "testing",
+        "completed": ["A"], "active": ["B"], "planned": ["C"], "blocked": ["D"],
+    })
+    monkeypatch.setattr(tracker_module, "get_next_task", lambda: "B")
+    monkeypatch.setattr(tracker_module, "get_remaining", lambda: ["B", "C"])
+
+    work = Orchestrator._route(_fake_orchestrator(), Intent.WORK_STATUS, "", None, "")
+    next_task = Orchestrator._route(_fake_orchestrator(), Intent.NEXT_TASK, "", None, "")
+    remaining = Orchestrator._route(_fake_orchestrator(), Intent.REMAINING_TASKS, "", None, "")
+    assert "الإصدار: 1.0" in work["text"] and "محظور" in work["text"]
+    assert "المهمة التالية: B" == next_task["text"]
+    assert "B" in remaining["text"] and "C" in remaining["text"]
+
+
+def test_work_context_reports_live_tasks_and_pending_repairs(monkeypatch):
+    from lab_v4_dev.core.orchestrator import Orchestrator
+    import lab_v4_dev.core.repair.diff_approval as approval_module
+
+    orchestrator = _fake_orchestrator()
+    orchestrator.agent.memory.recent_tasks = lambda limit: [
+        {"status": "success", "intent": "READ_FILE", "plan": "read project file"},
+    ]
+    monkeypatch.setattr(approval_module, "list_pending", lambda: [{"fix": "repair.py"}])
+    result = Orchestrator._route(orchestrator, Intent.WORK_CONTEXT, "", None, "")
+    assert "read project file" in result["text"]
+    assert "repair.py" in result["text"]
+
+
+def test_show_last_result_uses_context_last_result():
+    from lab_v4_dev.core.orchestrator import Orchestrator
+
+    orchestrator = _fake_orchestrator()
+    orchestrator.context.last_result = {"text": "previous output"}
+    result = Orchestrator._route(orchestrator, "show_last_result", "", None, "")
+    assert result["text"] == "previous output"

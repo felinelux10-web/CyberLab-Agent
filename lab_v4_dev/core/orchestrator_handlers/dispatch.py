@@ -3,7 +3,7 @@
 from types import MappingProxyType
 
 from lab_v4_dev.intent.intents import Intent
-from . import system_inspection, project_inspection, project_analysis
+from . import system_inspection, project_inspection, project_analysis, reports
 
 
 def build_registry(entries):
@@ -39,6 +39,18 @@ HANDLER_REGISTRY = build_registry((
     (Intent.IMPACT_ANALYSIS, project_analysis.handle_impact_analysis),
     (Intent.FILE_IMPACT, project_analysis.handle_file_impact),
     (Intent.COMPARE_FILES, project_analysis.handle_compare_files),
+    (Intent.REPORT, reports.handle_session_report),
+    (Intent.SESSION_REPORT, reports.handle_session_report),
+    (Intent.PROGRESS_REPORT, reports.handle_project_reports),
+    (Intent.REMAINING_WORK, reports.handle_project_reports),
+    (Intent.PROJECT_REPORT, reports.handle_project_reports),
+    (Intent.CONTEXT_REPORT, reports.handle_context_report),
+    (Intent.HISTORY, reports.handle_history),
+    (Intent.WORK_STATUS, reports.handle_work_tracking),
+    (Intent.REMAINING_TASKS, reports.handle_work_tracking),
+    (Intent.NEXT_TASK, reports.handle_work_tracking),
+    (Intent.WORK_CONTEXT, reports.handle_work_context),
+    ("show_last_result", reports.handle_show_last_result),
 ))
 
 
@@ -50,7 +62,7 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
     handler = HANDLER_REGISTRY.get(intent)
     if handler is None:
         return None
-    if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES}:
+    if intent in {Intent.SEARCH_CODE, Intent.COMPARE_FILES, Intent.PROGRESS_REPORT, Intent.REMAINING_WORK, Intent.PROJECT_REPORT}:
         return handler(
             orchestrator, intent, target=target, raw=raw,
             authorized_ask=authorized_ask,

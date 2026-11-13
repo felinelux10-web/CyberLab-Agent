@@ -461,96 +461,6 @@ class Orchestrator:
                 "executed": False,
             }
 
-        # ─── تقرير ───
-        elif intent in [Intent.REPORT, Intent.SESSION_REPORT]:
-            h   = self.agent.session.summary()
-            now = datetime.now().strftime("%Y-%m-%d %H:%M")
-            return {
-                "status"  : "success", "intent": intent,
-                "time"    : now,
-                "session" : h,
-            }
-
-        # ─── تقارير المشروع ───
-        elif intent in [Intent.PROGRESS_REPORT, Intent.REMAINING_WORK,
-                        Intent.PROJECT_REPORT]:
-            memory  = load_memory()
-            total   = memory.get("total_files", 0)
-            from lab_v4_dev.llm.prompt_builder import build_project_context
-            system  = build_project_context(
-                question=raw,
-                intent=intent,
-                project_scope=resolve_project_scope(raw, intent=intent),
-            )
-            result = authorized_ask(raw, system=system, max_tokens=400)
-            return {
-                "status": result["status"],
-                "intent": intent,
-                "source": result.get("provider_used", get_active_provider()),
-                "text"  : result.get("text",""),
-            }
-
-        # ─── Groq للمهام المعقدة ───
-        elif needs_llm(intent):
-            from lab_v4_dev.llm.prompt_builder import build_project_context
-            system = build_project_context(
-                question=raw,
-                intent=intent,
-                project_scope=resolve_project_scope(raw, intent=intent),
-            )
-            result = authorized_ask(raw, system=system, max_tokens=300)
-            return {
-                "status" : result["status"],
-                "intent" : intent,
-                "source" : result.get("provider_used", get_active_provider()),
-                "route"  : result.get("provider_used", get_active_provider()),
-                "text"   : result.get("text", result.get("message", "")),
-                "tokens" : result.get("tokens", 0),
-            }
-
-        # ─── تقرير السياق ───
-        elif intent == Intent.CONTEXT_REPORT:
-            from lab_v4_dev.core.project_metadata import ProjectMetadata
-            _meta = ProjectMetadata()
-            tasks = self.agent.memory.recent_tasks(10)
-            releases_dir = os.path.join(CYBERLAB_ROOT, "releases")
-            releases = sorted([
-                d for d in os.listdir(releases_dir)
-                if os.path.isdir(os.path.join(releases_dir, d))
-            ]) if os.path.exists(releases_dir) else []
-            _cur_phase = _meta.get_current_phase()
-            return {
-                "status"  : "success",
-                "intent"  : intent,
-                "version" : _meta.get_version(),
-                "focus"   : _meta.get_project_name(),
-                "phases"  : [_cur_phase.get("name","?")] if _cur_phase else [],
-                "releases": releases,
-                "tasks"   : [{"status": t["status"],
-                              "intent": t["intent"][:60]}
-                             for t in tasks],
-            }
-
-        # ─── نتيجة آخر أمر ───
-        elif intent == "show_last_result":
-            data = self.context.last_result
-            if not data:
-                return {"status":"success","intent":intent,
-                        "text":"لا يوجد نتيجة سابقة"}
-            # عرض النتيجة السابقة
-            output = data.get("text") or data.get("output") or str(data)[:300]
-            return {"status":"success","intent":intent,"text":output}
-
-        # ─── سجل المهام ───
-        elif intent == Intent.HISTORY:
-            tasks = self.agent.memory.recent_tasks(10)
-            return {
-                "status": "success",
-                "intent": intent,
-                "tasks" : [{"status": t["status"],
-                            "intent": t["intent"][:50]} for t in tasks],
-            }
-
         # ─── آخر مشروع ───
         elif intent == Intent.LAST_PROJECT:
             from lab_v4_dev.awareness.project_knowledge import get_project_history
@@ -639,31 +549,6 @@ class Orchestrator:
                 "v2"    : v2,
                 "text"  : result.get("text",""),
             }
-
-        # ─── Work Tracker ───
-        elif intent in [Intent.WORK_STATUS, Intent.REMAINING_TASKS, Intent.NEXT_TASK]:
-            from lab_v4_dev.data.work_tracker import get_status, get_next_task, get_remaining
-            s = get_status()
-            if intent == Intent.NEXT_TASK:
-                return {"status":"success","intent":intent,
-                        "text": f"المهمة التالية: {get_next_task()}"}
-            if intent == Intent.REMAINING_TASKS:
-                remaining = get_remaining()
-                text = "المتبقي:\n" + "\n".join(f"  - {t}" for t in remaining)
-                return {"status":"success","intent":intent,"text":text}
-            # WORK_STATUS
-            lines = [
-                f"الإصدار: {s['version']}",
-                f"التركيز: {s['current_focus']}",
-                f"مكتمل  : {', '.join(s['completed']) or 'لا شيء'}",
-                f"نشط    : {', '.join(s['active']) or 'لا شيء'}",
-                f"مخطط   : {', '.join(s['planned']) or 'لا شيء'}",
-            ]
-            if s['blocked']:
-                lines.append(f"محظور  : {', '.join(s['blocked'])}")
-            return {"status":"success","intent":intent,"text":"\n".join(lines)}
-
-
 
         # ─── Plan Change (PIE) ───
         elif intent == Intent.PLAN_CHANGE:
@@ -2435,31 +2320,6 @@ SOURCE CODE:
             self.context.pending_save = None
             return {"status":"success","intent":intent,
                     "text":"⏭️ تم التجاوز — لن يُحفظ هذا الشرح"}
-
-        # ─── Work Context Report ───
-        elif intent == Intent.WORK_CONTEXT:
-            # Work context is a live operational ledger. Archived FINAL_REPORT
-            # files belong to project knowledge/reporting and must not be
-            # presented as the answer to "what were we doing?".
-            lines = ["=== سجل العمل الحالي ==="]
-            tasks = self.agent.memory.recent_tasks(8)
-            if tasks:
-                lines.append("\n📋 العمليات المسجلة فعليًا:")
-                for t in tasks:
-                    detail = str(t.get("plan") or t.get("intent") or "").strip()
-                    lines.append(f"  [{t['status']}] {detail[:120]}")
-            else:
-                lines.append("\nلا توجد عمليات عمل مسجلة في هذه الجلسة.")
-
-            # Pending repairs are live state and remain part of the ledger.
-            from lab_v4_dev.core.repair.diff_approval import list_pending
-            pending = list_pending()
-            if pending:
-                lines.append(f"\n⏳ إصلاحات معلقة ({len(pending)}):")
-                for p in pending:
-                    lines.append(f"  - {p['fix']}")
-
-            return {"status":"success","intent":intent,"text":"\n".join(lines)}
 
         # ─── Delete File ───
         elif intent == Intent.DELETE_FILE:
