@@ -185,16 +185,18 @@ def test_dialogue_state_preserves_first_and_last_replies_after_history_rollover(
 def test_direct_last_and_first_assistant_reply_queries_return_exact_replies():
     manager, memory = _manager()
     memory.state.session_id = "live-id"
-    memory.state.history = [
-        {
-            "role": "assistant", "content": "هذا أول رد محفوظ.",
-            "session_id": "live-id", "context_kind": "dialogue",
-        },
-        {
-            "role": "assistant", "content": "هذا آخر رد محفوظ.",
-            "session_id": "live-id", "context_kind": "dialogue",
-        },
-    ]
+    memory.state.add_turn(
+        role="assistant",
+        content="هذا أول رد محفوظ.",
+        session_id="live-id",
+        context_kind="dialogue",
+    )
+    memory.state.add_turn(
+        role="assistant",
+        content="هذا آخر رد محفوظ.",
+        session_id="live-id",
+        context_kind="dialogue",
+    )
     memory.state.exchange_archive = [
         {
             "user": "السؤال الأول", "assistant": "هذا أول رد محفوظ.",
@@ -243,12 +245,12 @@ def test_first_reply_is_not_guessed_from_a_truncated_legacy_archive():
 def test_live_process_routes_direct_last_reply_query_to_dialogue_memory():
     manager, memory = _manager()
     memory.state.session_id = "live-id"
-    memory.state.history = [
-        {
-            "role": "assistant", "content": "هذا آخر رد محفوظ.",
-            "session_id": "live-id", "context_kind": "dialogue",
-        },
-    ]
+    memory.state.add_turn(
+        role="assistant",
+        content="هذا آخر رد محفوظ.",
+        session_id="live-id",
+        context_kind="dialogue",
+    )
     memory.state.exchange_archive = [
         {
             "user": "السؤال السابق", "assistant": "هذا آخر رد محفوظ.",
