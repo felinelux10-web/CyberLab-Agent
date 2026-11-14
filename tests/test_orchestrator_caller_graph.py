@@ -104,3 +104,12 @@ def test_repository_wide_runtime_caller_graph_and_dynamic_boundaries():
     assert "manager.process_execution_step(" in task_chain
     assert "orchestrator.handle(" not in task_chain
     assert "self.conv_manager.process(" in agent
+
+    services = (root / "lab_v4_dev" / "core" / "orchestrator_handlers" / "services.py").read_text(encoding="utf-8")
+    execution = (root / "lab_v4_dev" / "core" / "orchestrator_handlers" / "execution.py").read_text(encoding="utf-8")
+    assert 'if intent == Intent.RUN_SCRIPT:' in services
+    assert 'fields.add("submit_prepared_execution")' in services
+    assert 'getattr(orchestrator, "_submit_prepared_execution", None)' in services
+    assert 'submit_prepared(' in execution
+    assert 'route_decision=route_decision' in execution
+    assert 'run_code(' not in execution[execution.index("def handle_run_script("):]
