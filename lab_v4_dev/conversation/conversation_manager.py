@@ -5836,7 +5836,10 @@ class ConversationManager:
                     and str(item.get("conversation_domain") or "general").casefold()
                         not in {"work", "system", "execution"}
                 ]
-                selected_reply = assistant_turns[-1] if assistant_turns else ""
+                selected_reply = (
+                    str(getattr(state, "last_assistant_response", "") or "").strip()
+                    or (assistant_turns[-1] if assistant_turns else "")
+                )
                 label = "آخر رد كتبته لك"
             else:
                 assistant_turns = [
@@ -5852,7 +5855,10 @@ class ConversationManager:
                         and item.get("role") == "assistant"
                         and str(item.get("content") or "").strip()
                     ]
-                selected_reply = assistant_turns[0] if assistant_turns else ""
+                selected_reply = (
+                    str(getattr(state, "first_assistant_response", "") or "").strip()
+                    or (assistant_turns[0] if assistant_turns else "")
+                )
                 label = "أول رد كتبته لك"
             if not selected_reply:
                 return {
