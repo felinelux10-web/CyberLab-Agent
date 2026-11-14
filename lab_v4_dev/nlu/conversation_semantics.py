@@ -1197,7 +1197,18 @@ def classify_conversation_semantics(
     # readings of broad question or opinion markers.
     domain_specific = domain in {"project", "technical", "system"}
     second_person = _has_second_person(tokens, bases)
-    if not domain_specific:
+    explicit_social_wellbeing_greeting = (
+        _has_any(bases, _GREETING_MARKERS)
+        and _has_any(bases, _STATE_MARKERS)
+        and not _has_any(bases, _WORKING_MARKERS)
+        and not _has_any(bases, _AGENT_ARCHITECTURE_MARKERS)
+        and not _has_any(bases, _AGENT_FLOW_MARKERS)
+    )
+    if explicit_social_wellbeing_greeting:
+        # "Hello, agent, how are you?" is social even when the parser's
+        # lexical agent reference gave the turn a system/agent-self domain.
+        act = "SOCIAL_GREETING"
+    elif not domain_specific:
         if (
             _has_any(bases, _WORKING_MARKERS)
             and (
