@@ -204,6 +204,14 @@ class DialogueMemory:
                     and str(item.get("assistant") or "").strip()
                 ),
                 None,
+            ) or next(
+                (
+                    str(turn.get("content") or "").strip()
+                    for turn in reversed(restored.history)
+                    if turn.get("role") == "assistant"
+                    and str(turn.get("content") or "").strip()
+                ),
+                None,
             )
         if explicit_saved_session:
             restored.active_restored_session_id = snapshot_session_id
