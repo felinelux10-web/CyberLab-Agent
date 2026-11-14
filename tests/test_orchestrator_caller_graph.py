@@ -4,7 +4,11 @@ from pathlib import Path
 
 def _python_files(root):
     # workspace/ contains user-generated scripts and snippets, not application source.
-    ignored = {".git", ".venv", "venv", "__pycache__", "build", "dist", ".tox", "workspace"}
+    # These directories are local/generated or archived snapshots, not active runtime source.
+    ignored = {
+        ".git", ".venv", "venv", "__pycache__", "build", "dist", ".tox",
+        "workspace", "stable", "releases", "_archived_orphans_20260621",
+    }
     for path in root.rglob("*.py"):
         if any(part in ignored for part in path.parts):
             continue
