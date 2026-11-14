@@ -31,6 +31,59 @@ def test_latest_saved_session_identity_requests_are_not_rendered_as_reports():
     assert number["output_kind"] == "session_number"
 
 
+def test_route_decision_accepts_session_identity_output_and_binds_latest_record(monkeypatch):
+    manager, _memory = _manager()
+    monkeypatch.setattr(
+        session_state, "get_session_index",
+        lambda: [{"session_id": "latest-id", "updated_at": "2026-11-14T09:00:00"}],
+    )
+    selection = session_state.session_route_contract(
+        "ما رقم آخر جلسة محفوظة؟"
+    )
+
+    decision = manager.finalize_route(
+        parsed={"intent": Intent.SESSION_RESTORE, "conversation_domain": "system"},
+        selected_session=selection,
+        saved_session_request=True,
+        selected_saved_session_id=None,
+        transition=ContextTransition.NEW_INDEPENDENT,
+    )
+
+    assert decision.route == "L-SESSION"
+    assert decision.output_kind == "session_number"
+    assert decision.session_ref.session_id == "latest-id"
+
+
+def test_session_restore_returns_only_requested_latest_session_number(monkeypatch):
+    from types import SimpleNamespace
+    from lab_v4_dev.core.orchestrator_handlers.sessions import handle_session_restore
+
+    record = {"session_id": "latest-id", "title": "آخر حوار"}
+    monkeypatch.setattr(
+        session_state, "get_session_index",
+        lambda: [{"session_id": "latest-id", "updated_at": "2026-11-14T09:00:00"}],
+    )
+    monkeypatch.setattr(session_state, "get_session_by_id", lambda session_id: record)
+
+    orchestrator = SimpleNamespace(services=SimpleNamespace(dialogue_memory=None))
+    decision = SimpleNamespace(
+        route="L-SESSION",
+        output_kind="session_number",
+        session_ref=SimpleNamespace(session_id="latest-id"),
+    )
+    result = handle_session_restore(
+        orchestrator,
+        Intent.SESSION_RESTORE,
+        raw="ما رقم آخر جلسة محفوظة؟",
+        route_decision=decision,
+        session_selector={"kind": "latest", "report_mode": "number"},
+    )
+
+    assert result["status"] == "success"
+    assert result["session_number"] == 1
+    assert result["text"] == "رقم الجلسة المحفوظة الأخيرة: 1."
+
+
 def test_previous_dialogue_resolver_excludes_live_dialogue_and_keeps_exact_identity(monkeypatch):
     records = {
         "live-id": {
