@@ -982,6 +982,23 @@ def classify_conversation_semantics(
         }
 
     if intent_value in _AGENT_QUERY_INTENTS:
+        explicit_social_wellbeing_greeting = (
+            _has_any(bases, _GREETING_MARKERS)
+            and _has_any(bases, _STATE_MARKERS)
+            and not _has_any(bases, _WORKING_MARKERS)
+            and not _has_any(bases, _AGENT_ARCHITECTURE_MARKERS)
+            and not _has_any(bases, _AGENT_FLOW_MARKERS)
+        )
+        if explicit_social_wellbeing_greeting:
+            # An agent-addressed greeting is still a social act; the parser's
+            # identity intent must not override the utterance's pragmatic act.
+            return {
+                "conversation_domain": "social",
+                "conversation_act": "SOCIAL_GREETING",
+                "confidence": 0.98,
+                "response_attributes": {},
+                "conversational": True,
+            }
         return {
             "conversation_domain": "agent_self",
             "conversation_act": _AGENT_QUERY_ACTS[intent_value],
