@@ -60,6 +60,9 @@ class DialogueState:
     last_target: str | None = None
     last_entity_type: str | None = None
     last_confidence: float = 0.0
+    # Durable first/last response anchors survive the bounded 8-turn/32-exchange windows.
+    first_assistant_response: str | None = None
+    last_assistant_response: str | None = None
     pending_clarification: dict[str, Any] | None = None
     # Explicit saved-dialogue reference. It remains separate from the live
     # conversation identity so follow-up requests can keep the selected saved
@@ -90,6 +93,11 @@ class DialogueState:
         context_kind: str = "unknown",
         session_id: str | None = None,
     ) -> None:
+        if role == "assistant" and str(content or "").strip():
+            response = str(content)
+            if not self.first_assistant_response:
+                self.first_assistant_response = response
+            self.last_assistant_response = response
         self.turns.append(
             DialogueTurn(
                 role=role,
@@ -121,6 +129,8 @@ class DialogueState:
             "last_target": self.last_target,
             "last_entity_type": self.last_entity_type,
             "last_confidence": self.last_confidence,
+            "first_assistant_response": self.first_assistant_response,
+            "last_assistant_response": self.last_assistant_response,
             "pending_clarification": self.pending_clarification,
             "active_restored_session_id": self.active_restored_session_id,
             "active_restored_topic": self.active_restored_topic,
