@@ -14,7 +14,11 @@ def test_gateway_imports_are_confined_to_repository_runtime_policy_boundaries():
     imported_modules = set()
     violations = []
     # workspace/ contains user-generated scripts and snippets, not application source.
-    ignored = {".git", ".venv", "venv", "__pycache__", "build", "dist", ".tox", "workspace"}
+    # These directories are local/generated or archived snapshots, not active runtime source.
+    ignored = {
+        ".git", ".venv", "venv", "__pycache__", "build", "dist", ".tox",
+        "workspace", "stable", "releases", "_archived_orphans_20260621",
+    }
 
     for path in REPO_ROOT.rglob("*.py"):
         relative_parts = path.relative_to(REPO_ROOT).parts
