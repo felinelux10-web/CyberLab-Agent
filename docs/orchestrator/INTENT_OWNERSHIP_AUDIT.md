@@ -4,7 +4,7 @@
 - Active branch: `work/FRIENDLY-DIALOGUE-REPAIR-01`
 - Baseline commit: `6f0f35f9a5907fba707128913c2a06513f358e2f`
 - Baseline `lab_v4_dev/core/orchestrator.py` blob: `28bafb091cd27b682ef83ef77c27a108e864eb02`
-- Audited implementation and verification HEAD: `cf34361012b59640b516c187a31e93d032f5533c`
+- Audited implementation and verification HEAD: `4b76e484f9e7ccc1324dba6ba0ef7a3ee0acbb82`
 - Audit date: 2026-11-13
 - Status: **Orchestrator decomposition and its eight final audit gates are verified by source inspection and CI. Residual boundaries are recorded below; no APK build is claimed.**
 
@@ -52,7 +52,7 @@ Special behavior is retained:
 
 ## 4. RouteDecision, evidence, session identity, and provider authorization
 
-The authoritative route is finalized in ConversationManager and passed downstream as a frozen `RouteDecision`. Orchestrator denies a missing decision, mismatched intent, unauthorized route, invalid session/output combination, or invalid evidence scope.
+The authoritative route is finalized in ConversationManager and passed downstream as a frozen `RouteDecision`. Orchestrator denies a missing decision, mismatched intent, unauthorized route, invalid session/output combination, or invalid evidence scope. `PreparedExecutionRequest` now carries that exact decision; its contract accepts only matching `L-EXEC` + `work_state` authority, and EventLoop validates the grant again at queue and processing boundaries.
 
 Verified contract points:
 
@@ -90,6 +90,7 @@ No handler module has a direct gateway import. The gateway inventory test scans 
 - `HandlerContext` is a frozen dataclass; its nested session selector, response attributes, and conversation history are recursively frozen.
 - Contract mappings in `Request`, `RoutingDecision`, `RouteDecision`, `PreparedExecutionRequest`, and `AuditEvent` are recursively frozen.
 - `HandlerServices` is a frozen capability container. Intent-specific service references remain limited to the declared fields.
+- The prepared-execution submission capability is exposed only to the `RUN_SCRIPT` handler; the handler cannot access the Agent or EventLoop directly.
 - `HandlerFacade` is frozen and exposes no Agent object. Its lazy pipeline cache uses an internal assignment while preserving the frozen public surface.
 - The facade's underlying operational `context` reference remains mutable for legacy state updates. This is an explicit compatibility boundary, not a claim that the ContextStore itself is immutable.
 
@@ -104,7 +105,7 @@ Dedicated tests cover the legacy effects and authorization boundary for:
 - `REPAIR_ANALYZE`
 - `REPAIR_APPROVE`
 
-The tests verify the cleaner invocation/report, safe-delete backup and snapshot contract, explicit script selection and sandbox execution, repair proposal persistence and approval application, and SafePipeline write plus post-write verification.
+The tests verify the cleaner invocation/report, safe-delete backup and snapshot contract, explicit script selection through the prepared EventLoop path, repair proposal persistence across ContextStore updates and explicit approval, and SafePipeline write plus post-write verification. `RUN_SCRIPT` rejects implicit selection of the newest script, constrains the resolved path to the workspace, applies the path security guard, uses the typed prepared handoff, and preserves execution-history recording.
 
 Effectful Orchestrator intents are denied without a final RouteDecision or with the wrong work-evidence scope. Existing safe-I/O and SafePipeline controls remain in place; the handler migration does not grant additional execution authority.
 
@@ -123,20 +124,20 @@ Verified active call paths:
 | `core/orchestrator.py` | Owns the internal `_route()` call and defines the PreparedExecutionRequest handoff helper. |
 | `loop/event_loop.py` | Defines raw `submit()` and typed `submit_prepared()`; no active raw-loop submit caller was found. |
 
-The PreparedExecutionRequest handoff is present but dormant: `submit_prepared()` is called only by `Orchestrator._submit_prepared_execution()`, and that helper has no internal caller. This is recorded as an unused compatibility path, not misrepresented as an integrated runtime path.
+The prepared execution handoff is active for `RUN_SCRIPT`: `HandlerServices` exposes a narrowly scoped bound capability, the registered handler supplies a fixed `run_command` execution specification plus the final RouteDecision, and `Orchestrator._submit_prepared_execution()` submits the typed request to `EventLoop.submit_prepared()`. The raw `EventLoop.submit()` parser path remains defined for compatibility but has no active runtime caller.
 
 The scan also identifies Guard's dynamic `getattr(manager, "process")` delegation. Test modules may call Orchestrator directly for unit-level coverage; the active runtime scan found no additional direct callers.
 
 ## 9. CI evidence at the audited implementation HEAD
 
-GitHub Actions run `43438623863`, head SHA `cf34361012b59640b516c187a31e93d032f5533c`:
+GitHub Actions run `43568184890`, head SHA `4b76e484f9e7ccc1324dba6ba0ef7a3ee0acbb82`:
 
 - Focused dialogue regressions: **484 passed**.
-- Full-suite advisory job: **1,102 passed**.
+- Full-suite advisory job: **1,116 passed**.
 - Failed tests: **0**.
 - The job logs, not only the overall workflow conclusion, were inspected.
 
-The full suite includes the ownership, route authorization, repository-wide active-source provider-call inventory, deep immutability, repository-wide active-source caller graph, effect parity, exact legacy branch parity, response-cache ordering, and both FILE_IMPACT mode tests.
+The full suite includes the ownership, route authorization, repository-wide active-source provider-call inventory, deep immutability, repository-wide active-source caller graph, effect parity, exact legacy branch parity, response-cache ordering, both FILE_IMPACT mode tests, prepared-execution route binding, prepared EventLoop caller wiring, fail-closed profile/impact policy, and repair-selection persistence.
 
 ## 10. Execution phases and scope boundary
 
@@ -153,7 +154,7 @@ The full suite includes the ownership, route authorization, repository-wide acti
 | 7 — Sessions / Memory | Complete |
 | 8 — Code Authoring / Execution | Complete |
 | 9 — Repair / Destructive Operations | Complete |
-| 10 — Legacy Caller Migration | Complete for the active runtime call graph |
+| 10 — Legacy Caller Migration | Complete for the active runtime call graph, including the `RUN_SCRIPT` → prepared EventLoop path; the unused raw `EventLoop.submit()` compatibility API remains without runtime callers |
 | 11 — Final Parity Verification | Complete at the audited code HEAD |
 | 12 — Legacy Route Removal | The active 3,000-line intent switch had already been replaced by the compact dispatch boundary before this final audit; this session performed no further legacy-tree deletion. The separate `lab_v4/` tree remains retained. |
 
@@ -163,4 +164,4 @@ Out of scope and not claimed as complete: APK packaging/build, UI work, API work
 
 The Orchestrator decomposition is verified against the baseline branch-key inventory, route/evidence/provider authorization boundaries, effectful-handler parity, and the active runtime caller graph. The focused and full CI suites pass at the audited implementation HEAD.
 
-The remaining documented compatibility boundaries are the mutable operational ContextStore reference inside HandlerFacade and the dormant PreparedExecutionRequest handoff helper. Neither is represented as an active caller or as fully immutable. No further legacy cleanup is authorized by this audit.
+The remaining documented compatibility boundary is the mutable operational ContextStore reference inside HandlerFacade. The prepared handoff is no longer dormant: it is route-bound and exercised by the active `RUN_SCRIPT` handler. The legacy raw EventLoop submission API and the separate `lab_v4/` tree remain retained because no further deletion is required to satisfy the active caller contract.
