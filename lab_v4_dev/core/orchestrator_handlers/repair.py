@@ -41,7 +41,13 @@ def handle_repair_analyze(orchestrator, intent, *, target=None, raw=None, author
     proposal = show_fix_proposal(fix, error)
     path = save_pending_fix(error.get("file", ""), fix, error, analysis)
     orchestrator.context.last_result = {"pending_path": path, "fix": fix}
-    return {"status": "success", "intent": intent, "text": proposal}
+    return {
+        "status": "success",
+        "intent": intent,
+        "text": proposal,
+        "pending_path": path,
+        "fix": fix,
+    }
 
 
 def handle_repair_approve(orchestrator, intent, *, target=None, raw=None):
@@ -49,13 +55,26 @@ def handle_repair_approve(orchestrator, intent, *, target=None, raw=None):
     from lab_v4_dev.core.repair.diff_approval import apply_fix, list_pending
 
     last = orchestrator.context.last_result or {}
-    pending_path = last.get("pending_path", "")
+    pending_path = str(target or last.get("pending_path", "")).strip()
     if not pending_path:
         pending = list_pending()
-        if pending:
-            pending_path = os.path.join("workspace/pending_fixes", pending[0]["file"])
-    if not pending_path:
-        return {"status": "failed", "intent": intent, "text": "لا يوجد إصلاح معلق"}
+        available = "، ".join(item.get("file", "") for item in pending[:8])
+        return {
+            "status": "needs_clarification" if pending else "failed",
+            "intent": intent,
+            "executed": False,
+            "text": (
+                "حدّد ملف اقتراح الإصلاح الذي تريد اعتماده: " + available
+                if pending else "لا يوجد إصلاح معلق"
+            ),
+        }
+    if not os.path.isfile(pending_path):
+        return {
+            "status": "failed",
+            "intent": intent,
+            "executed": False,
+            "text": "ملف اقتراح الإصلاح المحدد غير موجود: " + pending_path,
+        }
     result = apply_fix(pending_path, approved=True)
     return {
         "status": result["status"], "intent": intent,

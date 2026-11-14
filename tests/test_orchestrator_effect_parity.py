@@ -156,42 +156,71 @@ def test_run_script_does_not_guess_latest_script_when_no_selection(monkeypatch, 
     assert calls == []
 
 
-def test_repair_approve_preserves_explicit_pending_fix_application(monkeypatch):
+def test_repair_approve_preserves_explicit_pending_fix_application(monkeypatch, tmp_path):
     from lab_v4_dev.core.repair import diff_approval
     from lab_v4_dev.core.orchestrator_handlers.repair import handle_repair_approve
 
+    pending_path = tmp_path / "fix.json"
+    pending_path.write_text("{}", encoding="utf-8")
     calls = []
     monkeypatch.setattr(diff_approval, "apply_fix", lambda path, approved=False: calls.append((path, approved)) or {
         "status": "success", "message": "تم التعديل",
     })
-    facade = SimpleNamespace(context=SimpleNamespace(last_result={"pending_path": "workspace/pending_fixes/fix.json"}))
+    facade = SimpleNamespace(context=SimpleNamespace(last_result={"pending_path": str(pending_path)}))
 
     result = handle_repair_approve(facade, Intent.REPAIR_APPROVE)
 
-    assert calls == [("workspace/pending_fixes/fix.json", True)]
+    assert calls == [(str(pending_path), True)]
     assert result["status"] == "success"
     assert "تم التعديل" in result["text"]
 
 
-def test_repair_analyze_preserves_provider_capability_and_pending_proposal(monkeypatch):
-    from lab_v4_dev.core.repair import error_reader, error_analyzer, fix_generator, diff_approval
-    from lab_v4_dev.core.orchestrator_handlers.repair import handle_repair_analyze
+def test_repair_approve_never_selects_first_pending_fix_by_guess(monkeypatch):
+    from lab_v4_dev.core.repair import diff_approval
+    from lab_v4_dev.core.orchestrator_handlers.repair import handle_repair_approve
 
+    calls = []
+    monkeypatch.setattr(diff_approval, "list_pending", lambda: [{"file": "fix_1.json", "fix": "change A"}])
+    monkeypatch.setattr(diff_approval, "apply_fix", lambda *args, **kwargs: calls.append((args, kwargs)))
+    facade = SimpleNamespace(context=SimpleNamespace(last_result=None))
+
+    result = handle_repair_approve(facade, Intent.REPAIR_APPROVE)
+
+    assert result["status"] == "needs_clarification"
+    assert result["executed"] is False
+    assert calls == []
+
+
+def test_repair_analyze_pending_selection_survives_context_store_update(monkeypatch, tmp_path):
+    from lab_v4_dev.context.context_store import ContextStore
+    from lab_v4_dev.core.repair import error_reader, error_analyzer, fix_generator, diff_approval
+    from lab_v4_dev.core.orchestrator_handlers.repair import handle_repair_analyze, handle_repair_approve
+
+    pending_path = tmp_path / "fix.json"
+    pending_path.write_text("{}", encoding="utf-8")
     provider = object()
     calls = []
     monkeypatch.setattr(error_reader, "get_latest_error", lambda: {"message": "ValueError", "file": "main.py"})
     monkeypatch.setattr(error_analyzer, "analyze", lambda error, authorized_ask=None: calls.append(("analyze", authorized_ask)) or {"fixable": True})
     monkeypatch.setattr(fix_generator, "generate_fix", lambda error, analysis, authorized_ask=None: calls.append(("generate", authorized_ask)) or {"description": "fix"})
     monkeypatch.setattr(diff_approval, "show_fix_proposal", lambda fix, error: "proposal")
-    monkeypatch.setattr(diff_approval, "save_pending_fix", lambda *args: "workspace/pending_fixes/fix.json")
-    facade = SimpleNamespace(context=SimpleNamespace(last_result=None))
+    monkeypatch.setattr(diff_approval, "save_pending_fix", lambda *args: str(pending_path))
+    monkeypatch.setattr(diff_approval, "apply_fix", lambda path, approved=False: calls.append(("approve", path, approved)) or {
+        "status": "success", "message": "تم التعديل",
+    })
+    context = ContextStore()
+    facade = SimpleNamespace(context=context)
 
-    result = handle_repair_analyze(facade, Intent.REPAIR_ANALYZE, authorized_ask=provider)
+    proposal = handle_repair_analyze(facade, Intent.REPAIR_ANALYZE, authorized_ask=provider)
+    context.update(Intent.REPAIR_ANALYZE, None, proposal)
 
-    assert calls == [("analyze", provider), ("generate", provider)]
-    assert result["status"] == "success"
-    assert result["text"] == "proposal"
-    assert facade.context.last_result["pending_path"] == "workspace/pending_fixes/fix.json"
+    assert proposal["status"] == "success"
+    assert proposal["pending_path"] == str(pending_path)
+    assert context.last_result["pending_path"] == str(pending_path)
+
+    approved = handle_repair_approve(facade, Intent.REPAIR_APPROVE)
+    assert approved["status"] == "success"
+    assert calls[-1] == ("approve", str(pending_path), True)
 
 
 def test_modify_code_preserves_safe_pipeline_write_and_post_write_verification(monkeypatch, tmp_path):
