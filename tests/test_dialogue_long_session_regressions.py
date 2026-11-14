@@ -7,7 +7,8 @@ from lab_v4_dev.memory import session_state
 
 
 class _Orchestrator:
-    pass
+    def handle(self, text, parsed=None, **_kwargs):
+        return {"status": "success", "text": "orchestrator fallback"}
 
 
 def _manager():
@@ -180,6 +181,29 @@ def test_direct_last_and_first_assistant_reply_queries_return_exact_replies():
 
     assert last["assistant_response"] == "هذا آخر رد محفوظ."
     assert first["assistant_response"] == "هذا أول رد محفوظ."
+
+
+def test_live_process_routes_direct_last_reply_query_to_dialogue_memory():
+    manager, memory = _manager()
+    memory.state.session_id = "live-id"
+    memory.state.history = [
+        {
+            "role": "assistant", "content": "هذا آخر رد محفوظ.",
+            "session_id": "live-id", "context_kind": "dialogue",
+        },
+    ]
+    memory.state.exchange_archive = [
+        {
+            "user": "السؤال السابق", "assistant": "هذا آخر رد محفوظ.",
+            "session_id": "live-id", "context_kind": "dialogue",
+        },
+    ]
+
+    result = manager.process("ما هو آخر رد كتبته أنت")
+
+    assert result["status"] == "success"
+    assert result["source"] == "dialogue_memory"
+    assert result["assistant_response"] == "هذا آخر رد محفوظ."
 
 
 def test_social_greeting_to_agent_is_not_routed_as_agent_state_lookup():
