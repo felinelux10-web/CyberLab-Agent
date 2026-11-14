@@ -225,6 +225,18 @@ def test_live_process_routes_direct_last_reply_query_to_dialogue_memory():
     assert result["assistant_response"] == "هذا آخر رد محفوظ."
 
 
+def test_contextual_dialogue_typos_are_corrected_without_rewriting_algorithm_terms():
+    assert ConversationManager._correct_contextual_dialogue_typos(
+        "لماذا لا تكمل الخوار بطريقة منظمة ومترابطة"
+    ) == "لماذا لا تكمل الحوار بطريقة منظمة ومترابطة"
+    assert ConversationManager._correct_contextual_dialogue_typos(
+        "اريد استكمال الخوار من اهر نقطة كنا نناقشها"
+    ) == "اريد استكمال الحوار من آخر نقطة كنا نناقشها"
+    assert ConversationManager._correct_contextual_dialogue_typos(
+        "اشرح الخوارزمية بالتفصيل"
+    ) == "اشرح الخوارزمية بالتفصيل"
+
+
 def test_social_greeting_to_agent_is_not_routed_as_agent_state_lookup():
     manager, _memory = _manager()
 
