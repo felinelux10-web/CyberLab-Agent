@@ -1,5 +1,5 @@
 from lab_v4_dev.core.agent import Agent
-from lab_v4_dev.core.contracts import PreparedExecutionRequest
+from lab_v4_dev.core.contracts import PreparedExecutionRequest, RouteDecision
 from lab_v4_dev.conversation import conversation_manager as conversation_module
 from lab_v4_dev.executor.contracts import ExecutionResult
 from lab_v4_dev.loop.event_loop import EventLoop
@@ -66,6 +66,12 @@ def test_prepared_path_uses_planner_adapter_executor_without_raw_parser(monkeypa
             "target": "shell",
             "context": "system",
         },
+        route_decision=RouteDecision(
+            route="L-EXEC",
+            evidence_scope="work_state",
+            intent="run_command",
+            provider_allowed=False,
+        ),
         request_id="prepared-test-01",
         metadata={
             "execution": {

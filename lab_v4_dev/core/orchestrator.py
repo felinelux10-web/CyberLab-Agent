@@ -54,23 +54,57 @@ class Orchestrator:
         return self.pipeline
 
     def _submit_prepared_execution(self, intent, target=None, context=None,
-                                    request_id=None, execution=None):
+                                    request_id=None, execution=None,
+                                    route_decision=None):
+        if (
+            route_decision is None
+            or getattr(route_decision, "route", None) != "L-EXEC"
+            or getattr(route_decision, "evidence_scope", None) != "work_state"
+        ):
+            return {
+                "status": "denied",
+                "source": "prepared_execution_route_guard",
+                "executed": False,
+                "text": "لا يمكن تسليم تنفيذ مجهز دون قرار L-EXEC ونطاق أدلة work_state.",
+            }
+
+        def intent_value(value):
+            return str(getattr(value, "value", value) or "").casefold()
+
+        if intent_value(intent) != intent_value(getattr(route_decision, "intent", None)):
+            return {
+                "status": "denied",
+                "source": "prepared_execution_intent_guard",
+                "executed": False,
+                "text": "نية التنفيذ المجهزة لا تطابق النية التي أجازها قرار التوجيه.",
+            }
+
         loop = getattr(self.agent, "loop", None)
         if loop is None:
             return {
                 "status": "failed",
-                "error": "EventLoop غير متاح"
+                "source": "prepared_execution_loop_unavailable",
+                "executed": False,
+                "text": "EventLoop غير متاح.",
             }
 
-        request = PreparedExecutionRequest(
-            intent=intent,
-            target=target,
-            context=context if context is not None else Context(),
-            request_id=request_id,
-            metadata={"execution": execution or {}},
-        )
-
-        loop.submit_prepared(request)
+        try:
+            request = PreparedExecutionRequest(
+                intent=intent,
+                route_decision=route_decision,
+                target=target,
+                context=context if context is not None else Context(),
+                request_id=request_id,
+                metadata={"execution": execution or {}},
+            )
+            loop.submit_prepared(request)
+        except (TypeError, ValueError, PermissionError) as exc:
+            return {
+                "status": "denied",
+                "source": "prepared_execution_contract",
+                "executed": False,
+                "text": str(exc),
+            }
         return loop.tick()
 
     def handle(

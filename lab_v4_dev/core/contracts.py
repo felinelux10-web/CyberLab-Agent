@@ -348,6 +348,7 @@ class PreparedExecutionRequest:
     """
 
     intent: Any
+    route_decision: RouteDecision
     target: Any = None
     context: Context = field(default_factory=Context)
     request_id: str | None = None
@@ -355,6 +356,21 @@ class PreparedExecutionRequest:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "metadata", FrozenDict(self.metadata or {}))
+        decision = self.route_decision
+        if not isinstance(decision, RouteDecision):
+            raise TypeError("route_decision must be a RouteDecision")
+        if decision.route != "L-EXEC" or decision.evidence_scope != "work_state":
+            raise ValueError("prepared execution requires L-EXEC work_state authorization")
+
+        def intent_value(value):
+            if isinstance(value, MappingABC):
+                value = value.get("intent") or value.get("action")
+            return str(getattr(value, "value", value) or "").casefold()
+
+        request_intent = intent_value(self.intent)
+        authorized_intent = intent_value(decision.intent)
+        if not request_intent or request_intent != authorized_intent:
+            raise ValueError("prepared execution intent does not match RouteDecision")
 
 
 @dataclass(frozen=True)

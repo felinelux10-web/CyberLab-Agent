@@ -48,11 +48,22 @@ class EventLoop:
         """
         if not isinstance(request, PreparedExecutionRequest):
             raise TypeError("submit_prepared requires PreparedExecutionRequest")
+        decision = request.route_decision
+        if decision.route != "L-EXEC" or decision.evidence_scope != "work_state":
+            raise PermissionError("prepared execution requires L-EXEC work_state authorization")
 
         self.scheduler.add({"prepared": request})
 
     def _process_prepared(self, request: PreparedExecutionRequest) -> dict:
         """Process a prepared orchestration handoff without re-parsing input."""
+        decision = request.route_decision
+        if decision.route != "L-EXEC" or decision.evidence_scope != "work_state":
+            return {
+                "status": "denied",
+                "reason": "prepared execution route authorization is invalid",
+                "executed": False,
+            }
+
         execution_metadata = request.metadata.get("execution", {})
         health_check_enabled = execution_metadata.get("health_check", True)
 
