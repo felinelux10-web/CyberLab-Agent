@@ -174,6 +174,10 @@ class ConversationManager:
         elif act in {"SOCIAL_GREETING", "SOCIAL_CLOSING"}:
             # A greeting addressed to the agent remains a social turn.
             route = "L-SOCIAL"
+        elif response_attributes.get("dialogue_context_reference"):
+            # Meta-questions about what the user meant or why the dialogue drifted
+            # must use the active dialogue context, not static agent-self facts.
+            route = "L-LIVE"
         elif intent_value in {
             str(getattr(item, "value", item)).casefold()
             for item in _AGENT_SELF_INTENTS
@@ -2733,6 +2737,35 @@ class ConversationManager:
                 "semantic_pattern": "DIRECT_ASSISTANT_REPLY_RECALL",
                 "source": "dialogue_memory",
             })
+
+        dialogue_context_query = (
+            any(marker in normalized_assistant_reply_query for marker in (
+                "كلامي", "اقصد", "اعني", "سياق الحوار", "سياق الحديث",
+                "رد غير مناسب", "لماذا ترد", "نناقشه", "نناقشها",
+                "تكمل الحوار", "استكمال الحوار", "اخر نقطة", "اخر نقطه",
+            ))
+            and not direct_assistant_reply_lookup
+            and not saved_session_request
+        )
+        if dialogue_context_query:
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": "",
+                "entity_type": "REFERENCE",
+                "conversation_domain": "general",
+                "conversation_act": "CONVERSATION_CONTINUATION",
+                "response_attributes": {
+                    **dict(parsed.get("response_attributes") or {}),
+                    "dialogue_context_reference": True,
+                },
+                "semantic_pattern": "ACTIVE_DIALOGUE_CONTEXT_REFERENCE",
+                "source": "active_dialogue_context",
+            })
+            active_state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
+            if getattr(active_state, "exchange_archive", None):
+                transition = ContextTransition.CONTINUE
+
         normalized_memory_request = self._normalize_transition_text(user_input)
         dialogue_memory_search_request = bool(
             any(marker in normalized_memory_request for marker in (
