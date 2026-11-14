@@ -16,7 +16,11 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
     report_mode = selector.get("report_mode", "standard")
     if route_decision is not None and getattr(route_decision, "route", None) == "L-SESSION":
         authorized_output = str(getattr(route_decision, "output_kind", "none") or "none")
-        if authorized_output == "report":
+        if authorized_output == "session_number":
+            report_mode = "number"
+        elif authorized_output == "session_identity":
+            report_mode = "identity"
+        elif authorized_output == "report":
             report_mode = "full"
         elif authorized_output == "brief":
             report_mode = "brief"
@@ -172,43 +176,18 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
             ),
         }
     if selector.get("kind") == "previous_dialogue":
-        # A previous-dialogue request must select a persisted dialogue,
-        # not the canonical work checkpoint or the active live dialogue.
+        # Share the route's exact resolver; never independently choose a
+        # different "latest dialogue" after RouteDecision has authorized one.
         memory = orchestrator.services.dialogue_memory
         state = getattr(memory, "state", None)
         current_dialogue_id = str(getattr(state, "session_id", "") or "").strip()
-        selected_dialogue = None
-        for item in sorted(
-            get_session_index(),
-            key=lambda entry: str(entry.get("updated_at") or entry.get("timestamp") or entry.get("created_at") or ""),
-            reverse=True,
-        ):
-            if not isinstance(item, dict):
-                continue
-            outer_id = str(item.get("session_id") or "").strip()
-            if not outer_id or outer_id == current_dialogue_id:
-                continue
-            saved = get_session_by_id(outer_id) or item
-            if not isinstance(saved, dict):
-                continue
-            session_type = str(saved.get("session_type") or item.get("session_type") or "").casefold()
-            dialogue_state = saved.get("dialogue_state")
-            context_state = saved.get("context_state")
-            # Accept the unambiguous legacy dialogue shape only. Mixed
-            # work/dialogue snapshots must never leak execution context.
-            is_dialogue = (
-                session_type == "dialogue"
-                or (not session_type and isinstance(dialogue_state, dict) and not context_state)
-            )
-            if not is_dialogue or not isinstance(dialogue_state, dict):
-                continue
-            saved_dialogue_id = str(dialogue_state.get("session_id") or "").strip()
-            if current_dialogue_id and saved_dialogue_id == current_dialogue_id:
-                continue
-            selected_dialogue = saved
-            selected_id = outer_id
-            break
-        if selected_dialogue is None:
+        from lab_v4_dev.memory.session_state import get_previous_saved_dialogue
+        selected_dialogue = get_previous_saved_dialogue(
+            exclude_session_id=current_dialogue_id,
+        )
+        if selected_dialogue:
+            selected_id = str(selected_dialogue.get("session_id") or "").strip()
+        if not selected_dialogue:
             return {
                 "status": "needs_clarification",
                 "intent": intent,
@@ -361,7 +340,7 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                 "requested_session_id": str(selected_id),
                 "resolved_session_id": resolved_id or None,
             }
-        if s.get("_record_source") == "index" and report_mode != "compact":
+        if s.get("_record_source") == "index" and report_mode not in {"compact", "number", "identity"}:
             return {
                 "status": "needs_clarification",
                 "intent": intent,
@@ -413,6 +392,38 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
     if not s:
         return {"status":"success","intent":intent,
                 "text":"لا توجد جلسة سابقة محفوظة"}
+    if report_mode in {"number", "identity"}:
+        index = get_session_index()
+        session_number = next(
+            (
+                position
+                for position, item in enumerate(index, 1)
+                if isinstance(item, dict)
+                and str(item.get("session_id") or "").strip() == str(selected_id or "").strip()
+            ),
+            None,
+        )
+        if session_number is None:
+            return {
+                "status": "needs_clarification",
+                "intent": intent,
+                "source": "saved_session_identity_lookup",
+                "executed": False,
+                "text": "تم تحديد سجل الجلسة، لكن تعذر إثبات رقمه في الفهرس الحالي.",
+            }
+        identity_text = f"رقم الجلسة المحفوظة الأخيرة: {session_number}."
+        if report_mode == "identity":
+            identity_text += f"\nمعرّف الجلسة: {selected_id}."
+        return {
+            "status": "success",
+            "intent": intent,
+            "source": "local_session_store",
+            "output_kind": "session_identity" if report_mode == "identity" else "session_number",
+            "session_number": session_number,
+            "session_id": str(selected_id or ""),
+            "executed": False,
+            "text": identity_text,
+        }
     if report_mode == "recall":
         from lab_v4_dev.memory.dialogue_knowledge import (
             format_dialogue_evidence_answer,
