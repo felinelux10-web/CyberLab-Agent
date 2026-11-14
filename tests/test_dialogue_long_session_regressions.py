@@ -218,11 +218,13 @@ def test_live_process_routes_direct_last_reply_query_to_dialogue_memory():
         },
     ]
 
+    archive_before = [dict(item) for item in memory.state.exchange_archive]
     result = manager.process("ما هو آخر رد كتبته أنت")
 
     assert result["status"] == "success"
     assert result["source"] == "dialogue_memory"
     assert result["assistant_response"] == "هذا آخر رد محفوظ."
+    assert memory.state.exchange_archive == archive_before
 
 
 def test_contextual_dialogue_typos_are_corrected_without_rewriting_algorithm_terms():
