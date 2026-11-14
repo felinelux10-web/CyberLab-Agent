@@ -836,8 +836,12 @@ def session_route_contract(raw: str) -> dict:
     ):
         selection = {"kind": "reference", "report_mode": "standard"}
 
+    # A request for the latest session number/identity is a scalar lookup.
+    # The generic "عن ..." topic parser must not reinterpret its tail
+    # ("عن رقم آخر جلسة محفوظة") as a topic and downgrade it to a summary.
+    identity_only_lookup = selection.get("report_mode") in {"number", "identity"}
     topic_filter = None
-    topic_match = re.search(
+    topic_match = None if identity_only_lookup else re.search(
         r"(?:ملخص|لخص|تلخيص|موجز|تقرير|التقرير)?\s*(?:عن|حول|موضوع\s+(?:عن|حول))\s+"
         r"(.+?)(?=\s+(?:في|ضمن)\s+(?:الجلسة|الحوار)|$)",
         text,
