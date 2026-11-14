@@ -227,6 +227,25 @@ def test_live_process_routes_direct_last_reply_query_to_dialogue_memory():
     assert memory.state.exchange_archive == archive_before
 
 
+def test_agent_self_meta_questions_can_be_owned_by_active_dialogue_context():
+    manager, _memory = _manager()
+
+    decision = manager.finalize_route(
+        parsed={
+            "intent": Intent.AGENT_IDENTITY,
+            "conversation_domain": "agent_self",
+            "conversation_act": "ASSISTANT_STATE_QUERY",
+            "response_attributes": {"dialogue_context_reference": True},
+        },
+        selected_session={"kind": "none"},
+        saved_session_request=False,
+        selected_saved_session_id=None,
+        transition=ContextTransition.CONTINUE,
+    )
+
+    assert decision.route == "L-LIVE"
+
+
 def test_contextual_dialogue_typos_are_corrected_without_rewriting_algorithm_terms():
     assert ConversationManager._correct_contextual_dialogue_typos(
         "لماذا لا تكمل الخوار بطريقة منظمة ومترابطة"
