@@ -217,7 +217,7 @@ class Orchestrator:
             selector_kind = str(((parsed or {}).get("session_selector") or {}).get("kind") or "none")
             if output_kind in {
                 "summary", "brief", "report", "topic_summary", "transcript",
-                "continue_topic",
+                "continue_topic", "session_number", "session_identity",
             }:
                 valid_scope = (
                     evidence_scope == "saved_session" and session_ref is not None
