@@ -17,6 +17,7 @@ class HandlerServices:
     analyzed_files: Any = None
     impact_analyzed: Any = None
     pipeline_factory: Any = None
+    submit_prepared_execution: Any = None
 
 
 def build_handler_services(orchestrator, intent=None) -> HandlerServices:
@@ -51,6 +52,8 @@ def build_handler_services(orchestrator, intent=None) -> HandlerServices:
         fields.add("impact_analyzed")
     if intent == Intent.MODIFY_CODE:
         fields.update({"db", "pipeline_factory"})
+    if intent == Intent.RUN_SCRIPT:
+        fields.add("submit_prepared_execution")
 
     agent = getattr(orchestrator, "agent", None)
     values = {}
@@ -67,6 +70,8 @@ def build_handler_services(orchestrator, intent=None) -> HandlerServices:
                 setattr(orchestrator, "_impact_analyzed", value)
         elif field_name == "pipeline_factory":
             value = getattr(orchestrator, "_get_pipeline", None)
+        elif field_name == "submit_prepared_execution":
+            value = getattr(orchestrator, "_submit_prepared_execution", None)
         elif field_name == "metadata":
             value = getattr(agent, "_meta", None)
         else:

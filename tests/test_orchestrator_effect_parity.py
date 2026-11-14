@@ -76,32 +76,84 @@ def test_delete_file_preserves_safe_delete_backup_and_snapshot_contract(monkeypa
     assert result["snapshot"] == "snapshot-1"
 
 
-def test_run_script_preserves_explicit_script_selection_and_sandbox_execution(monkeypatch, tmp_path):
-    from lab_v4_dev.core import project_context, sandbox_executor
+def test_run_script_uses_authorized_prepared_event_loop_handoff(monkeypatch, tmp_path):
+    from lab_v4_dev.core import project_context, execution_history
     from lab_v4_dev.core.orchestrator_handlers.execution import handle_run_script
 
     scripts = tmp_path / "workspace" / "scripts"
     scripts.mkdir(parents=True)
     selected = scripts / "selected.py"
     other = scripts / "other.py"
-    selected.write_text("print('selected')\n", encoding="utf-8")
-    other.write_text("print('other')\n", encoding="utf-8")
+    selected.write_text("print('selected')\\n", encoding="utf-8")
+    other.write_text("print('other')\\n", encoding="utf-8")
     monkeypatch.setattr(project_context, "CYBERLAB_ROOT", str(tmp_path))
 
+    decision = RouteDecision(
+        route="L-EXEC",
+        evidence_scope="work_state",
+        intent=Intent.RUN_SCRIPT,
+        provider_allowed=False,
+    )
     calls = []
-    monkeypatch.setattr(sandbox_executor, "run_code", lambda path, timeout=10: calls.append((path, timeout)) or {
-        "status": "success", "duration": 0.1, "exit_code": 0, "output": "selected",
-    })
-
-    result = handle_run_script(
-        SimpleNamespace(context=SimpleNamespace(last_result=None)),
-        Intent.RUN_SCRIPT,
-        raw="شغّل selected.py",
+    history = []
+    monkeypatch.setattr(
+        execution_history,
+        "save_run",
+        lambda *args: history.append(args) or {"status": args[1]},
     )
 
-    assert calls == [(str(selected), 10)]
+    def submit(intent, **kwargs):
+        calls.append((intent, kwargs))
+        return {
+            "status": "executed",
+            "results": [{"status": "success", "stdout": "selected", "exit_code": 0}],
+        }
+
+    facade = SimpleNamespace(
+        context=SimpleNamespace(last_result=None),
+        services=SimpleNamespace(submit_prepared_execution=submit),
+        request=SimpleNamespace(route_decision=decision),
+    )
+    result = handle_run_script(facade, Intent.RUN_SCRIPT, raw="شغّل selected.py")
+
+    assert len(calls) == 1
+    assert calls[0][0] == Intent.RUN_SCRIPT
+    assert calls[0][1]["route_decision"] is decision
+    assert calls[0][1]["target"] == str(selected)
+    assert calls[0][1]["execution"]["action"] == "run_command"
+    assert "selected.py" in calls[0][1]["execution"]["parameters"]["command"]
     assert result["status"] == "success"
+    assert result["source"] == "event_loop.prepared"
     assert "selected.py" in result["text"]
+    assert len(history) == 1
+    assert history[0][0] == str(selected)
+    assert history[0][1] == "success"
+
+
+def test_run_script_does_not_guess_latest_script_when_no_selection(monkeypatch, tmp_path):
+    from lab_v4_dev.core import project_context
+    from lab_v4_dev.core.orchestrator_handlers.execution import handle_run_script
+
+    scripts = tmp_path / "workspace" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "latest.py").write_text("print('latest')\\n", encoding="utf-8")
+    monkeypatch.setattr(project_context, "CYBERLAB_ROOT", str(tmp_path))
+    calls = []
+    facade = SimpleNamespace(
+        context=SimpleNamespace(last_result=None),
+        services=SimpleNamespace(submit_prepared_execution=lambda *a, **k: calls.append((a, k))),
+        request=SimpleNamespace(route_decision=RouteDecision(
+            route="L-EXEC",
+            evidence_scope="work_state",
+            intent=Intent.RUN_SCRIPT,
+            provider_allowed=False,
+        )),
+    )
+
+    result = handle_run_script(facade, Intent.RUN_SCRIPT, raw="شغّل السكريبت")
+
+    assert result["status"] == "needs_clarification"
+    assert calls == []
 
 
 def test_repair_approve_preserves_explicit_pending_fix_application(monkeypatch):
