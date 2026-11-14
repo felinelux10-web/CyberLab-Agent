@@ -157,8 +157,12 @@ class ConversationManager:
                     session_id = ""
         if not session_id and selector_kind == "previous_dialogue":
             try:
-                from lab_v4_dev.memory.session_state import get_latest_session_by_type
-                selected_record = get_latest_session_by_type("dialogue")
+                from lab_v4_dev.memory.session_state import get_previous_saved_dialogue
+                selector_state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
+                current_dialogue_id = str(getattr(selector_state, "session_id", "") or "").strip()
+                selected_record = get_previous_saved_dialogue(
+                    exclude_session_id=current_dialogue_id,
+                )
                 session_id = str(selected_record.get("session_id") or "").strip()
             except Exception:
                 session_id = ""
@@ -167,6 +171,9 @@ class ConversationManager:
             route = "L-SESSION"
         elif history_request:
             route = "L-LIVE"
+        elif act in {"SOCIAL_GREETING", "SOCIAL_CLOSING"}:
+            # A greeting addressed to the agent remains a social turn.
+            route = "L-SOCIAL"
         elif intent_value in {
             str(getattr(item, "value", item)).casefold()
             for item in _AGENT_SELF_INTENTS
@@ -321,7 +328,7 @@ class ConversationManager:
             session_ref = None
 
         requested_output = str(selected_session.get("output_kind") or parsed.get("output_kind") or "none")
-        if requested_output == "chat" or requested_output not in {"none", "brief", "summary", "report", "topic_summary", "transcript", "list", "continue_topic", "capability"}:
+        if requested_output == "chat" or requested_output not in {"none", "brief", "summary", "report", "topic_summary", "transcript", "list", "continue_topic", "capability", "session_number", "session_identity"}:
             requested_output = "none"
         if route == "CLARIFY":
             requested_output = "none"
@@ -5144,6 +5151,16 @@ class ConversationManager:
         ):
             return "evidence"
 
+        assistant_reply_lookup = bool(
+            re.search(
+                r"(?:اخر|الاخير|اول|الاول)\s+(?:رد|جواب|اجابه)",
+                text,
+            )
+            and re.search(r"(?:كتب|قلت|كان|ردك|الوكيل|انت)", text)
+        )
+        if assistant_reply_lookup:
+            return "evidence"
+
         # Numbered-session questions asking what was said are evidence queries.
         # The wording is intentionally distinguished from an explicit request
         # to write a summary for that numbered session.
@@ -5280,6 +5297,8 @@ class ConversationManager:
             "تقرير", "موجز", "باختصار شديد", "هل هذا هو التقرير",
             "هل هذا التقرير", "اخر سؤال", "آخر سؤال",
             "السؤال الاخير", "السؤال الأخير",
+            "اخر رد", "آخر رد", "اول رد", "أول رد",
+            "ردك الاخير", "ردك الأخير", "ردك الاول", "ردك الأول",
         )
         if (
             history_act not in {"CONVERSATION_HISTORY_QUERY", "TOPIC_RETURN"}
@@ -5321,7 +5340,18 @@ class ConversationManager:
         requested_output_kind = str((parsed or {}).get("output_kind") or "").casefold()
         if requested_output_kind in {"brief", "summary", "topic_summary", "report"}:
             response_mode = requested_output_kind
+        normalized_reply_query = self._normalize_transition_text(text)
         if (
+            re.search(r"(?:اخر|الاخير)\s+(?:رد|جواب|اجابه)", normalized_reply_query)
+            and re.search(r"(?:كتب|قلت|كان|ردك|الوكيل|انت)", normalized_reply_query)
+        ):
+            response_mode = "last_assistant_response"
+        elif (
+            re.search(r"(?:اول|الاول)\s+(?:رد|جواب|اجابه)", normalized_reply_query)
+            and re.search(r"(?:كتب|قلت|كان|ردك|الوكيل|انت)", normalized_reply_query)
+        ):
+            response_mode = "first_assistant_response"
+        elif (
             re.search(r"(?:اخر سؤال|السؤال الاخير)", normalized_query)
             and re.search(r"(?:سالتك|سالته|طرحته|انا)", normalized_query)
         ):
@@ -5430,8 +5460,10 @@ class ConversationManager:
         ):
             response_mode = "summary"
 
-        if response_mode in {"brief", "summary", "topic_summary", "report", "last_question", "answer", "transcript"}:
-            result = self._answer_dialogue_history(text, response_mode, exchanges)
+        if response_mode in {"brief", "summary", "topic_summary", "report", "last_question", "last_assistant_response", "first_assistant_response", "answer", "transcript"}:
+            result = self._answer_dialogue_history(
+                text, response_mode, exchanges, history=history,
+            )
             if (
                 response_mode == "summary"
                 and normalized_query.strip(" .!؟?") in {"ماذا كنا نقول", "ما كنا نقول"}
@@ -5720,6 +5752,8 @@ class ConversationManager:
         text: str,
         response_mode: str,
         exchanges: list[dict],
+        *,
+        history: list[dict] | None = None,
     ) -> dict:
         """Answer a dialogue-history request without routing it as project work."""
         state = getattr(self.dialogue_memory, "state", None) if self.dialogue_memory else None
@@ -5764,6 +5798,49 @@ class ConversationManager:
             ),
             "dialogue_response_mode": response_mode,
         }
+        if response_mode in {"last_assistant_response", "first_assistant_response"}:
+            if response_mode == "last_assistant_response":
+                assistant_turns = [
+                    str(item.get("content") or "").strip()
+                    for item in (history or [])
+                    if isinstance(item, dict)
+                    and item.get("role") == "assistant"
+                    and str(item.get("content") or "").strip()
+                    and str(item.get("context_kind") or "dialogue").casefold()
+                        not in {"work", "system", "execution"}
+                    and str(item.get("conversation_domain") or "general").casefold()
+                        not in {"work", "system", "execution"}
+                ]
+                selected_reply = assistant_turns[-1] if assistant_turns else ""
+                label = "آخر رد كتبته لك"
+            else:
+                assistant_turns = [
+                    str(item.get("assistant") or "").strip()
+                    for item in relevant
+                    if str(item.get("assistant") or "").strip()
+                ]
+                if not assistant_turns:
+                    assistant_turns = [
+                        str(item.get("content") or "").strip()
+                        for item in (history or [])
+                        if isinstance(item, dict)
+                        and item.get("role") == "assistant"
+                        and str(item.get("content") or "").strip()
+                    ]
+                selected_reply = assistant_turns[0] if assistant_turns else ""
+                label = "أول رد كتبته لك"
+            if not selected_reply:
+                return {
+                    **base,
+                    "status": "needs_clarification",
+                    "text": "لا أجد ردًا محفوظًا يمكنني نسبته إلى الوكيل في نطاق الحوار الحالي.",
+                }
+            return {
+                **base,
+                "text": f"{label} كان:\n{selected_reply}",
+                "assistant_response": selected_reply,
+            }
+
         if response_mode == "last_question":
             question_starts = (
                 "هل ", "ما ", "ماذا ", "كيف ", "لماذا ", "من ", "أين ",
