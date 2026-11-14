@@ -147,6 +147,25 @@ def test_route_decision_uses_the_shared_previous_dialogue_identity(monkeypatch):
     assert decision.session_ref.session_id == "saved-id"
 
 
+def test_dialogue_state_preserves_first_and_last_replies_after_history_rollover():
+    memory = DialogueMemory(ContextStore())
+    for index in range(40):
+        memory.state.add_turn(
+            role="assistant",
+            content=f"assistant-reply-{index}",
+            context_kind="dialogue",
+        )
+
+    assert len(memory.state.history) == 8
+    assert memory.state.first_assistant_response == "assistant-reply-0"
+    assert memory.state.last_assistant_response == "assistant-reply-39"
+
+    restored = DialogueMemory(ContextStore())
+    assert restored.restore_snapshot(memory.snapshot())
+    assert restored.state.first_assistant_response == "assistant-reply-0"
+    assert restored.state.last_assistant_response == "assistant-reply-39"
+
+
 def test_direct_last_and_first_assistant_reply_queries_return_exact_replies():
     manager, memory = _manager()
     memory.state.session_id = "live-id"
