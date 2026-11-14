@@ -5891,6 +5891,19 @@ class ConversationManager:
                 )
                 label = "آخر رد كتبته لك"
             else:
+                durable_first_reply = str(
+                    getattr(state, "first_assistant_response", "") or ""
+                ).strip()
+                if not durable_first_reply and len(relevant) >= 32:
+                    return {
+                        **base,
+                        "status": "needs_clarification",
+                        "text": (
+                            "لا أستطيع إثبات أول رد في الجلسة من نافذة الذاكرة الحالية؛ "
+                            "المحفوظ المتاح لا يتجاوز آخر 32 تبادلًا، ولا يوجد مرساة "
+                            "موثوقة للرد الأول في هذا السجل القديم."
+                        ),
+                    }
                 assistant_turns = [
                     str(item.get("assistant") or "").strip()
                     for item in relevant
@@ -5905,7 +5918,7 @@ class ConversationManager:
                         and str(item.get("content") or "").strip()
                     ]
                 selected_reply = (
-                    str(getattr(state, "first_assistant_response", "") or "").strip()
+                    durable_first_reply
                     or (assistant_turns[0] if assistant_turns else "")
                 )
                 label = "أول رد كتبته لك"
