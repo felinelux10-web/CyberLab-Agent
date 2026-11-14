@@ -2708,6 +2708,31 @@ class ConversationManager:
             else user_input
         )
         parsed = candidate
+        normalized_assistant_reply_query = self._normalize_transition_text(user_input)
+        direct_assistant_reply_lookup = bool(
+            re.search(
+                r"(?:اخر|الاخير|اول|الاول)\\s+(?:رد|جواب|اجابه)",
+                normalized_assistant_reply_query,
+            )
+            and re.search(
+                r"(?:كتب|قلت|كان|ردك|الوكيل|انت)",
+                normalized_assistant_reply_query,
+            )
+        )
+        if direct_assistant_reply_lookup and not saved_session_request:
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.PERSONAL_CHAT,
+                "target": "",
+                "conversation_domain": "general",
+                "conversation_act": "CONVERSATION_HISTORY_QUERY",
+                "response_attributes": {
+                    **dict(parsed.get("response_attributes") or {}),
+                    "dialogue_recall": True,
+                },
+                "semantic_pattern": "DIRECT_ASSISTANT_REPLY_RECALL",
+                "source": "dialogue_memory",
+            })
         normalized_memory_request = self._normalize_transition_text(user_input)
         dialogue_memory_search_request = bool(
             any(marker in normalized_memory_request for marker in (
