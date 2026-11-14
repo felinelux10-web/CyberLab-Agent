@@ -165,6 +165,22 @@ def test_dialogue_state_preserves_first_and_last_replies_after_history_rollover(
     assert restored.state.first_assistant_response == "assistant-reply-0"
     assert restored.state.last_assistant_response == "assistant-reply-39"
 
+    legacy_snapshot = memory.snapshot()
+    legacy_snapshot.pop("first_assistant_response", None)
+    legacy_snapshot.pop("last_assistant_response", None)
+    legacy_snapshot["transcript_archive"] = [
+        {
+            "session_id": memory.state.session_id,
+            "user": f"user-{index}",
+            "assistant": f"assistant-reply-{index}",
+        }
+        for index in range(40)
+    ]
+    legacy_restored = DialogueMemory(ContextStore())
+    assert legacy_restored.restore_snapshot(legacy_snapshot)
+    assert legacy_restored.state.first_assistant_response == "assistant-reply-0"
+    assert legacy_restored.state.last_assistant_response == "assistant-reply-39"
+
 
 def test_direct_last_and_first_assistant_reply_queries_return_exact_replies():
     manager, memory = _manager()
