@@ -47,6 +47,11 @@ def test_request_and_routing_metadata_are_deeply_immutable():
 def test_prepared_execution_and_audit_contracts_freeze_nested_data():
     prepared = PreparedExecutionRequest(
         intent="run_script",
+        route_decision=RouteDecision(
+            route="L-EXEC",
+            evidence_scope="work_state",
+            intent="run_script",
+        ),
         metadata={"execution": {"files": ["a.py"]}},
     )
     event = AuditEvent(
