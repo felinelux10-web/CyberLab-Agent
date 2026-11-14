@@ -1472,7 +1472,7 @@ class ConversationManager:
                 "semantic_pattern": "PENDING_CONFIRMATION",
             }
             if confirmation_intent is not None
-            else self._safe_parse(user_input)
+            else self._safe_parse(self._correct_contextual_dialogue_typos(user_input))
         )
         if _restore_context:
             candidate = {
@@ -4547,9 +4547,25 @@ class ConversationManager:
         return len(numbered) >= 3 and test_frame
 
     @staticmethod
+    def _correct_contextual_dialogue_typos(text: str) -> str:
+        """Correct high-confidence dialogue-continuation typos without rewriting other topics."""
+        value = str(text or "")
+        for misspelling, correction in (
+            ("تكمل الخوار", "تكمل الحوار"),
+            ("نكمل الخوار", "نكمل الحوار"),
+            ("استكمال الخوار", "استكمال الحوار"),
+            ("استكمل الخوار", "استكمل الحوار"),
+            ("اكمل الخوار", "اكمل الحوار"),
+            ("اهر نقطة", "آخر نقطة"),
+            ("اهر نقطه", "آخر نقطة"),
+        ):
+            value = value.replace(misspelling, correction)
+        return value
+
+    @staticmethod
     def _normalize_transition_text(text: str) -> str:
         return " ".join(
-            str(text or "").casefold()
+            ConversationManager._correct_contextual_dialogue_typos(text).casefold()
             .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
             .replace("ئ", "ي").replace("ؤ", "و")
             .replace("ـ", "")
