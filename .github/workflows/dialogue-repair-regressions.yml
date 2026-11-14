@@ -53,7 +53,16 @@ jobs:
             tests/test_g07_conversation_semantics.py \
             tests/test_p02_conversation_intent.py \
             tests/test_gateway_fallback_contract.py \
-            tests/test_health_check_runtime_layout.py
+            tests/test_health_check_runtime_layout.py \
+            tests/test_dialogue_long_session_regressions.py \
+            tests/test_p05_dialogue_state.py \
+            tests/test_g04_context_transitions.py \
+            tests/test_orchestrator_route_authorization.py \
+            tests/test_orchestrator_intent_route_matrix.py \
+            tests/test_prepared_execution_authority.py \
+            tests/test_contract_deep_immutability.py \
+            tests/test_orchestrator_caller_graph.py \
+            tests/test_orchestrator_provider_call_inventory.py
 
   full-suite-advisory:
     runs-on: ubuntu-latest
