@@ -218,6 +218,28 @@ def test_direct_last_and_first_assistant_reply_queries_return_exact_replies():
     assert first["assistant_response"] == "هذا أول رد محفوظ."
 
 
+def test_first_reply_is_not_guessed_from_a_truncated_legacy_archive():
+    manager, memory = _manager()
+    memory.state.session_id = "legacy-live"
+    memory.state.exchange_archive = [
+        {
+            "user": f"user-{index}",
+            "assistant": f"reply-{index}",
+            "session_id": "legacy-live",
+            "context_kind": "dialogue",
+        }
+        for index in range(32)
+    ]
+
+    result = manager._conversation_history_answer(
+        "ما هو أول رد كتبته أنت",
+        {"conversation_act": "CONVERSATION_HISTORY_QUERY"},
+    )
+
+    assert result["status"] == "needs_clarification"
+    assert "آخر 32 تبادلًا" in result["text"]
+
+
 def test_live_process_routes_direct_last_reply_query_to_dialogue_memory():
     manager, memory = _manager()
     memory.state.session_id = "live-id"
