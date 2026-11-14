@@ -331,6 +331,43 @@ def get_latest_session_by_type(session_type: str) -> dict:
     return {}
 
 
+def get_previous_saved_dialogue(*, exclude_session_id: str | None = None) -> dict:
+    """Resolve the newest persisted dialogue excluding the active live dialogue.
+
+    Route authorization and the session handler share this selector so their
+    selected identities cannot diverge.
+    """
+    excluded_ids = {str(exclude_session_id or "").strip()} - {""}
+    for item in sorted(get_session_index(), key=_session_updated_key, reverse=True):
+        if not isinstance(item, dict):
+            continue
+        outer_id = str(item.get("session_id") or "").strip()
+        if not outer_id or outer_id in excluded_ids:
+            continue
+        saved = get_session_by_id(outer_id) or item
+        if not isinstance(saved, dict):
+            continue
+        dialogue_state = saved.get("dialogue_state")
+        session_type = str(
+            saved.get("session_type") or item.get("session_type") or ""
+        ).casefold()
+        is_dialogue = (
+            session_type == "dialogue"
+            or (
+                not session_type
+                and isinstance(dialogue_state, dict)
+                and not saved.get("context_state")
+            )
+        )
+        if not is_dialogue or not isinstance(dialogue_state, dict):
+            continue
+        dialogue_id = str(dialogue_state.get("session_id") or "").strip()
+        if dialogue_id and dialogue_id in excluded_ids:
+            continue
+        return saved
+    return {}
+
+
 def session_selector(raw: str) -> dict:
     """Classify explicit session selection/report language without an LLM."""
     raw_text = str(raw or "").strip()
@@ -442,6 +479,40 @@ def session_selector(raw: str) -> dict:
         "تقرير الجلسة المحفوظة", "ملخص الجلسة المحفوظة",
     )):
         report_mode = "full"
+
+    latest_saved_reference = bool(
+        re.search(
+            r"(?:اخر|آخر)\s+(?:جلسة|جلسه)|"
+            r"(?:الجلسة|الجلسه)\s+(?:ال)?اخير(?:ة|ه)",
+            text,
+        )
+        and any(marker in text for marker in ("محفوظ", "جلسة", "جلسه"))
+    )
+    asks_session_number = bool(re.search(
+        r"(?:رقم\s+(?:اخر|آخر)\s+(?:جلسة|جلسه)|"
+        r"(?:ما|ماذا|اذكر|حدد|اعطني|اعطيني)\s+(?:هو\s+)?(?:رقم|الرقم))",
+        text,
+    )) or ("رقم" in text and latest_saved_reference)
+    asks_session_id = bool(
+        any(marker in text for marker in ("معرف", "معرّف", "id"))
+        and latest_saved_reference
+    )
+    if (
+        latest_saved_reference
+        and (asks_session_number or asks_session_id)
+        and not asks_for_summary
+        and not explicit_report_request
+        and not is_explicit_transcript_request(raw_text)
+    ):
+        return {
+            "kind": "latest",
+            "report_mode": (
+                "identity" if asks_session_id and asks_session_number
+                else "number" if asks_session_number
+                else "identity"
+            ),
+        }
+
     id_match = re.search(r"(?:معرّف|معرف|id)\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9_.-]{5,})", raw_text, flags=re.IGNORECASE)
     if id_match and any(token in text for token in ("جلسة", "استعد", "استرجع", "ابحث")):
         return {"kind": "id", "session_id": id_match.group(1), "report_mode": report_mode}
@@ -857,7 +928,11 @@ def session_route_contract(raw: str) -> dict:
     ):
         selection["report_mode"] = "summary"
 
-    if capability_request:
+    if selection.get("report_mode") == "number":
+        output_kind = "session_number"
+    elif selection.get("report_mode") == "identity":
+        output_kind = "session_identity"
+    elif capability_request:
         output_kind = "capability"
     elif selection.get("kind") in {"list", "count"}:
         output_kind = (
