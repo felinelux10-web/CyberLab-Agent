@@ -130,9 +130,13 @@ class DialogueMemory:
             if field in snapshot:
                 setattr(restored, field, snapshot[field])
         # Never relabel records without the exact checkpoint session identity.
-        transcript_source = snapshot.get("transcript_archive")
-        if not isinstance(transcript_source, list) or not transcript_source:
-            transcript_source = restored.exchange_archive
+        full_transcript_source = snapshot.get("transcript_archive")
+        has_full_transcript = (
+            isinstance(full_transcript_source, list) and bool(full_transcript_source)
+        )
+        transcript_source = (
+            full_transcript_source if has_full_transcript else restored.exchange_archive
+        )
         failed_transcript_source = snapshot.get("failed_transcript_archive")
         if not isinstance(failed_transcript_source, list) or not failed_transcript_source:
             failed_transcript_source = restored.failed_exchange_archive
@@ -168,6 +172,38 @@ class DialogueMemory:
                 conversation_act=turn.get("conversation_act", "NONE"),
                 context_kind=turn.get("context_kind", "unknown"),
                 session_id=turn.get("session_id") or restored.session_id,
+            )
+        # Older snapshots may not carry durable response anchors. Derive them
+        # from the full append-only transcript when present; never mistake the
+        # first item in the last-eight turn window for the session's first reply.
+        if "first_assistant_response" not in snapshot:
+            restored.first_assistant_response = (
+                next(
+                    (
+                        str(item.get("assistant") or "").strip()
+                        for item in full_transcript_source
+                        if isinstance(item, dict)
+                        and str(item.get("session_id") or "") == restored.session_id
+                        and str(item.get("assistant") or "").strip()
+                    ),
+                    None,
+                )
+                if has_full_transcript else None
+            )
+        if "last_assistant_response" not in snapshot:
+            last_source = (
+                full_transcript_source if has_full_transcript
+                else restored.exchange_archive
+            )
+            restored.last_assistant_response = next(
+                (
+                    str(item.get("assistant") or "").strip()
+                    for item in reversed(last_source)
+                    if isinstance(item, dict)
+                    and str(item.get("session_id") or "") == restored.session_id
+                    and str(item.get("assistant") or "").strip()
+                ),
+                None,
             )
         if explicit_saved_session:
             restored.active_restored_session_id = snapshot_session_id
