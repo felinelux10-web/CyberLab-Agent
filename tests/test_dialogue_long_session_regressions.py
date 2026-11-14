@@ -240,8 +240,16 @@ def test_contextual_dialogue_typos_are_corrected_without_rewriting_algorithm_ter
 
 
 def test_social_greeting_to_agent_is_not_routed_as_agent_state_lookup():
-    manager, _memory = _manager()
+    from lab_v4_dev.nlu.conversation_semantics import classify_conversation_semantics
 
+    semantic = classify_conversation_semantics(
+        "مرحبا ايها الوكيل كيف حالك اليوم",
+        intent=Intent.AGENT_IDENTITY,
+        entity_type="AGENT",
+    )
+    assert semantic["conversation_act"] == "SOCIAL_GREETING"
+
+    manager, _memory = _manager()
     decision = manager.finalize_route(
         parsed={
             "intent": Intent.AGENT_IDENTITY,
