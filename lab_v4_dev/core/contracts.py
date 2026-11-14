@@ -236,6 +236,8 @@ OUTPUT_KINDS = frozenset({
     "list",
     "continue_topic",
     "capability",
+    "session_number",
+    "session_identity",
 })
 
 EVIDENCE_SCOPES = frozenset({
