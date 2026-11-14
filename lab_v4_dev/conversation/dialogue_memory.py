@@ -123,6 +123,7 @@ class DialogueMemory:
         for field in (
             "last_topic", "pending_topic", "pending_context", "last_mode", "last_intent",
             "last_target", "last_entity_type", "last_confidence",
+            "first_assistant_response", "last_assistant_response",
             "pending_clarification", "last_items", "context_history",
             "exchange_archive", "failed_exchange_archive",
         ):
