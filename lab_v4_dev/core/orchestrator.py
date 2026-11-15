@@ -554,7 +554,7 @@ class Orchestrator:
             return _handled
 
         # Every supported intent, including provider-backed work, is owned
-        # by HANDLER_REGISTRY. There is no secondary needs_llm execution path.
+        # by HANDLER_REGISTRY. No secondary provider-selection branch exists.
         return {
             "status": "unsupported",
             "intent": intent,
