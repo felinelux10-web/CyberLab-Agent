@@ -1307,7 +1307,7 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
                     chosen_intent = nlu_result["intent"]
                     chosen_conf   = nlu_result.get("confidence", 0.0)
 
-                    if not _nlu_route_has_explicit_shape(user_input, chosen_intent):
+                    if not nlu_result.get("explicit_subject") and not _nlu_route_has_explicit_shape(user_input, chosen_intent):
                         chosen_intent = Intent.PERSONAL_CHAT
                         nlu_result = dict(nlu_result)
                         nlu_result["target"] = ""
