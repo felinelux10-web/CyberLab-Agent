@@ -171,8 +171,15 @@ def test_self_contained_question_without_active_subject_is_new_independent(monke
 
 def test_about_followup_subject_overrides_stale_sql_entity(monkeypatch):
     configure_offline_nlu(monkeypatch)
+    saved_entities = []
+    monkeypatch.setattr(
+        context_resolver,
+        "save_state",
+        lambda *args: saved_entities.append(args),
+    )
     parsed = parse("ماذا عن بلاد الرافدين؟", context_entity=STALE_SQL_ENTITY)
 
+    assert saved_entities == [(Intent.PERSONAL_CHAT, "بلاد الرافدين", "CONCEPT")]
     assert parsed["intent"] == Intent.PERSONAL_CHAT
     assert parsed["target"] == "بلاد الرافدين"
     assert parsed["semantic_pattern"] == "EXPLICIT_ABOUT_SUBJECT"
