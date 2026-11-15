@@ -33,6 +33,7 @@ The active route ownership boundary is now explicit:
 - `HANDLER_REGISTRY` owns all 69 baseline Orchestrator branch keys plus 13 provider-backed intents.
 - `llm/router.py` is now a read-only classification adapter derived from `HANDLER_REGISTRY`; its independent provider-intent list was removed. The unused active-tree modules `lab_v4_dev/llm/smart_router.py` and `lab_v4_dev/core/guard.py` were deleted, and their unused entrypoint imports were removed from `run.py`.
 - `EventLoop` accepts only `PreparedExecutionRequest`; the raw `submit()` plus parser/clarifier/decomposer path is removed, and `tick()` rejects raw scheduler items.
+- `SafePipeline` remains only as the transactional file-write/snapshot layer used by `handle_modify_code`; it does not route user requests or execute raw EventLoop tasks.
 - Explicit `ماذا عن X؟` subjects are extracted from the current utterance before NLU context inheritance. A technical/general domain change starts a clean dialogue branch, preventing stale entities such as `SQL Injection` from contaminating an unrelated subject.
 
 This is a source-level structural result only. The post-correction test suite and end-to-end dialogue scenarios are still pending; no final completion claim is made.
@@ -184,4 +185,4 @@ Out of scope and not claimed as complete: APK packaging/build, UI work, API work
 
 The Orchestrator decomposition is verified against the baseline branch-key inventory, route/evidence/provider authorization boundaries, effectful-handler parity, and the active runtime caller graph. The focused and full CI suites pass at the audited implementation HEAD.
 
-The remaining documented compatibility boundary is the mutable operational ContextStore reference inside HandlerFacade. The prepared handoff is no longer dormant: it is route-bound and exercised by the active `RUN_SCRIPT` handler. The legacy raw EventLoop submission API and the separate `lab_v4/` tree remain retained because no further deletion is required to satisfy the active caller contract.
+The remaining documented compatibility boundary is the mutable operational ContextStore reference inside HandlerFacade. The prepared handoff is no longer dormant: it is route-bound and exercised by the active `RUN_SCRIPT` handler. The raw EventLoop submission API was removed. The separate `lab_v4/` historical tree remains isolated and is not imported by the active entrypoint or active runtime call graph.
