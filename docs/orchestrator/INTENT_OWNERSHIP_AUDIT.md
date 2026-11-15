@@ -124,7 +124,7 @@ Effectful Orchestrator intents are denied without a final RouteDecision or with 
 
 ## 8. Repository-wide caller graph
 
-The caller-graph test scans active Python source across the repository root, including the active package, entry points, and any plugin/source directories. It separates the retained `lab_v4/` legacy tree and confirms that active source does not import from it. The 2026-11-15 correction also removes the legacy no-RouteDecision selection branch from `ConversationManager._dispatch()`; direct calls without a finalized route now fail closed.
+The caller-graph test scans active Python source across the repository root, including the active package, entry points, and any plugin/source directories. It separates the retained `lab_v4/` legacy tree and confirms that active source does not import from it. The 2026-11-15 correction also removes the legacy no-RouteDecision selection branch from `ConversationManager._dispatch()`; direct calls without a finalized route now fail closed. The raw `EventLoop.submit()` parser path was also removed, and `tick()` rejects any queued item that is not a `PreparedExecutionRequest`.
 
 Verified active call paths:
 
@@ -136,7 +136,7 @@ Verified active call paths:
 | `core/guard.py` | Compatibility adapter delegates to ConversationManager; it has no gateway or direct Orchestrator call. |
 | `core/orchestrator.py` | Validates the final RouteDecision, delegates once to `route_request()`, and defines the PreparedExecutionRequest handoff capability. |
 | `core/orchestrator_handlers/dispatch.py` | Owns the response-cache gate, unique handler registry dispatch, and explicit unsupported result. |
-| `loop/event_loop.py` | Defines raw `submit()` and typed `submit_prepared()`; no active raw-loop submit caller was found. |
+| `loop/event_loop.py` | Exposes only typed `submit_prepared(PreparedExecutionRequest)`; the raw `submit()` and parser/clarifier/decomposer execution path were removed. |
 
 The prepared execution handoff is active for `RUN_SCRIPT`: `HandlerServices` exposes a narrowly scoped bound capability, the registered handler supplies a fixed `run_command` execution specification plus the final RouteDecision, and `Orchestrator._submit_prepared_execution()` submits the typed request to `EventLoop.submit_prepared()`. The raw `EventLoop.submit()` parser path remains defined for compatibility but has no active runtime caller.
 
@@ -170,7 +170,7 @@ Post-audit commits on 2026-11-15 remove the legacy ConversationManager dispatch 
 | 7 — Sessions / Memory | Complete |
 | 8 — Code Authoring / Execution | Complete |
 | 9 — Repair / Destructive Operations | Complete |
-| 10 — Legacy Caller Migration | Complete for the active runtime call graph, including the `RUN_SCRIPT` → prepared EventLoop path; the unused raw `EventLoop.submit()` compatibility API remains without runtime callers |
+| 10 — Legacy Caller Migration | Complete for the active runtime call graph, including the `RUN_SCRIPT` → prepared EventLoop path; the raw `EventLoop.submit()` and `_process()` parser path were removed; only the typed `submit_prepared()` handoff remains |
 | 11 — Final Parity Verification | Complete at the audited code HEAD |
 | 12 — Legacy Route Removal | The active 3,000-line intent switch had already been replaced by the compact dispatch boundary before this final audit; this session performed no further legacy-tree deletion. The separate `lab_v4/` tree remains retained. |
 
