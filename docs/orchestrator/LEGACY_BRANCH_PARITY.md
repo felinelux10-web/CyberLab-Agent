@@ -90,7 +90,7 @@ The baseline extraction includes every top-level `if/elif intent` branch in the 
 
 ## Ordering and special-case parity
 
-1. **Response Cache:** `Orchestrator._route()` checks the response-cache gate before invoking the single registry dispatcher.
+1. **Response Cache:** `route_request()` checks the response-cache gate before invoking the single registry dispatcher.
 2. **Registered handlers:** the immutable registry owns all 69 baseline branch keys plus 13 explicit provider-backed intents.
 3. **Provider-backed intents:** all 13 `GROQ_INTENTS` are registered to `provider_fallback.handle_provider_intent`; the `needs_llm` predicate is not a second execution branch, and it has no overlap with another handler owner.
 4. **FILE_IMPACT specialized mode:** `handle_file_impact()` checks dependency-language markers first (reverse dependency lookup); only otherwise does it run the general impact analysis. This preserves both original modes and their priority.
