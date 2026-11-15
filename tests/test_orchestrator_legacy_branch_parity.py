@@ -181,3 +181,12 @@ def test_l_fact_is_exclusive_to_conversation_manager_not_orchestrator():
     assert result["status"] == "denied"
     assert result["source"] == "route_decision_handle_guard"
     assert result["executed"] is False
+
+
+
+def test_conversation_manager_has_no_legacy_mode_dispatch_helpers():
+    assert hasattr(ConversationManager, "process_execution_step")
+    assert hasattr(ConversationManager, "_safe_parse")
+    assert not hasattr(ConversationManager, "_handle_task")
+    assert not hasattr(ConversationManager, "_handle_system")
+    assert not hasattr(ConversationManager, "_handle_follow_up")
