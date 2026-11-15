@@ -89,7 +89,8 @@ The repository-wide runtime AST inventory identifies only two direct gateway bou
 | Runtime boundary | Policy |
 |---|---|
 | `conversation/conversation_manager.py` | Dialogue provider calls require a non-null final RouteDecision with `provider_allowed=True`. |
-| `core/orchestrator.py` | Creates the route-bound `authorized_ask` capability; the callback denies before reaching the gateway. |
+| `core/orchestrator.py` | Supplies the gateway callable to the single dispatch boundary; it does not invoke the provider directly. |
+| `core/orchestrator_handlers/dispatch.py` | Creates the route-bound `authorized_ask` capability and denies before reaching the gateway when RouteDecision does not grant permission. |
 | `core/orchestrator_handlers/provider_fallback.py` | Consumes only the injected `authorized_ask` capability for the 13 provider-backed registered intents. |
 
 Pre-route NLU is deliberately separate:
