@@ -4,13 +4,13 @@
 - Baseline blob: `28bafb091cd27b682ef83ef77c27a108e864eb02`
 - Current branch: `work/FRIENDLY-DIALOGUE-REPAIR-01`
 - Legacy route branch keys extracted from the baseline: **69**
-- Current explicit handler registry keys: **69**
+- Current explicit handler registry keys: **82**
 - Missing legacy keys: **0**
-- Unexpected current keys: **0**
+- Additional provider-owned keys: **13** (explicitly registered; not baseline branch keys)
 
 ## Coverage result
 
-**Exact key parity: 69/69.**
+**Baseline branch parity: 69/69. Provider-backed extension: 13/13 registered. Total registry: 82 unique keys.**
 
 The baseline extraction includes every top-level `if/elif intent` branch in the original `lab_v4_dev/core/orchestrator.py`, plus the literal `show_last_result` branch. Duplicate occurrences such as the two `FILE_IMPACT` modes are represented by one key and separately documented below.
 
@@ -90,11 +90,11 @@ The baseline extraction includes every top-level `if/elif intent` branch in the 
 
 ## Ordering and special-case parity
 
-1. **Response Cache:** the current `Orchestrator._route()` checks the legacy response-cache gate before invoking `dispatch()`.
-2. **Registered handlers:** the immutable registry gets first refusal for all 69 baseline keys.
-3. **FILE_IMPACT specialized mode:** `handle_file_impact()` checks dependency-language markers first (reverse dependency lookup); only otherwise does it run the general impact analysis. This preserves both original modes and their priority.
-4. **needs_llm:** the baseline's explicit fallback remains after registry dispatch. The current `GROQ_INTENTS` set contains 19 values; 6 are already explicitly registered, leaving 13 unregistered values for the dedicated provider fallback.
+1. **Response Cache:** `Orchestrator._route()` checks the response-cache gate before invoking the single registry dispatcher.
+2. **Registered handlers:** the immutable registry owns all 69 baseline branch keys plus 13 explicit provider-backed intents.
+3. **Provider-backed intents:** all 13 `GROQ_INTENTS` are registered to `provider_fallback.handle_provider_intent`; the `needs_llm` predicate is not a second execution branch, and it has no overlap with another handler owner.
+4. **FILE_IMPACT specialized mode:** `handle_file_impact()` checks dependency-language markers first (reverse dependency lookup); only otherwise does it run the general impact analysis. This preserves both original modes and their priority.
 5. **show_last_result:** preserved as a literal registry key and mapped to `reports.handle_show_last_result`; `Orchestrator.handle()` continues to avoid mutating active context for this read-only result.
-6. **Unsupported:** the explicit unsupported response remains after the registered-handler and `needs_llm` gates. No catch-all handler was added.
+6. **Unsupported:** the explicit unsupported response is returned only after registry dispatch finds no owner. No catch-all execution handler exists.
 
 This manifest verifies branch-key coverage and handler ownership. It does not, by itself, prove behavioral parity; effectful behavior is covered separately by `tests/test_orchestrator_effect_parity.py`, while route/provider boundaries are covered by their authorization tests.
