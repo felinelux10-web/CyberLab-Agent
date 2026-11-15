@@ -195,7 +195,7 @@ def test_about_followup_does_not_mix_stale_security_topic_into_dialogue_prompt(m
     gateway_calls = []
 
     def offline_gateway(prompt, **kwargs):
-        gateway_calls.append(prompt + str(kwargs.get("system", "")))
+        gateway_calls.append(prompt)
         return {
             "status": "success",
             "text": "بلاد الرافدين من أقدم مراكز نشوء الحضارة.",
