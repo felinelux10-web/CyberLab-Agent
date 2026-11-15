@@ -127,7 +127,7 @@ Effectful Orchestrator intents are denied without a final RouteDecision or with 
 
 ## 8. Repository-wide caller graph
 
-The caller-graph test scans active Python source across the repository root, including the active package, entry points, and any plugin/source directories. It separates the retained `lab_v4/` legacy tree and confirms that active source does not import from it. The 2026-11-15 correction also removes the legacy no-RouteDecision selection branch from `ConversationManager._dispatch()`; direct calls without a finalized route now fail closed. The raw `EventLoop.submit()` parser path was also removed, and `tick()` rejects any queued item that is not a `PreparedExecutionRequest`.
+The caller-graph test scans active Python source across the repository root, including the active package, entry points, and any plugin/source directories. It separates the retained `lab_v4/` historical snapshot and confirms that the active entrypoint (`run.py` → `lab_v4_dev.core.agent.Agent`) and active source do not import or dispatch into it. The old tree is isolated reference material, not a competing runtime path. The 2026-11-15 correction also removes the legacy no-RouteDecision selection branch from `ConversationManager._dispatch()`; direct calls without a finalized route now fail closed. The raw `EventLoop.submit()` parser path was also removed, and `tick()` rejects any queued item that is not a `PreparedExecutionRequest`.
 
 Verified active call paths:
 
