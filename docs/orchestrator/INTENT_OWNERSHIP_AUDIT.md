@@ -10,7 +10,7 @@
 
 ## 1. Baseline and structural result
 
-The baseline Orchestrator was 3,416 lines. At the audited code HEAD, `lab_v4_dev/core/orchestrator.py` is 481 lines and retains the public `handle()` entry point, route authorization, response-cache ordering, and the compact `_route()` dispatch boundary.
+The baseline Orchestrator was 3,416 lines. At the audited code HEAD, `lab_v4_dev/core/orchestrator.py` is 481 lines and retains the public `handle()` entry point and route authorization; the 2026-11-15 correction moved response-cache ordering and registry dispatch into `orchestrator_handlers.dispatch.route_request`, leaving no parallel `_route()` implementation in the facade.
 
 The active handler package contains:
 
@@ -35,7 +35,7 @@ The current provider-backed list contains 13 values. All 13 are registered to `p
 
 ## 3. Ordering and special branches
 
-The following order is verified in `Orchestrator._route()` and covered by tests:
+The following order is implemented by `orchestrator_handlers.dispatch.route_request()` and covered by tests:
 
 1. RouteDecision ownership guard.
 2. Response Cache gate.
@@ -121,7 +121,8 @@ Verified active call paths:
 | `conversation/conversation_manager.py` | Sole active caller of `Orchestrator.handle()`. |
 | `core/task_chain.py` | Calls `ConversationManager.process_execution_step()`; it does not call Orchestrator directly. |
 | `core/guard.py` | Compatibility adapter delegates to ConversationManager; it has no gateway or direct Orchestrator call. |
-| `core/orchestrator.py` | Owns the internal `_route()` call and defines the PreparedExecutionRequest handoff helper. |
+| `core/orchestrator.py` | Validates the final RouteDecision, delegates once to `route_request()`, and defines the PreparedExecutionRequest handoff capability. |
+| `core/orchestrator_handlers/dispatch.py` | Owns the response-cache gate, unique handler registry dispatch, and explicit unsupported result. |
 | `loop/event_loop.py` | Defines raw `submit()` and typed `submit_prepared()`; no active raw-loop submit caller was found. |
 
 The prepared execution handoff is active for `RUN_SCRIPT`: `HandlerServices` exposes a narrowly scoped bound capability, the registered handler supplies a fixed `run_command` execution specification plus the final RouteDecision, and `Orchestrator._submit_prepared_execution()` submits the typed request to `EventLoop.submit_prepared()`. The raw `EventLoop.submit()` parser path remains defined for compatibility but has no active runtime caller.
