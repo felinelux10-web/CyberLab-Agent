@@ -284,7 +284,6 @@ class Orchestrator:
             self,
             intent,
             target,
-            ctx_hint,
             raw_request,
             response_attributes=response_attributes,
             conversation_history=conversation_history,
