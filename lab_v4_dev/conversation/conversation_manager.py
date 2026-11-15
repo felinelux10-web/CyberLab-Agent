@@ -4363,7 +4363,6 @@ class ConversationManager:
         }
 
     @staticmethod
-    @staticmethod
     def _is_compound_multi_part_request(text: str) -> bool:
         """Detect an enumerated multi-part prompt explicitly framed as an assistant test."""
         import re
