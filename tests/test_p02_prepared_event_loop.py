@@ -33,9 +33,6 @@ class FakeMemory:
 def test_prepared_path_uses_planner_adapter_executor_without_raw_parser(monkeypatch):
     calls = []
 
-    def forbidden_parser(_):
-        raise AssertionError("RAW_PARSER_MUST_NOT_BE_CALLED")
-
     def fake_execute(self, request):
         calls.append(request)
         return ExecutionResult(
