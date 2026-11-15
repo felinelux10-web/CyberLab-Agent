@@ -159,7 +159,6 @@ __all__ = ["HANDLER_REGISTRY", "build_registry", "registered_intents", "dispatch
 
 
 def route_request(
-orchestrator,
     orchestrator,
     intent,
     target,
