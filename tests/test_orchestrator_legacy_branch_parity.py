@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from lab_v4_dev.core.orchestrator import Orchestrator
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
-from lab_v4_dev.core.orchestrator_handlers.dispatch import HANDLER_REGISTRY
+from lab_v4_dev.core.orchestrator_handlers.dispatch import HANDLER_REGISTRY, route_request
 from lab_v4_dev.core.orchestrator_handlers import project_analysis, reports, provider_fallback
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.llm.router import needs_llm
@@ -106,9 +106,9 @@ def test_current_registry_has_exact_legacy_branch_key_parity():
 
 
 def test_special_ordering_response_cache_registry_unsupported():
-    source = inspect.getsource(Orchestrator._route)
+    source = inspect.getsource(route_request)
     cache_gate = source.index("# ─── Response Cache")
-    registry_dispatch = source.index("_dispatch_handler(")
+    registry_dispatch = source.index("_handled = dispatch(")
     unsupported = source.index('"status": "unsupported"')
 
     assert cache_gate < registry_dispatch < unsupported
