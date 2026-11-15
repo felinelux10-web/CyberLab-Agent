@@ -4,8 +4,8 @@
 - Branch: `work/FRIENDLY-DIALOGUE-REPAIR-01`
 - Source files: `lab_v4_dev/intent/intents.py`, `conversation/conversation_manager.py`, `core/orchestrator_handlers/dispatch.py`, `llm/router.py`
 - Declared Intent values: **166 unique values** (168 declarations, including aliases)
-- Registered dispatch keys: **69** (includes the literal `show_last_result`)
-- `needs_llm` values: **19 total; 13 remain unregistered and reach the explicit fallback**
+- Registered dispatch keys: **82** (includes the literal `show_last_result`)
+- Provider-backed intents: **13; all 13 are registered to one provider handler. No secondary provider dispatch branch remains.**
 - Purpose: explicit inventory of the route policy currently implemented; this is not a replacement dispatcher.
 
 ## Route-level authorization contract
@@ -16,7 +16,7 @@
 | `L-LIVE` | live dialogue responder | `live_exchanges` only when live-history evidence is requested; otherwise `none` | allowed only by RouteDecision |
 | `L-SESSION` | saved-session handler | `saved_session` for one exact SessionRef; `saved_sessions` for an explicit collection/list | only summary/report/topic-summary synthesis, and only when session synthesis is enabled |
 | `L-FACT` | local project/agent-fact responder | `project_state` | allowed only by RouteDecision; local evidence remains primary |
-| `L-EXEC` | Orchestrator registered handler or explicit provider fallback | `work_state` | allowed only by RouteDecision and capped by parent authorization |
+| `L-EXEC` | Orchestrator registered handler, including provider-backed handler | `work_state` | allowed only by RouteDecision and capped by parent authorization |
 | `P-TOOL` | technical knowledge/tool responder | `none` in the current finalizer | allowed only by RouteDecision |
 | `CLARIFY` | ConversationManager clarification | `none` | denied |
 | `DENY` | policy denial | `none` | denied |
@@ -62,7 +62,7 @@ The route is intentionally context-sensitive. The table records the current defa
 | `current_task` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `current_version` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `cyber_explain` | Knowledge responder / knowledge handler | L-FACT for project domain; P-TOOL for technical domain | project_state for L-FACT; otherwise none | Yes, only when RouteDecision grants |
-| `decompose` | Explicit needs_llm fallback | L-EXEC | work_state | Yes only through authorized_ask |
+| `decompose` | Registered provider handler | L-EXEC | work_state | Yes only through authorized_ask |
 | `delete_file` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `delete_snapshot` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `dependencies` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
