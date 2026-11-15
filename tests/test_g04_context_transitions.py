@@ -3,6 +3,7 @@ from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.conversation.semantic_contract import ContextTransition
 from lab_v4_dev.intent import llm_intent_resolver
 from lab_v4_dev.intent.intents import Intent
+from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.nlu import context_resolver
 
 
@@ -165,3 +166,46 @@ def test_self_contained_question_without_active_subject_is_new_independent(monke
     assert result["semantic_request"]["context_transition"] == "new_independent"
     assert result["semantic_request"]["requires_context"] is False
     assert orchestrator.calls == []
+
+
+
+def test_about_followup_subject_overrides_stale_sql_entity(monkeypatch):
+    configure_offline_nlu(monkeypatch)
+    parsed = parse("ماذا عن بلاد الرافدين؟", context_entity=STALE_SQL_ENTITY)
+
+    assert parsed["intent"] == Intent.PERSONAL_CHAT
+    assert parsed["target"] == "بلاد الرافدين"
+    assert parsed["semantic_pattern"] == "EXPLICIT_ABOUT_SUBJECT"
+    assert parsed.get("context_inherited", False) is False
+    assert parsed["conversation_domain"] != "technical"
+
+
+def test_about_followup_does_not_mix_stale_security_topic_into_dialogue_prompt(monkeypatch):
+    configure_offline_nlu(monkeypatch)
+    orchestrator = RecordingOrchestrator()
+    memory = DialogueMemory(object())
+    manager = ConversationManager(orchestrator, memory)
+    gateway_calls = []
+
+    def offline_gateway(prompt, **kwargs):
+        gateway_calls.append(prompt + str(kwargs.get("system", "")))
+        return {
+            "status": "success",
+            "text": "بلاد الرافدين من أقدم مراكز نشوء الحضارة.",
+            "provider_used": "offline-test",
+        }
+
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask",
+        offline_gateway,
+    )
+
+    manager.process("اشرح SQL Injection")
+    result = manager.process("ماذا عن بلاد الرافدين؟")
+
+    semantic = result["semantic_request"]
+    assert semantic["intent"] == Intent.PERSONAL_CHAT
+    assert semantic["target"] == "بلاد الرافدين"
+    assert semantic["conversation_domain"] != "technical"
+    assert len(gateway_calls) == 1
+    assert "SQL Injection" not in gateway_calls[0]
