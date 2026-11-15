@@ -208,12 +208,12 @@ def analyze(text: str) -> dict:
     # before the short-term NLU context resolver can fill an incomplete
     # cyber_explain intent with an unrelated entity from the previous turn.
     about_match = re.match(
-        r"^\\s*(?:و)?ماذا\\s+عن\\s+(.+?)\\s*[؟?!.,،؛:]*\\s*$",
+        r"^\s*(?:و)?ماذا\s+عن\s+(.+?)\s*[؟?!.,،؛:]*\s*$",
         str(text or ""),
         flags=re.IGNORECASE,
     )
     if about_match:
-        explicit_subject = about_match.group(1).strip(" \\t\\r\\n.,،؛:!?؟")
+        explicit_subject = about_match.group(1).strip(" \t\r\n.,،؛:!?؟")
         normalized_subject = normalize_text(explicit_subject).casefold()
         generic_references = {
             "هذا", "هذه", "ذلك", "تلك", "الموضوع", "هذا الموضوع",
