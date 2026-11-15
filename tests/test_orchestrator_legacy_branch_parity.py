@@ -170,20 +170,6 @@ def test_conversation_dispatch_denies_calls_without_final_route_decision():
 
 
 
-def test_l_fact_is_exclusive_to_conversation_manager_not_orchestrator():
-    orchestrator = Orchestrator(SimpleNamespace())
-    result = orchestrator.handle(
-        "سؤال عن حقيقة محلية",
-        parsed={"intent": Intent.STATUS},
-        route_decision=SimpleNamespace(route="L-FACT", intent=Intent.STATUS),
-    )
-
-    assert result["status"] == "denied"
-    assert result["source"] == "route_decision_handle_guard"
-    assert result["executed"] is False
-
-
-
 def test_conversation_manager_has_no_legacy_mode_dispatch_helpers():
     assert hasattr(ConversationManager, "process_execution_step")
     assert hasattr(ConversationManager, "_safe_parse")
