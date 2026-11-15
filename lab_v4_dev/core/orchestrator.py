@@ -120,7 +120,7 @@ class Orchestrator:
 
         if route_decision is not None:
             authorized_route = str(getattr(route_decision, "route", ""))
-            if authorized_route not in {"L-EXEC", "L-SESSION", "L-FACT", "P-TOOL"}:
+            if authorized_route not in {"L-EXEC", "L-SESSION", "P-TOOL"}:
                 return {
                     "status": "denied",
                     "intent": (parsed or {}).get("intent"),
