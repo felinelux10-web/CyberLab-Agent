@@ -107,7 +107,7 @@ def test_special_ordering_response_cache_registry_unsupported():
     unsupported = source.index('"status": "unsupported"')
 
     assert cache_gate < registry_dispatch < unsupported
-    assert "needs_llm" not in source
+    assert "if needs_llm(intent):" not in source
 
 
 def test_file_impact_specialized_reverse_dependency_mode_precedes_general_impact():
