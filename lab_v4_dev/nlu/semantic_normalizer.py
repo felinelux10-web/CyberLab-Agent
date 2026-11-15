@@ -209,8 +209,11 @@ def extract_explicit_about_subject(text: str) -> dict | None:
             else _load_actions().get("PERSONAL_CHAT", "personal_chat")
         ),
         "pattern": "EXPLICIT_ABOUT_SUBJECT",
+        "semantic_pattern": "EXPLICIT_ABOUT_SUBJECT",
         "confidence": 0.95,
         "target": subject,
+        "context": "technical" if technical else "general",
+        "entity_type": "CONCEPT",
         "entity": {"type": "CONCEPT", "value": subject, "confidence": 0.95},
         "explicit_subject": True,
         "conversation_domain": "technical" if technical else "general",
