@@ -8,7 +8,6 @@ from lab_v4_dev.executor.executor import Executor
 from lab_v4_dev.executor.plan_adapter import PlanExecutionAdapter
 from lab_v4_dev.loop.idle_manager import IdleManager
 from lab_v4_dev.loop.scheduler import Scheduler
-from lab_v4_dev.core.config import HARD_LIMITS
 from lab_v4_dev.core.contracts import PreparedExecutionRequest
 
 class EventLoop:
