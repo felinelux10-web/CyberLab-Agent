@@ -1232,6 +1232,18 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
     from lab_v4_dev.nlu.semantic_normalizer import extract_explicit_about_subject
     explicit_about_subject = extract_explicit_about_subject(user_input)
     if explicit_about_subject is not None:
+        # Keep the NLU short-term entity cache aligned with the explicit
+        # current-turn subject so the next incomplete follow-up cannot revive
+        # an older, unrelated entity.
+        try:
+            from lab_v4_dev.nlu.context_resolver import save_state
+            save_state(
+                explicit_about_subject["intent"],
+                explicit_about_subject["target"],
+                "CONCEPT",
+            )
+        except Exception:
+            pass
         return explicit_about_subject
 
     conversational_result = _early_conversation_result(user_input)
