@@ -178,13 +178,13 @@ def _has_technical_context(text: str, target: str = "") -> bool:
 def extract_explicit_about_subject(text: str) -> dict | None:
     """Resolve a named 'what about X?' subject before short-term context inheritance."""
     match = re.match(
-        r"^\\s*(?:و)?ماذا\\s+عن\\s+(.+?)\\s*[؟?!.,،؛:]*\\s*$",
+        r"^\s*(?:و)?ماذا\s+عن\s+(.+?)\s*[؟?!.,،؛:]*\s*$",
         str(text or ""),
         flags=re.IGNORECASE,
     )
     if not match:
         return None
-    subject = match.group(1).strip(" \\t\\r\\n.,،؛:!?؟")
+    subject = match.group(1).strip(" \t\r\n.,،؛:!?؟")
     normalized_subject = normalize_text(subject).casefold()
     generic_references = {
         "هذا", "هذه", "ذلك", "تلك", "الموضوع", "هذا الموضوع",
