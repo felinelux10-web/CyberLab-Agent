@@ -47,7 +47,7 @@ This is a source-level structural result only. The post-correction test suite an
 - The complete per-intent owner/route/evidence/provider inventory is in `INTENT_ROUTE_AUTHORIZATION_MATRIX.md`.
 - Exact branch-to-handler mapping is in `LEGACY_BRANCH_PARITY.md`.
 
-The current provider-backed list contains 13 values. All 13 are registered to `provider_fallback.handle_provider_intent`; the six former overlaps were removed from the provider list. `Orchestrator._route()` no longer contains a secondary provider execution branch. Other unregistered values remain explicit unsupported/clarification outcomes.
+The current provider-backed list contains 13 values. All 13 are registered to `provider_fallback.handle_provider_intent`; the six former overlaps were removed from the provider list. `Orchestrator` no longer has an `_route()` method; `dispatch.route_request()` is the sole route dispatch boundary. Other unregistered values remain explicit unsupported/clarification outcomes.
 
 ## 3. Ordering and special branches
 
@@ -96,7 +96,7 @@ Pre-route NLU is deliberately separate:
 
 - `intent/llm_intent_resolver.py` has no gateway import and requires an explicitly injected `nlu_provider` capability.
 - The canonical IntentParser calls `resolve(user_input)` without that capability, so pre-route external NLU is disabled by default.
-- `llm/smart_router.py` has no direct gateway import and requires an injected `authorized_ask` capability.
+- `llm/smart_router.py` was deleted because no active caller used it; provider-backed intent ownership now exists only in `HANDLER_REGISTRY`.
 - The legacy Groq resolver is only a compatibility wrapper around the provider-neutral resolver.
 
 No handler module has a direct gateway import. The gateway inventory test scans the active source tree and fails if an unapproved import or call boundary is introduced.
@@ -136,14 +136,14 @@ Verified active call paths:
 | `core/agent.py` | Enters through `ConversationManager.process()`. |
 | `conversation/conversation_manager.py` | Sole active caller of `Orchestrator.handle()`. |
 | `core/task_chain.py` | Calls `ConversationManager.process_execution_step()`; it does not call Orchestrator directly. |
-| `core/guard.py` | Compatibility adapter delegates to ConversationManager; it has no gateway or direct Orchestrator call. |
+| `core/guard.py` | Deleted as an unused parallel guard adapter; `run.py` no longer imports it. |
 | `core/orchestrator.py` | Validates the final RouteDecision, delegates once to `route_request()`, and defines the PreparedExecutionRequest handoff capability. |
 | `core/orchestrator_handlers/dispatch.py` | Owns the response-cache gate, unique handler registry dispatch, and explicit unsupported result. |
 | `loop/event_loop.py` | Exposes only typed `submit_prepared(PreparedExecutionRequest)`; the raw `submit()` and parser/clarifier/decomposer execution path were removed. |
 
-The prepared execution handoff is active for `RUN_SCRIPT`: `HandlerServices` exposes a narrowly scoped bound capability, the registered handler supplies a fixed `run_command` execution specification plus the final RouteDecision, and `Orchestrator._submit_prepared_execution()` submits the typed request to `EventLoop.submit_prepared()`. The raw `EventLoop.submit()` parser path remains defined for compatibility but has no active runtime caller.
+The prepared execution handoff is active for `RUN_SCRIPT`: `HandlerServices` exposes a narrowly scoped bound capability, the registered handler supplies a fixed `run_command` execution specification plus the final RouteDecision, and `Orchestrator._submit_prepared_execution()` submits the typed request to `EventLoop.submit_prepared()`. The raw `EventLoop.submit()` and `_process()` parser path were removed; there is no alternate unprepared execution API.
 
-The scan also identifies Guard's dynamic `getattr(manager, "process")` delegation. Test modules may call Orchestrator directly for unit-level coverage; the active runtime scan found no additional direct callers.
+Test modules may call Orchestrator directly for unit-level coverage; the active runtime scan found no additional direct callers.
 
 ## 9. Historical CI evidence and current verification status
 
