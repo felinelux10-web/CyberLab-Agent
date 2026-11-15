@@ -1573,6 +1573,26 @@ def parse(user_input, *, context_entity: dict | None = None):
         )
 
     legacy = dict(legacy)
+    # Apply the same current-turn subject contract even when an earlier
+    # conversational shortcut returned before the NLU normalizer ran.
+    from lab_v4_dev.nlu.semantic_normalizer import extract_explicit_about_subject
+    explicit_about = extract_explicit_about_subject(user_input)
+    if explicit_about:
+        legacy.update({
+            "intent": explicit_about["intent"],
+            "target": explicit_about["target"],
+            "context": explicit_about["conversation_domain"],
+            "confidence": explicit_about["confidence"],
+            "raw": user_input,
+            "entity_type": "CONCEPT",
+            "semantic_pattern": explicit_about["pattern"],
+            "context_inherited": False,
+            "conversation_domain": explicit_about["conversation_domain"],
+            "conversation_act": explicit_about["conversation_act"],
+            "conversation_confidence": explicit_about["conversation_confidence"],
+            "response_attributes": dict(explicit_about["response_attributes"]),
+            "source": explicit_about["source"],
+        })
     # General AI-agent discussion must outrank legacy/self-capability labels.
     # The semantic adapter can otherwise preserve an agent-self intent chosen
     # by an earlier parser path even when the utterance is about the field.
