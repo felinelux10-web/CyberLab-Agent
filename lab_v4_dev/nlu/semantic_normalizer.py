@@ -204,6 +204,53 @@ def analyze(text: str) -> dict:
     except:
         entity = {"type": "UNKNOWN", "value": "", "confidence": 0.0}
 
+    # "What about X?" names a subject in the current utterance. Resolve it
+    # before the short-term NLU context resolver can fill an incomplete
+    # cyber_explain intent with an unrelated entity from the previous turn.
+    about_match = re.match(
+        r"^\\s*(?:و)?ماذا\\s+عن\\s+(.+?)\\s*[؟?!.,،؛:]*\\s*$",
+        str(text or ""),
+        flags=re.IGNORECASE,
+    )
+    if about_match:
+        explicit_subject = about_match.group(1).strip(" \\t\\r\\n.,،؛:!?؟")
+        normalized_subject = normalize_text(explicit_subject).casefold()
+        generic_references = {
+            "هذا", "هذه", "ذلك", "تلك", "الموضوع", "هذا الموضوع",
+            "هذه الموضوع", "الشيء", "شيء", "ك",
+        }
+        project_references = (
+            "المشروع", "مشروعنا", "ملف", "الكود", "كود",
+            "مجلد", "المعمارية", "بنية النظام", "cyberlab",
+        )
+        if (
+            explicit_subject
+            and normalized_subject not in generic_references
+            and not any(marker in normalized_subject for marker in project_references)
+        ):
+            target = explicit_subject
+            entity = {
+                "type": "CONCEPT",
+                "value": explicit_subject,
+                "confidence": 0.95,
+            }
+            technical_subject = _has_technical_context(text, explicit_subject)
+            action = (
+                _load_actions().get("CYBER_CONCEPT", "cyber_explain")
+                if technical_subject
+                else _load_actions().get("PERSONAL_CHAT", "personal_chat")
+            )
+            pattern = "EXPLICIT_ABOUT_SUBJECT"
+            return {
+                "intent": action,
+                "pattern": pattern,
+                "confidence": 0.95,
+                "target": target,
+                "entity": entity,
+                "explicit_subject": True,
+                "raw": text,
+            }
+
     # EXPLAIN_COMPONENT is a question shape, not proof of a cyber subject.
     # Keep the specialized route only when the current request itself carries
     # technical/project evidence; prior conversation history is not evidence.
