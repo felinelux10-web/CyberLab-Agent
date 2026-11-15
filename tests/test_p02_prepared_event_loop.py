@@ -126,6 +126,7 @@ def test_snapshot_personal_chat_and_fuzzy_matching_regression(tmp_path, monkeypa
 
 
 def test_event_loop_rejects_unprepared_raw_scheduler_tasks():
+    assert not hasattr(EventLoop, "submit")
     loop = EventLoop(FakeState(), None, memory=FakeMemory())
     loop.scheduler.add({"input": "شغّل echo RAW_PATH"})
     result = loop.tick()
