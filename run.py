@@ -7,8 +7,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lab_v4_dev.core.agent import Agent
 from lab_v4_dev.core.logger import log
-from lab_v4_dev.core.guard import guard, execute
-from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.cli.commands import is_special, handle_special
 
 def display(result: dict):
