@@ -155,7 +155,7 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
     return handler(handler_orchestrator, intent, target=target, raw=raw)
 
 
-__all__ = ["HANDLER_REGISTRY", "build_registry", "registered_intents", "dispatch"]
+__all__ = ["HANDLER_REGISTRY", "build_registry", "registered_intents", "dispatch", "route_request"]
 
 
 def route_request(
