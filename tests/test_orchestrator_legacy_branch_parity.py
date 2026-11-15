@@ -1,6 +1,7 @@
 import inspect
 
 from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.core.orchestrator_handlers.dispatch import HANDLER_REGISTRY
 from lab_v4_dev.core.orchestrator_handlers import project_analysis, reports
 from lab_v4_dev.intent.intents import Intent
@@ -121,3 +122,27 @@ def test_show_last_result_is_read_only_and_needs_llm_remains_explicit():
         "decompose", "refactor_file", "optimize_code", "generate_test",
         "project_purpose", "architecture", "modules", "execution_flow",
     }
+
+
+
+def test_conversation_dispatch_has_no_legacy_route_selection_fallback():
+    source = inspect.getsource(ConversationManager._dispatch)
+
+    assert "route_decision_required_at_dispatch" in source
+    assert "Legacy compatibility path" not in source
+    assert "if mode == \"SYSTEM\"" not in source
+    assert "intent not in _NON_EXECUTABLE_INTENTS" not in source
+
+
+def test_conversation_dispatch_denies_calls_without_final_route_decision():
+    manager = ConversationManager(orchestrator=object())
+
+    result = manager._dispatch(
+        "متابعة الحوار",
+        "CHAT",
+        {"intent": Intent.PERSONAL_CHAT},
+    )
+
+    assert result["status"] == "denied"
+    assert result["source"] == "route_decision_required_at_dispatch"
+    assert result["executed"] is False
