@@ -1,4 +1,5 @@
 from lab_v4_dev.executor.contracts import ExecutionResult
+from lab_v4_dev.core.contracts import PreparedExecutionRequest, RouteDecision
 from lab_v4_dev.loop.event_loop import EventLoop
 
 
@@ -47,7 +48,18 @@ def test_event_loop_executes_planned_shell_step(monkeypatch):
         memory=FakeMemory(),
     )
 
-    loop.submit("شغّل echo P011_INTEGRATION_OK")
+    loop.submit_prepared(PreparedExecutionRequest(
+        intent={"intent": "run_command", "target": "shell", "context": "system"},
+        route_decision=RouteDecision(
+            route="L-EXEC", evidence_scope="work_state",
+            intent="run_command", provider_allowed=False,
+        ),
+        request_id="p11-prepared-execution",
+        metadata={"execution": {
+            "action": "run_command",
+            "parameters": {"command": "echo P011_INTEGRATION_OK"},
+        }},
+    ))
     result = loop.tick()
 
     assert result["status"] == "executed"
