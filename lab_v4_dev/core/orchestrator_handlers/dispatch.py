@@ -3,7 +3,7 @@
 from types import MappingProxyType
 
 from lab_v4_dev.intent.intents import Intent
-from . import system_inspection, project_inspection, project_analysis, reports, knowledge, releases, sessions, execution, code_authoring, maintenance, planning, repair
+from . import system_inspection, project_inspection, project_analysis, reports, knowledge, releases, sessions, execution, code_authoring, maintenance, planning, repair, provider_fallback
 
 
 def build_registry(entries):
@@ -63,6 +63,19 @@ HANDLER_REGISTRY = build_registry((
     (Intent.SAVE_KB, knowledge.handle_save_kb),
     (Intent.SKIP_KB, knowledge.handle_skip_kb),
     (Intent.CYBER_EXPLAIN, knowledge.handle_cyber_explain),
+    (Intent.DIAGNOSE, provider_fallback.handle_provider_intent),
+    (Intent.PROPOSE_SOLUTION, provider_fallback.handle_provider_intent),
+    (Intent.PROPOSE_FIX, provider_fallback.handle_provider_intent),
+    (Intent.RISK_ANALYSIS, provider_fallback.handle_provider_intent),
+    (Intent.PLAN, provider_fallback.handle_provider_intent),
+    (Intent.DECOMPOSE, provider_fallback.handle_provider_intent),
+    (Intent.REFACTOR_FILE, provider_fallback.handle_provider_intent),
+    (Intent.OPTIMIZE_CODE, provider_fallback.handle_provider_intent),
+    (Intent.GENERATE_TEST, provider_fallback.handle_provider_intent),
+    (Intent.PROJECT_PURPOSE, provider_fallback.handle_provider_intent),
+    (Intent.ARCHITECTURE, provider_fallback.handle_provider_intent),
+    (Intent.MODULES, provider_fallback.handle_provider_intent),
+    (Intent.EXECUTION_FLOW, provider_fallback.handle_provider_intent),
     (Intent.LAST_PROJECT, releases.handle_last_project),
     (Intent.CURRENT_VERSION, releases.handle_current_version),
     (Intent.RELEASE_INDEX, releases.handle_release_index),
@@ -112,6 +125,12 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
         authorized_provider=authorized_ask,
     )
     handler_orchestrator = build_handler_facade(orchestrator, handler_context)
+    if intent in {Intent.DIAGNOSE, Intent.PROPOSE_SOLUTION, Intent.PROPOSE_FIX, Intent.RISK_ANALYSIS, Intent.PLAN, Intent.DECOMPOSE, Intent.REFACTOR_FILE, Intent.OPTIMIZE_CODE, Intent.GENERATE_TEST, Intent.PROJECT_PURPOSE, Intent.ARCHITECTURE, Intent.MODULES, Intent.EXECUTION_FLOW}:
+        return handler(
+            handler_orchestrator, intent, target=target, raw=raw,
+            authorized_ask=authorized_ask,
+        )
+
     if intent in {Intent.RESUME, Intent.SESSION_RESTORE}:
         return handler(
             handler_orchestrator, intent, target=target, raw=raw,
