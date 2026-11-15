@@ -787,6 +787,84 @@ def test_session_72_art_and_relief_plaster_details_are_retrievable_from_raw_evid
 
 
 
+
+
+def test_saved_session_detail_recall_flows_through_orchestrator_and_keeps_exact_session_identity(monkeypatch):
+    sid = "integrated-long-dialogue-session"
+    transcript = [
+        {
+            "session_id": sid,
+            "exchange_id": f"{sid}:{index}",
+            "timestamp": f"2026-11-01T10:{index:02d}:00",
+            "user": (
+                "في بداية الجلسة ذكرت أن الأداة كانت مفك براغٍ نحاسيًا قديمًا."
+                if index == 1 else f"رسالة متابعة رقم {index} عن موضوع الجلسة."
+            ),
+            "assistant": f"رد محفوظ رقم {index}.",
+        }
+        for index in range(1, 14)
+    ]
+    session = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "last_topic": "موضوع حوار طويل",
+            "transcript_archive": transcript,
+            "exchange_archive": transcript[-8:],
+        },
+    }
+    monkeypatch.setattr(session_state, "get_session_index", lambda: [session])
+    monkeypatch.setattr(session_state, "get_session_by_number", lambda number: session if number == 1 else {})
+    monkeypatch.setattr(session_state, "get_session_by_id", lambda session_id: session if session_id == sid else {})
+    monkeypatch.setattr(session_state, "load_session", lambda: {})
+    monkeypatch.setattr(session_state, "recoverable_work_checkpoint", lambda _data: None)
+    provider_calls = []
+    monkeypatch.setattr(
+        "lab_v4_dev.llm.gateway.ask",
+        lambda *args, **kwargs: provider_calls.append((args, kwargs)) or {
+            "status": "success", "text": "إجابة غير مسموح باستخدامها."
+        },
+    )
+    live_memory = DialogueMemory(ContextStore())
+    live_memory.state.session_id = "unrelated-live-dialogue"
+    agent = SimpleNamespace(
+        runtime=None,
+        dialogue_memory=live_memory,
+        _meta=SimpleNamespace(get_version=lambda: "test"),
+    )
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id=sid, number=1),
+        output_kind="summary",
+        evidence_scope="saved_session",
+        provider_allowed=False,
+        intent=Intent.SESSION_RESTORE,
+    )
+
+    result = Orchestrator(agent).handle(
+        "ما الأداة التي ذكرتها في بداية الجلسة؟",
+        parsed={
+            "intent": Intent.SESSION_RESTORE,
+            "session_selector": {
+                "kind": "number",
+                "number": 1,
+                "report_mode": "recall",
+                "output_kind": "summary",
+            },
+        },
+        route_decision=decision,
+    )
+
+    assert result["status"] == "success", result
+    assert result["source"] == "saved_session_evidence_retrieval", result
+    assert result["selected_session_id"] == sid
+    assert any(sid in exchange_id for exchange_id in result["evidence_exchange_ids"])
+    assert "مفك براغٍ نحاسيًا قديمًا" in result["text"]
+    assert "unrelated-live-dialogue" not in result["text"]
+    assert provider_calls == []
+
 def test_knowledge_cache_invalidates_when_topic_metadata_changes():
     session = _saved_session()
     exchange = session["dialogue_state"]["exchange_archive"][0]
