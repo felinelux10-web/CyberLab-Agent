@@ -1,5 +1,7 @@
 """Cross-cutting Orchestrator policy gates and response profile shaping."""
 
+from lab_v4_dev.intent.intents import Intent
+
 def pre_handler_policy(orchestrator, intent, target, raw) -> dict | None:
     """Fail-closed profile and impact gates before effectful handlers run."""
     try:
@@ -53,7 +55,7 @@ def pre_handler_policy(orchestrator, intent, target, raw) -> dict | None:
                 "executed": False,
                 "text": "يلزم تحديد الملف وتحليله قبل تعديله.",
             }
-        analyzed = getattr(self, "_analyzed_files", set())
+        analyzed = getattr(orchestrator, "_analyzed_files", set())
         if effective_target not in analyzed:
             return {
                 "status": "blocked",
@@ -97,7 +99,7 @@ def pre_handler_policy(orchestrator, intent, target, raw) -> dict | None:
                 "text": "لا يمكن متابعة التعديل دون تحديد الملف وإجراء تحليل أثره.",
             }
 
-        impact_cache = getattr(self, "_impact_analyzed", set())
+        impact_cache = getattr(orchestrator, "_impact_analyzed", set())
         if impact_target not in impact_cache:
             try:
                 from lab_v4_dev.awareness.dependency_map import get_impact
