@@ -2,7 +2,7 @@
 
 - Repository: `felinelux10-web/CyberLab-Agent`
 - Branch: `work/FRIENDLY-DIALOGUE-REPAIR-01`
-- Source files: `lab_v4_dev/intent/intents.py`, `conversation/conversation_manager.py`, `core/orchestrator_handlers/dispatch.py`, `llm/router.py`
+- Source files: `lab_v4_dev/intent/intents.py`, `conversation/conversation_manager.py`, `core/orchestrator_handlers/dispatch.py`, `core/orchestrator_handlers/provider_fallback.py`, `llm/router.py`
 - Declared Intent values: **166 unique values** (168 declarations, including aliases)
 - Registered dispatch keys: **82** (includes the literal `show_last_result`)
 - Provider-backed intents: **13; all 13 are registered to one provider handler. No secondary provider dispatch branch remains.**
