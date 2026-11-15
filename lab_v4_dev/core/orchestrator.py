@@ -172,13 +172,6 @@ class Orchestrator:
                     "executed": False,
                     "text": "مسار التنفيذ لا يملك نطاق الأدلة المطلوب لحالة العمل.",
                 }
-            if authorized_route == "L-FACT" and evidence_scope != "project_state":
-                return {
-                    "status": "denied", "intent": parsed_intent,
-                    "source": "route_decision_project_evidence_guard",
-                    "executed": False,
-                    "text": "مسار الحقائق المحلية لا يملك نطاق أدلة المشروع المطلوب.",
-                }
             if authorized_route == "L-SESSION" and evidence_scope not in {
                 "none", "saved_session", "saved_sessions",
             }:
@@ -188,7 +181,7 @@ class Orchestrator:
                     "executed": False,
                     "text": "مسار الجلسات لا يسمح بقراءة أدلة خارج نطاق الجلسات المحفوظة.",
                 }
-            if authorized_route in {"L-EXEC", "L-FACT", "P-TOOL"} and evidence_scope in {
+            if authorized_route in {"L-EXEC", "P-TOOL"} and evidence_scope in {
                 "saved_session", "saved_sessions", "live_exchanges",
             }:
                 return {
