@@ -172,16 +172,22 @@ def route_request(
     route_decision=None,
     ask_provider=None,
 ) -> dict:
-    if route_decision is not None:
-        authorized_route = str(getattr(route_decision, "route", ""))
-        if authorized_route not in {"L-EXEC", "L-SESSION", "L-FACT", "P-TOOL"}:
+    if route_decision is None:
+        return {
+            "status": "denied", "intent": intent,
+            "source": "route_decision_required_at_dispatch",
+            "executed": False,
+            "text": "لا يمكن اختيار مالك تنفيذ دون قرار التوجيه النهائي.",
+        }
+    authorized_route = str(getattr(route_decision, "route", ""))
+    if authorized_route not in {"L-EXEC", "L-SESSION", "P-TOOL"}:
             return {
                 "status": "denied", "intent": intent,
                 "source": "route_decision_orchestrator_guard",
                 "executed": False,
                 "text": "قرار التوجيه لا يمنح Orchestrator ملكية هذا الطلب.",
             }
-        if authorized_route == "L-SESSION" and intent not in (Intent.SESSION_RESTORE, Intent.RESUME):
+    if authorized_route == "L-SESSION" and intent not in (Intent.SESSION_RESTORE, Intent.RESUME):
             return {
                 "status": "denied", "intent": intent,
                 "source": "route_decision_session_guard",
@@ -215,7 +221,7 @@ def route_request(
             if cached:
                 return {"status":"success","intent":intent,"source":"cache","text":cached}
 
-    # Registered handlers run only after the legacy response-cache gate.
+    # Registered handlers run only after the response-cache gate.
     from lab_v4_dev.core.orchestrator_handlers.dispatch import dispatch
     _handled = dispatch(
         orchestrator, intent, target=target, raw=raw, authorized_ask=authorized_ask,
