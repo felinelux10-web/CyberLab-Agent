@@ -162,7 +162,6 @@ def route_request(
     orchestrator,
     intent,
     target,
-    context,
     raw,
     *,
     response_attributes: dict | None = None,
