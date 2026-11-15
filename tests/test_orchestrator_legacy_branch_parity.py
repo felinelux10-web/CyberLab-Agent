@@ -190,3 +190,11 @@ def test_conversation_manager_has_no_legacy_mode_dispatch_helpers():
     assert not hasattr(ConversationManager, "_handle_task")
     assert not hasattr(ConversationManager, "_handle_system")
     assert not hasattr(ConversationManager, "_handle_follow_up")
+
+
+
+def test_orchestrator_facade_has_no_parallel_route_or_policy_implementations():
+    assert hasattr(Orchestrator, "handle")
+    assert not hasattr(Orchestrator, "_route")
+    assert not hasattr(Orchestrator, "_pre_handler_policy")
+    assert not hasattr(Orchestrator, "_apply_profile")
