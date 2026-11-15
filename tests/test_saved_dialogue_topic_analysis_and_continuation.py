@@ -604,8 +604,8 @@ def test_finalize_route_resolves_previous_dialogue_not_latest_work_session(monke
 
     monkeypatch.setattr(
         session_state,
-        "get_latest_session_by_type",
-        lambda kind: {"session_id": "latest-dialogue"} if kind == "dialogue" else {},
+        "get_previous_saved_dialogue",
+        lambda **kwargs: {"session_id": "latest-dialogue"},
     )
     context = ContextStore()
     manager = ConversationManager(
