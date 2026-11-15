@@ -1,9 +1,6 @@
 # CyberLab Agent v4.0
 # loop/event_loop.py
 
-from lab_v4_dev.intent.parser import parse
-from lab_v4_dev.intent.clarifier import clarify
-from lab_v4_dev.intent.decomposer import decompose
 from lab_v4_dev.planner.planner import Planner
 from lab_v4_dev.monitor.health_check import check_health
 from lab_v4_dev.monitor.budget import Budget
@@ -36,9 +33,6 @@ class EventLoop:
         self.idle      = IdleManager()
         self.scheduler = Scheduler()
         self.running   = False
-
-    def submit(self, user_input: str):
-        self.scheduler.add({"input": user_input})
 
     def submit_prepared(self, request: PreparedExecutionRequest):
         """Queue an already-resolved execution request.
@@ -137,101 +131,6 @@ class EventLoop:
             "results": results,
         }
 
-    def _process(self, task: dict) -> dict:
-        user_input = task.get("input", "")
-
-        # 1. health check
-        health = check_health(self.state)
-        if not health["healthy"]:
-            return {"status": "blocked", "reason": "system unhealthy"}
-
-        # 2. budget check
-        budget_check = self.budget.can_run_task()
-        if not budget_check["ok"]:
-            return {"status": "blocked", "reason": budget_check["reason"]}
-
-        # 3. parse intent
-        parsed = parse(user_input)
-
-        # 4. clarify if needed
-        if parsed.get("intent") not in ("unsupported", "unclear"):
-            clarification = clarify(parsed)
-            if clarification["needed"]:
-                return {
-                    "status"  : "needs_clarification",
-                    "question": clarification["question"],
-                }
-
-        # 5. decompose
-        decomposed = decompose(parsed)
-        if not decomposed["ok"]:
-            return {"status": "failed", "reason": decomposed["reason"]}
-
-        # 6. build P10 declarative plan
-        actions = []
-
-        for index, step in enumerate(decomposed["steps"], start=1):
-            action = step.get("action")
-            parameters = {
-                key: value
-                for key, value in step.items()
-                if key != "action"
-            }
-
-            actions.append({
-                "step_id": f"step-{index}",
-                "action": action,
-                "parameters": parameters,
-            })
-
-        try:
-            plan = self.planner.from_actions(
-                parsed,
-                actions,
-                metadata={"source": "event_loop"},
-            )
-        except Exception as e:
-            return {"status": "failed", "reason": str(e)}
-
-        # 7. P10 -> P11 contract boundary
-        #
-        # P10 remains declarative. The adapter translates each approved
-        # PlanStep into the canonical P11 ExecutionRequest.
-        # Execution itself remains exclusively inside Executor.
-        task_id = (
-            self.history.add(user_input)
-            if self.history is not None
-            else None
-        )
-
-        requests = []
-
-        try:
-            for step in plan.steps:
-                requests.append(
-                    self.plan_adapter.to_request(plan, step)
-                )
-        except Exception as e:
-            return {
-                "status": "failed",
-                "task_id": task_id,
-                "plan": plan.to_dict(),
-                "reason": str(e),
-            }
-
-        results = []
-
-        for request in requests:
-            result = self.executor.execute(request)
-            results.append(result.to_dict())
-
-        return {
-            "status": "executed",
-            "task_id": task_id,
-            "plan": plan.to_dict(),
-            "results": results,
-        }
-
     def tick(self) -> dict | None:
         if not self.scheduler.has_tasks():
             self.idle.sleep()
@@ -239,12 +138,15 @@ class EventLoop:
 
         self.idle.reset()
         task = self.scheduler.next()
-
-        prepared = task.get("prepared")
-        if prepared is not None:
-            return self._process_prepared(prepared)
-
-        return self._process(task)
+        prepared = task.get("prepared") if isinstance(task, dict) else None
+        if not isinstance(prepared, PreparedExecutionRequest):
+            return {
+                "status": "denied",
+                "source": "event_loop_prepared_request_required",
+                "executed": False,
+                "reason": "EventLoop accepts only RouteDecision-bound PreparedExecutionRequest objects.",
+            }
+        return self._process_prepared(prepared)
 
     def stop(self):
         self.running = False
