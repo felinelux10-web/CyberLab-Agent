@@ -181,14 +181,14 @@ def route_request(
         }
     authorized_route = str(getattr(route_decision, "route", ""))
     if authorized_route not in {"L-EXEC", "L-SESSION", "P-TOOL"}:
-            return {
+        return {
                 "status": "denied", "intent": intent,
                 "source": "route_decision_orchestrator_guard",
                 "executed": False,
                 "text": "قرار التوجيه لا يمنح Orchestrator ملكية هذا الطلب.",
             }
     if authorized_route == "L-SESSION" and intent not in (Intent.SESSION_RESTORE, Intent.RESUME):
-            return {
+        return {
                 "status": "denied", "intent": intent,
                 "source": "route_decision_session_guard",
                 "executed": False,
@@ -202,6 +202,11 @@ def route_request(
             return {
                 "status": "unavailable",
                 "message": "provider permission missing or denied by RouteDecision",
+            }
+        if not callable(ask_provider):
+            return {
+                "status": "unavailable",
+                "message": "provider gateway capability unavailable",
             }
         kwargs.setdefault("provider_allowed", True)
         return ask_provider(*args, **kwargs)
