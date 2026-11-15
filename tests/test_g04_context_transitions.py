@@ -207,5 +207,6 @@ def test_about_followup_does_not_mix_stale_security_topic_into_dialogue_prompt(m
     assert semantic["intent"] == Intent.PERSONAL_CHAT
     assert semantic["target"] == "بلاد الرافدين"
     assert semantic["conversation_domain"] != "technical"
+    assert memory.last_topic == "بلاد الرافدين"
     assert len(gateway_calls) == 1
     assert "SQL Injection" not in gateway_calls[0]
