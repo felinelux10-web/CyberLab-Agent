@@ -31,7 +31,7 @@ The active route ownership boundary is now explicit:
 - `Orchestrator` accepts only `L-EXEC`, `L-SESSION`, and `P-TOOL`; it rejects `L-FACT`.
 - `ConversationManager._dispatch()` has no parser/mode compatibility fallback; a missing final RouteDecision is denied.
 - `HANDLER_REGISTRY` owns all 69 baseline Orchestrator branch keys plus 13 provider-backed intents.
-- `llm/router.py` is now a read-only classification adapter derived from `HANDLER_REGISTRY`; its independent provider-intent list was removed. The unused `llm/smart_router.py` and `core/guard.py` parallel routing modules were deleted, and their unused entrypoint imports were removed from `run.py`.
+- `llm/router.py` is now a read-only classification adapter derived from `HANDLER_REGISTRY`; its independent provider-intent list was removed. The unused active-tree modules `lab_v4_dev/llm/smart_router.py` and `lab_v4_dev/core/guard.py` were deleted, and their unused entrypoint imports were removed from `run.py`.
 - `EventLoop` accepts only `PreparedExecutionRequest`; the raw `submit()` plus parser/clarifier/decomposer path is removed, and `tick()` rejects raw scheduler items.
 - Explicit `ماذا عن X؟` subjects are extracted from the current utterance before NLU context inheritance. A technical/general domain change starts a clean dialogue branch, preventing stale entities such as `SQL Injection` from contaminating an unrelated subject.
 
@@ -97,7 +97,7 @@ Pre-route NLU is deliberately separate:
 
 - `intent/llm_intent_resolver.py` has no gateway import and requires an explicitly injected `nlu_provider` capability.
 - The canonical IntentParser calls `resolve(user_input)` without that capability, so pre-route external NLU is disabled by default.
-- `llm/smart_router.py` was deleted because no active caller used it; provider-backed intent ownership now exists only in `HANDLER_REGISTRY`.
+- `lab_v4_dev/llm/smart_router.py` was deleted because no active caller used it; provider-backed intent ownership now exists only in `HANDLER_REGISTRY`.
 - The legacy Groq resolver is only a compatibility wrapper around the provider-neutral resolver.
 
 No handler module has a direct gateway import. The gateway inventory test scans the active source tree and fails if an unapproved import or call boundary is introduced.
@@ -137,7 +137,7 @@ Verified active call paths:
 | `core/agent.py` | Enters through `ConversationManager.process()`. |
 | `conversation/conversation_manager.py` | Sole active caller of `Orchestrator.handle()`. |
 | `core/task_chain.py` | Calls `ConversationManager.process_execution_step()`; it does not call Orchestrator directly. |
-| `core/guard.py` | Deleted as an unused parallel guard adapter; `run.py` no longer imports it. |
+| `lab_v4_dev/core/guard.py` | Deleted as an unused parallel guard adapter; `run.py` no longer imports it. |
 | `core/orchestrator.py` | Validates the final RouteDecision, delegates once to `route_request()`, and defines the PreparedExecutionRequest handoff capability. |
 | `core/orchestrator_handlers/dispatch.py` | Owns the response-cache gate, unique handler registry dispatch, and explicit unsupported result. |
 | `loop/event_loop.py` | Exposes only typed `submit_prepared(PreparedExecutionRequest)`; the raw `submit()` and parser/clarifier/decomposer execution path were removed. |
