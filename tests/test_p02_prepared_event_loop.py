@@ -3,6 +3,7 @@ from lab_v4_dev.core.contracts import PreparedExecutionRequest, RouteDecision
 from lab_v4_dev.conversation import conversation_manager as conversation_module
 from lab_v4_dev.executor.contracts import ExecutionResult
 from lab_v4_dev.loop.event_loop import EventLoop
+import inspect
 from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.matcher import match
 from lab_v4_dev.intent.intents import Intent
@@ -45,10 +46,7 @@ def test_prepared_path_uses_planner_adapter_executor_without_raw_parser(monkeypa
             stdout="PREPARED_PATH_OK",
         )
 
-    monkeypatch.setattr(
-        "lab_v4_dev.loop.event_loop.parse",
-        forbidden_parser,
-    )
+    assert "parse(" not in inspect.getsource(EventLoop)
     monkeypatch.setattr(
         "lab_v4_dev.executor.executor.Executor.execute",
         fake_execute,
@@ -127,3 +125,14 @@ def test_snapshot_personal_chat_and_fuzzy_matching_regression(tmp_path, monkeypa
     result = agent.run("مرحبا")
     assert isinstance(result, dict)
     assert result.get("status") == "success"
+
+
+
+def test_event_loop_rejects_unprepared_raw_scheduler_tasks():
+    loop = EventLoop(FakeState(), None, memory=FakeMemory())
+    loop.scheduler.add({"input": "شغّل echo RAW_PATH"})
+    result = loop.tick()
+
+    assert result["status"] == "denied"
+    assert result["source"] == "event_loop_prepared_request_required"
+    assert result["executed"] is False
