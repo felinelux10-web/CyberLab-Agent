@@ -227,7 +227,6 @@ def route_request(
                 return {"status":"success","intent":intent,"source":"cache","text":cached}
 
     # Registered handlers run only after the response-cache gate.
-    from lab_v4_dev.core.orchestrator_handlers.dispatch import dispatch
     _handled = dispatch(
         orchestrator, intent, target=target, raw=raw, authorized_ask=authorized_ask,
         route_decision=route_decision, session_selector=session_selector,
