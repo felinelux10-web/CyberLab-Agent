@@ -1,4 +1,5 @@
 import inspect
+from types import SimpleNamespace
 
 from lab_v4_dev.core.orchestrator import Orchestrator
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
@@ -165,4 +166,18 @@ def test_conversation_dispatch_denies_calls_without_final_route_decision():
 
     assert result["status"] == "denied"
     assert result["source"] == "route_decision_required_at_dispatch"
+    assert result["executed"] is False
+
+
+
+def test_l_fact_is_exclusive_to_conversation_manager_not_orchestrator():
+    orchestrator = Orchestrator(SimpleNamespace())
+    result = orchestrator.handle(
+        "سؤال عن حقيقة محلية",
+        parsed={"intent": Intent.STATUS},
+        route_decision=SimpleNamespace(route="L-FACT", intent=Intent.STATUS),
+    )
+
+    assert result["status"] == "denied"
+    assert result["source"] == "route_decision_handle_guard"
     assert result["executed"] is False
