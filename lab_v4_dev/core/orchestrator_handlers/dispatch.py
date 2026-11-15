@@ -156,3 +156,83 @@ def dispatch(orchestrator, intent, *, target=None, raw=None, authorized_ask=None
 
 
 __all__ = ["HANDLER_REGISTRY", "build_registry", "registered_intents", "dispatch"]
+
+
+def route_request(
+orchestrator,
+    orchestrator,
+    intent,
+    target,
+    context,
+    raw,
+    *,
+    response_attributes: dict | None = None,
+    conversation_history: list | None = None,
+    context_transition: str | None = None,
+    session_selector: dict | None = None,
+    route_decision=None,
+    ask_provider=None,
+) -> dict:
+    if route_decision is not None:
+        authorized_route = str(getattr(route_decision, "route", ""))
+        if authorized_route not in {"L-EXEC", "L-SESSION", "L-FACT", "P-TOOL"}:
+            return {
+                "status": "denied", "intent": intent,
+                "source": "route_decision_orchestrator_guard",
+                "executed": False,
+                "text": "قرار التوجيه لا يمنح Orchestrator ملكية هذا الطلب.",
+            }
+        if authorized_route == "L-SESSION" and intent not in (Intent.SESSION_RESTORE, Intent.RESUME):
+            return {
+                "status": "denied", "intent": intent,
+                "source": "route_decision_session_guard",
+                "executed": False,
+                "text": "قرار التوجيه يحدد مسار جلسة محفوظة لكن النية لا تطابق الاستعادة.",
+            }
+
+    def authorized_ask(*args, **kwargs):
+        if route_decision is None or not bool(
+            getattr(route_decision, "provider_allowed", False)
+        ):
+            return {
+                "status": "unavailable",
+                "message": "provider permission missing or denied by RouteDecision",
+            }
+        kwargs.setdefault("provider_allowed", True)
+        return ask_provider(*args, **kwargs)
+
+    # ─── Response Cache ───
+    from lab_v4_dev.intent.response_cache import get as rcache_get
+    _cache_intents = ["analyze_code","project_scan","cyber_explain","health","self_diagnose"]
+    if intent in _cache_intents and not response_attributes:
+        # لا نستخدم cache عندما يتطلب الشرح/التحليل موضوعًا ولا يوجد target.
+        # يمنع إعادة إجابة قديمة عن موضوع لم يحدده المستخدم.
+        _skip_cache = (
+            intent in {"analyze_code", "cyber_explain"}
+            and not target
+        )
+        if not _skip_cache:
+            cached = rcache_get(str(intent), target or "")
+            if cached:
+                return {"status":"success","intent":intent,"source":"cache","text":cached}
+
+    # Registered handlers run only after the legacy response-cache gate.
+    from lab_v4_dev.core.orchestrator_handlers.dispatch import dispatch
+    _handled = dispatch(
+        orchestrator, intent, target=target, raw=raw, authorized_ask=authorized_ask,
+        route_decision=route_decision, session_selector=session_selector,
+        response_attributes=response_attributes,
+        conversation_history=conversation_history,
+        context_transition=context_transition,
+    )
+    if _handled is not None:
+        return _handled
+
+    # Every supported intent, including provider-backed work, is owned
+    # by HANDLER_REGISTRY. No secondary provider-selection branch exists.
+    return {
+        "status": "unsupported",
+        "intent": intent,
+        "message": f"لم أفهم الأمر: {raw[:50]}",
+        "executed": False,
+    }
