@@ -6,21 +6,15 @@ from lab_v4_dev.config.provider_config import get_active_provider
 
 # Intents تحتاج Groq
 GROQ_INTENTS = [
-    Intent.PROJECT_SCAN,
     Intent.DIAGNOSE,
     Intent.PROPOSE_SOLUTION,
     Intent.PROPOSE_FIX,
-    Intent.IMPACT_ANALYSIS,
     Intent.RISK_ANALYSIS,
     Intent.PLAN,
     Intent.DECOMPOSE,
     Intent.REFACTOR_FILE,
-    Intent.CLEANUP_CODE,
     Intent.OPTIMIZE_CODE,
     Intent.GENERATE_TEST,
-    Intent.PROJECT_REPORT,
-    Intent.PROGRESS_REPORT,
-    Intent.REMAINING_WORK,
     Intent.PROJECT_PURPOSE,
     Intent.ARCHITECTURE,
     Intent.MODULES,
