@@ -78,6 +78,9 @@ LEGACY_ROUTE_INTENTS = frozenset({
     "system_status",
     "work_context",
     "work_status",
+})
+
+PROVIDER_FALLBACK_INTENTS = frozenset({
     "architecture",
     "decompose",
     "diagnose",
@@ -95,7 +98,8 @@ LEGACY_ROUTE_INTENTS = frozenset({
 
 
 def test_current_registry_has_exact_legacy_branch_key_parity():
-    assert set(HANDLER_REGISTRY) == LEGACY_ROUTE_INTENTS
+    assert len(LEGACY_ROUTE_INTENTS) == 69
+    assert set(HANDLER_REGISTRY) == LEGACY_ROUTE_INTENTS | PROVIDER_FALLBACK_INTENTS
     assert len(HANDLER_REGISTRY) == 82
     assert HANDLER_REGISTRY["show_last_result"] is reports.handle_show_last_result
 
@@ -120,7 +124,7 @@ def test_file_impact_specialized_reverse_dependency_mode_precedes_general_impact
     assert 'impact.get("imported_by", [])' in source
 
 
-def test_show_last_result_is_read_only_and_needs_llm_remains_explicit():
+def test_show_last_result_is_read_only_and_provider_intents_have_one_owner():
     source = inspect.getsource(Orchestrator.handle)
     assert 'intent != "show_last_result" and not read_only_session_report' in source
 
@@ -132,6 +136,7 @@ def test_show_last_result_is_read_only_and_needs_llm_remains_explicit():
     assert len(llm_intents) == 13
     assert llm_intents <= set(HANDLER_REGISTRY)
     assert all(HANDLER_REGISTRY[item] is provider_fallback.handle_provider_intent for item in llm_intents)
+    assert llm_intents == PROVIDER_FALLBACK_INTENTS
     assert llm_intents == {
         "diagnose", "propose_solution", "propose_fix", "risk_analysis", "plan",
         "decompose", "refactor_file", "optimize_code", "generate_test",
