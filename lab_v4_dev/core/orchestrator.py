@@ -12,7 +12,6 @@ from lab_v4_dev.context.context_resolver import bind_context
 from lab_v4_dev.core.contracts import Request, Context, PreparedExecutionRequest
 from lab_v4_dev.llm import gateway as _gateway
 import os
-import inspect
 
 # Stable module-level compatibility seam. The actual gateway is resolved at
 # call time so integrations may instrument it without bypassing route grants.
@@ -287,19 +286,20 @@ class Orchestrator:
             except:
                 pass
         response_attributes = parsed.get("response_attributes") or {}
-        route_kwargs = {}
-        route_parameters = inspect.signature(self._route).parameters
-        if response_attributes and "response_attributes" in route_parameters:
-            route_kwargs["response_attributes"] = response_attributes
-        if "conversation_history" in route_parameters:
-            route_kwargs["conversation_history"] = conversation_history
-        if "context_transition" in route_parameters:
-            route_kwargs["context_transition"] = context_transition
-        if "session_selector" in route_parameters:
-            route_kwargs["session_selector"] = parsed.get("session_selector")
-        if "route_decision" in route_parameters:
-            route_kwargs["route_decision"] = route_decision
-        result = self._route(intent, target, ctx_hint, raw_request, **route_kwargs)
+        from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
+        result = route_request(
+            self,
+            intent,
+            target,
+            ctx_hint,
+            raw_request,
+            response_attributes=response_attributes,
+            conversation_history=conversation_history,
+            context_transition=context_transition,
+            session_selector=parsed.get("session_selector"),
+            route_decision=route_decision,
+            ask_provider=ask,
+        )
         if _rt:
             try:
                 _rt.end({
@@ -330,34 +330,6 @@ class Orchestrator:
 
         log.debug(f"Orch[{self.phase}]: {intent} → {entry['status']}")
         return result
-
-    def _route(
-        self,
-        intent,
-        target,
-        context,
-        raw,
-        *,
-        response_attributes: dict | None = None,
-        conversation_history: list | None = None,
-        context_transition: str | None = None,
-        session_selector: dict | None = None,
-        route_decision=None,
-    ) -> dict:
-        from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
-        return route_request(
-            self,
-            intent,
-            target,
-            context,
-            raw,
-            response_attributes=response_attributes,
-            conversation_history=conversation_history,
-            context_transition=context_transition,
-            session_selector=session_selector,
-            route_decision=route_decision,
-            ask_provider=ask,
-        )
 
     def get_last(self)    -> dict: return self.history[-1] if self.history else {}
     def get_history(self) -> list: return self.history
