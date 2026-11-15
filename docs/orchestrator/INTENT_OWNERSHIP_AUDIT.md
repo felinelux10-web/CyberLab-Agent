@@ -1,4 +1,4 @@
-# Orchestrator Decomposition — Final Live Ownership Audit
+# Orchestrator Decomposition — Live Ownership Audit and Single-Owner Corrections
 
 - Repository: `felinelux10-web/CyberLab-Agent`
 - Active branch: `work/FRIENDLY-DIALOGUE-REPAIR-01`
@@ -6,7 +6,7 @@
 - Baseline `lab_v4_dev/core/orchestrator.py` blob: `28bafb091cd27b682ef83ef77c27a108e864eb02`
 - Audited implementation and verification HEAD: `4b76e484f9e7ccc1324dba6ba0ef7a3ee0acbb82`
 - Audit date: 2026-11-13
-- Status: **Orchestrator decomposition and its eight final audit gates are verified by source inspection and CI. Residual boundaries are recorded below; no APK build is claimed.**
+- Status: **The 2026-11-13 audit below is a historical baseline, not the final completion claim. Single-owner corrections were pushed on 2026-11-15; final closure remains pending the post-change CI run and end-to-end dialogue scenarios. No APK build is claimed.**
 
 ## 1. Baseline and structural result
 
@@ -14,8 +14,8 @@ The baseline Orchestrator was 3,416 lines. At the audited code HEAD, `lab_v4_dev
 
 The active handler package contains:
 
-- An immutable, duplicate-safe `HANDLER_REGISTRY` with **69 keys**.
-- Twelve domain handler modules: system inspection, project inspection, project analysis, reports, knowledge, releases, sessions, execution, code authoring, maintenance, planning, and repair.
+- An immutable, duplicate-safe `HANDLER_REGISTRY` with **82 keys**: 69 baseline Orchestrator branch keys plus 13 provider-backed intent keys.
+- Twelve domain handler modules plus the dedicated `provider_fallback.py` handler for provider-backed intents.
 - Separate dispatch, request-context, and service-capability modules.
 - No catch-all handler for unregistered intents.
 
@@ -25,13 +25,13 @@ The previous live audit recorded 68 registrations. Direct extraction from the ba
 
 - Unique declared Intent values: **166**.
 - Baseline Orchestrator branch keys: **69**.
-- Current registered keys: **69**.
+- Current registered keys: **82**.
 - Missing baseline keys: **0**.
-- Unexpected current keys: **0**.
+- Additional registered provider-backed keys: **13**.
 - The complete per-intent owner/route/evidence/provider inventory is in `INTENT_ROUTE_AUTHORIZATION_MATRIX.md`.
 - Exact branch-to-handler mapping is in `LEGACY_BRANCH_PARITY.md`.
 
-The current `needs_llm` list contains 19 values. Six overlap registered handlers and are handled by the registry first; the remaining 13 continue through the explicit provider fallback. Other unregistered values remain explicit unsupported/clarification outcomes.
+The current provider-backed list contains 13 values. All 13 are registered to `provider_fallback.handle_provider_intent`; the six former overlaps were removed from the provider list. `Orchestrator._route()` no longer contains a secondary provider execution branch. Other unregistered values remain explicit unsupported/clarification outcomes.
 
 ## 3. Ordering and special branches
 
@@ -39,9 +39,8 @@ The following order is verified in `Orchestrator._route()` and covered by tests:
 
 1. RouteDecision ownership guard.
 2. Response Cache gate.
-3. Registered handler dispatch.
-4. Explicit `needs_llm(intent)` fallback.
-5. Explicit unsupported fallback.
+3. Single `HANDLER_REGISTRY` dispatch, including all provider-backed intents.
+4. Explicit unsupported fallback when no registered owner exists.
 
 Special behavior is retained:
 
@@ -74,7 +73,8 @@ The repository-wide runtime AST inventory identifies only two direct gateway bou
 | Runtime boundary | Policy |
 |---|---|
 | `conversation/conversation_manager.py` | Dialogue provider calls require a non-null final RouteDecision with `provider_allowed=True`. |
-| `core/orchestrator.py` | Handler provider calls are exposed through `authorized_ask`; the callback denies before reaching the gateway. |
+| `core/orchestrator.py` | Creates the route-bound `authorized_ask` capability; the callback denies before reaching the gateway. |
+| `core/orchestrator_handlers/provider_fallback.py` | Consumes only the injected `authorized_ask` capability for the 13 provider-backed registered intents. |
 
 Pre-route NLU is deliberately separate:
 
@@ -111,7 +111,7 @@ Effectful Orchestrator intents are denied without a final RouteDecision or with 
 
 ## 8. Repository-wide caller graph
 
-The caller-graph test scans active Python source across the repository root, including the active package, entry points, and any plugin/source directories. It separates the retained `lab_v4/` legacy tree and confirms that active source does not import from it.
+The caller-graph test scans active Python source across the repository root, including the active package, entry points, and any plugin/source directories. It separates the retained `lab_v4/` legacy tree and confirms that active source does not import from it. The 2026-11-15 correction also removes the legacy no-RouteDecision selection branch from `ConversationManager._dispatch()`; direct calls without a finalized route now fail closed.
 
 Verified active call paths:
 
@@ -128,7 +128,7 @@ The prepared execution handoff is active for `RUN_SCRIPT`: `HandlerServices` exp
 
 The scan also identifies Guard's dynamic `getattr(manager, "process")` delegation. Test modules may call Orchestrator directly for unit-level coverage; the active runtime scan found no additional direct callers.
 
-## 9. CI evidence at the audited implementation HEAD
+## 9. Historical CI evidence and current verification status
 
 GitHub Actions run `43568184890`, head SHA `4b76e484f9e7ccc1324dba6ba0ef7a3ee0acbb82`:
 
@@ -138,6 +138,8 @@ GitHub Actions run `43568184890`, head SHA `4b76e484f9e7ccc1324dba6ba0ef7a3ee0ac
 - The job logs, not only the overall workflow conclusion, were inspected.
 
 The full suite includes the ownership, route authorization, repository-wide active-source provider-call inventory, deep immutability, repository-wide active-source caller graph, effect parity, exact legacy branch parity, response-cache ordering, both FILE_IMPACT mode tests, prepared-execution route binding, prepared EventLoop caller wiring, fail-closed profile/impact policy, and repair-selection persistence.
+
+Post-audit commits on 2026-11-15 remove the legacy ConversationManager dispatch fallback, register the 13 provider-backed intents under the same duplicate-safe registry, and remove the secondary provider branch from Orchestrator. The corresponding focused tests were updated. **No CI result for these post-audit commits is recorded yet; this document does not claim those changes passed.**
 
 ## 10. Execution phases and scope boundary
 
