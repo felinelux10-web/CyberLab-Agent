@@ -31,6 +31,7 @@ The active route ownership boundary is now explicit:
 - `Orchestrator` accepts only `L-EXEC`, `L-SESSION`, and `P-TOOL`; it rejects `L-FACT`.
 - `ConversationManager._dispatch()` has no parser/mode compatibility fallback; a missing final RouteDecision is denied.
 - `HANDLER_REGISTRY` owns all 69 baseline Orchestrator branch keys plus 13 provider-backed intents.
+- `llm/router.py` is now a read-only classification adapter derived from `HANDLER_REGISTRY`; its independent provider-intent list was removed. The unused `llm/smart_router.py` and `core/guard.py` parallel routing modules were deleted, and their unused entrypoint imports were removed from `run.py`.
 - `EventLoop` accepts only `PreparedExecutionRequest`; the raw `submit()` plus parser/clarifier/decomposer path is removed, and `tick()` rejects raw scheduler items.
 - Explicit `ماذا عن X؟` subjects are extracted from the current utterance before NLU context inheritance. A technical/general domain change starts a clean dialogue branch, preventing stale entities such as `SQL Injection` from contaminating an unrelated subject.
 
