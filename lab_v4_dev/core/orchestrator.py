@@ -4,22 +4,14 @@
 # Coordination Layer — Phase 5 (Full Control)
 
 from datetime import datetime
-from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.executor.safe_pipeline import SafePipeline
-from lab_v4_dev.awareness.project_memory import load_memory, save_memory
-from lab_v4_dev.planner.impact_analyzer import analyze_impact
 from lab_v4_dev.core.logger import log
 from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.context.context_resolver import bind_context
-from lab_v4_dev.core.contracts import Request, Context, Response, PreparedExecutionRequest
-from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
+from lab_v4_dev.core.contracts import Request, Context, PreparedExecutionRequest
 from lab_v4_dev.llm import gateway as _gateway
 import os
-import re
-_re_module = re
-import shutil
-import uuid
 import inspect
 
 # Stable module-level compatibility seam. The actual gateway is resolved at
@@ -245,9 +237,6 @@ class Orchestrator:
         # Intent authority:
         # ConversationManager may already have resolved the request.
         # Never resolve the same request a second time.
-        if parsed is None:
-            parsed = parse(raw_request)
-
         intent    = parsed.get("intent")
         target    = parsed.get("target", "")
         ctx_hint  = parsed.get("context", "general")
