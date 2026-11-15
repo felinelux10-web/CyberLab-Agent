@@ -39,7 +39,7 @@ The route is intentionally context-sensitive. The table records the current defa
 | `agent_limits` | ConversationManager agent-fact responder | L-FACT | project_state | Yes, after local evidence retrieval |
 | `analyze_code` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `analyze_release` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
-| `architecture` | Knowledge responder / knowledge handler | L-FACT for project domain; P-TOOL for technical domain | project_state for L-FACT; otherwise none | Yes, only when RouteDecision grants |
+| `architecture` | ConversationManager fact responder for L-FACT; registered provider handler for P-TOOL | L-FACT for project domain; P-TOOL for technical domain | project_state for L-FACT; otherwise none | Yes, only when RouteDecision grants |
 | `architecture_check` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `audit_log` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `auto_fix` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
@@ -68,14 +68,14 @@ The route is intentionally context-sensitive. The table records the current defa
 | `dependencies` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `dependency_map` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `dependents_query` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
-| `diagnose` | Explicit needs_llm fallback | L-EXEC | work_state | Yes only through authorized_ask |
+| `diagnose` | Registered provider handler | L-EXEC | work_state | Yes only through authorized_ask |
 | `draft` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `drift_check` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `dry_run` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `entry_point_query` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `entrypoint` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `error_report` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
-| `execution_flow` | Explicit needs_llm fallback | L-EXEC | work_state | Yes only through authorized_ask |
+| `execution_flow` | Registered provider handler | L-EXEC | work_state | Yes only through authorized_ask |
 | `failure_reason` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `file_impact` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `find_callers` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
@@ -87,7 +87,7 @@ The route is intentionally context-sensitive. The table records the current defa
 | `forget` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `full_diagnose` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `generate_code` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
-| `generate_test` | Explicit needs_llm fallback | L-EXEC | work_state | Yes only through authorized_ask |
+| `generate_test` | Registered provider handler | L-EXEC | work_state | Yes only through authorized_ask |
 | `health` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `help` | ConversationManager dialogue owner | L-SOCIAL / L-LIVE / L-FACT / P-TOOL according to semantic domain and act | none / live_exchanges / project_state | Route-dependent; L-SOCIAL denies |
 | `history` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
@@ -105,11 +105,11 @@ The route is intentionally context-sensitive. The table records the current defa
 | `modify_code` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `modify_file` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `modify_function` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
-| `modules` | Explicit needs_llm fallback | L-EXEC | work_state | Yes only through authorized_ask |
+| `modules` | Registered provider handler | L-EXEC | work_state | Yes only through authorized_ask |
 | `move_file` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `next_task` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `note` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
-| `optimize_code` | Explicit needs_llm fallback | L-EXEC | work_state | Yes only through authorized_ask |
+| `optimize_code` | Registered provider handler | L-EXEC | work_state | Yes only through authorized_ask |
 | `pending_fixes` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `personal_chat` | ConversationManager dialogue owner | L-SOCIAL / L-LIVE / L-FACT / P-TOOL according to semantic domain and act | none / live_exchanges / project_state | Route-dependent; L-SOCIAL denies |
 | `plan` | ConversationManager / Orchestrator fallback | L-LIVE, L-SOCIAL, L-EXEC or P-TOOL according to domain and target | live_exchanges, work_state or none | Yes only when final route grants |
@@ -117,18 +117,18 @@ The route is intentionally context-sensitive. The table records the current defa
 | `progress_report` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `project_index` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `project_map` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
-| `project_purpose` | Explicit needs_llm fallback | L-EXEC | work_state | Yes only through authorized_ask |
+| `project_purpose` | Registered provider handler | L-EXEC | work_state | Yes only through authorized_ask |
 | `project_report` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `project_scan` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `project_timeline` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
-| `propose_fix` | Explicit needs_llm fallback | L-EXEC | work_state | Yes only through authorized_ask |
+| `propose_fix` | Registered provider handler | L-EXEC | work_state | Yes only through authorized_ask |
 | `propose_solution` | ConversationManager / Orchestrator fallback | L-LIVE, L-SOCIAL, L-EXEC or P-TOOL according to domain and target | live_exchanges, work_state or none | Yes only when final route grants |
 | `read_class` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `read_external_project` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `read_file` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
 | `read_function` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `recovery` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
-| `refactor_file` | Explicit needs_llm fallback | L-EXEC | work_state | Yes only through authorized_ask |
+| `refactor_file` | Registered provider handler | L-EXEC | work_state | Yes only through authorized_ask |
 | `refactor_project` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `related_files` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `release_index` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
@@ -148,7 +148,7 @@ The route is intentionally context-sensitive. The table records the current defa
 | `restore_stable` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `resume` | Sessions handler | L-SESSION for saved selection; otherwise L-EXEC compatibility/work path | saved_session or work_state | Conditional by final route; session synthesis is separately gated |
 | `return_base_project` | Registered Orchestrator handler | L-EXEC by default; saved-session/context overrides are validated | work_state by default; validated route may narrow scope | RouteDecision grant required; handler may remain local |
-| `risk_analysis` | Explicit needs_llm fallback | L-EXEC | work_state | Yes only through authorized_ask |
+| `risk_analysis` | Registered provider handler | L-EXEC | work_state | Yes only through authorized_ask |
 | `rollback` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `root_cause` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
 | `run` | Orchestrator unsupported boundary | L-EXEC default, then unsupported (no handler) | work_state | No provider call in unsupported fallback |
@@ -199,7 +199,7 @@ The route is intentionally context-sensitive. The table records the current defa
 ## Interpretation notes
 
 1. The registry is first refusal after the response-cache gate. Unregistered intents are not captured by a default handler.
-2. The explicit `needs_llm(intent)` fallback is separate from the handler registry and must use `authorized_ask`.
+2. Provider-backed intents are registered in `HANDLER_REGISTRY` and can call the provider only through the route-bound `authorized_ask` capability.
 3. `CYBER_EXPLAIN` and `ARCHITECTURE` are domain-sensitive: project questions use `L-FACT`; technical explanations use `P-TOOL`.
 4. `RESUME` and `SESSION_RESTORE` may represent saved-dialogue selection or work-checkpoint behavior; the selected identity and evidence scope decide the route.
 5. `MEMORY_DUMP` is not a general Orchestrator handler: live-history and saved-memory operations are selected by ConversationManager.
