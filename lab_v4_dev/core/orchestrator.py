@@ -13,10 +13,7 @@ from lab_v4_dev.core.logger import log
 from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.context.context_resolver import bind_context
 from lab_v4_dev.core.contracts import Request, Context, Response, PreparedExecutionRequest
-from lab_v4_dev.llm.router import needs_llm
 from lab_v4_dev.llm.prompt_builder import build_cybersec_prompt
-from lab_v4_dev.awareness.knowledge_retriever import resolve_project_scope
-from lab_v4_dev.config.provider_config import get_active_provider
 from lab_v4_dev.llm import gateway as _gateway
 import os
 import re
@@ -556,32 +553,14 @@ class Orchestrator:
         if _handled is not None:
             return _handled
 
-        # ─── Explicit provider fallback (preserved after registered handlers) ───
-        if needs_llm(intent):
-            from lab_v4_dev.llm.prompt_builder import build_project_context
-            system = build_project_context(
-                question=raw,
-                intent=intent,
-                project_scope=resolve_project_scope(raw, intent=intent),
-            )
-            result = authorized_ask(raw, system=system, max_tokens=300)
-            return {
-                "status": result["status"],
-                "intent": intent,
-                "source": result.get("provider_used", get_active_provider()),
-                "route": result.get("provider_used", get_active_provider()),
-                "text": result.get("text", result.get("message", "")),
-                "tokens": result.get("tokens", 0),
-            }
-
-        # ─── fallback ───
-        else:
-            return {
-                "status"  : "unsupported",
-                "intent"  : intent,
-                "message" : f"لم أفهم الأمر: {raw[:50]}",
-                "executed": False,
-            }
+        # Every supported intent, including provider-backed work, is owned
+        # by HANDLER_REGISTRY. There is no secondary needs_llm execution path.
+        return {
+            "status": "unsupported",
+            "intent": intent,
+            "message": f"لم أفهم الأمر: {raw[:50]}",
+            "executed": False,
+        }
 
     def get_last(self)    -> dict: return self.history[-1] if self.history else {}
     def get_history(self) -> list: return self.history
