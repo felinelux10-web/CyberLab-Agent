@@ -116,8 +116,9 @@ def test_show_last_result_is_read_only_and_needs_llm_remains_explicit():
         if name.isupper() and isinstance(value, str)
     }
     llm_intents = {intent for intent in declared if needs_llm(intent)}
-    assert len(llm_intents) == 19
-    assert llm_intents - set(HANDLER_REGISTRY) == {
+    assert len(llm_intents) == 13
+    assert llm_intents.isdisjoint(set(HANDLER_REGISTRY))
+    assert llm_intents == {
         "diagnose", "propose_solution", "propose_fix", "risk_analysis", "plan",
         "decompose", "refactor_file", "optimize_code", "generate_test",
         "project_purpose", "architecture", "modules", "execution_flow",
