@@ -21,6 +21,19 @@ The active handler package contains:
 
 The previous live audit recorded 68 registrations. Direct extraction from the baseline branch conditions and the current registry establishes the correct count as **69**, including the literal `show_last_result` key. The parity manifest and test now use the verified count.
 
+### Current branch structure after the 2026-11-15 correction
+
+Source inspection at the current branch tip records `lab_v4_dev/core/orchestrator.py` at **352 lines**. Its `_route()` method has been removed; `handle()` calls `orchestrator_handlers.dispatch.route_request()` directly. The pre-handler profile/impact gates and post-response profile shaping now live in `orchestrator_handlers/policy.py`. The dispatch module owns the response-cache gate, the unique registry lookup, and the unsupported boundary. Provider-backed intents are registry entries, not a second branch after the registry.
+
+The active route ownership boundary is now explicit:
+
+- `ConversationManager` owns `L-SOCIAL`, `L-LIVE`, and `L-FACT`.
+- `Orchestrator` accepts only `L-EXEC`, `L-SESSION`, and `P-TOOL`; it rejects `L-FACT`.
+- `ConversationManager._dispatch()` has no parser/mode compatibility fallback; a missing final RouteDecision is denied.
+- `HANDLER_REGISTRY` owns all 69 baseline Orchestrator branch keys plus 13 provider-backed intents.
+
+This is a source-level structural result only. The post-correction test suite and end-to-end dialogue scenarios are still pending; no final completion claim is made.
+
 ## 2. Intent ownership and legacy branch parity
 
 - Unique declared Intent values: **166**.
