@@ -13,10 +13,14 @@ DIAG_HISTORY_FILE = "project_data/diag_history.json"
 
 def check_routing() -> dict:
     try:
-        from lab_v4_dev.llm.router import needs_llm, is_local
         from lab_v4_dev.intent.intents import Intent
-        assert needs_llm(Intent.PROJECT_SCAN)
-        assert is_local(Intent.STATUS)
+        from lab_v4_dev.core.orchestrator_handlers.dispatch import HANDLER_REGISTRY
+        from lab_v4_dev.core.orchestrator_handlers import (
+            project_inspection, system_inspection, provider_fallback,
+        )
+        assert HANDLER_REGISTRY[Intent.PROJECT_SCAN] is project_inspection.handle_project_scan
+        assert HANDLER_REGISTRY[Intent.STATUS] is system_inspection.handle_status
+        assert HANDLER_REGISTRY[Intent.DIAGNOSE] is provider_fallback.handle_provider_intent
         return {"status": "OK", "score": 1.0}
     except Exception as e:
         return {"status": "FAIL", "score": 0.0, "error": str(e)}
