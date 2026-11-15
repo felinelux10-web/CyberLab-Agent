@@ -17,7 +17,7 @@
 | `L-SESSION` | saved-session handler | `saved_session` for one exact SessionRef; `saved_sessions` for an explicit collection/list | only summary/report/topic-summary synthesis, and only when session synthesis is enabled |
 | `L-FACT` | local project/agent-fact responder | `project_state` | allowed only by RouteDecision; local evidence remains primary |
 | `L-EXEC` | Orchestrator registered handler, including provider-backed handler | `work_state` | allowed only by RouteDecision and capped by parent authorization |
-| `P-TOOL` | technical knowledge/tool responder | `none` in the current finalizer | allowed only by RouteDecision |
+| `P-TOOL` | Orchestrator registered technical/tool handler | `none` in the current finalizer | allowed only by RouteDecision |
 | `CLARIFY` | ConversationManager clarification | `none` | denied |
 | `DENY` | policy denial | `none` | denied |
 
