@@ -2282,9 +2282,11 @@ class ConversationManager:
             None
             if (
                 _restore_context
-                or
-                raw_act == "CONVERSATION_HISTORY_QUERY"
-                and not explicit_topic_return
+                or named_return
+                or (
+                    raw_act == "CONVERSATION_HISTORY_QUERY"
+                    and not explicit_topic_return
+                )
             )
             or explicit_casual_opening
             or (interrupted_recovery and not explicit_topic_return)
@@ -2715,7 +2717,7 @@ class ConversationManager:
         normalized_assistant_reply_query = self._normalize_transition_text(user_input)
         direct_assistant_reply_lookup = bool(
             re.search(
-                r"(?:اخر|الاخير|اول|الاول)\\s+(?:رد|جواب|اجابه)",
+                r"(?:اخر|الاخير|اول|الاول)\s+(?:رد|جواب|اجابه)",
                 normalized_assistant_reply_query,
             )
             and re.search(
@@ -2838,7 +2840,7 @@ class ConversationManager:
 
         active_branch = context_entity
         get_branch = getattr(self.dialogue_memory, "active_dialogue_branch", None) if self.dialogue_memory else None
-        if callable(get_branch):
+        if transition != ContextTransition.RESTORE and callable(get_branch):
             active_branch = get_branch() or context_entity
         branch_domain = str((active_branch or {}).get("conversation_domain") or "general").casefold()
         branch_action = str((active_branch or {}).get("action") or "").casefold()
@@ -3190,6 +3192,15 @@ class ConversationManager:
             chat_history = []
         else:
             chat_history = self._history_for_transition(transition, parsed)
+
+        if interrupted_recovery and self.dialogue_memory:
+            # Use the exact branch selected from the durable exchange archive.
+            # Recent visible turns may still belong to the intervening branch.
+            selected_recovery_branch = self.dialogue_memory.interrupted_branch_exchanges()
+            chat_history = (
+                self._exchange_history_turns(selected_recovery_branch[-4:])[-8:]
+                if selected_recovery_branch else []
+            )
 
         parsed = dict(parsed or {})
         conversation_act = str(parsed.get("conversation_act") or "NONE")
