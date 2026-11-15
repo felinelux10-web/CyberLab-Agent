@@ -23,7 +23,7 @@ The previous live audit recorded 68 registrations. Direct extraction from the ba
 
 ### Current branch structure after the 2026-11-15 correction
 
-Source inspection at the current branch tip records `lab_v4_dev/core/orchestrator.py` at **352 lines**. Its `_route()` method has been removed; `handle()` calls `orchestrator_handlers.dispatch.route_request()` directly. The pre-handler profile/impact gates and post-response profile shaping now live in `orchestrator_handlers/policy.py`. The dispatch module owns the response-cache gate, the unique registry lookup, and the unsupported boundary. Provider-backed intents are registry entries, not a second branch after the registry.
+Source inspection at the current branch tip records `lab_v4_dev/core/orchestrator.py` at **344 lines**. Its `_route()` method has been removed; `handle()` calls `orchestrator_handlers.dispatch.route_request()` directly. The pre-handler profile/impact gates and post-response profile shaping now live in `orchestrator_handlers/policy.py`. The dispatch module owns the response-cache gate, the unique registry lookup, and the unsupported boundary. Provider-backed intents are registry entries, not a second branch after the registry.
 
 The active route ownership boundary is now explicit:
 
