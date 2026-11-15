@@ -1229,6 +1229,11 @@ def _interpret(user_input: str, *, context_entity: dict | None = None) -> dict:
             "semantic_pattern": "PROJECT_ARCHITECTURE_QUERY",
         }
 
+    from lab_v4_dev.nlu.semantic_normalizer import extract_explicit_about_subject
+    explicit_about_subject = extract_explicit_about_subject(user_input)
+    if explicit_about_subject is not None:
+        return explicit_about_subject
+
     conversational_result = _early_conversation_result(user_input)
     if conversational_result is not None:
         return conversational_result
@@ -1573,26 +1578,6 @@ def parse(user_input, *, context_entity: dict | None = None):
         )
 
     legacy = dict(legacy)
-    # Apply the same current-turn subject contract even when an earlier
-    # conversational shortcut returned before the NLU normalizer ran.
-    from lab_v4_dev.nlu.semantic_normalizer import extract_explicit_about_subject
-    explicit_about = extract_explicit_about_subject(user_input)
-    if explicit_about:
-        legacy.update({
-            "intent": explicit_about["intent"],
-            "target": explicit_about["target"],
-            "context": explicit_about["conversation_domain"],
-            "confidence": explicit_about["confidence"],
-            "raw": user_input,
-            "entity_type": "CONCEPT",
-            "semantic_pattern": explicit_about["pattern"],
-            "context_inherited": False,
-            "conversation_domain": explicit_about["conversation_domain"],
-            "conversation_act": explicit_about["conversation_act"],
-            "conversation_confidence": explicit_about["conversation_confidence"],
-            "response_attributes": dict(explicit_about["response_attributes"]),
-            "source": explicit_about["source"],
-        })
     # General AI-agent discussion must outrank legacy/self-capability labels.
     # The semantic adapter can otherwise preserve an agent-self intent chosen
     # by an earlier parser path even when the utterance is about the field.
@@ -1633,7 +1618,10 @@ def parse(user_input, *, context_entity: dict | None = None):
     # continuation turns; legacy parser fallbacks may label them as work or
     # agent-flow intents before this adapter sees the signal.
     signal_act = signal.get("conversation_act", "NONE")
-    if signal_act in {"CONVERSATION_HISTORY_QUERY", "CONVERSATION_CONTINUATION", "TOPIC_RETURN"}:
+    if (
+        signal_act in {"CONVERSATION_HISTORY_QUERY", "CONVERSATION_CONTINUATION", "TOPIC_RETURN"}
+        and legacy.get("semantic_pattern") != "EXPLICIT_ABOUT_SUBJECT"
+    ):
         legacy["intent"] = Intent.PERSONAL_CHAT
         legacy["conversation_domain"] = signal.get("conversation_domain", "general")
         legacy["conversation_act"] = signal_act
