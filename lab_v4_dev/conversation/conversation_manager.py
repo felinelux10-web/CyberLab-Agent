@@ -2465,7 +2465,25 @@ class ConversationManager:
             "ماهي", "ما هي", "هل", "اريد", "أريد", "نريد", "اكتب",
             "ابن", "صمم", "راجع", "افحص", "اختبر",
         ))
+        current_dialogue_domain = str(
+            (candidate or {}).get("conversation_domain") or "general"
+        ).casefold()
+        technical_domains = {"technical", "project", "work", "system", "execution"}
+        explicit_about_subject = (
+            str((candidate or {}).get("semantic_pattern") or "").casefold()
+            == "explicit_about_subject"
+        )
         if (
+            active_dialogue
+            and explicit_about_subject
+            and ((active_dialogue_domain in technical_domains)
+                 != (current_dialogue_domain in technical_domains))
+        ):
+            # "What about X?" names a current-turn subject. If its domain
+            # differs from the active branch, start a clean branch instead
+            # of mixing unrelated technical history into the answer.
+            transition = ContextTransition.EXPLICIT_SWITCH
+        elif (
             active_dialogue
             and active_dialogue_domain not in {
                 "technical", "project", "work", "system", "execution",
