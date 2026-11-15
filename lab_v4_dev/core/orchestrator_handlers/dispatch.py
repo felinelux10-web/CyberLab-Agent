@@ -179,22 +179,6 @@ def route_request(
             "executed": False,
             "text": "لا يمكن اختيار مالك تنفيذ دون قرار التوجيه النهائي.",
         }
-    authorized_route = str(getattr(route_decision, "route", ""))
-    if authorized_route not in {"L-EXEC", "L-SESSION", "P-TOOL"}:
-        return {
-                "status": "denied", "intent": intent,
-                "source": "route_decision_orchestrator_guard",
-                "executed": False,
-                "text": "قرار التوجيه لا يمنح Orchestrator ملكية هذا الطلب.",
-            }
-    if authorized_route == "L-SESSION" and intent not in (Intent.SESSION_RESTORE, Intent.RESUME):
-        return {
-                "status": "denied", "intent": intent,
-                "source": "route_decision_session_guard",
-                "executed": False,
-                "text": "قرار التوجيه يحدد مسار جلسة محفوظة لكن النية لا تطابق الاستعادة.",
-            }
-
     def authorized_ask(*args, **kwargs):
         if route_decision is None or not bool(
             getattr(route_decision, "provider_allowed", False)
