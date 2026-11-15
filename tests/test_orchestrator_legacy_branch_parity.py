@@ -3,7 +3,7 @@ import inspect
 from lab_v4_dev.core.orchestrator import Orchestrator
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.core.orchestrator_handlers.dispatch import HANDLER_REGISTRY
-from lab_v4_dev.core.orchestrator_handlers import project_analysis, reports
+from lab_v4_dev.core.orchestrator_handlers import project_analysis, reports, provider_fallback
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.llm.router import needs_llm
 
@@ -78,23 +78,36 @@ LEGACY_ROUTE_INTENTS = frozenset({
     "system_status",
     "work_context",
     "work_status",
+    "architecture",
+    "decompose",
+    "diagnose",
+    "execution_flow",
+    "generate_test",
+    "modules",
+    "optimize_code",
+    "plan",
+    "project_purpose",
+    "propose_fix",
+    "propose_solution",
+    "refactor_file",
+    "risk_analysis",
 })
 
 
 def test_current_registry_has_exact_legacy_branch_key_parity():
     assert set(HANDLER_REGISTRY) == LEGACY_ROUTE_INTENTS
-    assert len(HANDLER_REGISTRY) == 69
+    assert len(HANDLER_REGISTRY) == 82
     assert HANDLER_REGISTRY["show_last_result"] is reports.handle_show_last_result
 
 
-def test_special_ordering_response_cache_registry_needs_llm_unsupported():
+def test_special_ordering_response_cache_registry_unsupported():
     source = inspect.getsource(Orchestrator._route)
     cache_gate = source.index("# ─── Response Cache")
     registry_dispatch = source.index("_dispatch_handler(")
-    provider_fallback = source.index("if needs_llm(intent):")
-    unsupported = source.index('"status"  : "unsupported"')
+    unsupported = source.index('"status": "unsupported"')
 
-    assert cache_gate < registry_dispatch < provider_fallback < unsupported
+    assert cache_gate < registry_dispatch < unsupported
+    assert "needs_llm" not in source
 
 
 def test_file_impact_specialized_reverse_dependency_mode_precedes_general_impact():
@@ -117,7 +130,8 @@ def test_show_last_result_is_read_only_and_needs_llm_remains_explicit():
     }
     llm_intents = {intent for intent in declared if needs_llm(intent)}
     assert len(llm_intents) == 13
-    assert llm_intents.isdisjoint(set(HANDLER_REGISTRY))
+    assert llm_intents <= set(HANDLER_REGISTRY)
+    assert all(HANDLER_REGISTRY[item] is provider_fallback.handle_provider_intent for item in llm_intents)
     assert llm_intents == {
         "diagnose", "propose_solution", "propose_fix", "risk_analysis", "plan",
         "decompose", "refactor_file", "optimize_code", "generate_test",
