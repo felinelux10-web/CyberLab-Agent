@@ -100,7 +100,7 @@ def test_orchestrator_rejects_execution_with_wrong_evidence_scope():
     assert result["source"] == "route_decision_work_evidence_guard"
 
 
-def test_orchestrator_rejects_saved_session_scope_on_project_route():
+def test_orchestrator_rejects_local_fact_route_owned_by_conversation_manager():
     orchestrator = object.__new__(Orchestrator)
     decision = RouteDecision(
         route="L-FACT", evidence_scope="work_state", intent=Intent.AGENT_CAPABILITIES
@@ -112,7 +112,7 @@ def test_orchestrator_rejects_saved_session_scope_on_project_route():
     )
 
     assert result["status"] == "denied"
-    assert result["source"] == "route_decision_project_evidence_guard"
+    assert result["source"] == "route_decision_handle_guard"
 
 
 def test_code_engine_provider_helpers_require_authorized_capability():
