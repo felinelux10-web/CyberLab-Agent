@@ -2748,6 +2748,8 @@ class ConversationManager:
             ))
             and not direct_assistant_reply_lookup
             and not saved_session_request
+            and not named_return
+            and not interrupted_recovery
         )
         if dialogue_context_query:
             parsed = dict(parsed or {})
