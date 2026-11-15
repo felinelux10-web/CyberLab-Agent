@@ -2473,12 +2473,29 @@ class ConversationManager:
             str((candidate or {}).get("semantic_pattern") or "").casefold()
             == "explicit_about_subject"
         )
-        if (
+        active_dialogue_target = str(
+            (active_dialogue or {}).get("entity") or ""
+        ).strip()
+        current_dialogue_target = str(
+            (candidate or {}).get("target") or ""
+        ).strip()
+        technical_subject_changed = bool(
+            active_dialogue_target
+            and current_dialogue_target
+            and active_dialogue_domain in technical_domains
+            and current_dialogue_domain in technical_domains
+            and not self._same_topic(active_dialogue_target, current_dialogue_target)
+        )
+        about_subject_switch = bool(
             active_dialogue
             and explicit_about_subject
-            and ((active_dialogue_domain in technical_domains)
+            and (
+                ((active_dialogue_domain in technical_domains)
                  != (current_dialogue_domain in technical_domains))
-        ):
+                or technical_subject_changed
+            )
+        )
+        if about_subject_switch:
             # "What about X?" names a current-turn subject. If its domain
             # differs from the active branch, start a clean branch instead
             # of mixing unrelated technical history into the answer.
