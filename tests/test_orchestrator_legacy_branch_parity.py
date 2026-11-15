@@ -1,5 +1,4 @@
 import inspect
-from types import SimpleNamespace
 
 from lab_v4_dev.core.orchestrator import Orchestrator
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
