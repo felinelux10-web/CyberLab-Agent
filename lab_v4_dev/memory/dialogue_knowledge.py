@@ -1030,9 +1030,11 @@ def format_dialogue_evidence_answer(
     query: str,
     *,
     limit: int = 8,
+    evidence: list[dict] | None = None,
 ) -> str:
     """Present the original matching exchanges with provenance and speaker ownership."""
-    evidence = retrieve_dialogue_evidence(data, query, limit=limit)
+    if evidence is None:
+        evidence = retrieve_dialogue_evidence(data, query, limit=limit)
     if not evidence:
         return ""
     lines = [

@@ -429,8 +429,11 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
             format_dialogue_evidence_answer,
             retrieve_dialogue_evidence,
         )
-        evidence = retrieve_dialogue_evidence(s, str(raw or ""))
-        evidence_text = format_dialogue_evidence_answer(s, str(raw or ""))
+        query = str(raw or "")
+        evidence = retrieve_dialogue_evidence(s, query, limit=8)
+        evidence_text = format_dialogue_evidence_answer(
+            s, query, limit=8, evidence=evidence
+        )
         if not evidence_text:
             return {
                 "status": "needs_clarification",
