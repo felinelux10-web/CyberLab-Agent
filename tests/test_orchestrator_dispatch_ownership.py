@@ -136,7 +136,7 @@ def _test_decision(intent):
     elif intent in _EXECUTION_INTENTS:
         route, scope = "L-EXEC", "work_state"
     else:
-        route, scope = "P-TOOL", "project_state"
+        route, scope = "P-TOOL", "none"
     return RouteDecision(
         route=route,
         intent=intent,
