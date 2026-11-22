@@ -110,6 +110,42 @@ class ConversationArchive:
             self.fts_available = False
         self.conn.commit()
 
+    @staticmethod
+    def _extract_explicit_user_fact(text: str) -> tuple[str, str] | None:
+        """Extract only narrow first-person assertions; never infer from assistant text."""
+        value = " ".join(str(text or "").split()).strip()
+        if not value or len(value) > 500 or "?" in value or "؟" in value:
+            return None
+        arabic = re.match(
+            r"^(?:أنا\\s+)?(أستخدم|استخدم|أستعمل|استعمل|أفضل|افضل|أفضّل|أعمل|اعمل|أدرس|ادرس|أتعلم|اتعلم|أعيش|اعيش|أسكن|اسكن|أملك|املك|أمتلك|امتلك)\\s+(.+?)\\s*[.!،]*$",
+            value,
+            flags=re.IGNORECASE,
+        )
+        english = re.match(
+            r"^I\\s+(use|prefer|work with|study|learn|live in|own)\\s+(.+?)\\s*[.!]*$",
+            value,
+            flags=re.IGNORECASE,
+        )
+        match = arabic or english
+        if not match:
+            return None
+        verb = match.group(1).casefold()
+        remainder = str(match.group(2) or "").strip(" .،؛:")
+        if not remainder or len(remainder) > 300:
+            return None
+        mapping = {
+            "أستخدم": "uses", "استخدم": "uses", "أستعمل": "uses", "استعمل": "uses",
+            "use": "uses", "work with": "uses",
+            "أفضل": "prefers", "افضل": "prefers", "أفضّل": "prefers", "prefer": "prefers",
+            "أعمل": "works_as", "اعمل": "works_as",
+            "أدرس": "studies", "ادرس": "studies", "study": "studies",
+            "أتعلم": "learns", "اتعلم": "learns", "learn": "learns",
+            "أعيش": "lives_in", "اعيش": "lives_in", "live in": "lives_in",
+            "أسكن": "lives_in", "اسكن": "lives_in",
+            "أملك": "owns", "املك": "owns", "أمتلك": "owns", "امتلك": "owns", "own": "owns",
+        }
+        return mapping.get(verb, "states"), remainder
+
     def append_exchange(
         self, *, session_id: str, user_text: str, assistant_text: str,
         source: str = "conversation", intent: str | None = None,
@@ -140,6 +176,7 @@ class ConversationArchive:
                 (sid,),
             ).fetchone()
             exchange_index = int(row[0] if row else 1)
+            user_message_id = None
             for speaker, body in (("user", user), ("assistant", assistant)):
                 if not body:
                     continue
@@ -152,13 +189,29 @@ class ConversationArchive:
                      str(source), str(intent) if intent is not None else None,
                      str(topic) if topic is not None else None, _json(meta), now),
                 )
+                message_id = int(cursor.lastrowid)
+                if speaker == "user":
+                    user_message_id = message_id
                 if self.fts_available:
                     self.conn.execute(
                         """INSERT INTO conversation_messages_fts
                            (rowid, content, session_id, speaker)
                            VALUES (?, ?, ?, ?)""",
-                        (int(cursor.lastrowid), body, sid, speaker),
+                        (message_id, body, sid, speaker),
                     )
+            explicit_fact = self._extract_explicit_user_fact(user)
+            if explicit_fact and user_message_id is not None:
+                predicate, fact_value = explicit_fact
+                self.conn.execute(
+                    """INSERT INTO memory_facts
+                       (subject,predicate,value,speaker,source_kind,source_session_id,
+                        source_exchange_id,evidence_message_id,confidence,status,
+                        metadata_json,created_at,updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    ("user", predicate, fact_value, "user", "explicit", sid,
+                     exchange_id, user_message_id, 0.94, "active",
+                     _json({"extraction": "first_person_assertion"}), now, now),
+                )
             self.conn.execute(
                 """UPDATE conversation_sessions
                    SET updated_at=?, message_count=(
