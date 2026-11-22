@@ -191,11 +191,15 @@ class ConversationManager:
         elif intent_value == "cyber_explain":
             if domain == "project":
                 route = "L-FACT"
+            elif (
+                not str(parsed.get("target") or "").strip()
+                and transition == ContextTransition.AMBIGUOUS
+            ):
+                # A technical explanation intent does not authorize guessing
+                # a subject from stale context, NLU cache, or the last file.
+                route = "CLARIFY"
             else:
-                # CYBER_EXPLAIN is already the parser's explicit technical
-                # explanation intent. Do not demote it to generic live chat
-                # merely because the domain classifier underlabels the subject.
-                # Missing/ambiguous subjects are clarified by the tool owner.
+                # A named technical subject is owned by the knowledge tool.
                 route = "P-TOOL"
         elif intent_value == "architecture":
             route = "L-FACT" if domain == "project" else "P-TOOL"
@@ -3818,6 +3822,25 @@ class ConversationManager:
                 }
             history_result["semantic_request"] = semantic.as_dict()
             return self._attach_route_decision(history_result, route_decision)
+
+        if route_decision.route == "CLARIFY":
+            # CLARIFY is a terminal route owner, not a hint to continue through
+            # generic chat or Orchestrator dispatch. Returning here also prevents
+            # stale context from being written back as a new active topic.
+            clarification_text = (
+                "لم يتحدد الموضوع الذي تريد شرحه. اذكر اسم الموضوع أو التقنية صراحة."
+                if str(getattr(parsed.get("intent"), "value", parsed.get("intent")) or "").casefold()
+                    == "cyber_explain"
+                else "لم تتضح الإشارة أو المعلومات اللازمة لتنفيذ الطلب. وضّح المقصود."
+            )
+            return self._attach_route_decision({
+                "status": "needs_clarification",
+                "intent": parsed.get("intent") or Intent.PERSONAL_CHAT,
+                "source": "route_clarification",
+                "executed": False,
+                "text": clarification_text,
+                "semantic_request": semantic.as_dict(),
+            }, route_decision)
 
         if ambiguous_resume:
             return self._attach_route_decision({
