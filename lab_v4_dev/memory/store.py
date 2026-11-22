@@ -1,24 +1,14 @@
 """
 P07 — Memory Ownership Facade.
 
-MemoryStore is the canonical owner-facing boundary for:
-    - session memory
-    - task history
-    - lessons
-
-It does not own:
-    - conversation context
-    - NLU context
-    - runtime state
-    - project knowledge
-    - orchestration
-    - routing
+MemoryStore is the canonical owner-facing boundary for session memory,
+task history, lessons, durable conversation evidence, facts and reusable skills.
 """
-
 from .db import Database
 from .session import Session
 from .task_history import TaskHistory
 from .lessons import Lessons
+from .conversation_archive import ConversationArchive
 
 
 class MemoryStore:
@@ -27,18 +17,19 @@ class MemoryStore:
     def __init__(self, db: Database):
         if db is None:
             raise ValueError("MemoryStore requires a Database instance")
-
         self.db = db
         self.session = Session(db)
         self.tasks = TaskHistory(db)
         self.lessons = Lessons(db)
+        # One durable append-only archive shares the existing SQLite database.
+        # It does not replace or mutate legacy JSON session checkpoints.
+        self.conversations = ConversationArchive(db)
 
     def _record_event(self, event_type: str, payload: dict | None = None) -> bool:
         try:
             self.db.record_event("session_task_lesson", event_type, payload or {})
             return True
         except Exception:
-            # The event journal is observability, not a prerequisite for work.
             return False
 
     def start_session(self):
@@ -99,12 +90,7 @@ class MemoryStore:
     def task_status_counts(self):
         return self.tasks.count_by_status()
 
-    def record_lesson(
-        self,
-        error_pattern: str,
-        solution: str,
-        success: bool,
-    ):
+    def record_lesson(self, error_pattern: str, solution: str, success: bool):
         result = self.lessons.record(error_pattern, solution, success)
         self._record_event("lesson_updated", {"success": bool(success)})
         return result
@@ -117,3 +103,31 @@ class MemoryStore:
 
     def all_lessons(self):
         return self.lessons.all_lessons()
+
+    # Conversation evidence and long-term knowledge facade.
+    def search_conversations(self, query: str, *, session_id: str | None = None,
+                             limit: int = 20):
+        return self.conversations.search_messages(
+            query, session_id=session_id, limit=limit
+        )
+
+    def read_conversation_context(self, message_id: int, *, before: int = 2,
+                                  after: int = 2):
+        return self.conversations.read_context(
+            message_id, before=before, after=after
+        )
+
+    def save_fact(self, **fact):
+        return self.conversations.save_fact(**fact)
+
+    def search_facts(self, query: str = "", **filters):
+        return self.conversations.search_facts(query, **filters)
+
+    def save_skill(self, **skill):
+        return self.conversations.save_skill(**skill)
+
+    def record_skill_run(self, skill_id: int, **result):
+        return self.conversations.record_skill_run(skill_id, **result)
+
+    def search_skills(self, query: str = "", **filters):
+        return self.conversations.search_skills(query, **filters)
