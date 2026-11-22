@@ -288,3 +288,31 @@ def test_empty_legacy_index_does_not_consume_migration_marker():
     assert result["status"] == "no_source_records"
     assert archive.migration_complete(migration_key) is False
 
+def test_migration_retries_dialogue_records_whose_transcript_was_not_loaded():
+    archive = make_archive()
+    migration_key = "legacy_dialogue_transcripts_v2_provenance_repair"
+    record = {
+        "session_id": "late-loaded-dialogue",
+        "session_type": "dialogue",
+        "dialogue_state": {},
+    }
+
+    first = archive.migrate_legacy_dialogue_sessions([record])
+    assert first["status"] == "no_dialogue_transcripts"
+    assert archive.migration_complete(migration_key) is False
+
+    record["dialogue_state"] = {
+        "session_id": "late-loaded-dialogue",
+        "transcript_archive": [{
+            "session_id": "late-loaded-dialogue",
+            "exchange_id": "late-loaded-exchange",
+            "user": "أستخدم إطارًا خشبيًا.",
+            "assistant": "تم تسجيل ذلك.",
+        }],
+    }
+    second = archive.migrate_legacy_dialogue_sessions([record])
+
+    assert second["status"] == "migrated"
+    assert second["imported_exchanges"] == 1
+    assert archive.migration_complete(migration_key) is True
+
