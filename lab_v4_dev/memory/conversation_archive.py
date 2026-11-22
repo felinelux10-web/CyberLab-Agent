@@ -34,6 +34,12 @@ class ConversationArchive:
 
     def _initialize(self) -> None:
         self.conn.executescript("""
+        CREATE TABLE IF NOT EXISTS memory_migrations (
+            migration_key TEXT PRIMARY KEY,
+            completed_at TEXT NOT NULL,
+            imported_sessions INTEGER NOT NULL DEFAULT 0,
+            imported_exchanges INTEGER NOT NULL DEFAULT 0
+        );
         CREATE TABLE IF NOT EXISTS conversation_sessions (
             session_id TEXT PRIMARY KEY,
             title TEXT,
@@ -145,6 +151,141 @@ class ConversationArchive:
             "أملك": "owns", "املك": "owns", "أمتلك": "owns", "امتلك": "owns", "own": "owns",
         }
         return mapping.get(verb, "states"), remainder
+
+    def migrate_legacy_dialogue_sessions(self, records: list[dict]) -> dict:
+        """Import legacy JSON dialogue transcripts once, without altering source files."""
+        migration_key = "legacy_dialogue_transcripts_v1"
+        completed = self.conn.execute(
+            "SELECT 1 FROM memory_migrations WHERE migration_key=?",
+            (migration_key,),
+        ).fetchone()
+        if completed:
+            return {"already_migrated": True, "imported_sessions": 0, "imported_exchanges": 0}
+
+        imported_sessions = 0
+        imported_exchanges = 0
+        now = _now()
+        self.conn.execute("BEGIN")
+        try:
+            for record in records or []:
+                if not isinstance(record, dict):
+                    continue
+                if str(record.get("session_type") or "").casefold() != "dialogue":
+                    continue
+                dialogue = record.get("dialogue_state")
+                if not isinstance(dialogue, dict):
+                    continue
+                session_id = str(dialogue.get("session_id") or record.get("session_id") or "").strip()
+                if not session_id:
+                    continue
+                exchanges = dialogue.get("transcript_archive")
+                if not isinstance(exchanges, list) or not exchanges:
+                    exchanges = dialogue.get("exchange_archive") or []
+                if not isinstance(exchanges, list) or not exchanges:
+                    continue
+
+                self.conn.execute(
+                    """INSERT OR IGNORE INTO conversation_sessions
+                       (session_id,title,created_at,updated_at)
+                       VALUES (?,?,?,?)""",
+                    (
+                        session_id,
+                        str(record.get("title") or record.get("topic") or "Imported dialogue")[:120],
+                        str(record.get("created_at") or now),
+                        str(record.get("updated_at") or now),
+                    ),
+                )
+                session_imported = False
+                for index, exchange in enumerate(exchanges, 1):
+                    if not isinstance(exchange, dict):
+                        continue
+                    exchange_session = str(exchange.get("session_id") or session_id).strip()
+                    if exchange_session != session_id:
+                        continue
+                    user = str(exchange.get("user") or "").strip()
+                    assistant = str(exchange.get("assistant") or "").strip()
+                    if not (user or assistant):
+                        continue
+                    legacy_id = str(exchange.get("exchange_id") or "").strip()
+                    if not legacy_id:
+                        seed = session_id + "|" + str(index) + "|" + user + "|" + assistant
+                        legacy_id = uuid.uuid5(uuid.NAMESPACE_URL, seed).hex
+                    try:
+                        exchange_index = int(exchange.get("exchange_index") or index)
+                    except (TypeError, ValueError):
+                        exchange_index = index
+                    created_at = str(
+                        exchange.get("timestamp") or exchange.get("created_at") or now
+                    )
+                    meta = _json({"source": "legacy_session_import", "legacy": True})
+                    user_message_id = None
+                    for speaker, body in (("user", user), ("assistant", assistant)):
+                        if not body:
+                            continue
+                        cursor = self.conn.execute(
+                            """INSERT OR IGNORE INTO conversation_messages
+                               (session_id,exchange_id,exchange_index,speaker,content,
+                                source,intent,topic,metadata_json,created_at)
+                               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                            (
+                                session_id, legacy_id, exchange_index, speaker, body,
+                                "legacy_json", exchange.get("intent"),
+                                exchange.get("target"), meta, created_at,
+                            ),
+                        )
+                        if cursor.rowcount <= 0:
+                            continue
+                        session_imported = True
+                        if speaker == "user":
+                            user_message_id = int(cursor.lastrowid)
+                        if self.fts_available:
+                            self.conn.execute(
+                                """INSERT INTO conversation_messages_fts
+                                   (rowid,content,session_id,speaker)
+                                   VALUES (?,?,?,?)""",
+                                (int(cursor.lastrowid), body, session_id, speaker),
+                            )
+                    explicit_fact = self._extract_explicit_user_fact(user)
+                    if explicit_fact and user_message_id is not None:
+                        predicate, fact_value = explicit_fact
+                        self.conn.execute(
+                            """INSERT INTO memory_facts
+                               (subject,predicate,value,speaker,source_kind,source_session_id,
+                                source_exchange_id,evidence_message_id,confidence,status,
+                                metadata_json,created_at,updated_at)
+                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            (
+                                "user", predicate, fact_value, "user", "explicit",
+                                session_id, legacy_id, user_message_id, 0.94, "active",
+                                _json({"extraction": "legacy_first_person_assertion"}),
+                                created_at, created_at,
+                            ),
+                        )
+                    if session_imported:
+                        imported_exchanges += 1
+                if session_imported:
+                    imported_sessions += 1
+                    self.conn.execute(
+                        """UPDATE conversation_sessions SET
+                           message_count=(SELECT COUNT(*) FROM conversation_messages WHERE session_id=?),
+                           updated_at=? WHERE session_id=?""",
+                        (session_id, now, session_id),
+                    )
+            self.conn.execute(
+                """INSERT INTO memory_migrations
+                   (migration_key,completed_at,imported_sessions,imported_exchanges)
+                   VALUES (?,?,?,?)""",
+                (migration_key, now, imported_sessions, imported_exchanges),
+            )
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        return {
+            "already_migrated": False,
+            "imported_sessions": imported_sessions,
+            "imported_exchanges": imported_exchanges,
+        }
 
     def append_exchange(
         self, *, session_id: str, user_text: str, assistant_text: str,
