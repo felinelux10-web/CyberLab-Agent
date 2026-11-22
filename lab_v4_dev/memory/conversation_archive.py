@@ -181,6 +181,31 @@ class ConversationArchive:
         if completed:
             return {"already_migrated": True, "imported_sessions": 0, "imported_exchanges": 0}
 
+        dialogue_records = [
+            item for item in (records or [])
+            if isinstance(item, dict)
+            and str(item.get("session_type") or "").casefold() == "dialogue"
+        ]
+
+        def has_transcript(record):
+            dialogue = record.get("dialogue_state")
+            if not isinstance(dialogue, dict):
+                return False
+            transcript = dialogue.get("transcript_archive")
+            if not isinstance(transcript, list) or not transcript:
+                transcript = dialogue.get("exchange_archive")
+            return isinstance(transcript, list) and bool(transcript)
+
+        pending_dialogue_records = [
+            item for item in dialogue_records if not has_transcript(item)
+        ]
+        if dialogue_records and len(pending_dialogue_records) == len(dialogue_records):
+            return {
+                "status": "no_dialogue_transcripts",
+                "imported_sessions": 0,
+                "imported_exchanges": 0,
+            }
+
         imported_sessions = 0
         imported_exchanges = 0
         now = _now()
@@ -317,18 +342,21 @@ class ConversationArchive:
                            updated_at=? WHERE session_id=?""",
                         (session_id, now, session_id),
                     )
-            self.conn.execute(
-                """INSERT INTO memory_migrations
-                   (migration_key,completed_at,imported_sessions,imported_exchanges)
-                   VALUES (?,?,?,?)""",
-                (migration_key, now, imported_sessions, imported_exchanges),
-            )
+            if not pending_dialogue_records:
+                self.conn.execute(
+                    """INSERT INTO memory_migrations
+                       (migration_key,completed_at,imported_sessions,imported_exchanges)
+                       VALUES (?,?,?,?)""",
+                    (migration_key, now, imported_sessions, imported_exchanges),
+                )
             self.conn.commit()
         except Exception:
             self.conn.rollback()
             raise
         return {
             "already_migrated": False,
+            "status": "partial_retryable" if pending_dialogue_records else "migrated",
+            "pending_dialogue_records": len(pending_dialogue_records),
             "imported_sessions": imported_sessions,
             "imported_exchanges": imported_exchanges,
         }
