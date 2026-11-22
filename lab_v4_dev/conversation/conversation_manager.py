@@ -178,6 +178,10 @@ class ConversationManager:
             # Meta-questions about what the user meant or why the dialogue drifted
             # must use the active dialogue context, not static agent-self facts.
             route = "L-LIVE"
+        elif response_attributes.get("user_memory_query"):
+            # Personal-memory questions belong to the user-memory evidence
+            # owner, not the agent's static self-description facts.
+            route = "L-LIVE"
         elif intent_value in {
             str(getattr(item, "value", item)).casefold()
             for item in _AGENT_SELF_INTENTS
