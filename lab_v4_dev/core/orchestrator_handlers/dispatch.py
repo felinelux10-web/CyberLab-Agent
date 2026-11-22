@@ -306,7 +306,7 @@ def route_request(
                     skill_lines.append(f"Step {step_index}: {step}")
             existing_system = str(kwargs.get("system") or "")
             kwargs["system"] = (
-                existing_system + "\\n\\n" + "\\n".join(skill_lines)
+                existing_system + "\n\n" + "\n".join(skill_lines)
             ).strip()
         kwargs.setdefault("provider_allowed", True)
         return ask_provider(*args, **kwargs)
