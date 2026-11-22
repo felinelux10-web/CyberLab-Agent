@@ -2934,6 +2934,23 @@ class ConversationManager:
             selected_session = {"kind": "none"}
             selected_saved_session_id = None
             saved_session_request = False
+        bare_explanation_request = (
+            str(getattr(parsed.get("intent"), "value", parsed.get("intent")) or "").casefold()
+            == "cyber_explain"
+            and self._normalize_transition_text(user_input).strip(" .!؟?") in {
+                "اشرح", "اشرح لي", "وضح", "وضح لي", "فسر", "فسر لي", "explain",
+            }
+        )
+        if bare_explanation_request:
+            # A bare explanation verb is insufficient evidence for inheriting
+            # the previous subject. Keep the raw request and let the knowledge
+            # handler ask for its missing target.
+            parsed = dict(parsed or {})
+            parsed["target"] = ""
+            parsed["entity_type"] = "ELABORATION"
+            transition = ContextTransition.AMBIGUOUS
+            resolved_input = user_input
+
         context_entity = None
         if self.dialogue_memory:
             if transition == ContextTransition.RESTORE:
