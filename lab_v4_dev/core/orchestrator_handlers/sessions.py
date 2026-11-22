@@ -212,6 +212,29 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
             (numbered_session or {}).get("session_id") or ""
         ).strip()
         if not selected_id:
+            if 1 <= number <= len(candidates):
+                indexed_record = candidates[number - 1]
+                requested_id = str(
+                    (indexed_record or {}).get("session_id") or ""
+                ).strip()
+                resolved_record = (
+                    get_session_by_id(requested_id) if requested_id else {}
+                )
+                resolved_id = str(
+                    (resolved_record or {}).get("session_id") or ""
+                ).strip()
+                return {
+                    "status": "needs_clarification",
+                    "intent": intent,
+                    "source": "saved_session_identity_guard",
+                    "executed": False,
+                    "text": (
+                        f"تعذر التحقق من هوية الجلسة رقم {number}. "
+                        "لم أستبدلها بالجلسة الحالية أو بسجل آخر."
+                    ),
+                    "requested_session_id": requested_id,
+                    "resolved_session_id": resolved_id or None,
+                }
             total = len(candidates)
             return {
                 "status": "needs_clarification",
@@ -222,25 +245,6 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                     f"لا توجد جلسة محفوظة بالرقم {number}. "
                     f"عدد الجلسات الظاهرة حاليًا: {total}."
                 ),
-            }
-        if not selected_id:
-            return {
-                "status": "needs_clarification",
-                "intent": intent,
-                "source": "saved_session_identity_guard",
-                "executed": False,
-                "text": (
-                    f"تعذر التحقق من هوية الجلسة رقم {number}. "
-                    "لم أستبدلها بالجلسة الحالية أو بسجل آخر."
-                ),
-                "requested_session_id": str(
-                    (candidates[number - 1] or {}).get("session_id") or ""
-                ).strip(),
-                "resolved_session_id": str(
-                    (get_session_by_id(
-                        (candidates[number - 1] or {}).get("session_id")
-                    ) or {}).get("session_id") or ""
-                ).strip() or None,
             }
     if selector.get("kind") == "latest":
         index = sorted(
