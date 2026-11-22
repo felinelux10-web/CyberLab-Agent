@@ -148,8 +148,8 @@ def test_file_search_rejects_parent_absolute_and_symlink_escape(tmp_path, monkey
             target,
             target,
             route_decision=RouteDecision(
-                route="P-TOOL", intent=Intent.SEARCH_CODE,
-                evidence_scope="project_state", provider_allowed=False,
+                route="L-EXEC", intent=Intent.SEARCH_CODE,
+                evidence_scope="work_state", provider_allowed=False,
             ),
         )
         assert "غير موجود" in result["text"]
