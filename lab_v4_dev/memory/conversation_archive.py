@@ -253,8 +253,14 @@ class ConversationArchive:
                     return [dict(row) for row in self.conn.execute(sql, params).fetchall()]
                 except Exception:
                     pass
-        sql = "SELECT * FROM conversation_messages WHERE content LIKE ?"
-        params = ["%" + needle + "%"]
+        tokens = re.findall(r"[\w\u0600-\u06ff]+", needle, flags=re.UNICODE)[:20]
+        tokens = tokens or [needle]
+        sql = (
+            "SELECT * FROM conversation_messages WHERE ("
+            + " OR ".join("content LIKE ?" for _ in tokens)
+            + ")"
+        )
+        params: list[Any] = ["%" + token + "%" for token in tokens]
         if session_id:
             sql += " AND session_id=?"
             params.append(str(session_id))
