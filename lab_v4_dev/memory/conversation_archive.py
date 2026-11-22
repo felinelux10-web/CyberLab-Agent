@@ -219,6 +219,7 @@ class ConversationArchive:
                     )
                     meta = _json({"source": "legacy_session_import", "legacy": True})
                     user_message_id = None
+                    exchange_inserted = False
                     for speaker, body in (("user", user), ("assistant", assistant)):
                         if not body:
                             continue
@@ -236,6 +237,7 @@ class ConversationArchive:
                         if cursor.rowcount <= 0:
                             continue
                         session_imported = True
+                        exchange_inserted = True
                         if speaker == "user":
                             user_message_id = int(cursor.lastrowid)
                         if self.fts_available:
@@ -261,7 +263,7 @@ class ConversationArchive:
                                 created_at, created_at,
                             ),
                         )
-                    if session_imported:
+                    if exchange_inserted:
                         imported_exchanges += 1
                 if session_imported:
                     imported_sessions += 1
