@@ -5276,10 +5276,7 @@ class ConversationManager:
                         if key not in seen_exchange_ids
                     )
                     exchanges.sort(
-                        key=lambda item: (
-                            str(item.get("timestamp") or ""),
-                            int(item.get("exchange_index") or 0),
-                        )
+                        key=lambda item: str(item.get("timestamp") or "")
                     )
         except Exception as archive_error:
             from lab_v4_dev.core.logger import log
