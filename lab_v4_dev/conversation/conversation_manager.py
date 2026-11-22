@@ -3759,6 +3759,7 @@ class ConversationManager:
                 "conversation_domain": "technical",
                 "conversation_act": "EXECUTABLE_REQUEST",
                 "semantic_pattern": "INCOMPLETE_EXPLANATION_REQUEST",
+                "raw": user_input,
             })
             attributes = dict(parsed.get("response_attributes") or {})
             attributes["incomplete_explanation_request"] = True
