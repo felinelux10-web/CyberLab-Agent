@@ -201,9 +201,6 @@ def _attach_sqlite_dialogue_transcript(record: dict, session_id: str) -> dict:
     wanted = str(session_id or "").strip()
     if not wanted or str(result.get("session_id") or "").strip() != wanted:
         return result
-    exchanges = _load_sqlite_dialogue_exchanges(wanted)
-    if not exchanges:
-        return result
     dialogue = result.get("dialogue_state")
     if not isinstance(dialogue, dict):
         if str(result.get("session_type") or "").casefold() != "dialogue":
@@ -211,7 +208,11 @@ def _attach_sqlite_dialogue_transcript(record: dict, session_id: str) -> dict:
         dialogue = {"session_id": wanted}
     else:
         dialogue = dict(dialogue)
-    if str(dialogue.get("session_id") or "").strip() not in {"", wanted}:
+    dialogue_id = str(dialogue.get("session_id") or wanted).strip()
+    if dialogue_id not in {wanted, str(result.get("session_id") or "").strip()}:
+        return result
+    exchanges = _load_sqlite_dialogue_exchanges(dialogue_id)
+    if not exchanges:
         return result
     legacy = dialogue.get("transcript_archive")
     if not isinstance(legacy, list) or not legacy:
@@ -221,8 +222,8 @@ def _attach_sqlite_dialogue_transcript(record: dict, session_id: str) -> dict:
     for item in [*(legacy if isinstance(legacy, list) else []), *exchanges]:
         if not isinstance(item, dict):
             continue
-        item_session = str(item.get("session_id") or wanted).strip()
-        if item_session != wanted:
+        item_session = str(item.get("session_id") or dialogue_id).strip()
+        if item_session != dialogue_id:
             continue
         identity = str(item.get("exchange_id") or "") or (
             str(item.get("timestamp") or ""),
@@ -237,7 +238,7 @@ def _attach_sqlite_dialogue_transcript(record: dict, session_id: str) -> dict:
         str(item.get("timestamp") or ""),
         int(item.get("exchange_index") or 0),
     ))
-    dialogue["session_id"] = wanted
+    dialogue["session_id"] = dialogue_id
     dialogue["transcript_archive"] = merged
     result["dialogue_state"] = dialogue
     result["_transcript_source"] = "legacy+sqlite"
