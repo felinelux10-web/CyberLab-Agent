@@ -652,26 +652,16 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
         provider_synthesis_used = False
         provider_synthesis_rejection_reason = None
         dialogue_id = str(dialogue_state.get("session_id") or "").strip()
-        saved_exchanges = dialogue_state.get("transcript_archive")
-        if not isinstance(saved_exchanges, list) or not saved_exchanges:
-            saved_exchanges = dialogue_state.get("exchange_archive") or []
         completed_exchanges = []
-        if (
-            is_saved_dialogue
-            and dialogue_id
-            and report_mode not in {"transcript", "compact"}
-            and isinstance(saved_exchanges, list)
-        ):
-            completed_exchanges = [
-                item for item in saved_exchanges
-                if isinstance(item, dict)
-                and str(item.get("session_id") or "") == dialogue_id
-                and not item.get("recall_only")
-                and not item.get("state_boundary_only")
-                and not item.get("response_failed")
-                and str(item.get("user") or "").strip()
-                and str(item.get("assistant") or "").strip()
-            ]
+        if is_saved_dialogue and report_mode not in {"transcript", "compact"}:
+            from lab_v4_dev.memory.dialogue_knowledge import (
+                retrieve_completed_dialogue_exchanges,
+            )
+
+            # Reuse the provenance-aware archive boundary. The outer checkpoint
+            # ID is not necessarily the nested live DialogueMemory ID; accepting
+            # nested exchanges requires consistent session and dialogue metadata.
+            dialogue_id, completed_exchanges = retrieve_completed_dialogue_exchanges(s)
 
             # A topic-scoped follow-up remains owned by this saved
             # report. Filter its evidence before local summarization
