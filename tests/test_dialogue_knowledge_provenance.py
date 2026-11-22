@@ -1295,3 +1295,35 @@ def test_full_saved_dialogue_report_uses_provenance_analysis_not_generic_checkpo
     assert "التسلسل الزمني" in result["text"]
     assert result["provider_synthesis_attempted"] is False
 
+def test_report_keeps_user_requests_out_of_fact_inventory_and_labels_sources():
+    sid = "request-fact-separation"
+    session = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "exchange_archive": [{
+                "session_id": sid,
+                "exchange_id": "request-source-1",
+                "target": "تشكيل الجبس",
+                "user": "اشرح لي كيفية تشكيل الجبس بعد الجفاف.",
+                "assistant": "يمكنك تشكيل السطح بأداة يدوية مناسبة.",
+            }],
+        },
+    }
+
+    analysis = analyze_dialogue_session(session)
+    report = format_dialogue_analysis_report(session)
+
+    assert any(
+        item["knowledge_type"] == "user_request"
+        for item in analysis["user_requests"]
+    )
+    assert not any(
+        item["knowledge_type"] == "user_request"
+        for item in analysis["user_information"]
+    )
+    assert "طلبات المستخدم" in report
+    assert "request-source-1" in report
+    assert "الثقة" in report
+
