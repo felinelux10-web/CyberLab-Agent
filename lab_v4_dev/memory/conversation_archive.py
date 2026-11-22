@@ -117,12 +117,12 @@ class ConversationArchive:
         if not value or len(value) > 500 or "?" in value or "؟" in value:
             return None
         arabic = re.match(
-            r"^(?:أنا\\s+)?(أستخدم|استخدم|أستعمل|استعمل|أفضل|افضل|أفضّل|أعمل|اعمل|أدرس|ادرس|أتعلم|اتعلم|أعيش|اعيش|أسكن|اسكن|أملك|املك|أمتلك|امتلك)\\s+(.+?)\\s*[.!،]*$",
+            r"^(?:أنا\s+)?(أستخدم|استخدم|أستعمل|استعمل|أفضل|افضل|أفضّل|أعمل|اعمل|أدرس|ادرس|أتعلم|اتعلم|أعيش|اعيش|أسكن|اسكن|أملك|املك|أمتلك|امتلك)\s+(.+?)\s*[.!،]*$",
             value,
             flags=re.IGNORECASE,
         )
         english = re.match(
-            r"^I\\s+(use|prefer|work with|study|learn|live in|own)\\s+(.+?)\\s*[.!]*$",
+            r"^I\s+(use|prefer|work with|study|learn|live in|own)\s+(.+?)\s*[.!]*$",
             value,
             flags=re.IGNORECASE,
         )
