@@ -256,11 +256,13 @@ def _attach_sqlite_dialogue_transcript(record: dict, session_id: str) -> dict:
         item_session = str(item.get("session_id") or dialogue_id).strip()
         if item_session != dialogue_id:
             continue
-        identity = str(item.get("exchange_id") or "") or (
+        identity = (
             str(item.get("timestamp") or ""),
             str(item.get("user") or ""),
             str(item.get("assistant") or ""),
         )
+        if not any(identity):
+            identity = str(item.get("exchange_id") or "")
         if identity in seen:
             continue
         seen.add(identity)
