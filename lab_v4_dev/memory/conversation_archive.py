@@ -517,6 +517,27 @@ class ConversationArchive:
         self.conn.commit()
         return int(cur.lastrowid)
 
+    def save_user_fact(self, *, subject: str = "user", predicate: str,
+                       value: str, **provenance) -> int:
+        return self.save_fact(
+            subject=subject, predicate=predicate, value=value,
+            speaker="user", source_kind="explicit", **provenance
+        )
+
+    def save_agent_knowledge(self, *, subject: str = "agent", predicate: str,
+                             value: str, **provenance) -> int:
+        return self.save_fact(
+            subject=subject, predicate=predicate, value=value,
+            speaker="assistant", source_kind="agent_knowledge", **provenance
+        )
+
+    def save_assistant_suggestion(self, *, subject: str = "user", predicate: str,
+                                  value: str, **provenance) -> int:
+        return self.save_fact(
+            subject=subject, predicate=predicate, value=value,
+            speaker="assistant", source_kind="suggestion", **provenance
+        )
+
     def search_facts(self, query: str = "", *, subject: str | None = None,
                      limit: int = 50) -> list[dict]:
         sql = "SELECT * FROM memory_facts WHERE status='active'"
