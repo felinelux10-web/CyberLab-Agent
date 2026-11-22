@@ -41,6 +41,61 @@ class Orchestrator:
             self.pipeline = SafePipeline(self.agent.db)
         return self.pipeline
 
+    @staticmethod
+    def _intent_value(value):
+        return str(getattr(value, "value", value) or "").casefold()
+
+    def _record_skill_outcome(self, intent, target, result, route_decision):
+        """Turn grounded execution outcomes into reusable, measured skill records."""
+        try:
+            memory = getattr(getattr(self.agent, "memory", None), "conversations", None)
+            if memory is None or getattr(route_decision, "route", None) != "L-EXEC":
+                return
+            value = self._intent_value(intent)
+            if not value or not isinstance(result, dict):
+                return
+            skill_name = "intent:" + value
+            existing = memory.search_skills(skill_name, limit=1)
+            successful = (
+                str(result.get("status") or "").casefold() in {"success", "executed"}
+                and result.get("executed") is not False
+            )
+            if successful:
+                plan = result.get("plan")
+                steps = plan.get("steps") if isinstance(plan, dict) else None
+                if not isinstance(steps, list) or not steps:
+                    steps = result.get("steps")
+                if not isinstance(steps, list) or not steps:
+                    steps = [{
+                        "intent": value,
+                        "target": str(target or ""),
+                        "observed_source": str(result.get("source") or "orchestrator"),
+                    }]
+                skill_id = memory.save_skill(
+                    name=skill_name,
+                    description=(
+                        "Observed execution pattern. Reuse only after checking "
+                        "the current request's target, permissions and preconditions."
+                    ),
+                    steps=steps,
+                    preconditions=[{"route": "L-EXEC", "intent": value}],
+                )
+                memory.record_skill_run(
+                    skill_id,
+                    success=True,
+                    context={"target": str(target or ""), "status": result.get("status")},
+                    notes=str(result.get("text") or result.get("message") or "")[:500],
+                )
+            elif existing:
+                memory.record_skill_run(
+                    int(existing[0]["id"]),
+                    success=False,
+                    context={"target": str(target or ""), "status": result.get("status")},
+                    notes=str(result.get("reason") or result.get("text") or "")[:500],
+                )
+        except Exception as exc:
+            log.warning(f"Skill outcome recording skipped: {exc}")
+
     def _submit_prepared_execution(self, intent, target=None, context=None,
                                     request_id=None, execution=None,
                                     route_decision=None):
@@ -307,7 +362,20 @@ class Orchestrator:
                 _rt.update_active_file(target)
             except:
                 pass
-        response_attributes = parsed.get("response_attributes") or {}
+        response_attributes = dict(parsed.get("response_attributes") or {})
+        if authorized_route == "L-EXEC":
+            try:
+                memory = getattr(getattr(self.agent, "memory", None), "conversations", None)
+                if memory is not None:
+                    reusable = memory.search_skills(
+                        "intent:" + self._intent_value(intent), limit=1
+                    )
+                    if reusable:
+                        # Advisory only: handlers may inspect the proven pattern,
+                        # but must still enforce current route and execution policy.
+                        response_attributes["reusable_skill"] = reusable[0]
+            except Exception as exc:
+                log.warning(f"Reusable skill lookup skipped: {exc}")
         from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
         result = route_request(
             self,
@@ -321,6 +389,8 @@ class Orchestrator:
             route_decision=route_decision,
             ask_provider=ask,
         )
+        if authorized_route == "L-EXEC":
+            self._record_skill_outcome(intent, target, result, route_decision)
         if _rt:
             try:
                 _rt.end({
