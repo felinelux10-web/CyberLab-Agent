@@ -1240,3 +1240,44 @@ def test_arabic_ta_marbuta_variants_normalize_for_dialogue_retrieval():
     from lab_v4_dev.memory.dialogue_knowledge import _token_list
 
     assert _token_list("صباغة صباغه") == ["صباغه", "صباغه"]
+
+def test_clarification_and_failed_provider_replies_are_not_substantive_knowledge():
+    sid = "incomplete-assistant-knowledge"
+    session = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "transcript_archive": [
+                {
+                    "session_id": sid,
+                    "exchange_id": "clarification-1",
+                    "user": "اشرح",
+                    "assistant": "ما الموضوع الذي تريد شرحه؟",
+                    "response_status": "needs_clarification",
+                },
+                {
+                    "session_id": sid,
+                    "exchange_id": "failed-1",
+                    "user": "اشرح SQL Injection",
+                    "assistant": "provider_exception: upstream unavailable",
+                    "response_status": "error",
+                    "response_failed": True,
+                },
+            ],
+        },
+    }
+
+    analysis = analyze_dialogue_session(session)
+    assistant_records = analysis["assistant_information"]
+    report = format_dialogue_analysis_report(session)
+
+    assert assistant_records
+    assert {item["knowledge_type"] for item in assistant_records} == {
+        "assistant_non_answer"
+    }
+    assert analysis["exchange_insights"] == []
+    assert "مساهمات الوكيل واقتراحاته:\\n- لا توجد ردود موضوعية محفوظة." in report
+    assert "ردود الوكيل غير الموضوعية أو غير المكتملة:" in report
+    assert "ما الموضوع الذي تريد شرحه؟" in report
+
