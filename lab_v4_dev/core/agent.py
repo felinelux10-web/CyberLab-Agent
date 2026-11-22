@@ -78,7 +78,7 @@ class Agent:
         # source file and is never deleted or rewritten by this migration.
         try:
             archive = self.memory.conversations
-            if not archive.migration_complete("legacy_dialogue_transcripts_v1"):
+            if not archive.migration_complete("legacy_dialogue_transcripts_v2_provenance_repair"):
                 from lab_v4_dev.memory.session_state import get_session_index, get_session_by_id
                 legacy_dialogues = []
                 for item in get_session_index():
