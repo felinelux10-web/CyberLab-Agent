@@ -77,3 +77,42 @@ def test_explicit_first_person_statement_becomes_provenance_fact():
     assert facts[0]["speaker"] == "user"
     assert facts[0]["source_session_id"] == "session-72"
     assert facts[0]["evidence_message_id"] is not None
+
+
+def test_legacy_dialogue_migration_is_idempotent_and_searchable():
+    archive = make_archive()
+    record = {
+        "session_id": "legacy-session-72",
+        "session_type": "dialogue",
+        "title": "Gypsum relief painting",
+        "dialogue_state": {
+            "session_id": "legacy-session-72",
+            "transcript_archive": [
+                {
+                    "session_id": "legacy-session-72",
+                    "exchange_id": "legacy-exchange-1",
+                    "timestamp": "2026-11-01T10:00:00",
+                    "user": "أنا أستعمل الصباغة المائية.",
+                    "assistant": "فهمت، الصباغة المائية هي التي تستخدمها.",
+                },
+                {
+                    "session_id": "legacy-session-72",
+                    "exchange_id": "legacy-exchange-2",
+                    "timestamp": "2026-11-01T10:01:00",
+                    "user": "أصب الجبس بسماكة ثلاثة سنتيمترات.",
+                    "assistant": "سجلت السماكة التي ذكرتها.",
+                },
+            ],
+        },
+    }
+    result = archive.migrate_legacy_dialogue_sessions([record])
+    assert result["imported_sessions"] == 1
+    assert result["imported_exchanges"] == 2
+    hits = archive.search_messages("السماكة", session_id="legacy-session-72")
+    assert hits
+    transcript = archive.load_exchanges("legacy-session-72")
+    assert len(transcript) == 2
+    facts = archive.search_relevant_facts("ما الصباغة التي أستخدمها؟")
+    assert facts and facts[0]["value"] == "الصباغة المائية"
+    second = archive.migrate_legacy_dialogue_sessions([record])
+    assert second["already_migrated"] is True
