@@ -694,7 +694,14 @@ def analyze_dialogue_session(data: dict) -> dict:
         "user_information": [
             item for item in knowledge
             if item.get("speaker") == "user"
-            and item.get("knowledge_type") != "question"
+            and item.get("knowledge_type") in {
+                "user_fact", "preference", "constraint", "decision", "observation",
+            }
+        ],
+        "user_requests": [
+            item for item in knowledge
+            if item.get("speaker") == "user"
+            and item.get("knowledge_type") == "user_request"
         ],
         "assistant_information": [
             item for item in knowledge if item.get("speaker") == "assistant"
@@ -755,6 +762,19 @@ def analyze_dialogue_session(data: dict) -> dict:
 def format_dialogue_analysis_report(data: dict) -> str:
     """Render a local, evidence-indexed report with explicit source attribution."""
     analysis = analyze_dialogue_session(data)
+
+    def evidence_label(item: dict) -> str:
+        parts = [f"التبادل {item.get('source_exchange_index', item.get('exchange_index', '?'))}"]
+        source_id = str(item.get("source_exchange_id") or item.get("exchange_id") or "").strip()
+        if source_id:
+            parts.append(f"المصدر {source_id}")
+        if item.get("confidence") is not None:
+            try:
+                parts.append(f"الثقة {float(item.get('confidence')):.2f}")
+            except (TypeError, ValueError):
+                pass
+        return "[" + " | ".join(parts) + "]"
+
     lines = [
         "=== التحليل المعرفي المستند إلى الأدلة الأصلية ===",
         f"معرّف الجلسة: {analysis['session_id'] or 'غير متاح'}",
@@ -763,18 +783,25 @@ def format_dialogue_analysis_report(data: dict) -> str:
         "معلومات المستخدم المستخرجة:",
     ]
     lines.extend(
-        f"- [التبادل {item['source_exchange_index']}] {item['content']}"
+        f"- {evidence_label(item)} {item['content']}"
         for item in analysis["user_information"]
     )
     if not analysis["user_information"]:
         lines.append("- لا توجد عبارات تقريرية كافية لاستخراج معلومات المستخدم.")
+    lines.extend(["", "طلبات المستخدم:"])
+    lines.extend(
+        f"- {evidence_label(item)} {item['content']}"
+        for item in analysis["user_requests"]
+    )
+    if not analysis["user_requests"]:
+        lines.append("- لا توجد طلبات مستقلة مصنفة في هذا السجل.")
     lines.extend(["", "مساهمات الوكيل واقتراحاته:"])
     substantive_assistant = [
         item for item in analysis["assistant_information"]
         if item.get("knowledge_type") != "assistant_non_answer"
     ]
     lines.extend(
-        f"- [التبادل {item['source_exchange_index']}] {item['knowledge_type']}: {item['content']}"
+        f"- {evidence_label(item)} {item['knowledge_type']}: {item['content']}"
         for item in substantive_assistant
     )
     if not substantive_assistant:
@@ -785,14 +812,14 @@ def format_dialogue_analysis_report(data: dict) -> str:
     ]
     lines.extend(["", "ردود الوكيل غير الموضوعية أو غير المكتملة:"])
     lines.extend(
-        f"- [التبادل {item['source_exchange_index']}] {item['content']}"
+        f"- {evidence_label(item)} {item['content']}"
         for item in non_answers
     )
     if not non_answers:
         lines.append("- لا توجد ردود من هذا النوع في السجل.")
     lines.extend(["", "الخطط والإجراءات التي صرّح بها المستخدم:"])
     lines.extend(
-        f"- [التبادل {item['source_exchange_index']}] {item['content']}"
+        f"- {evidence_label(item)} {item['content']}"
         for item in analysis["planned_actions"]
     )
     lines.extend(["", "التصحيحات والتفضيلات والقيود والقرارات:"])
@@ -803,12 +830,12 @@ def format_dialogue_analysis_report(data: dict) -> str:
         ("قرار", "decisions"),
     ):
         lines.extend(
-            f"- {label} [التبادل {item['source_exchange_index']}]: {item['content']}"
+            f"- {label} {evidence_label(item)}: {item['content']}"
             for item in analysis[key]
         )
     lines.extend(["", "الخلاصات التي صرّح بها الوكيل:"])
     lines.extend(
-        f"- [التبادل {item['source_exchange_index']}] {item['content']}"
+        f"- {evidence_label(item)} {item['content']}"
         for item in analysis["conclusions"]
     )
     if not analysis["conclusions"]:
@@ -823,7 +850,7 @@ def format_dialogue_analysis_report(data: dict) -> str:
         lines.append("- لا توجد علاقة يمكن إثباتها من إشارات صريحة كافية.")
     lines.extend(["", "التبادلات التي لم يكتمل الرد عليها:"])
     lines.extend(
-        f"- [التبادل {item['exchange_index']}] طلب المستخدم: {item['user_text'] or 'لا يوجد نص محفوظ'}"
+        f"- {evidence_label(item)} طلب المستخدم: {item['user_text'] or 'لا يوجد نص محفوظ'}"
         + (f" | حالة الفشل: {item['failure_message']}" if item.get("failure_message") else "")
         for item in analysis["failed_exchanges"]
     )
@@ -831,7 +858,7 @@ def format_dialogue_analysis_report(data: dict) -> str:
         lines.append("- لا توجد تبادلات فاشلة محفوظة في هذا السجل.")
     lines.extend(["", "الأسئلة التي لم يُحفظ لها رد:"])
     lines.extend(
-        f"- [التبادل {item['source_exchange_index']}] {item['content']}"
+        f"- {evidence_label(item)} {item['content']}"
         for item in analysis["unresolved_questions"]
     )
     if not analysis["unresolved_questions"]:
@@ -858,7 +885,7 @@ def format_dialogue_analysis_report(data: dict) -> str:
     )
     lines.extend(["", "التسلسل الزمني:"])
     lines.extend(
-        f"- التبادل {item['exchange_index']}: {item['topic'] or 'موضوع غير محدد'}"
+        f"- {evidence_label(item)}: {item['topic'] or 'موضوع غير محدد'}"
         for item in analysis["timeline"]
     )
     lines.extend([
