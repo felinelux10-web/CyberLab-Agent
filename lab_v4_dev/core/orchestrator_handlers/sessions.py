@@ -884,6 +884,7 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
             and (not selector.get("topic_filter") or completed_exchanges)
         ):
             from lab_v4_dev.memory.dialogue_knowledge import (
+                analyze_dialogue_session,
                 format_dialogue_analysis_report,
             )
 
@@ -930,6 +931,12 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                         if isinstance(item, dict) and matches_report_topic(item)
                     ]
             report_data["dialogue_state"] = report_dialogue_state
+            report_analysis = analyze_dialogue_session(report_data)
+            report_evidence_ids = [
+                str(item.get("exchange_id") or "")
+                for item in report_analysis.get("timeline", [])
+                if str(item.get("exchange_id") or "").strip()
+            ]
             evidence_report = format_dialogue_analysis_report(report_data)
             if evidence_report:
                 summary = evidence_report
