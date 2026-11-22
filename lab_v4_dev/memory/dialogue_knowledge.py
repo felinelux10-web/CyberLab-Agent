@@ -158,6 +158,16 @@ def _exchange_archive(data: dict) -> tuple[str, list[dict]]:
     return session_id, records
 
 
+def retrieve_completed_dialogue_exchanges(data: dict) -> tuple[str, list[dict]]:
+    """Return validated completed source exchanges and their owning dialogue ID.
+
+    The saved checkpoint ID and nested live-dialogue ID are distinct identity
+    domains. This public retrieval boundary applies the same provenance checks
+    used by analysis before exposing nested exchanges to report synthesis.
+    """
+    return _exchange_archive(data)
+
+
 _SYNONYMS = {
     "ادوات": {
         "اداه", "معدات", "عده", "وسائل", "استخدم", "ساستخدم", "استعمل",
