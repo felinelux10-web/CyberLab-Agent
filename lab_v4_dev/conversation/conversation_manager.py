@@ -6937,57 +6937,16 @@ class ConversationManager:
                     agent = getattr(self.orchestrator, "agent", None)
                     memory = getattr(agent, "memory", None)
                     if memory is not None:
-                        user_memory_evidence = memory.search_relevant_facts(text, limit=12)
+                        user_memory_evidence = [
+                            fact for fact in memory.search_relevant_facts(text, limit=12)
+                            if str(fact.get("speaker") or "").casefold() == "user"
+                            and str(fact.get("status") or "active").casefold() == "active"
+                        ]
                 except Exception as memory_error:
                     from lab_v4_dev.core.logger import log
                     log.warning(f"Persistent user-memory retrieval skipped: {memory_error}")
 
-            system, prompt = build_chat_prompt(
-                text,
-                list(history or []),
-                agent_self_knowledge=self_knowledge,
-                project_knowledge=project_knowledge,
-                project_scope=project_scope,
-                conversation_semantics={
-                    "intent": getattr(
-                        (parsed or {}).get("intent"),
-                        "value",
-                        (parsed or {}).get("intent"),
-                    ),
-                    "conversation_domain": (parsed or {}).get(
-                        "conversation_domain", "general"
-                    ),
-                    "conversation_act": (parsed or {}).get(
-                        "conversation_act", "NONE"
-                    ),
-                    "response_attributes": (parsed or {}).get(
-                        "response_attributes", {}
-                    ),
-                },
-            )
-            if user_memory_evidence:
-                evidence_lines = []
-                for fact in user_memory_evidence:
-                    evidence_lines.append(
-                        "- "
-                        + str(fact.get("predicate") or "fact")
-                        + ": "
-                        + str(fact.get("value") or "")
-                        + " [speaker="
-                        + str(fact.get("speaker") or "unknown")
-                        + ", confidence="
-                        + str(fact.get("confidence") or 0)
-                        + ", session="
-                        + str(fact.get("source_session_id") or "unknown")
-                        + "]"
-                    )
-                system = str(system or "") + (
-                    "\n\nذاكرة المستخدم الدائمة — أدلة موثقة وليست تخمينات:\n"
-                    + "\n".join(evidence_lines)
-                    + "\nاعتمد عليها فقط عندما تجيب عن سؤال المستخدم الشخصي، "
-                    "ولا تخلط اقتراحات المساعد بحقائق صرّح بها المستخدم."
-                )
-            if (parsed or {}).get("response_attributes", {}).get("compound_request"):
+                if (parsed or {}).get("response_attributes", {}).get("compound_request"):
                 system = str(system or "") + (
                     "\n\nتعليمات للطلب المركب: أجب عن كل بند مرقّم بالترتيب نفسه، "
                     "ولا تسقط أي بند حتى لو تكرر سياقه. ميّز بوضوح بين الحديث الودي "
