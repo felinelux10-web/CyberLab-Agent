@@ -652,16 +652,87 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
         provider_synthesis_used = False
         provider_synthesis_rejection_reason = None
         dialogue_id = str(dialogue_state.get("session_id") or "").strip()
+        all_dialogue_exchanges = []
         completed_exchanges = []
-        if is_saved_dialogue and report_mode not in {"transcript", "compact"}:
+        failed_exchanges = []
+        if is_saved_dialogue and report_mode != "compact":
             from lab_v4_dev.memory.dialogue_knowledge import (
-                retrieve_completed_dialogue_exchanges,
+                retrieve_dialogue_exchanges,
             )
 
-            # Reuse the provenance-aware archive boundary. The outer checkpoint
-            # ID is not necessarily the nested live DialogueMemory ID; accepting
-            # nested exchanges requires consistent session and dialogue metadata.
-            dialogue_id, completed_exchanges = retrieve_completed_dialogue_exchanges(s)
+            # Validate the selected checkpoint/nested dialogue identity before
+            # querying SQLite. The database lookup is always scoped to this exact
+            # nested dialogue ID; it never falls back to the current live session.
+            dialogue_id, json_exchanges = retrieve_dialogue_exchanges(s)
+            if dialogue_id:
+                archive = getattr(
+                    getattr(orchestrator.services, "memory", None),
+                    "conversations",
+                    None,
+                )
+                sqlite_exchanges = (
+                    archive.load_exchanges(dialogue_id)
+                    if archive is not None and callable(
+                        getattr(archive, "load_exchanges", None)
+                    )
+                    else []
+                )
+                sqlite_by_id = {
+                    str(item.get("exchange_id") or ""): item
+                    for item in sqlite_exchanges
+                    if isinstance(item, dict) and str(item.get("exchange_id") or "")
+                }
+                merged_by_id = {}
+                for index, item in enumerate(json_exchanges, 1):
+                    if not isinstance(item, dict):
+                        continue
+                    record = dict(item)
+                    exchange_id = str(
+                        record.get("exchange_id") or f"{dialogue_id}:{index}"
+                    )
+                    record["exchange_id"] = exchange_id
+                    stored = sqlite_by_id.get(exchange_id)
+                    if isinstance(stored, dict):
+                        record.setdefault(
+                            "exchange_index", stored.get("exchange_index")
+                        )
+                        record.setdefault("timestamp", stored.get("timestamp"))
+                        if not record.get("response_status"):
+                            record["response_status"] = stored.get("response_status")
+                        if "response_failed" not in record:
+                            record["response_failed"] = bool(
+                                stored.get("response_failed")
+                            )
+                        if not record.get("failure_message"):
+                            record["failure_message"] = stored.get("failure_message")
+                    else:
+                        record.setdefault("exchange_index", index)
+                    merged_by_id[exchange_id] = record
+                for exchange_id, item in sqlite_by_id.items():
+                    if exchange_id not in merged_by_id:
+                        merged_by_id[exchange_id] = dict(item)
+                all_dialogue_exchanges = sorted(
+                    merged_by_id.values(),
+                    key=lambda item: (
+                        int(item.get("exchange_index") or 0),
+                        str(item.get("timestamp") or item.get("created_at") or ""),
+                        str(item.get("exchange_id") or ""),
+                    ),
+                )
+                failed_exchanges = [
+                    item for item in all_dialogue_exchanges
+                    if item.get("response_failed")
+                ]
+                completed_exchanges = [
+                    item for item in all_dialogue_exchanges
+                    if not item.get("response_failed")
+                    and not item.get("recall_only")
+                    and not item.get("state_boundary_only")
+                    and str(item.get("response_status") or "").casefold()
+                        != "needs_clarification"
+                    and str(item.get("user") or "").strip()
+                    and str(item.get("assistant") or "").strip()
+                ]
 
             # A topic-scoped follow-up remains owned by this saved
             # report. Filter its evidence before local summarization
