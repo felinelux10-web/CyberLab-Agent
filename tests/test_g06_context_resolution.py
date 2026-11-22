@@ -193,10 +193,7 @@ def test_no_context_reference_cannot_use_nlu_or_intent_cache_or_context_store(mo
     monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
     monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
 
-    import importlib
-    dispatch_module = importlib.import_module(
-        "lab_v4_dev.core.orchestrator_handlers.dispatch"
-    )
+    import lab_v4_dev.core.orchestrator_handlers.dispatch as dispatch_module
     monkeypatch.setattr(
         dispatch_module,
         "route_request",
@@ -229,10 +226,7 @@ def test_canonical_orchestrator_path_does_not_rebind_context_store_target(monkey
     from lab_v4_dev.core.orchestrator_handlers import policy as policy_module
     monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
     monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
-    import importlib
-    dispatch_module = importlib.import_module(
-        "lab_v4_dev.core.orchestrator_handlers.dispatch"
-    )
+    import lab_v4_dev.core.orchestrator_handlers.dispatch as dispatch_module
     monkeypatch.setattr(
         dispatch_module,
         "route_request",
@@ -259,10 +253,7 @@ def test_context_resolved_path_keeps_explicit_repeat_execution_context(monkeypat
     from lab_v4_dev.core.orchestrator_handlers import policy as policy_module
     monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
     monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
-    import importlib
-    dispatch_module = importlib.import_module(
-        "lab_v4_dev.core.orchestrator_handlers.dispatch"
-    )
+    import lab_v4_dev.core.orchestrator_handlers.dispatch as dispatch_module
     monkeypatch.setattr(
         dispatch_module,
         "route_request",
