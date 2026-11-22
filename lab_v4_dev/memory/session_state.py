@@ -174,6 +174,76 @@ def _session_text(item: dict) -> str:
     return " ".join(str(item.get(field, "")) for field in fields).casefold()
 
 
+def _load_sqlite_dialogue_exchanges(session_id: str) -> list[dict]:
+    """Read the durable SQLite transcript without changing legacy session files."""
+    database = None
+    try:
+        from lab_v4_dev.memory.db import Database
+        from lab_v4_dev.memory.conversation_archive import ConversationArchive
+        database = Database()
+        database.connect()
+        return ConversationArchive(database).load_exchanges(session_id)
+    except Exception:
+        return []
+    finally:
+        if database is not None:
+            try:
+                database.close()
+            except Exception:
+                pass
+
+
+def _attach_sqlite_dialogue_transcript(record: dict, session_id: str) -> dict:
+    """Merge exact-session SQLite evidence into a report view, preserving legacy data."""
+    if not isinstance(record, dict):
+        return {}
+    result = dict(record)
+    wanted = str(session_id or "").strip()
+    if not wanted or str(result.get("session_id") or "").strip() != wanted:
+        return result
+    exchanges = _load_sqlite_dialogue_exchanges(wanted)
+    if not exchanges:
+        return result
+    dialogue = result.get("dialogue_state")
+    if not isinstance(dialogue, dict):
+        if str(result.get("session_type") or "").casefold() != "dialogue":
+            return result
+        dialogue = {"session_id": wanted}
+    else:
+        dialogue = dict(dialogue)
+    if str(dialogue.get("session_id") or "").strip() not in {"", wanted}:
+        return result
+    legacy = dialogue.get("transcript_archive")
+    if not isinstance(legacy, list) or not legacy:
+        legacy = dialogue.get("exchange_archive")
+    merged = []
+    seen = set()
+    for item in [*(legacy if isinstance(legacy, list) else []), *exchanges]:
+        if not isinstance(item, dict):
+            continue
+        item_session = str(item.get("session_id") or wanted).strip()
+        if item_session != wanted:
+            continue
+        identity = str(item.get("exchange_id") or "") or (
+            str(item.get("timestamp") or ""),
+            str(item.get("user") or ""),
+            str(item.get("assistant") or ""),
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+        merged.append(dict(item))
+    merged.sort(key=lambda item: (
+        str(item.get("timestamp") or ""),
+        int(item.get("exchange_index") or 0),
+    ))
+    dialogue["session_id"] = wanted
+    dialogue["transcript_archive"] = merged
+    result["dialogue_state"] = dialogue
+    result["_transcript_source"] = "legacy+sqlite"
+    return result
+
+
 def _saved_dialogue_search_content(item: dict) -> list[str]:
     """Read searchable topic evidence from the exact saved dialogue detail record."""
     session_id = str(item.get("session_id") or "").strip()
@@ -199,7 +269,7 @@ def _saved_dialogue_search_content(item: dict) -> list[str]:
     exchanges = dialogue.get("transcript_archive")
     if not isinstance(exchanges, list) or not exchanges:
         exchanges = dialogue.get("exchange_archive") or []
-    for exchange in exchanges:
+    for exchange in [*(exchanges or []), *_load_sqlite_dialogue_exchanges(session_id)]:
         if not isinstance(exchange, dict):
             continue
         exchange_id = str(exchange.get("session_id") or "").strip()
@@ -263,7 +333,7 @@ def get_session_by_id(session_id: str) -> dict:
         return {}
     current = load_session()
     if isinstance(current, dict) and str(current.get("session_id") or "").strip() == wanted:
-        return current
+        return _attach_sqlite_dialogue_transcript(current, wanted)
 
     # A detail file is named by session ID, but legacy/corrupt files can contain
     # a different embedded ID. The filename alone is not proof of identity.
@@ -272,7 +342,7 @@ def get_session_by_id(session_id: str) -> dict:
         isinstance(detail, dict)
         and str(detail.get("session_id") or "").strip() == wanted
     ):
-        return detail
+        return _attach_sqlite_dialogue_transcript(detail, wanted)
 
     # Fall back only to the matching compact index entry, never to a mismatched
     # detail record or the current session.
@@ -281,7 +351,7 @@ def get_session_by_id(session_id: str) -> dict:
             compact = dict(item)
             compact["_record_source"] = "index"
             compact["_detail_available"] = False
-            return compact
+            return _attach_sqlite_dialogue_transcript(compact, wanted)
     return {}
 
 
