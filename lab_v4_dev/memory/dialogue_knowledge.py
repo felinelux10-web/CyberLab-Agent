@@ -695,7 +695,8 @@ def analyze_dialogue_session(data: dict) -> dict:
             item for item in knowledge
             if item.get("speaker") == "user"
             and item.get("knowledge_type") in {
-                "user_fact", "preference", "constraint", "decision", "observation",
+                "user_fact", "preference", "constraint", "decision",
+                "observation", "planned_action",
             }
         ],
         "user_requests": [
