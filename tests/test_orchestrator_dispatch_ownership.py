@@ -1413,6 +1413,12 @@ def test_handler_facade_exposes_scoped_services_without_agent_object():
     assert modify_facade.services.impact_analyzed is original._impact_analyzed
     assert modify_facade._get_pipeline() == "pipeline"
 
+    session_facade = build_handler_facade(
+        original, HandlerContext(intent=Intent.SESSION_RESTORE)
+    )
+    assert not hasattr(session_facade, "agent")
+    assert session_facade.services.memory is memory
+
 
 def test_repository_has_no_legacy_orchestrator_execution_callers():
     from pathlib import Path
