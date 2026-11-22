@@ -6946,7 +6946,59 @@ class ConversationManager:
                     from lab_v4_dev.core.logger import log
                     log.warning(f"Persistent user-memory retrieval skipped: {memory_error}")
 
-                if (parsed or {}).get("response_attributes", {}).get("compound_request"):
+                if user_memory_evidence:
+                    memory_lines = []
+                    for fact in user_memory_evidence:
+                        memory_lines.append(
+                            "- " + str(fact.get("value") or "")
+                            + " (نوع المعلومة: " + str(fact.get("predicate") or "fact")
+                            + "، المصدر: " + str(fact.get("source_session_id") or "غير محدد")
+                            + "، الثقة: " + str(fact.get("confidence") or 0) + ")"
+                        )
+                    memory_text = (
+                        "المعلومات التي صرّحت بها والمحفوظة في الذاكرة الدائمة:\\n"
+                        + "\\n".join(memory_lines)
+                    )
+                else:
+                    memory_text = (
+                        "لا توجد في الذاكرة الدائمة معلومات موثقة تطابق هذا السؤال. "
+                        "لن أستنتج حقيقة شخصية من التخمين."
+                    )
+                return {
+                    "status": "success",
+                    "intent": (parsed or {}).get("intent"),
+                    "source": "persistent_user_memory",
+                    "provider_used": False,
+                    "evidence_scope": "user_memory",
+                    "executed": False,
+                    "text": memory_text,
+                    "memory_facts": user_memory_evidence,
+                }
+
+            system, prompt = build_chat_prompt(
+                text,
+                list(history or []),
+                agent_self_knowledge=self_knowledge,
+                project_knowledge=project_knowledge,
+                project_scope=project_scope,
+                conversation_semantics={
+                    "intent": getattr(
+                        (parsed or {}).get("intent"),
+                        "value",
+                        (parsed or {}).get("intent"),
+                    ),
+                    "conversation_domain": (parsed or {}).get(
+                        "conversation_domain", "general"
+                    ),
+                    "conversation_act": (parsed or {}).get(
+                        "conversation_act", "NONE"
+                    ),
+                    "response_attributes": (parsed or {}).get(
+                        "response_attributes", {}
+                    ),
+                },
+            )
+            if (parsed or {}).get("response_attributes", {}).get("compound_request"):
                 system = str(system or "") + (
                     "\n\nتعليمات للطلب المركب: أجب عن كل بند مرقّم بالترتيب نفسه، "
                     "ولا تسقط أي بند حتى لو تكرر سياقه. ميّز بوضوح بين الحديث الودي "
