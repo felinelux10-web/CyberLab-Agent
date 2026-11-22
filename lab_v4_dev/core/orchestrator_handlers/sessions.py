@@ -753,8 +753,16 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                 and callable(authorized_ask)
             )
             provider_synthesis_allowed = allow_provider_synthesis
-            provider_synthesis_attempted = bool(source_text and allow_provider_synthesis)
-            if source_text and allow_provider_synthesis:
+            provider_synthesis_attempted = bool(
+                source_text and allow_provider_synthesis and report_mode != "full"
+            )
+            if allow_provider_synthesis and report_mode == "full":
+                # Full reports use deterministic analysis over original exchanges.
+                # A provider must not replace speaker attribution or evidence coverage.
+                provider_synthesis_rejection_reason = (
+                    "local_evidence_analysis_is_authoritative"
+                )
+            if source_text and allow_provider_synthesis and report_mode != "full":
                 topic = str(
                     dialogue_state.get("last_topic")
                     or next(
@@ -869,6 +877,62 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                         "الخطوة التالية المقترحة: متابعة النقاش من موضوع التبادل الأخير، "
                         "أو تحديد موضوع فرعي أدق عند الحاجة.",
                     ])
+        if (
+            is_saved_dialogue
+            and report_mode == "full"
+            and (not selector.get("topic_filter") or completed_exchanges)
+        ):
+            from lab_v4_dev.memory.dialogue_knowledge import (
+                format_dialogue_analysis_report,
+            )
+
+            report_data = dict(s)
+            report_dialogue_state = dict(dialogue_state)
+            topic_filter = str(selector.get("topic_filter") or "").strip()
+            if topic_filter:
+                normalized_filter = " ".join(
+                    topic_filter.casefold()
+                    .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+                    .replace("ى", "ي").split()
+                )
+                report_filter_terms = [
+                    term.strip("؟?!.,،؛:()[]{}\\\\\\\"'")
+                    for term in normalized_filter.split()
+                    if term.strip("؟?!.,،؛:()[]{}\\\\\\\"'")
+                    and term not in {
+                        "ما", "ماذا", "علاقة", "علاقه", "بين", "في",
+                        "عن", "كيف", "يرتبط", "بشكل", "بطريقة", "بطريقه",
+                        "مبسط", "مبسطة", "المبسطة", "هل",
+                    }
+                ]
+
+                def matches_report_topic(exchange):
+                    searchable = " ".join(
+                        str(exchange.get(field) or "")
+                        for field in (
+                            "target", "user", "assistant", "semantic_summary",
+                            "summary", "gist", "key_points", "topics_discussed",
+                        )
+                    ).casefold()
+                    return any(
+                        term and term in searchable for term in report_filter_terms
+                    )
+
+                report_dialogue_state["transcript_archive"] = completed_exchanges
+                report_dialogue_state["exchange_archive"] = completed_exchanges[-32:]
+                for archive_key in (
+                    "failed_transcript_archive", "failed_exchange_archive",
+                ):
+                    failed_items = report_dialogue_state.get(archive_key)
+                    report_dialogue_state[archive_key] = [
+                        item for item in (failed_items if isinstance(failed_items, list) else [])
+                        if isinstance(item, dict) and matches_report_topic(item)
+                    ]
+            report_data["dialogue_state"] = report_dialogue_state
+            evidence_report = format_dialogue_analysis_report(report_data)
+            if evidence_report:
+                summary = evidence_report
+
         if selector.get("kind") == "number":
             summary = (
                 f"رقم الجلسة في الفهرس: {selector.get('number')}\n"
