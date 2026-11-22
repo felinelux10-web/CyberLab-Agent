@@ -313,7 +313,7 @@ class Agent:
             if (
                 archive is not None
                 and session_id
-                and dialogue_route in {"L-SOCIAL", "L-LIVE", "L-FACT"}
+                and dialogue_route in {"L-SOCIAL", "L-LIVE", "L-FACT", "P-TOOL"}
             ):
                 result_intent = result_data.get("intent")
                 result_intent = getattr(result_intent, "value", result_intent)
