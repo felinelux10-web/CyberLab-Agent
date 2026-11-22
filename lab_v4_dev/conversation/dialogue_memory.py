@@ -794,15 +794,38 @@ class DialogueMemory:
         return topic
 
     def active_dialogue_branch(self) -> dict | None:
-        """Return the latest same-session dialogue branch with owner metadata."""
+        """Return the latest same-session dialogue branch with owner metadata.
+
+        A failed provider response is not answer evidence, but its user-authored
+        request can still establish which dialogue branch the next turn belongs
+        to. Keep that distinction explicit: only successful exchanges contribute
+        assistant history; failed exchanges contribute branch ownership only.
+        """
         state = self.state
         session_id = str(getattr(state, "session_id", "") or "")
         active = self.active_context_entity()
-        for item in reversed(state.exchange_archive or []):
-            if not isinstance(item, dict) or item.get("recall_only"):
-                continue
-            if session_id and str(item.get("session_id") or "") != session_id:
-                continue
+        records = []
+        for source_name, source_records in (
+            ("exchange_archive", getattr(state, "exchange_archive", []) or []),
+            ("failed_exchange_archive", getattr(state, "failed_exchange_archive", []) or []),
+        ):
+            for item in source_records:
+                if not isinstance(item, dict):
+                    continue
+                failed = bool(item.get("response_failed"))
+                if source_name == "failed_exchange_archive" and not failed:
+                    continue
+                if item.get("recall_only") and not failed:
+                    continue
+                if failed and not str(item.get("target") or "").strip():
+                    # A failed subjectless turn must not revive an older topic.
+                    continue
+                if session_id and str(item.get("session_id") or "") != session_id:
+                    continue
+                records.append((str(item.get("timestamp") or ""), source_name, item))
+
+        records.sort(key=lambda record: record[0])
+        for _timestamp, source_name, item in reversed(records):
             domain = str(item.get("conversation_domain") or "general").casefold()
             kind = str(item.get("context_kind") or "dialogue").casefold()
             if domain in {"work", "system", "execution"} or kind in {"work", "system"}:
@@ -812,7 +835,7 @@ class DialogueMemory:
                 isinstance(previous, dict)
                 and str(previous.get("target") or "").strip()
                 and str(previous.get("session_id") or "") == session_id
-                for previous in (state.exchange_archive or [])
+                for previous in (getattr(state, "exchange_archive", []) or [])
             ):
                 # Style/acknowledgement turns are not a new branch. Preserve
                 # the latest named branch for the next reference or follow-up.
@@ -829,6 +852,8 @@ class DialogueMemory:
                 "conversation_domain": domain,
                 "context_kind": kind,
                 "reference_text": item.get("assistant") or item.get("user") or "",
+                "source_archive": source_name,
+                "response_failed": bool(item.get("response_failed")),
             })
             return branch
         return None
