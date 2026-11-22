@@ -197,6 +197,55 @@ def route_request(
             "executed": False,
             "text": "هذا المسار لا يملك صلاحية استدعاء معالجات Orchestrator.",
         }
+
+    # Dispatch is also a public ownership boundary: callers must not be able
+    # to bypass the evidence-scope checks enforced by Orchestrator.handle.
+    evidence_scope = str(route_decision.evidence_scope or "none")
+    if route_decision.route == "L-EXEC" and evidence_scope != "work_state":
+        return {
+            "status": "denied", "intent": intent,
+            "source": "route_decision_work_evidence_guard",
+            "executed": False,
+            "text": "مسار التنفيذ لا يملك نطاق الأدلة المطلوب لحالة العمل.",
+        }
+    if route_decision.route == "L-SESSION" and evidence_scope not in {
+        "none", "saved_session", "saved_sessions",
+    }:
+        return {
+            "status": "denied", "intent": intent,
+            "source": "route_decision_session_evidence_guard",
+            "executed": False,
+            "text": "مسار الجلسات لا يسمح بقراءة أدلة خارج نطاق الجلسات المحفوظة.",
+        }
+    if route_decision.route in {"L-EXEC", "P-TOOL"} and evidence_scope in {
+        "saved_session", "saved_sessions", "live_exchanges",
+    }:
+        return {
+            "status": "denied", "intent": intent,
+            "source": "route_decision_cross_scope_guard",
+            "executed": False,
+            "text": "لا يمكن توسيع نطاق الأدلة خارج المجال الذي أجازه قرار التوجيه.",
+        }
+    selector_kind = str((session_selector or {}).get("kind") or "none")
+    if route_decision.route == "L-SESSION" and route_decision.output_kind in {
+        "summary", "brief", "report", "topic_summary", "transcript",
+        "continue_topic", "session_number", "session_identity",
+    }:
+        valid_scope = (
+            evidence_scope == "saved_session"
+            and route_decision.session_ref is not None
+        ) or (
+            evidence_scope == "saved_sessions"
+            and selector_kind == "list"
+            and route_decision.session_ref is None
+        )
+        if not valid_scope:
+            return {
+                "status": "denied", "intent": intent,
+                "source": "route_decision_evidence_scope_guard",
+                "executed": False,
+                "text": "قرار التوجيه لا يحدد نطاق أدلة محفوظًا صالحًا لهذا المخرج.",
+            }
     def authorized_ask(*args, **kwargs):
         if route_decision is None or not bool(
             getattr(route_decision, "provider_allowed", False)
