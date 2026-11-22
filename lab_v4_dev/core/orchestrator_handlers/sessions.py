@@ -854,15 +854,23 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
             )
             provider_synthesis_allowed = allow_provider_synthesis
             provider_synthesis_attempted = bool(
-                source_text and allow_provider_synthesis and report_mode != "full"
+                source_text
+                and allow_provider_synthesis
+                and report_mode not in {"full", "transcript"}
             )
-            if allow_provider_synthesis and report_mode == "full":
-                # Full reports use deterministic analysis over original exchanges.
-                # A provider must not replace speaker attribution or evidence coverage.
+            if allow_provider_synthesis and report_mode in {"full", "transcript"}:
+                # Full reports are deterministic evidence analyses; transcripts
+                # must remain verbatim. Neither output may be provider-rewritten.
                 provider_synthesis_rejection_reason = (
                     "local_evidence_analysis_is_authoritative"
+                    if report_mode == "full"
+                    else "verbatim_transcript_requires_local_archive"
                 )
-            if source_text and allow_provider_synthesis and report_mode != "full":
+            if (
+                source_text
+                and allow_provider_synthesis
+                and report_mode not in {"full", "transcript"}
+            ):
                 topic = str(
                     dialogue_state.get("last_topic")
                     or next(
@@ -977,6 +985,34 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                         "الخطوة التالية المقترحة: متابعة النقاش من موضوع التبادل الأخير، "
                         "أو تحديد موضوع فرعي أدق عند الحاجة.",
                     ])
+        if is_saved_dialogue and report_mode == "transcript":
+            transcript_lines = [
+                "=== النص الأصلي الكامل للجلسة المحفوظة ===",
+                f"رقم الجلسة: {selector.get('number') or 'غير محدد'}",
+                f"معرّف سجل الجلسة: {str(s.get('session_id') or selected_id or '')}",
+                f"معرّف الحوار: {dialogue_id or 'غير متاح'}",
+                f"عدد التبادلات المعروضة: {len(all_dialogue_exchanges)}",
+                "",
+            ]
+            for index, exchange in enumerate(all_dialogue_exchanges, 1):
+                transcript_lines.extend([
+                    f"--- التبادل {exchange.get('exchange_index') or index} ---",
+                    f"الموضوع: {str(exchange.get('target') or 'غير محدد')}",
+                    f"المستخدم: {str(exchange.get('user') or 'لا توجد رسالة محفوظة')}",
+                    f"الوكيل: {str(exchange.get('assistant') or 'لا يوجد رد محفوظ')}",
+                ])
+                if exchange.get("response_failed"):
+                    transcript_lines.append("حالة الرد: تعذر إكماله")
+                elif str(exchange.get("response_status") or "").casefold() == "needs_clarification":
+                    transcript_lines.append("حالة الرد: استيضاح")
+                transcript_lines.append("")
+            summary = "\\n".join(transcript_lines)
+            report_evidence_ids = [
+                str(item.get("exchange_id") or "")
+                for item in all_dialogue_exchanges
+                if str(item.get("exchange_id") or "").strip()
+            ]
+
         if (
             is_saved_dialogue
             and report_mode == "full"
