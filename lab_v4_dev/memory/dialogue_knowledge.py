@@ -783,11 +783,15 @@ def format_dialogue_analysis_report(data: dict) -> str:
         "",
         "معلومات المستخدم المستخرجة:",
     ]
+    user_fact_items = [
+        item for item in analysis["user_information"]
+        if item.get("knowledge_type") in {"user_fact", "observation"}
+    ]
     lines.extend(
         f"- {evidence_label(item)} {item['content']}"
-        for item in analysis["user_information"]
+        for item in user_fact_items
     )
-    if not analysis["user_information"]:
+    if not user_fact_items:
         lines.append("- لا توجد عبارات تقريرية كافية لاستخراج معلومات المستخدم.")
     lines.extend(["", "طلبات المستخدم:"])
     lines.extend(
