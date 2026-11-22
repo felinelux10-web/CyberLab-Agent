@@ -3264,8 +3264,8 @@ class ConversationManager:
         if any(marker in normalized_user_memory_query for marker in (
             "ماذا استخدم", "ما الذي استخدم", "الذي استخدمه", "التي استخدمها",
             "الذي استعمله", "التي استعملها", "ماذا افضل", "ما تفضيلاتي",
-            "ماذا قلت لك", "ما اخبرتك", "ماذا تعرف عني",
-            "what do i use", "what do i prefer", "what did i tell you",
+            "ماذا تعرف عني",
+            "what do i use", "what do i prefer",
             "my preferences",
         )):
             memory_attributes = dict(parsed.get("response_attributes") or {})
