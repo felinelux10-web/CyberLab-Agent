@@ -280,7 +280,7 @@ class Orchestrator:
             and isinstance(prepared_execution, dict)
         ):
             prepared_result = self._submit_prepared_execution(
-                intent=intent if "intent" in locals() else (parsed or {}).get("intent"),
+                intent=(parsed or {}).get("intent"),
                 target=(parsed or {}).get("target"),
                 context=Context.from_store(self.context),
                 request_id=request.request_id,
