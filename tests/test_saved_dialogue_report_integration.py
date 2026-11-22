@@ -235,6 +235,20 @@ def test_full_saved_report_merges_sqlite_history_beyond_bounded_checkpoint(monke
         status="success",
         metadata={"route": "L-LIVE", "evidence_scope": "live_exchanges"},
     )
+    failed_exchange_id = archive.append_exchange(
+        session_id=dialogue_id,
+        user_text="هل يمكنك تأكيد نوع الورنيش؟",
+        assistant_text="provider_exception: upstream unavailable",
+        source="conversation",
+        intent="cyber_explain",
+        topic="لوحة جبسية بارزة",
+        status="error",
+        metadata={
+            "route": "P-TOOL",
+            "evidence_scope": "none",
+            "failure_message": "upstream unavailable",
+        },
+    )
 
     monkeypatch.setattr(session_state, "get_session_index", lambda: [session])
     monkeypatch.setattr(
@@ -276,10 +290,12 @@ def test_full_saved_report_merges_sqlite_history_beyond_bounded_checkpoint(monke
 
     assert result["status"] == "success", result
     assert result["session_id"] == session_id
-    assert len(result["evidence_exchange_ids"]) == 6
+    assert len(result["evidence_exchange_ids"]) == 7
     assert new_exchange_id in result["evidence_exchange_ids"]
+    assert failed_exchange_id in result["evidence_exchange_ids"]
     assert "ورق صنفرة ناعمًا" in result["text"]
-    assert "عدد التبادلات الأصلية: 6" in result["text"]
+    assert "عدد التبادلات الأصلية: 7" in result["text"]
+    assert "التبادلات التي تعذر إكمال الرد عليها: 1" in result["text"]
 
     transcript_decision = RouteDecision(
         route="L-SESSION",
@@ -307,7 +323,8 @@ def test_full_saved_report_merges_sqlite_history_beyond_bounded_checkpoint(monke
 
     assert transcript["status"] == "success", transcript
     assert transcript["output_kind"] == "transcript"
-    assert len(transcript["evidence_exchange_ids"]) == 6
+    assert len(transcript["evidence_exchange_ids"]) == 7
     assert "أستخدم ورق صنفرة ناعمًا" in transcript["text"]
+    assert "حالة الرد: تعذر إكماله" in transcript["text"]
     assert transcript["provider_synthesis_attempted"] is False
 
