@@ -804,7 +804,7 @@ def format_dialogue_analysis_report(data: dict) -> str:
 
     lines = [
         "=== التحليل المعرفي المستند إلى الأدلة الأصلية ===",
-        f"معرّف الحوار: {analysis['session_id'] or 'غير متاح'}",
+        f"معرّف الجلسة: {analysis['session_id'] or 'غير متاح'}",
         f"عدد التبادلات الأصلية: {analysis['exchange_count']}",
         "",
         "معلومات المستخدم المستخرجة:",
