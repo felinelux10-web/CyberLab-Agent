@@ -249,3 +249,42 @@ def test_personal_fact_search_excludes_assistant_suggestions():
     assert not any(item["value"] == "الصباغة الزيتية" for item in personal_facts)
     assert any(item["value"] == "الصباغة الزيتية" for item in assistant_suggestions)
 
+def test_legacy_migration_repairs_nested_identity_only_with_provenance():
+    archive = make_archive()
+    record = {
+        "session_id": "saved-checkpoint-72",
+        "session_type": "dialogue",
+        "title": "جلسة الحوار 72",
+        "dialogue_state": {
+            "session_id": "live-dialogue-72",
+            "transcript_archive": [{
+                "session_id": "saved-checkpoint-72",
+                "exchange_id": "legacy-nested-identity-1",
+                "context_kind": "dialogue",
+                "conversation_domain": "general",
+                "user": "أستخدم الصباغة المائية.",
+                "assistant": "تم تسجيل نوع الصباغة الذي ذكرته.",
+                "response_status": "success",
+            }],
+        },
+    }
+
+    result = archive.migrate_legacy_dialogue_sessions([record])
+    exchanges = archive.load_exchanges("live-dialogue-72")
+
+    assert result["imported_exchanges"] == 1
+    assert len(exchanges) == 1
+    assert exchanges[0]["session_id"] == "live-dialogue-72"
+    assert exchanges[0]["exchange_id"] == "legacy-nested-identity-1"
+    assert exchanges[0]["user"] == "أستخدم الصباغة المائية."
+
+
+def test_empty_legacy_index_does_not_consume_migration_marker():
+    archive = make_archive()
+    migration_key = "legacy_dialogue_transcripts_v2_provenance_repair"
+
+    result = archive.migrate_legacy_dialogue_sessions([])
+
+    assert result["status"] == "no_source_records"
+    assert archive.migration_complete(migration_key) is False
+
