@@ -804,11 +804,17 @@ def format_dialogue_analysis_report(data: dict) -> str:
 
     lines = [
         "=== التحليل المعرفي المستند إلى الأدلة الأصلية ===",
-        f"معرّف الجلسة: {analysis['session_id'] or 'غير متاح'}",
+        f"معرّف الحوار: {analysis['session_id'] or 'غير متاح'}",
         f"عدد التبادلات الأصلية: {analysis['exchange_count']}",
         "",
         "معلومات المستخدم المستخرجة:",
     ]
+    saved_session_id = str(data.get("saved_session_id") or "").strip()
+    if saved_session_id and saved_session_id != str(analysis.get("session_id") or ""):
+        lines.insert(
+            2,
+            f"معرّف سجل الجلسة المحفوظة: {saved_session_id}",
+        )
     user_fact_items = [
         item for item in analysis["user_information"]
         if item.get("knowledge_type") in {"user_fact", "observation"}
