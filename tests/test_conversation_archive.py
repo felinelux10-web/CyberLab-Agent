@@ -62,3 +62,18 @@ def test_skill_outcomes_are_counted_and_retrievable():
     assert skill["success_count"] == 1
     assert skill["failure_count"] == 1
     assert skill["steps"][0] == "read source"
+
+
+def test_explicit_first_person_statement_becomes_provenance_fact():
+    archive = make_archive()
+    archive.append_exchange(
+        session_id="session-72",
+        user_text="أنا أستعمل الصباغة المائية.",
+        assistant_text="سأحتفظ بهذه المعلومة بوصفها تصريحًا منك.",
+    )
+    facts = archive.search_relevant_facts("ما الصباغة التي أستخدمها؟")
+    assert facts
+    assert facts[0]["value"] == "الصباغة المائية"
+    assert facts[0]["speaker"] == "user"
+    assert facts[0]["source_session_id"] == "session-72"
+    assert facts[0]["evidence_message_id"] is not None
