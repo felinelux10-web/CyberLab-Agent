@@ -1006,7 +1006,7 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                 elif str(exchange.get("response_status") or "").casefold() == "needs_clarification":
                     transcript_lines.append("حالة الرد: استيضاح")
                 transcript_lines.append("")
-            summary = "\\n".join(transcript_lines)
+            summary = "\n".join(transcript_lines)
             report_evidence_ids = [
                 str(item.get("exchange_id") or "")
                 for item in all_dialogue_exchanges
