@@ -274,11 +274,16 @@ class Agent:
                 snapshot.get("session_id")
                 if isinstance(snapshot, dict) else None
             ) or getattr(state, "session_id", None) or getattr(self.session, "session_id", None)
-            if archive is not None and session_id:
-                result_data = result if isinstance(result, dict) else {}
+            result_data = result if isinstance(result, dict) else {}
+            route_decision = result_data.get("route_decision")
+            dialogue_route = getattr(route_decision, "route", None)
+            if (
+                archive is not None
+                and session_id
+                and dialogue_route in {"L-SOCIAL", "L-LIVE", "L-FACT"}
+            ):
                 result_intent = result_data.get("intent")
                 result_intent = getattr(result_intent, "value", result_intent)
-                route_decision = result_data.get("route_decision")
                 archive.append_exchange(
                     session_id=str(session_id),
                     user_text=request.raw_text,
