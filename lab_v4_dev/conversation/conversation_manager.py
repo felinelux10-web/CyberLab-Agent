@@ -707,7 +707,7 @@ class ConversationManager:
 
         value = str(text or "").strip()
         match = re.match(
-            r"^\s*(?:دعنا|خلينا|هيا|لن)\s+"
+            r"^\s*(?:(?:دعنا|خلينا|هيا|لن)\s+|ل)"
             r"(?:نتحدث|نتكلم|نناقش|نتحاور)\s+(?:عن|حول)\s+"
             r"(.+?)\s*[.!؟?،]*\s*$",
             value,
