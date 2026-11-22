@@ -362,6 +362,35 @@ class ConversationArchive:
         params.append(max(1, min(200, int(limit))))
         return [dict(row) for row in self.conn.execute(sql, params).fetchall()]
 
+    def search_relevant_facts(self, query: str, *, limit: int = 12) -> list[dict]:
+        """Retrieve user facts using meaningful query terms and verb synonyms."""
+        text = str(query or "")
+        tokens = re.findall(r"[\\w\\u0600-\\u06ff]+", text, flags=re.UNICODE)
+        stop = {
+            "ما", "ماذا", "هل", "انا", "أنا", "انت", "أنت", "الذي", "التي",
+            "هو", "هي", "من", "في", "عن", "على", "الى", "إلى", "مع",
+            "the", "what", "which", "did", "do", "i", "you", "my", "me",
+        }
+        terms = []
+        for token in tokens:
+            normalized = token.casefold().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+            if normalized in stop or len(normalized) < 3:
+                continue
+            terms.append(normalized)
+            if normalized.startswith(("استخدم", "استعمل")):
+                terms.append("uses")
+            elif normalized.startswith(("افضل", "احب")):
+                terms.append("prefers")
+        found = {}
+        for term in dict.fromkeys(terms):
+            for fact in self.search_facts(term, limit=limit):
+                found[int(fact["id"])] = fact
+        return sorted(
+            found.values(),
+            key=lambda item: (float(item.get("confidence") or 0), str(item.get("updated_at") or "")),
+            reverse=True,
+        )[:max(1, min(50, int(limit)))]
+
     def save_skill(self, *, name: str, description: str = "",
                    steps: list | None = None, preconditions: list | None = None) -> int:
         label = str(name or "").strip()
