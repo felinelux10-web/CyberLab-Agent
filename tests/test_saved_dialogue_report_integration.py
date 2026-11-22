@@ -274,3 +274,33 @@ def test_full_saved_report_merges_sqlite_history_beyond_bounded_checkpoint(monke
     assert "ورق صنفرة ناعمًا" in result["text"]
     assert "عدد التبادلات الأصلية: 6" in result["text"]
 
+    transcript_decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id=session_id, number=72),
+        output_kind="transcript",
+        evidence_scope="saved_session",
+        provider_allowed=True,
+        intent=Intent.SESSION_RESTORE,
+    )
+    transcript = handle_session_restore(
+        SimpleNamespace(services=SimpleNamespace(
+            memory=SimpleNamespace(conversations=archive),
+        )),
+        Intent.SESSION_RESTORE,
+        raw="اعرض النص الكامل للجلسة رقم 72",
+        route_decision=transcript_decision,
+        session_selector={
+            "kind": "number",
+            "number": 72,
+            "report_mode": "transcript",
+            "output_kind": "transcript",
+        },
+    )
+
+    assert transcript["status"] == "success", transcript
+    assert transcript["output_kind"] == "transcript"
+    assert len(transcript["evidence_exchange_ids"]) == 6
+    assert "أستخدم ورق صنفرة ناعمًا" in transcript["text"]
+    assert transcript["provider_synthesis_attempted"] is False
+
