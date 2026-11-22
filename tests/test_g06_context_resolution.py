@@ -193,22 +193,22 @@ def test_no_context_reference_cannot_use_nlu_or_intent_cache_or_context_store(mo
     monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
     monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
 
-    def route(intent, target, context_hint, raw):
-        routed.append((intent, target, context_hint, raw))
-        return {
+    from lab_v4_dev.core import orchestrator as orchestrator_module
+    monkeypatch.setattr(
+        orchestrator_module,
+        "route_request",
+        lambda *_args, **_kwargs: routed.append(_args) or {
             "status": "needs_clarification",
-            "intent": intent,
             "text": "ما الموضوع الذي تقصده؟",
-        }
-
-    monkeypatch.setattr(orchestrator, "_route", route)
+        },
+    )
     manager = ConversationManager(orchestrator, memory)
 
     result = manager.process("فيه")
 
     assert result["semantic_request"]["context_transition"] == "ambiguous"
     assert result["semantic_request"]["requires_context"] is False
-    assert routed == [(Intent.CYBER_EXPLAIN, "", "general", "فيه")]
+    assert routed == []
     assert memory.active_context_entity() is None
     assert memory.last_topic is None
 
@@ -226,20 +226,20 @@ def test_canonical_orchestrator_path_does_not_rebind_context_store_target(monkey
     from lab_v4_dev.core.orchestrator_handlers import policy as policy_module
     monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
     monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
+    from lab_v4_dev.core import orchestrator as orchestrator_module
     monkeypatch.setattr(
-        orchestrator,
-        "_route",
-        lambda intent, target, hint, raw: (
-            routed.append((intent, target, hint, raw))
-            or {"status": "needs_clarification", "intent": intent, "text": "ما الملف؟"}
-        ),
+        orchestrator_module,
+        "route_request",
+        lambda *_args, **_kwargs: routed.append(_args) or {
+            "status": "needs_clarification", "text": "ما الملف؟"
+        },
     )
     manager = ConversationManager(orchestrator, memory)
 
     result = manager.process("اشرح هذا الأمر")
 
     assert result["semantic_request"]["context_transition"] == "ambiguous"
-    assert routed == [(Intent.CYBER_EXPLAIN, "", "general", "اشرح هذا الأمر")]
+    assert routed == []
     assert memory.active_context_entity() is None
 
 
@@ -253,11 +253,12 @@ def test_context_resolved_path_keeps_explicit_repeat_execution_context(monkeypat
     from lab_v4_dev.core.orchestrator_handlers import policy as policy_module
     monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
     monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
+    from lab_v4_dev.core import orchestrator as orchestrator_module
     monkeypatch.setattr(
-        orchestrator,
-        "_route",
-        lambda intent, target, hint, raw: (
-            routed.append((intent, target, hint, raw))
+        orchestrator_module,
+        "route_request",
+        lambda _orchestrator, intent, target, raw, **_kwargs: (
+            routed.append((intent, target, raw))
             or {"status": "success", "intent": intent, "text": "repeated"}
         ),
     )
@@ -269,11 +270,12 @@ def test_context_resolved_path_keeps_explicit_repeat_execution_context(monkeypat
         route_decision=RouteDecision(route="L-EXEC", evidence_scope="work_state", intent=Intent.READ_FILE),
     )
 
-    assert routed == [(Intent.READ_FILE, "saved-result.py", "general", "كرر")]
+    assert routed == [(Intent.READ_FILE, "saved-result.py", "كرر")]
 
 
 def test_targetless_cyber_explanation_bypasses_response_cache(monkeypatch):
     isolate_external_semantics(monkeypatch)
+    from lab_v4_dev.core import orchestrator as orchestrator_module
     cache_calls = []
 
     def cached_response(intent, target=""):
