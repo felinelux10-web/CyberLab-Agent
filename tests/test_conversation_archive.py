@@ -316,3 +316,37 @@ def test_migration_retries_dialogue_records_whose_transcript_was_not_loaded():
     assert second["imported_exchanges"] == 1
     assert archive.migration_complete(migration_key) is True
 
+def test_reusable_skill_search_requires_a_better_than_failed_run_history():
+    archive = make_archive()
+    validated_id = archive.save_skill(
+        name="safe-session-export",
+        description="Export a session without modifying its source.",
+        steps=["read source", "write separate file", "verify checksum"],
+        preconditions=["saved session exists"],
+    )
+    archive.record_skill_run(validated_id, success=True)
+    archive.record_skill_run(validated_id, success=True)
+    archive.record_skill_run(validated_id, success=False)
+
+    unvalidated_id = archive.save_skill(
+        name="untested-session-cleanup",
+        description="Cleanup session data.",
+        steps=["delete old session"],
+        preconditions=["explicit approval"],
+    )
+    failed_id = archive.save_skill(
+        name="unsafe-session-reset",
+        description="Reset session data.",
+        steps=["reset database"],
+        preconditions=["backup exists"],
+    )
+    archive.record_skill_run(failed_id, success=False)
+    archive.record_skill_run(failed_id, success=False)
+
+    results = archive.search_relevant_skills("safe session export", limit=5)
+    result_ids = {item["id"] for item in results}
+
+    assert validated_id in result_ids
+    assert unvalidated_id not in result_ids
+    assert failed_id not in result_ids
+
