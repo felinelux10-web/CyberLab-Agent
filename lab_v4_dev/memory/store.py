@@ -123,6 +123,9 @@ class MemoryStore:
     def search_facts(self, query: str = "", **filters):
         return self.conversations.search_facts(query, **filters)
 
+    def search_relevant_facts(self, query: str, **filters):
+        return self.conversations.search_relevant_facts(query, **filters)
+
     def save_skill(self, **skill):
         return self.conversations.save_skill(**skill)
 
