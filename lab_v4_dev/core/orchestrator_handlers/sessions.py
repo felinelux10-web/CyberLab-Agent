@@ -816,6 +816,32 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                         f"تتناول الموضوع «{topic_filter}». لم أستبدلها بموضوع آخر."
                     )
 
+            report_session = dict(s)
+            report_session["session_id"] = dialogue_id or str(
+                s.get("session_id") or selected_id or ""
+            )
+            report_session["saved_session_id"] = str(
+                s.get("session_id") or selected_id or ""
+            )
+            report_dialogue_state = dict(dialogue_state)
+            report_dialogue_state["session_id"] = dialogue_id or str(
+                dialogue_state.get("session_id") or ""
+            )
+            completed_archive = [
+                item for item in all_dialogue_exchanges
+                if not item.get("response_failed")
+            ]
+            report_dialogue_state["transcript_archive"] = completed_archive
+            report_dialogue_state["exchange_archive"] = completed_archive[-32:]
+            report_dialogue_state["failed_transcript_archive"] = failed_exchanges
+            report_dialogue_state["failed_exchange_archive"] = failed_exchanges[-32:]
+            report_session["dialogue_state"] = report_dialogue_state
+            dialogue_state = report_dialogue_state
+            if not topic_filter or completed_exchanges:
+                summary = build_session_restore_summary(
+                    report_session, report_mode=report_mode
+                )
+
             source_lines = []
             for index, exchange in enumerate(completed_exchanges, 1):
                 user_text = " ".join(str(exchange.get("user") or "").split())
@@ -1023,22 +1049,7 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                 format_dialogue_analysis_report,
             )
 
-            report_data = dict(s)
-            report_data["session_id"] = dialogue_id or str(s.get("session_id") or "")
-            report_data["saved_session_id"] = str(s.get("session_id") or selected_id or "")
-            report_dialogue_state = dict(dialogue_state)
-            report_dialogue_state["session_id"] = dialogue_id or str(
-                dialogue_state.get("session_id") or ""
-            )
-            completed_archive = [
-                item for item in all_dialogue_exchanges
-                if not item.get("response_failed")
-            ]
-            report_dialogue_state["transcript_archive"] = completed_archive
-            report_dialogue_state["exchange_archive"] = completed_archive[-32:]
-            report_dialogue_state["failed_transcript_archive"] = failed_exchanges
-            report_dialogue_state["failed_exchange_archive"] = failed_exchanges[-32:]
-            report_data["dialogue_state"] = report_dialogue_state
+            report_data = dict(report_session)
             report_analysis = analyze_dialogue_session(report_data)
             report_evidence_ids = [
                 str(item.get("exchange_id") or "")
