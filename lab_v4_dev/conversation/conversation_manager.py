@@ -189,17 +189,23 @@ class ConversationManager:
             # Agent self-queries need local evidence; the provider remains a response composer.
             route = "L-FACT"
         elif intent_value == "cyber_explain":
+            bare_explanation_request = self._normalize_transition_text(
+                parsed.get("raw") or ""
+            ).strip(" .!؟?") in {
+                "اشرح", "اشرح لي", "وضح", "وضح لي", "فسر", "فسر لي", "explain",
+            }
             if domain == "project":
                 route = "L-FACT"
             elif (
                 not str(parsed.get("target") or "").strip()
                 and transition == ContextTransition.AMBIGUOUS
+                and not bare_explanation_request
             ):
-                # A technical explanation intent does not authorize guessing
-                # a subject from stale context, NLU cache, or the last file.
+                # Reference-only or subjectless ambiguous turns must not inherit
+                # a stale topic. A bare "اشرح" remains tool-owned so the
+                # knowledge handler can ask for the missing subject itself.
                 route = "CLARIFY"
             else:
-                # A named technical subject is owned by the knowledge tool.
                 route = "P-TOOL"
         elif intent_value == "architecture":
             route = "L-FACT" if domain == "project" else "P-TOOL"
