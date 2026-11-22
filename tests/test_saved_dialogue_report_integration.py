@@ -1,0 +1,148 @@
+from types import SimpleNamespace
+
+from lab_v4_dev.core.contracts import RouteDecision, SessionRef
+from lab_v4_dev.core.orchestrator_handlers.sessions import handle_session_restore
+from lab_v4_dev.intent.intents import Intent
+from lab_v4_dev.memory import session_state
+from lab_v4_dev.memory.dialogue_knowledge import (
+    analyze_dialogue_session,
+    format_dialogue_analysis_report,
+)
+
+
+def _report_session():
+    session_id = "saved-dialogue-report-72"
+    exchanges = [
+        {
+            "session_id": session_id,
+            "exchange_id": "report-exchange-1",
+            "target": "لوحة جبسية بارزة",
+            "user": "أستخدم إطارًا خشبيًا قديمًا لصنع اللوحة.",
+            "assistant": "يمكن تثبيت قاعدة العمل داخل الإطار قبل إضافة الجبس.",
+        },
+        {
+            "session_id": session_id,
+            "exchange_id": "report-exchange-2",
+            "target": "لوحة جبسية بارزة",
+            "user": "أصب الجبس بسماكة 3 سم وأنتظر حتى يجف.",
+            "assistant": "يمكن الانتظار حتى تجف الطبقة قبل نحت التفاصيل.",
+        },
+        {
+            "session_id": session_id,
+            "exchange_id": "report-exchange-3",
+            "target": "لوحة جبسية بارزة",
+            "user": "أشكّل السطح بسكين ومفك براغ وملعقة.",
+            "assistant": "يمكن تجربة أدوات مختلفة للحصول على relief متنوع.",
+        },
+        {
+            "session_id": session_id,
+            "exchange_id": "report-exchange-4",
+            "target": "لوحة جبسية بارزة",
+            "user": "أضع طبقة أساس سوداء ثم أضيف الذهبي والأبيض والأزرق.",
+            "assistant": "يمكن توزيع الألوان بتدرجات متناسقة.",
+        },
+        {
+            "session_id": session_id,
+            "exchange_id": "report-exchange-5",
+            "target": "لوحة جبسية بارزة",
+            "user": "أستعمل صباغة مائية ثم أضع طبقة حماية شفافة تشبه ورنيش الخشب.",
+            "assistant": "هذه الطبقة تحمي السطح النهائي.",
+        },
+    ]
+    return {
+        "session_id": session_id,
+        "session_type": "dialogue",
+        "title": "لوحة جبسية بارزة",
+        "dialogue_state": {
+            "session_id": session_id,
+            "last_topic": "لوحة جبسية بارزة",
+            "exchange_archive": exchanges,
+            "transcript_archive": exchanges,
+        },
+    }
+
+
+def test_full_saved_dialogue_report_uses_original_exchanges_and_exact_session_scope(monkeypatch):
+    session = _report_session()
+    session_id = session["session_id"]
+    monkeypatch.setattr(session_state, "get_session_index", lambda: [session])
+    monkeypatch.setattr(
+        session_state, "get_session_by_number",
+        lambda number: session if number == 72 else {},
+    )
+    monkeypatch.setattr(
+        session_state, "get_session_by_id",
+        lambda value: session if value == session_id else {},
+    )
+    monkeypatch.setattr(session_state, "load_session", lambda: {})
+    monkeypatch.setattr(
+        session_state, "recoverable_work_checkpoint", lambda _record: None
+    )
+
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id=session_id, number=72),
+        output_kind="report",
+        evidence_scope="saved_session",
+        provider_allowed=False,
+        intent=Intent.SESSION_RESTORE,
+    )
+    result = handle_session_restore(
+        SimpleNamespace(services=SimpleNamespace()),
+        Intent.SESSION_RESTORE,
+        raw="اكتب تقريرًا تحليليًا عن الجلسة رقم 72",
+        route_decision=decision,
+        session_selector={
+            "kind": "number",
+            "number": 72,
+            "report_mode": "full",
+            "output_kind": "report",
+        },
+    )
+
+    assert result["status"] == "success", result
+    assert result["source"] == "saved_session_report"
+    assert result["session_id"] == session_id
+    assert result["evidence_exchange_ids"] == [
+        "report-exchange-1", "report-exchange-2", "report-exchange-3",
+        "report-exchange-4", "report-exchange-5",
+    ]
+    assert "معلومات المستخدم المستخرجة" in result["text"]
+    assert "مساهمات الوكيل واقتراحاته" in result["text"]
+    assert "إطارًا خشبيًا" in result["text"]
+    assert "3 سم" in result["text"]
+    assert "مفك براغ" in result["text"]
+    assert "طبقة حماية شفافة" in result["text"]
+    assert result["provider_synthesis_attempted"] is False
+
+
+def test_user_requests_are_not_misreported_as_user_facts_and_report_sources_are_visible():
+    session_id = "dialogue-request-fact-separation"
+    session = {
+        "session_id": session_id,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": session_id,
+            "exchange_archive": [{
+                "session_id": session_id,
+                "exchange_id": "request-source-1",
+                "target": "تشكيل الجبس",
+                "user": "اشرح لي كيفية تشكيل الجبس بعد الجفاف.",
+                "assistant": "يمكنك تشكيل السطح بأداة يدوية مناسبة.",
+            }],
+        },
+    }
+
+    analysis = analyze_dialogue_session(session)
+    report = format_dialogue_analysis_report(session)
+
+    assert analysis["user_requests"]
+    assert all(item["knowledge_type"] == "user_request" for item in analysis["user_requests"])
+    assert not any(
+        item["knowledge_type"] == "user_request"
+        for item in analysis["user_information"]
+    )
+    assert "طلبات المستخدم" in report
+    assert "request-source-1" in report
+    assert "الثقة" in report
