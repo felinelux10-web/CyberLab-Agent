@@ -28,8 +28,8 @@ def test_response_cache_precedes_registered_handler_dispatch(monkeypatch):
         "lab_v4_dev/core/agent.py",
         "حلل ملف agent.py",
         route_decision=RouteDecision(
-            route="P-TOOL", intent=Intent.ANALYZE_CODE,
-            evidence_scope="project_state", provider_allowed=True,
+            route="L-EXEC", intent=Intent.ANALYZE_CODE,
+            evidence_scope="work_state", provider_allowed=False,
         ),
         ask_provider=lambda *_a, **_k: None,
     )
