@@ -3740,6 +3740,35 @@ class ConversationManager:
                     transition = ContextTransition.RESTORE
                     recovery_is_dialogue = False
 
+        # Reassert incomplete explanation ownership after every legacy
+        # context/branch-recovery heuristic. Earlier guards alone are not
+        # sufficient because later dialogue-owner rules can reattach the last
+        # technical entity (for example, SQL Injection) to a bare "اشرح".
+        bare_explanation_request = (
+            self._normalize_transition_text(user_input).strip(" .!؟?") in {
+                "اشرح", "اشرح لي", "وضح", "وضح لي", "فسر", "فسر لي",
+                "explain", "describe",
+            }
+        )
+        if bare_explanation_request:
+            parsed = dict(parsed or {})
+            parsed.update({
+                "intent": Intent.CYBER_EXPLAIN,
+                "target": "",
+                "entity_type": "ELABORATION",
+                "conversation_domain": "technical",
+                "conversation_act": "EXECUTABLE_REQUEST",
+                "semantic_pattern": "INCOMPLETE_EXPLANATION_REQUEST",
+            })
+            attributes = dict(parsed.get("response_attributes") or {})
+            attributes["incomplete_explanation_request"] = True
+            parsed["response_attributes"] = attributes
+            conversation_act = "EXECUTABLE_REQUEST"
+            transition = ContextTransition.AMBIGUOUS
+            context_entity = None
+            active_branch = None
+            resolved_input = user_input
+
         recovery_domain = str((parsed or {}).get("conversation_domain") or "general").casefold()
         recovery_intent = str(
             getattr((parsed or {}).get("intent"), "value", (parsed or {}).get("intent")) or ""
