@@ -469,6 +469,16 @@ class ConversationArchive:
             exchange_id = str(item.get("exchange_id") or "")
             if not exchange_id:
                 continue
+            try:
+                metadata = json.loads(item.get("metadata_json") or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                metadata = {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            response_status = str(metadata.get("status") or "").casefold()
+            response_failed = response_status in {
+                "error", "failed", "denied", "unsupported",
+            } or bool(metadata.get("response_failed"))
             if exchange_id not in grouped:
                 grouped[exchange_id] = {
                     "session_id": sid,
@@ -480,6 +490,14 @@ class ConversationArchive:
                     "intent": item.get("intent"),
                     "timestamp": item.get("created_at"),
                     "source": item.get("source"),
+                    "metadata": metadata,
+                    "response_status": response_status,
+                    "response_failed": response_failed,
+                    "failure_message": str(
+                        metadata.get("failure_message")
+                        or metadata.get("error_message")
+                        or ""
+                    ),
                 }
                 order.append(exchange_id)
             if item.get("speaker") == "user":
