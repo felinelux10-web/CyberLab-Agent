@@ -290,6 +290,12 @@ class Orchestrator:
             if isinstance(prepared_result, dict):
                 prepared_result.setdefault("source", "event_loop_prepared")
                 prepared_result.setdefault("executed", prepared_result.get("status") == "executed")
+                self._record_skill_outcome(
+                    (parsed or {}).get("intent"),
+                    (parsed or {}).get("target"),
+                    prepared_result,
+                    route_decision,
+                )
             self.history.append({
                 "timestamp": datetime.now().isoformat(),
                 "request": raw_request,
