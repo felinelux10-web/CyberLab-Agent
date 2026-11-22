@@ -323,6 +323,23 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
     if route_decision is not None and str(getattr(route_decision, "route", "")) == "L-SESSION":
         authorized_ref = getattr(route_decision, "session_ref", None)
         authorized_id = str(getattr(authorized_ref, "session_id", "") or "").strip()
+        authorized_number = getattr(authorized_ref, "number", None)
+        if selector.get("kind") == "number" and authorized_number is not None:
+            try:
+                requested_number = int(selector.get("number") or 0)
+                authorized_number = int(authorized_number)
+            except (TypeError, ValueError, OverflowError):
+                requested_number = authorized_number = 0
+            if requested_number != authorized_number:
+                return {
+                    "status": "denied",
+                    "intent": intent,
+                    "source": "route_decision_session_number_guard",
+                    "executed": False,
+                    "requested_session_number": requested_number,
+                    "authorized_session_number": authorized_number,
+                    "text": "رقم الجلسة المحدد لا يطابق رقم الجلسة الذي أجازه قرار التوجيه.",
+                }
         if selected_id and not authorized_id:
             return {
                 "status": "needs_clarification", "intent": intent,
