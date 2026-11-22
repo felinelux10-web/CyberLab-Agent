@@ -226,6 +226,13 @@ def route_request(
             "executed": False,
             "text": "لا يمكن توسيع نطاق الأدلة خارج المجال الذي أجازه قرار التوجيه.",
         }
+    if route_decision.route == "P-TOOL" and evidence_scope != "none":
+        return {
+            "status": "denied", "intent": intent,
+            "source": "route_decision_provider_evidence_guard",
+            "executed": False,
+            "text": "مسار المزود لا يملك نطاق أدلة محلية؛ استخدم مالك الأدلة المحلي المناسب.",
+        }
     selector_kind = str((session_selector or {}).get("kind") or "none")
     if route_decision.route == "L-SESSION" and route_decision.output_kind in {
         "summary", "brief", "report", "topic_summary", "transcript",
