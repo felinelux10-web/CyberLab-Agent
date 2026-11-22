@@ -556,13 +556,26 @@ class ConversationArchive:
             speaker="assistant", source_kind="suggestion", **provenance
         )
 
-    def search_facts(self, query: str = "", *, subject: str | None = None,
-                     limit: int = 50) -> list[dict]:
+    def search_facts(
+        self,
+        query: str = "",
+        *,
+        subject: str | None = None,
+        speaker: str | None = None,
+        source_kind: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
         sql = "SELECT * FROM memory_facts WHERE status='active'"
         params: list[Any] = []
         if subject:
             sql += " AND subject=?"
             params.append(str(subject))
+        if speaker:
+            sql += " AND speaker=?"
+            params.append(str(speaker))
+        if source_kind:
+            sql += " AND source_kind=?"
+            params.append(str(source_kind))
         if query:
             sql += " AND (subject LIKE ? OR predicate LIKE ? OR value LIKE ?)"
             pattern = "%" + str(query) + "%"
@@ -592,7 +605,12 @@ class ConversationArchive:
                 terms.append("prefers")
         found = {}
         for term in dict.fromkeys(terms):
-            for fact in self.search_facts(term, limit=limit):
+            # Personal-memory retrieval is user-authored evidence only.
+            # Assistant knowledge and suggestions remain separately searchable
+            # through search_facts(..., speaker="assistant").
+            for fact in self.search_facts(
+                term, subject="user", speaker="user", limit=limit
+            ):
                 found[int(fact["id"])] = fact
         return sorted(
             found.values(),
