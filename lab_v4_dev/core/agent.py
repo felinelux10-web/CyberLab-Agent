@@ -89,7 +89,9 @@ class Agent:
                     indexed_type = str(item.get("session_type") or "").casefold()
                     saved_type = str((saved or {}).get("session_type") or "").casefold()
                     if isinstance(saved, dict) and (
-                        indexed_type == "dialogue" or saved_type == "dialogue"
+                        indexed_type == "dialogue"
+                        or saved_type == "dialogue"
+                        or isinstance(saved.get("dialogue_state"), dict)
                     ):
                         saved = dict(saved)
                         saved.setdefault("session_id", session_id)
