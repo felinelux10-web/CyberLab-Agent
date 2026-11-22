@@ -166,7 +166,14 @@ class ConversationArchive:
 
     def migrate_legacy_dialogue_sessions(self, records: list[dict]) -> dict:
         """Import legacy JSON dialogue transcripts once, without altering source files."""
-        migration_key = "legacy_dialogue_transcripts_v1"
+        migration_key = "legacy_dialogue_transcripts_v2_provenance_repair"
+        if not any(isinstance(item, dict) for item in (records or [])):
+            # An empty or temporarily unavailable index must remain retryable.
+            return {
+                "status": "no_source_records",
+                "imported_sessions": 0,
+                "imported_exchanges": 0,
+            }
         completed = self.conn.execute(
             "SELECT 1 FROM memory_migrations WHERE migration_key=?",
             (migration_key,),
@@ -187,7 +194,10 @@ class ConversationArchive:
                 dialogue = record.get("dialogue_state")
                 if not isinstance(dialogue, dict):
                     continue
-                session_id = str(dialogue.get("session_id") or record.get("session_id") or "").strip()
+                record_session_id = str(record.get("session_id") or "").strip()
+                session_id = str(
+                    dialogue.get("session_id") or record_session_id
+                ).strip()
                 if not session_id:
                     continue
                 exchanges = dialogue.get("transcript_archive")
@@ -211,8 +221,22 @@ class ConversationArchive:
                 for index, exchange in enumerate(exchanges, 1):
                     if not isinstance(exchange, dict):
                         continue
-                    exchange_session = str(exchange.get("session_id") or session_id).strip()
-                    if exchange_session != session_id:
+                    exchange_session = str(exchange.get("session_id") or "").strip()
+                    context_kind = str(exchange.get("context_kind") or "").strip()
+                    conversation_domain = str(
+                        exchange.get("conversation_domain") or ""
+                    ).strip()
+                    if session_id != record_session_id:
+                        # A nested DialogueMemory ID may differ from the outer
+                        # checkpoint ID, but the identity bridge requires
+                        # explicit dialogue-domain provenance on each exchange.
+                        if (
+                            exchange_session not in {record_session_id, session_id}
+                            or not context_kind
+                            or not conversation_domain
+                        ):
+                            continue
+                    elif exchange_session and exchange_session != session_id:
                         continue
                     user = str(exchange.get("user") or "").strip()
                     assistant = str(exchange.get("assistant") or "").strip()
@@ -229,7 +253,15 @@ class ConversationArchive:
                     created_at = str(
                         exchange.get("timestamp") or exchange.get("created_at") or now
                     )
-                    meta = _json({"source": "legacy_session_import", "legacy": True})
+                    meta = _json({
+                        "source": "legacy_session_import",
+                        "legacy": True,
+                        "context_kind": context_kind or None,
+                        "conversation_domain": conversation_domain or None,
+                        "response_status": str(exchange.get("response_status") or ""),
+                        "response_failed": bool(exchange.get("response_failed")),
+                        "failure_message": str(exchange.get("failure_message") or ""),
+                    })
                     user_message_id = None
                     exchange_inserted = False
                     for speaker, body in (("user", user), ("assistant", assistant)):
