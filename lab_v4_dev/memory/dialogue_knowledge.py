@@ -414,6 +414,12 @@ def _raw_exchange_archive(data: dict) -> tuple[str, list[dict]]:
         )
     return session_id, [item for _, item in ordered_records]
 
+
+def retrieve_dialogue_exchanges(data: dict) -> tuple[str, list[dict]]:
+    """Return every validated raw exchange, including failed attempts."""
+    return _raw_exchange_archive(data)
+
+
 def _exchange_summary_insight(
     exchange: dict,
     user_records: list[dict],
