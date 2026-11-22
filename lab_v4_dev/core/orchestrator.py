@@ -86,7 +86,12 @@ class Orchestrator:
                     context={"target": str(target or ""), "status": result.get("status")},
                     notes=str(result.get("text") or result.get("message") or "")[:500],
                 )
-            elif existing:
+            elif existing and (
+                result.get("execution") is not None
+                or result.get("attempted") is True
+            ):
+                # A clarification, policy block or missing target is not an
+                # execution failure and must not poison a reusable skill.
                 memory.record_skill_run(
                     int(existing[0]["id"]),
                     success=False,
