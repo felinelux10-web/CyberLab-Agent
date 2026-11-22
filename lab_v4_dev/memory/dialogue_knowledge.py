@@ -209,7 +209,9 @@ def _classify_knowledge_sentence(speaker: str, sentence: str) -> tuple[str, floa
         if any(marker in normalized for marker in (
             "لا املك سجل", "لا املك تفاصيل", "لا استطيع تأكيد",
             "لا استطيع تحديد", "لم افهم", "تعذر توليد", "تعذر الوصول",
-            "لا توجد ادله كافيه", "لم استطع",
+            "لا توجد ادله كافيه", "لم استطع", "ما الموضوع الذي تريد",
+            "ما الذي تقصد", "ما المقصود", "حدد الموضوع", "اي موضوع تقصد",
+            "أي موضوع تقصد", "اي جلسه تقصد", "أي جلسة تقصد",
         )):
             return "assistant_non_answer", 0.90
         if any(marker in normalized for marker in (
@@ -285,10 +287,18 @@ def extract_exchange_knowledge(
     target = str(exchange.get("target") or "").strip()
     source_fingerprint = _exchange_source_fingerprint(exchange)
     records = []
+    response_status = str(exchange.get("response_status") or "").casefold()
+    assistant_incomplete = bool(exchange.get("response_failed")) or response_status in {
+        "needs_clarification", "error", "failed", "denied", "unsupported",
+    }
     for speaker, field in (("user", "user"), ("assistant", "assistant")):
         raw_text = str(exchange.get(field) or "").strip()
         for sentence_index, sentence in enumerate(_split_knowledge_sentences(raw_text), 1):
-            kind, confidence = _classify_knowledge_sentence(speaker, sentence)
+            kind, confidence = (
+                ("assistant_non_answer", 0.90)
+                if speaker == "assistant" and assistant_incomplete
+                else _classify_knowledge_sentence(speaker, sentence)
+            )
             records.append({
                 "knowledge_id": f"{exchange_id}:{speaker}:{sentence_index}",
                 "session_id": sid,
