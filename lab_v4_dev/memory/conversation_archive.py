@@ -444,7 +444,7 @@ class ConversationArchive:
             sql += " WHERE name LIKE ? OR description LIKE ? OR steps_json LIKE ?"
             pattern = "%" + str(query) + "%"
             params.extend([pattern, pattern, pattern])
-        sql += " ORDER BY (success_count + failure_count) DESC, updated_at DESC LIMIT ?"
+        sql += " ORDER BY CASE WHEN (success_count + failure_count)=0 THEN 0 ELSE (success_count * 1.0 / (success_count + failure_count)) END DESC, success_count DESC, updated_at DESC LIMIT ?"
         params.append(max(1, min(100, int(limit))))
         result = []
         for row in self.conn.execute(sql, params).fetchall():
