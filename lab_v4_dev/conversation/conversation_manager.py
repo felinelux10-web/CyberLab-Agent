@@ -3823,6 +3823,16 @@ class ConversationManager:
             history_result["semantic_request"] = semantic.as_dict()
             return self._attach_route_decision(history_result, route_decision)
 
+        if ambiguous_resume:
+            return self._attach_route_decision({
+                "status": "needs_clarification",
+                "intent": parsed.get("intent") or Intent.RESUME,
+                "source": "conversation_manager",
+                "text": "هل تريد استكمال الحوار السابق أم استكمال العمل في جلسة أو ملف؟",
+                "executed": False,
+                "semantic_request": semantic.as_dict(),
+            }, route_decision)
+
         if route_decision.route == "CLARIFY":
             # CLARIFY is a terminal route owner, not a hint to continue through
             # generic chat or Orchestrator dispatch. Returning here also prevents
@@ -3839,16 +3849,6 @@ class ConversationManager:
                 "source": "route_clarification",
                 "executed": False,
                 "text": clarification_text,
-                "semantic_request": semantic.as_dict(),
-            }, route_decision)
-
-        if ambiguous_resume:
-            return self._attach_route_decision({
-                "status": "needs_clarification",
-                "intent": parsed.get("intent") or Intent.RESUME,
-                "source": "conversation_manager",
-                "text": "هل تريد استكمال الحوار السابق أم استكمال العمل في جلسة أو ملف؟",
-                "executed": False,
                 "semantic_request": semantic.as_dict(),
             }, route_decision)
 
