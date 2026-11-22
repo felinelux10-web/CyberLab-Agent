@@ -267,10 +267,7 @@ def _attach_sqlite_dialogue_transcript(record: dict, session_id: str) -> dict:
             continue
         seen.add(identity)
         merged.append(dict(item))
-    merged.sort(key=lambda item: (
-        str(item.get("timestamp") or ""),
-        int(item.get("exchange_index") or 0),
-    ))
+    merged.sort(key=lambda item: str(item.get("timestamp") or ""))
     dialogue["session_id"] = dialogue_id
     dialogue["transcript_archive"] = merged
     result["dialogue_state"] = dialogue
