@@ -156,8 +156,10 @@ def _dispatch_through_registry(orchestrator, intent, target, context, raw, **kwa
         decision = _test_decision(intent)
     elif not isinstance(decision, RouteDecision):
         route = str(getattr(decision, "route", "P-TOOL") or "P-TOOL")
-        scope = "work_state" if route == "L-EXEC" else (
-            "none" if route == "L-SESSION" else "project_state"
+        scope = (
+            "work_state" if route == "L-EXEC"
+            else "none" if route in {"L-SESSION", "P-TOOL"}
+            else "project_state"
         )
         decision = RouteDecision(
             route=route,
