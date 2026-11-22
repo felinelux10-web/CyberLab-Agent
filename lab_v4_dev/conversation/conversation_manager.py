@@ -2935,9 +2935,7 @@ class ConversationManager:
             selected_saved_session_id = None
             saved_session_request = False
         bare_explanation_request = (
-            str(getattr(parsed.get("intent"), "value", parsed.get("intent")) or "").casefold()
-            == "cyber_explain"
-            and self._normalize_transition_text(user_input).strip(" .!؟?") in {
+            self._normalize_transition_text(user_input).strip(" .!؟?") in {
                 "اشرح", "اشرح لي", "وضح", "وضح لي", "فسر", "فسر لي", "explain",
             }
         )
