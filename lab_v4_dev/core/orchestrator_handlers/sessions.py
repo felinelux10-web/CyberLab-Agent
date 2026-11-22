@@ -633,6 +633,7 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
         saved_exchanges = dialogue_state.get("transcript_archive")
         if not isinstance(saved_exchanges, list) or not saved_exchanges:
             saved_exchanges = dialogue_state.get("exchange_archive") or []
+        completed_exchanges = []
         if (
             is_saved_dialogue
             and dialogue_id
