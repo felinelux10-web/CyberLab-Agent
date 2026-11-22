@@ -6845,6 +6845,60 @@ class ConversationManager:
                         return self._attach_route_decision(local_capability, route_decision)
                     return local_capability
 
+            # For explicit live-dialogue recall, search the durable SQLite
+            # transcript rather than relying only on the bounded in-memory window.
+            route_decision = (parsed or {}).get("route_decision")
+            response_attributes = (parsed or {}).get("response_attributes") or {}
+            if (
+                isinstance(route_decision, RouteDecision)
+                and route_decision.evidence_scope == "live_exchanges"
+                and (
+                    response_attributes.get("dialogue_recall")
+                    or response_attributes.get("history_query")
+                )
+            ):
+                try:
+                    agent = getattr(self.orchestrator, "agent", None)
+                    memory = getattr(agent, "memory", None)
+                    archive = getattr(memory, "conversations", None)
+                    state = getattr(self.dialogue_memory, "state", None)
+                    live_session_id = str(getattr(state, "session_id", "") or "").strip()
+                    if archive is not None and live_session_id:
+                        hits = archive.search_messages(
+                            text, session_id=live_session_id, limit=8
+                        )
+                        retrieved = {}
+                        for hit in hits:
+                            for message in archive.read_context(
+                                hit["id"], before=2, after=2
+                            ):
+                                retrieved[int(message["id"])] = message
+                        if retrieved:
+                            ordered = sorted(
+                                retrieved.values(),
+                                key=lambda item: (
+                                    int(item.get("exchange_index") or 0),
+                                    0 if item.get("speaker") == "user" else 1,
+                                    int(item.get("id") or 0),
+                                ),
+                            )
+                            history = [
+                                {
+                                    "role": item.get("speaker"),
+                                    "content": item.get("content"),
+                                    "source": "sqlite_conversation_archive",
+                                    "session_id": item.get("session_id"),
+                                }
+                                for item in ordered
+                                if item.get("speaker") in {"user", "assistant"}
+                                and str(item.get("content") or "").strip()
+                            ][-32:]
+                except Exception as archive_error:
+                    # Retrieval is additive; preserve the existing bounded
+                    # dialogue history if the archive is unavailable.
+                    from lab_v4_dev.core.logger import log
+                    log.warning(f"Live dialogue archive retrieval skipped: {archive_error}")
+
             system, prompt = build_chat_prompt(
                 text,
                 list(history or []),
