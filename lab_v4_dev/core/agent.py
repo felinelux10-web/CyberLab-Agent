@@ -256,6 +256,48 @@ class Agent:
             if getattr(self, "dialogue_memory", None)
             else None
         )
+
+        # Durable transcript: persist the raw user/assistant exchange before
+        # bounded dialogue checkpoints can rotate out older turns.
+        try:
+            archive = getattr(getattr(self, "memory", None), "conversations", None)
+            snapshot = dialogue_after if isinstance(dialogue_after, dict) else {}
+            state = getattr(getattr(self, "dialogue_memory", None), "state", None)
+            session_id = (
+                snapshot.get("session_id")
+                or getattr(state, "session_id", None)
+                or getattr(self.session, "session_id", None)
+            )
+            if archive is not None and session_id:
+                result_data = result if isinstance(result, dict) else {}
+                result_intent = result_data.get("intent")
+                result_intent = getattr(result_intent, "value", result_intent)
+                route_decision = result_data.get("route_decision")
+                archive.append_exchange(
+                    session_id=str(session_id),
+                    user_text=request.raw_text,
+                    assistant_text=(
+                        result_data.get("text")
+                        or result_data.get("output")
+                        or result_data.get("message")
+                        or ""
+                    ),
+                    source=str(result_data.get("source") or "conversation"),
+                    intent=str(result_intent) if result_intent is not None else None,
+                    topic=(
+                        result_data.get("target")
+                        or snapshot.get("last_topic")
+                        or snapshot.get("last_target")
+                    ),
+                    status=result_data.get("status"),
+                    metadata={
+                        "route": getattr(route_decision, "route", None),
+                        "evidence_scope": getattr(route_decision, "evidence_scope", None),
+                    },
+                )
+        except Exception as exc:
+            log.warning(f"Durable conversation archive skipped: {exc}")
+
         if dialogue_after is not None and dialogue_after != dialogue_before:
             self._save_dialogue_checkpoint()
 
