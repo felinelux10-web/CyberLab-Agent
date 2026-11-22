@@ -611,6 +611,11 @@ def analyze_dialogue_session(data: dict) -> dict:
                 exchange, session_id=session_id, exchange_index=index
             )
         )
+        # Recall-only exchanges repeat or request prior evidence; they are
+        # useful in the timeline but must not create a second set of facts or
+        # assistant contributions detached from their original source exchange.
+        if exchange.get("recall_only") or exchange.get("state_boundary_only"):
+            records = []
         for record in records:
             record["source_exchange_index"] = index + 1
             temporal_order = record.get("temporal_order")
