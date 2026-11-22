@@ -229,6 +229,15 @@ class ConversationArchive:
     @staticmethod
     def _fts_query(query: str) -> str:
         tokens = re.findall(r"[\w\u0600-\u06ff]+", str(query or ""), flags=re.UNICODE)
+        stop = {
+            "ما", "ماذا", "هل", "هي", "هو", "الذي", "التي", "من", "في",
+            "عن", "على", "الى", "إلى", "مع", "هذا", "هذه", "ذلك",
+            "the", "what", "which", "did", "do", "i", "you", "me", "my",
+        }
+        tokens = [
+            token for token in tokens
+            if token.casefold().replace("أ", "ا").replace("إ", "ا") not in stop
+        ]
         return " OR ".join('"' + token.replace('"', '""') + '"' for token in tokens[:20])
 
     def search_messages(self, query: str, *, session_id: str | None = None,
