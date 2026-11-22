@@ -101,37 +101,41 @@ def handle_run_script(orchestrator, intent, *, target=None, raw=None):
                 selected_path = os.path.realpath(os.path.join(scripts_dir, name))
                 break
 
-    if selected_path is None:
-        reuse_markers = (
-            "نفس السكريبت", "السكريبت السابق", "شغل نفس", "شغله مرة اخرى",
-            "اعد تشغيل", "أعد تشغيل", "same script", "run it again", "rerun it",
-        )
-        if any(marker in raw_text.casefold() for marker in reuse_markers):
-            reusable = getattr(
-                getattr(orchestrator, "request", None),
-                "response_attributes",
-                {},
-            ).get("reusable_skill")
-            for step in (reusable or {}).get("steps", []):
-                if not isinstance(step, dict):
-                    continue
-                prior_target = str(step.get("target") or step.get("file") or "").strip()
-                if not prior_target:
-                    continue
-                candidate = (
-                    os.path.realpath(os.path.expanduser(prior_target))
-                    if os.path.isabs(os.path.expanduser(prior_target))
-                    else os.path.realpath(os.path.join(workspace_dir, prior_target))
-                )
-                if os.path.isfile(candidate) and candidate.endswith(".py"):
-                    selected_path = candidate
-                    break
+    reuse_markers = (
+        "نفس السكريبت", "السكريبت السابق", "شغل نفس", "شغله مرة اخرى",
+        "اعد تشغيل", "أعد تشغيل", "same script", "run it again", "rerun it",
+    )
+    explicit_reuse_requested = any(
+        marker in raw_text.casefold() for marker in reuse_markers
+    )
+    if selected_path is None and explicit_reuse_requested:
+        reusable = getattr(
+            getattr(orchestrator, "request", None),
+            "response_attributes",
+            {},
+        ).get("reusable_skill")
+        for step in (reusable or {}).get("steps", []):
+            if not isinstance(step, dict):
+                continue
+            prior_target = str(step.get("target") or step.get("file") or "").strip()
+            if not prior_target:
+                continue
+            candidate = (
+                os.path.realpath(os.path.expanduser(prior_target))
+                if os.path.isabs(os.path.expanduser(prior_target))
+                else os.path.realpath(os.path.join(workspace_dir, prior_target))
+            )
+            if os.path.isfile(candidate) and candidate.endswith(".py"):
+                selected_path = candidate
+                break
 
-    if selected_path is None:
-        last_result = getattr(orchestrator.context, "last_result", None) or {}
-        saved = last_result.get("saved_to", "") if isinstance(last_result, dict) else ""
-        if saved and os.path.isfile(saved):
-            selected_path = os.path.realpath(saved)
+        # Last-result fallback is permitted only for an explicit repeat request.
+        # A generic "run the script" request must never execute an old artifact.
+        if selected_path is None:
+            last_result = getattr(orchestrator.context, "last_result", None) or {}
+            saved = last_result.get("saved_to", "") if isinstance(last_result, dict) else ""
+            if saved and os.path.isfile(saved):
+                selected_path = os.path.realpath(saved)
 
     if selected_path is None:
         available = "، ".join(scripts[:8]) if scripts else "لا توجد سكريبتات محفوظة"
