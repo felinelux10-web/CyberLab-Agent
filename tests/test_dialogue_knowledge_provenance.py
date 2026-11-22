@@ -1282,3 +1282,28 @@ def test_clarification_and_failed_provider_replies_are_not_substantive_knowledge
     assert "ردود الوكيل غير الموضوعية أو غير المكتملة:" in report
     assert "ما الموضوع الذي تريد شرحه؟" in report
 
+def test_recall_only_exchange_stays_in_timeline_without_duplicating_knowledge():
+    sid = "recall-only-is-not-new-evidence"
+    session = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "transcript_archive": [{
+                "session_id": sid,
+                "exchange_id": "recall-only-1",
+                "user": "ما الأدوات التي استخدمتها في الجلسة السابقة؟",
+                "assistant": "ذكرت أنك استخدمت سكينًا ومفكًا وملعقة.",
+                "recall_only": True,
+            }],
+        },
+    }
+
+    analysis = analyze_dialogue_session(session)
+
+    assert analysis["exchange_count"] == 1
+    assert analysis["timeline"][0]["exchange_id"] == "recall-only-1"
+    assert analysis["timeline"][0]["recall_only"] is True
+    assert analysis["knowledge"] == []
+    assert analysis["exchange_insights"] == []
+
