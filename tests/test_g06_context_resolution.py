@@ -189,8 +189,9 @@ def test_no_context_reference_cannot_use_nlu_or_intent_cache_or_context_store(mo
     orchestrator = Orchestrator(SimpleNamespace(runtime=None), context=context)
     routed = []
 
-    monkeypatch.setattr(orchestrator, "_pre_handler_policy", lambda *_a, **_k: None)
-    monkeypatch.setattr(orchestrator, "_apply_profile", lambda result, _intent: result)
+    from lab_v4_dev.core.orchestrator_handlers import policy as policy_module
+    monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
+    monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
 
     def route(intent, target, context_hint, raw):
         routed.append((intent, target, context_hint, raw))
@@ -222,8 +223,9 @@ def test_canonical_orchestrator_path_does_not_rebind_context_store_target(monkey
     orchestrator = Orchestrator(SimpleNamespace(runtime=None), context=context)
     routed = []
 
-    monkeypatch.setattr(orchestrator, "_pre_handler_policy", lambda *_a, **_k: None)
-    monkeypatch.setattr(orchestrator, "_apply_profile", lambda result, _intent: result)
+    from lab_v4_dev.core.orchestrator_handlers import policy as policy_module
+    monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
+    monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
     monkeypatch.setattr(
         orchestrator,
         "_route",
@@ -248,8 +250,9 @@ def test_context_resolved_path_keeps_explicit_repeat_execution_context(monkeypat
     orchestrator = Orchestrator(SimpleNamespace(runtime=None), context=context)
     routed = []
 
-    monkeypatch.setattr(orchestrator, "_pre_handler_policy", lambda *_a, **_k: None)
-    monkeypatch.setattr(orchestrator, "_apply_profile", lambda result, _intent: result)
+    from lab_v4_dev.core.orchestrator_handlers import policy as policy_module
+    monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
+    monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
     monkeypatch.setattr(
         orchestrator,
         "_route",
@@ -292,12 +295,17 @@ def test_targetless_cyber_explanation_bypasses_response_cache(monkeypatch):
         SimpleNamespace(runtime=None),
         context=ContextStore(),
     )
-    result = orchestrator._route(
+    from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
+    result = route_request(
+        orchestrator,
         Intent.CYBER_EXPLAIN,
         "",
-        "general",
         "اشرح أكثر",
-        route_decision=RouteDecision(route="P-TOOL", intent=Intent.CYBER_EXPLAIN, provider_allowed=True),
+        route_decision=RouteDecision(
+            route="P-TOOL", intent=Intent.CYBER_EXPLAIN,
+            evidence_scope="project_state", provider_allowed=True,
+        ),
+        ask_provider=orchestrator_module.ask,
     )
 
     assert cache_calls == []

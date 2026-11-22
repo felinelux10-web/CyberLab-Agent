@@ -4,6 +4,7 @@ import pytest
 
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.core.contracts import RouteDecision
 from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
 
@@ -201,7 +202,14 @@ def test_generic_clean_requests_clarification_without_running_cleaner(monkeypatc
     monkeypatch.setattr(cleaner, "run_full_clean", lambda: calls.append("called"))
     orchestrator = Orchestrator(SimpleNamespace(runtime=None))
 
-    result = orchestrator._route(Intent.CLEAN, "", "general", "نظف")
+    result = orchestrator.handle(
+        "نظف",
+        parsed={"intent": Intent.CLEAN, "target": "", "context": "general"},
+        route_decision=RouteDecision(
+            route="L-EXEC", intent=Intent.CLEAN,
+            evidence_scope="work_state", provider_allowed=False,
+        ),
+    )
 
     assert result["status"] == "needs_clarification"
     assert "ما الذي تريد تنظيفه" in result["text"]
@@ -226,8 +234,13 @@ def test_explicit_device_route_calls_only_mocked_cleaner(monkeypatch):
     )
     orchestrator = Orchestrator(SimpleNamespace(runtime=None))
 
-    result = orchestrator._route(
-        Intent.CLEAN_DEVICE, "", "general", "نظف الهاتف"
+    result = orchestrator.handle(
+        "نظف الهاتف",
+        parsed={"intent": Intent.CLEAN_DEVICE, "target": "", "context": "general"},
+        route_decision=RouteDecision(
+            route="L-EXEC", intent=Intent.CLEAN_DEVICE,
+            evidence_scope="work_state", provider_allowed=False,
+        ),
     )
 
     assert result["status"] == "success"
@@ -291,8 +304,9 @@ def _build_e2e_manager(monkeypatch):
         SimpleNamespace(runtime=None),
         context=ContextStore(),
     )
-    monkeypatch.setattr(orchestrator, "_pre_handler_policy", lambda *_a, **_k: None)
-    monkeypatch.setattr(orchestrator, "_apply_profile", lambda result, _intent: result)
+    from lab_v4_dev.core.orchestrator_handlers import policy as policy_module
+    monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
+    monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
     monkeypatch.setattr(orchestrator_module, "bind_context", lambda *_a, **_k: {})
     monkeypatch.setattr(orchestrator_module.log, "debug", lambda *_a, **_k: None)
     return ConversationManager(orchestrator), orchestrator
