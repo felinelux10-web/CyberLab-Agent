@@ -108,7 +108,7 @@ def test_legacy_dialogue_migration_is_idempotent_and_searchable():
     result = archive.migrate_legacy_dialogue_sessions([record])
     assert result["imported_sessions"] == 1
     assert result["imported_exchanges"] == 2
-    hits = archive.search_messages("السماكة", session_id="legacy-session-72")
+    hits = archive.search_messages("ثلاثة سنتيمترات", session_id="legacy-session-72")
     assert hits
     transcript = archive.load_exchanges("legacy-session-72")
     assert len(transcript) == 2
