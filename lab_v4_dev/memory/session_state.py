@@ -175,20 +175,51 @@ def _session_text(item: dict) -> str:
 
 
 def _load_sqlite_dialogue_exchanges(session_id: str) -> list[dict]:
-    """Read the durable SQLite transcript without changing legacy session files."""
-    database = None
+    """Read the durable transcript with a lightweight read connection."""
+    connection = None
     try:
-        from lab_v4_dev.memory.db import Database
-        from lab_v4_dev.memory.conversation_archive import ConversationArchive
-        database = Database()
-        database.connect()
-        return ConversationArchive(database).load_exchanges(session_id)
+        import sqlite3
+        from lab_v4_dev.memory.db import DB_PATH
+        if not os.path.isfile(DB_PATH):
+            return []
+        connection = sqlite3.connect(DB_PATH, timeout=3.0)
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """SELECT * FROM conversation_messages WHERE session_id=?
+               ORDER BY exchange_index, CASE speaker WHEN 'user' THEN 0 ELSE 1 END, id""",
+            (str(session_id or "").strip(),),
+        ).fetchall()
+        grouped = {}
+        order = []
+        for row in rows:
+            item = dict(row)
+            exchange_id = str(item.get("exchange_id") or "")
+            if not exchange_id:
+                continue
+            if exchange_id not in grouped:
+                grouped[exchange_id] = {
+                    "session_id": str(session_id),
+                    "exchange_id": exchange_id,
+                    "exchange_index": int(item.get("exchange_index") or 0),
+                    "user": "",
+                    "assistant": "",
+                    "target": item.get("topic"),
+                    "intent": item.get("intent"),
+                    "timestamp": item.get("created_at"),
+                    "source": item.get("source"),
+                }
+                order.append(exchange_id)
+            if item.get("speaker") == "user":
+                grouped[exchange_id]["user"] = item.get("content") or ""
+            elif item.get("speaker") == "assistant":
+                grouped[exchange_id]["assistant"] = item.get("content") or ""
+        return [grouped[key] for key in order]
     except Exception:
         return []
     finally:
-        if database is not None:
+        if connection is not None:
             try:
-                database.close()
+                connection.close()
             except Exception:
                 pass
 
