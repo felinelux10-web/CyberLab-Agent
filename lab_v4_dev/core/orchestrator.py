@@ -9,7 +9,8 @@ from lab_v4_dev.executor.safe_pipeline import SafePipeline
 from lab_v4_dev.core.logger import log
 from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.context.context_resolver import bind_context
-from lab_v4_dev.core.contracts import Request, Context, PreparedExecutionRequest
+from lab_v4_dev.core.contracts import Request, Context, PreparedExecutionRequest, RouteDecision
+from lab_v4_dev.config.provider_config import get_active_provider
 from lab_v4_dev.llm import gateway as _gateway
 import os
 
@@ -100,6 +101,19 @@ class Orchestrator:
                 )
         except Exception as exc:
             log.warning(f"Skill outcome recording skipped: {exc}")
+
+    @staticmethod
+    def _authorized_provider_ask(route_decision, *args, **kwargs):
+        """Invoke the gateway only when the immutable route grants provider use."""
+        if route_decision is None or not bool(
+            getattr(route_decision, "provider_allowed", False)
+        ):
+            return {
+                "status": "unavailable",
+                "message": "provider permission missing or denied by RouteDecision",
+            }
+        kwargs.setdefault("provider_allowed", True)
+        return ask(*args, **kwargs)
 
     def _submit_prepared_execution(self, intent, target=None, context=None,
                                     request_id=None, execution=None,
@@ -368,7 +382,9 @@ class Orchestrator:
             context_transition=context_transition,
             session_selector=parsed.get("session_selector"),
             route_decision=route_decision,
-            ask_provider=ask,
+            ask_provider=lambda *args, **kwargs: self._authorized_provider_ask(
+                route_decision, *args, **kwargs
+            ),
         )
         if authorized_route == "L-EXEC":
             self._record_skill_outcome(intent, target, result, route_decision)
@@ -402,6 +418,55 @@ class Orchestrator:
 
         log.debug(f"Orch[{self.phase}]: {intent} → {entry['status']}")
         return result
+
+    def _route(self, intent, target, context, raw, **kwargs):
+        """Narrow compatibility adapter for legacy read-only callers.
+
+        Production dispatch enters through ConversationManager.handle() with
+        its finalized RouteDecision. This adapter accepts an existing decision;
+        without one it permits only the legacy local SEARCH_CODE inspection.
+        It never manufactures execution or provider permission.
+        """
+        route_decision = kwargs.get("route_decision")
+        if route_decision is None:
+            if intent != Intent.SEARCH_CODE:
+                return {
+                    "status": "denied",
+                    "intent": intent,
+                    "source": "route_decision_required",
+                    "executed": False,
+                    "text": "لا يمكن اختيار مسار دون قرار التوجيه النهائي.",
+                }
+            route_decision = RouteDecision(
+                route="L-FACT",
+                intent=intent,
+                evidence_scope="project_state",
+                provider_allowed=False,
+            )
+        elif not isinstance(route_decision, RouteDecision):
+            return {
+                "status": "denied",
+                "intent": intent,
+                "source": "invalid_route_decision",
+                "executed": False,
+                "text": "قرار التوجيه غير صالح.",
+            }
+
+        from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
+        return route_request(
+            self,
+            intent,
+            target,
+            raw,
+            response_attributes=kwargs.get("response_attributes"),
+            conversation_history=kwargs.get("conversation_history"),
+            context_transition=kwargs.get("context_transition"),
+            session_selector=kwargs.get("session_selector"),
+            route_decision=route_decision,
+            ask_provider=lambda *args, **call_kwargs: self._authorized_provider_ask(
+                route_decision, *args, **call_kwargs
+            ),
+        )
 
     def get_last(self)    -> dict: return self.history[-1] if self.history else {}
     def get_history(self) -> list: return self.history

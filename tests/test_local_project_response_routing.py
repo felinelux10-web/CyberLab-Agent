@@ -6,6 +6,7 @@ from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.conversation.conversation_manager import ConversationManager
 from lab_v4_dev.conversation.dialogue_memory import DialogueMemory
 from lab_v4_dev.conversation.semantic_contract import ContextTransition
+from lab_v4_dev.core.contracts import RouteDecision
 from lab_v4_dev.intent.intents import Intent
 
 
@@ -219,11 +220,15 @@ def test_explicit_project_execution_request_still_uses_orchestrator():
         "شغل الاختبارات",
         "FOLLOW_UP",
         {
-            "intent": Intent.CYBER_EXPLAIN,
+            "intent": Intent.RUN_SCRIPT,
             "target": "CyberLab Agent",
             "entity_type": "PROJECT",
             "conversation_domain": "project",
-            "conversation_act": "CONVERSATION_CONTINUATION",
+            "conversation_act": "EXECUTABLE_REQUEST",
+            "route_decision": RouteDecision(
+                route="L-EXEC", intent=Intent.RUN_SCRIPT,
+                evidence_scope="work_state", provider_allowed=False,
+            ),
         },
         user_question="شغل الاختبارات",
         context_transition=ContextTransition.CONTINUE.value,
@@ -251,7 +256,7 @@ def test_negated_or_descriptive_execution_words_do_not_trigger_project_execution
         "entity_type": "PROJECT",
         "conversation_domain": "project",
         "conversation_act": "CONVERSATION_CONTINUATION",
-        "route_decision": SimpleNamespace(
+        "route_decision": RouteDecision(
             route="L-FACT", intent=Intent.CYBER_EXPLAIN,
             evidence_scope="project_state", provider_allowed=True,
         ),

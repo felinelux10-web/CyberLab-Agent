@@ -2492,52 +2492,121 @@ class ConversationManager:
             and current_dialogue_domain in technical_domains
             and not self._same_topic(active_dialogue_target, current_dialogue_target)
         )
-        about_subject_switch = bool(
-            active_dialogue
-            and explicit_about_subject
-            and (
-                ((active_dialogue_domain in technical_domains)
-                 != (current_dialogue_domain in technical_domains))
-                or technical_subject_changed
-            )
+        about_match = re.match(
+            r"^(?:و)?ماذا عن[ \\t]*(.+?)[؟?!.،]*$",
+            normalized_bare_topic,
         )
-        if about_subject_switch:
-            # "What about X?" names a current-turn subject. If its domain
-            # differs from the active branch, start a clean branch instead
-            # of mixing unrelated technical history into the answer.
-            transition = ContextTransition.EXPLICIT_SWITCH
-        elif (
-            active_dialogue
-            and active_dialogue_domain not in {
-                "technical", "project", "work", "system", "execution",
-            }
-            and normalized_bare_topic
-            and not has_dialogue_action
-            and not is_style_act(candidate.get("conversation_act"))
-            and not any(marker in normalized_bare_topic for marker in (
-                "اكمل", "أكمل", "تابع", "واصل", "استمر", "نكمل",
-                "اختصر", "بسط", "وضح", "فسر", "اشرح اكثر", "اشرح أكثر",
-            ))
-            and not self._is_explicit_topic_switch(user_input)
-            and not explicit_branch_return_request
-            and not named_return
-            and not self._is_explicit_targeted_proposal(user_input)
-            and not any(mark in str(user_input or "") for mark in ("؟", "?"))
-        ):
+        about_subject = (
+            str(about_match.group(1) or "").strip(" .،؟?!")
+            if about_match else ""
+        )
+        cyber_subject_markers = (
+            "sql injection", "csrf", "cross site request forgery", "xss",
+            "cross site scripting", "ssrf", "xxe", "idor", "rce",
+            "command injection", "path traversal", "directory traversal",
+            "phishing", "malware", "ransomware", "session hijacking",
+            "clickjacking", "buffer overflow", "http", "network", "dns",
+            "injection", "vulnerability", "exploit", "firewall", "api",
+            "database", "sql", "encryption", "cryptography",
+        )
+        about_subject_is_technical = bool(
+            about_subject
+            and any(marker in about_subject for marker in cyber_subject_markers)
+        )
+        about_subject_changed = bool(
+            active_dialogue_target
+            and about_subject
+            and not self._same_topic(active_dialogue_target, about_subject)
+        )
+        if active_dialogue and about_subject:
             candidate = dict(candidate or {})
-            candidate.update({
-                "intent": Intent.PERSONAL_CHAT,
-                "target": str(user_input or "").strip(),
-                "entity_type": "CONCEPT",
-                "conversation_domain": "general",
-                "conversation_act": "CONVERSATION_CONTINUATION",
-                "response_attributes": {},
-                "semantic_pattern": "SOCIAL_DIALOGUE_TOPIC_ELABORATION",
-                "source": "active_dialogue_topic_elaboration",
-            })
-            transition = ContextTransition.CONTINUE
+            if about_subject_is_technical:
+                candidate.update({
+                    "intent": Intent.CYBER_EXPLAIN,
+                    "target": about_subject,
+                    "entity_type": "CONCEPT",
+                    "conversation_domain": "technical",
+                    "conversation_act": "EXECUTABLE_REQUEST",
+                    "semantic_pattern": "EXPLICIT_ABOUT_SUBJECT",
+                    "source": "explicit_about_subject",
+                })
+                transition = (
+                    ContextTransition.EXPLICIT_SWITCH
+                    if about_subject_changed
+                    else ContextTransition.CONTINUE
+                )
+            elif active_dialogue_domain in technical_domains:
+                candidate.update({
+                    "intent": Intent.PERSONAL_CHAT,
+                    "target": about_subject,
+                    "entity_type": "CONCEPT",
+                    "conversation_domain": "general",
+                    "conversation_act": "TOPIC_SHIFT",
+                    "semantic_pattern": "EXPLICIT_ABOUT_SUBJECT",
+                    "source": "explicit_about_subject",
+                })
+                transition = ContextTransition.EXPLICIT_SWITCH
+            else:
+                # A broad social discussion can contain a named subtopic.
+                # Keep its prior history while allowing the new subject to
+                # remain explicit in the current user message.
+                candidate.update({
+                    "intent": Intent.PERSONAL_CHAT,
+                    "target": active_dialogue_target or about_subject,
+                    "entity_type": (active_dialogue or {}).get("entity_type") or "CONCEPT",
+                    "conversation_domain": "general",
+                    "conversation_act": "CONVERSATION_CONTINUATION",
+                    "semantic_pattern": "SOCIAL_ABOUT_SUBJECT_FOLLOW_UP",
+                    "source": "active_social_dialogue_branch",
+                })
+                transition = ContextTransition.CONTINUE
         else:
-            transition = self._classify_context_transition(mode, candidate, text=user_input)
+            about_subject_switch = bool(
+                active_dialogue
+                and explicit_about_subject
+                and (
+                    ((active_dialogue_domain in technical_domains)
+                     != (current_dialogue_domain in technical_domains))
+                    or technical_subject_changed
+                )
+            )
+            if about_subject_switch:
+                # "What about X?" names a current-turn subject. If its domain
+                # differs from the active branch, start a clean branch instead
+                # of mixing unrelated technical history into the answer.
+                transition = ContextTransition.EXPLICIT_SWITCH
+            elif (
+                active_dialogue
+                and active_dialogue_domain not in {
+                    "technical", "project", "work", "system", "execution",
+                }
+                and normalized_bare_topic
+                and not has_dialogue_action
+                and not is_style_act(candidate.get("conversation_act"))
+                and not any(marker in normalized_bare_topic for marker in (
+                    "اكمل", "أكمل", "تابع", "واصل", "استمر", "نكمل",
+                    "اختصر", "بسط", "وضح", "فسر", "اشرح اكثر", "اشرح أكثر",
+                ))
+                and not self._is_explicit_topic_switch(user_input)
+                and not explicit_branch_return_request
+                and not named_return
+                and not self._is_explicit_targeted_proposal(user_input)
+                and not any(mark in str(user_input or "") for mark in ("؟", "?"))
+            ):
+                candidate = dict(candidate or {})
+                candidate.update({
+                    "intent": Intent.PERSONAL_CHAT,
+                    "target": str(user_input or "").strip(),
+                    "entity_type": "CONCEPT",
+                    "conversation_domain": "general",
+                    "conversation_act": "CONVERSATION_CONTINUATION",
+                    "response_attributes": {},
+                    "semantic_pattern": "SOCIAL_DIALOGUE_TOPIC_ELABORATION",
+                    "source": "active_dialogue_topic_elaboration",
+                })
+                transition = ContextTransition.CONTINUE
+            else:
+                transition = self._classify_context_transition(mode, candidate, text=user_input)
         if ordinal_exchange and ordinal_exchange_target:
             # The ordinal resolver has already selected an exact archived
             # exchange and promoted its target into the candidate. Preserve

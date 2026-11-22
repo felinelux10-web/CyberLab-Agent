@@ -22,8 +22,8 @@ def test_intent_route_matrix_covers_every_declared_intent_value():
 
     assert len(declared) == 166
     assert rows == declared
-    assert len(HANDLER_REGISTRY) == 69
+    assert len(HANDLER_REGISTRY) == 82
     assert "show_last_result" in HANDLER_REGISTRY
     llm_intents = {intent for intent in declared if needs_llm(intent)}
-    assert len(llm_intents) == 19
-    assert len(llm_intents - set(HANDLER_REGISTRY)) == 13
+    assert len(llm_intents) == 13
+    assert llm_intents <= set(HANDLER_REGISTRY)
