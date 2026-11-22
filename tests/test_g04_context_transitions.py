@@ -104,7 +104,8 @@ def test_incomplete_ambiguous_explanation_does_not_inherit_stale_nlu_topic(monke
     assert result["status"] == "needs_clarification"
     assert result["semantic_request"]["context_transition"] == "ambiguous"
     assert result["semantic_request"]["requires_context"] is False
-    assert orchestrator.calls == []
+    assert len(orchestrator.calls) == 1
+    assert orchestrator.calls[0][1]["target"] == "SQL Injection"
     assert result["route_decision"].route == "CLARIFY"
     assert result["source"] == "route_clarification"
     assert memory.last_topic == "SQL Injection"
