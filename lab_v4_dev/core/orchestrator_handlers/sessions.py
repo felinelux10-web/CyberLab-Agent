@@ -760,18 +760,32 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                     else term
                     for term in filter_terms
                 ]
+                def matches_report_topic(item):
+                    searchable = " ".join(
+                        str(item.get(field) or "")
+                        for field in (
+                            "target", "user", "assistant", "semantic_summary", "summary",
+                            "gist", "key_points", "topics_discussed",
+                        )
+                    ).casefold()
+                    return any(
+                        term and term in searchable for term in filter_terms
+                    )
+
                 matched_exchanges = [
                     item for item in completed_exchanges
-                    if any(
-                        term and term in " ".join(str(item.get(field) or "") for field in (
-                            "target", "user", "assistant", "semantic_summary", "summary", "gist",
-                            "key_points", "topics_discussed",
-                        )).casefold()
-                        for term in filter_terms
-                    )
+                    if matches_report_topic(item)
                 ]
                 if matched_exchanges:
                     completed_exchanges = matched_exchanges
+                    all_dialogue_exchanges = [
+                        item for item in all_dialogue_exchanges
+                        if matches_report_topic(item)
+                    ]
+                    failed_exchanges = [
+                        item for item in failed_exchanges
+                        if matches_report_topic(item)
+                    ]
                     filtered_session = dict(s)
                     filtered_dialogue_state = dict(dialogue_state)
                     # Keep both the canonical full transcript and the
@@ -795,6 +809,8 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
                     )
                 else:
                     completed_exchanges = []
+                    all_dialogue_exchanges = []
+                    failed_exchanges = []
                     summary = (
                         "لم أجد في الجلسة المحفوظة المحددة تبادلات موثقة "
                         f"تتناول الموضوع «{topic_filter}». لم أستبدلها بموضوع آخر."
