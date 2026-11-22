@@ -6885,7 +6885,12 @@ class ConversationManager:
                     memory = getattr(agent, "memory", None)
                     archive = getattr(memory, "conversations", None)
                     state = getattr(self.dialogue_memory, "state", None)
-                    live_session_id = str(getattr(state, "session_id", "") or "").strip()
+                    restored_owner = self.dialogue_memory.active_restored_session()
+                    live_session_id = str(
+                        (restored_owner or {}).get("session_id")
+                        or getattr(state, "session_id", "")
+                        or ""
+                    ).strip()
                     if archive is not None and live_session_id:
                         hits = archive.search_messages(
                             text, session_id=live_session_id, limit=8
