@@ -352,6 +352,8 @@ class ConversationManager:
             # A collection report reads the saved-session index and detail
             # records as a collection, not one selected saved session.
             evidence_scope = "saved_sessions"
+        elif route == "L-LIVE" and response_attributes.get("user_memory_query"):
+            evidence_scope = "user_memory"
         elif route == "L-FACT":
             evidence_scope = "project_state"
         elif route == "L-EXEC":
@@ -3254,6 +3256,17 @@ class ConversationManager:
         parsed.setdefault("conversation_domain", "general")
         parsed.setdefault("conversation_confidence", 0.0)
         parsed.setdefault("response_attributes", {})
+        normalized_user_memory_query = self._normalize_transition_text(user_input)
+        if any(marker in normalized_user_memory_query for marker in (
+            "ماذا استخدم", "ما الذي استخدم", "الذي استخدمه", "التي استخدمها",
+            "الذي استعمله", "التي استعملها", "ماذا افضل", "ما تفضيلاتي",
+            "ماذا قلت لك", "ما اخبرتك", "ماذا تعرف عني",
+            "what do i use", "what do i prefer", "what did i tell you",
+            "my preferences",
+        )):
+            memory_attributes = dict(parsed.get("response_attributes") or {})
+            memory_attributes["user_memory_query"] = True
+            parsed["response_attributes"] = memory_attributes
 
         # A bare explanation imperative is an incomplete technical request,
         # not a general knowledge question. Preserve Orchestrator ownership so
