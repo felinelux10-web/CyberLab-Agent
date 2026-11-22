@@ -229,6 +229,42 @@ class ConversationArchive:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def load_exchanges(self, session_id: str) -> list[dict]:
+        """Return the complete ordered transcript grouped into user/assistant exchanges."""
+        sid = str(session_id or "").strip()
+        if not sid:
+            return []
+        rows = self.conn.execute(
+            """SELECT * FROM conversation_messages WHERE session_id=?
+               ORDER BY exchange_index, CASE speaker WHEN 'user' THEN 0 ELSE 1 END, id""",
+            (sid,),
+        ).fetchall()
+        grouped: dict[str, dict] = {}
+        order: list[str] = []
+        for row in rows:
+            item = dict(row)
+            exchange_id = str(item.get("exchange_id") or "")
+            if not exchange_id:
+                continue
+            if exchange_id not in grouped:
+                grouped[exchange_id] = {
+                    "session_id": sid,
+                    "exchange_id": exchange_id,
+                    "exchange_index": int(item.get("exchange_index") or 0),
+                    "user": "",
+                    "assistant": "",
+                    "target": item.get("topic"),
+                    "intent": item.get("intent"),
+                    "timestamp": item.get("created_at"),
+                    "source": item.get("source"),
+                }
+                order.append(exchange_id)
+            if item.get("speaker") == "user":
+                grouped[exchange_id]["user"] = item.get("content") or ""
+            elif item.get("speaker") == "assistant":
+                grouped[exchange_id]["assistant"] = item.get("content") or ""
+        return [grouped[key] for key in order]
+
     def save_fact(
         self, *, subject: str, predicate: str, value: str,
         speaker: str = "user", source_kind: str = "explicit",
