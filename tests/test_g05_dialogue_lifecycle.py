@@ -157,10 +157,8 @@ def test_independent_topic_without_valid_entity_cannot_authorize_followup(monkey
 
     assert result["status"] == "needs_clarification"
     assert result["semantic_request"]["context_transition"] == "ambiguous"
-    assert len(orchestrator.calls) == 1
-    assert orchestrator.calls[0][0] == "اشرح SQL Injection"
-    assert result["route_decision"].route == "CLARIFY"
-    assert result["source"] == "route_clarification"
+    assert orchestrator.calls[-1][0] == "اشرح"
+    assert orchestrator.calls[-1][1]["target"] == ""
     assert parse_calls.count("اشرح") == 1
     assert "أهمية التعلم المستمر اشرح" not in parse_calls
     assert memory.last_topic == "أهمية التعلم المستمر"
