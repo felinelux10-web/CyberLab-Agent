@@ -117,6 +117,9 @@ class MemoryStore:
             message_id, before=before, after=after
         )
 
+    def load_conversation_exchanges(self, session_id: str):
+        return self.conversations.load_exchanges(session_id)
+
     def save_fact(self, **fact):
         return self.conversations.save_fact(**fact)
 
