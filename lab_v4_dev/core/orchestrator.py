@@ -264,6 +264,13 @@ class Orchestrator:
                     "executed": False,
                     "text": "لا يمكن توسيع نطاق الأدلة خارج المجال الذي أجازه قرار التوجيه.",
                 }
+            if authorized_route == "P-TOOL" and evidence_scope != "none":
+                return {
+                    "status": "denied", "intent": parsed_intent,
+                    "source": "route_decision_provider_evidence_guard",
+                    "executed": False,
+                    "text": "مسار المزود لا يملك نطاق أدلة محلية؛ استخدم مالك الأدلة المحلي المناسب.",
+                }
 
         if route_decision is not None and authorized_route == "L-SESSION":
             output_kind = str(getattr(route_decision, "output_kind", "none") or "none")
