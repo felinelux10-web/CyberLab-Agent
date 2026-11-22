@@ -257,17 +257,23 @@ class Agent:
             else None
         )
 
-        # Durable transcript: persist the raw user/assistant exchange before
-        # bounded dialogue checkpoints can rotate out older turns.
+        if dialogue_after is not None and dialogue_after != dialogue_before:
+            self._save_dialogue_checkpoint()
+
+        # Durable transcript: persist the raw user/assistant exchange after
+        # checkpoint identity normalization, before bounded history rotates.
         try:
             archive = getattr(getattr(self, "memory", None), "conversations", None)
-            snapshot = dialogue_after if isinstance(dialogue_after, dict) else {}
             state = getattr(getattr(self, "dialogue_memory", None), "state", None)
+            snapshot = (
+                self.dialogue_memory.snapshot()
+                if getattr(self, "dialogue_memory", None)
+                else {}
+            )
             session_id = (
                 snapshot.get("session_id")
-                or getattr(state, "session_id", None)
-                or getattr(self.session, "session_id", None)
-            )
+                if isinstance(snapshot, dict) else None
+            ) or getattr(state, "session_id", None) or getattr(self.session, "session_id", None)
             if archive is not None and session_id:
                 result_data = result if isinstance(result, dict) else {}
                 result_intent = result_data.get("intent")
@@ -286,8 +292,8 @@ class Agent:
                     intent=str(result_intent) if result_intent is not None else None,
                     topic=(
                         result_data.get("target")
-                        or snapshot.get("last_topic")
-                        or snapshot.get("last_target")
+                        or (snapshot.get("last_topic") if isinstance(snapshot, dict) else None)
+                        or (snapshot.get("last_target") if isinstance(snapshot, dict) else None)
                     ),
                     status=result_data.get("status"),
                     metadata={
@@ -297,9 +303,6 @@ class Agent:
                 )
         except Exception as exc:
             log.warning(f"Durable conversation archive skipped: {exc}")
-
-        if dialogue_after is not None and dialogue_after != dialogue_before:
-            self._save_dialogue_checkpoint()
 
         if result.get("status") == "unsupported":
             return result
