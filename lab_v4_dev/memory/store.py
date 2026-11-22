@@ -148,3 +148,6 @@ class MemoryStore:
 
     def search_skills(self, query: str = "", **filters):
         return self.conversations.search_skills(query, **filters)
+
+    def search_relevant_skills(self, query: str = "", **filters):
+        return self.conversations.search_relevant_skills(query, **filters)
