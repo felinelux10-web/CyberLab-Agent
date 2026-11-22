@@ -212,6 +212,13 @@ def test_saved_report_accepts_nested_dialogue_id_only_with_consistent_provenance
 def test_full_saved_report_merges_sqlite_history_beyond_bounded_checkpoint(monkeypatch):
     session = _report_session()
     session_id = session["session_id"]
+    dialogue_id = "live-dialogue-sqlite-72"
+    session["dialogue_state"]["session_id"] = dialogue_id
+    for archive_name in ("transcript_archive", "exchange_archive"):
+        for exchange in session["dialogue_state"][archive_name]:
+            exchange["session_id"] = dialogue_id
+            exchange["context_kind"] = "dialogue"
+            exchange["conversation_domain"] = "general"
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     archive = ConversationArchive(SimpleNamespace(conn=connection))
@@ -219,7 +226,7 @@ def test_full_saved_report_merges_sqlite_history_beyond_bounded_checkpoint(monke
     migration = archive.migrate_legacy_dialogue_sessions([session])
     assert migration["imported_exchanges"] == 5
     new_exchange_id = archive.append_exchange(
-        session_id=session_id,
+        session_id=dialogue_id,
         user_text="أستخدم ورق صنفرة ناعمًا لتسوية بعض الحواف بعد الجفاف.",
         assistant_text="يمكن استخدامه بحذر لتنعيم الحواف دون إزالة تفاصيل البروز.",
         source="conversation",
