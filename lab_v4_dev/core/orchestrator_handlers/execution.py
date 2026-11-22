@@ -102,6 +102,32 @@ def handle_run_script(orchestrator, intent, *, target=None, raw=None):
                 break
 
     if selected_path is None:
+        reuse_markers = (
+            "نفس السكريبت", "السكريبت السابق", "شغل نفس", "شغله مرة اخرى",
+            "اعد تشغيل", "أعد تشغيل", "same script", "run it again", "rerun it",
+        )
+        if any(marker in raw_text.casefold() for marker in reuse_markers):
+            reusable = getattr(
+                getattr(orchestrator, "request", None),
+                "response_attributes",
+                {},
+            ).get("reusable_skill")
+            for step in (reusable or {}).get("steps", []):
+                if not isinstance(step, dict):
+                    continue
+                prior_target = str(step.get("target") or step.get("file") or "").strip()
+                if not prior_target:
+                    continue
+                candidate = (
+                    os.path.realpath(os.path.expanduser(prior_target))
+                    if os.path.isabs(os.path.expanduser(prior_target))
+                    else os.path.realpath(os.path.join(workspace_dir, prior_target))
+                )
+                if os.path.isfile(candidate) and candidate.endswith(".py"):
+                    selected_path = candidate
+                    break
+
+    if selected_path is None:
         last_result = getattr(orchestrator.context, "last_result", None) or {}
         saved = last_result.get("saved_to", "") if isinstance(last_result, dict) else ""
         if saved and os.path.isfile(saved):
