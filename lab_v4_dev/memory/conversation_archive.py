@@ -743,3 +743,51 @@ class ConversationArchive:
                     item[key.removesuffix("_json")] = []
             result.append(item)
         return result
+
+    def search_relevant_skills(self, query: str = "", *, limit: int = 5) -> list[dict]:
+        """Return only reusable procedures with a better-than-failed run history."""
+        tokens = []
+        for raw_token in str(query or "").replace("_", " ").split():
+            token = raw_token.strip("؟?!.,،؛:()[]{}\\\\\\\"'").casefold()
+            if len(token) >= 3 and token not in {
+                "the", "and", "for", "with", "from", "this", "that",
+                "من", "على", "الى", "إلى", "في", "عن", "كيف", "ماذا",
+                "هل", "اريد", "أريد", "اريد", "اريد",
+            } and token not in tokens:
+                tokens.append(token)
+        if not tokens:
+            return []
+
+        candidates: dict[int, dict] = {}
+        for token in tokens:
+            for skill in self.search_skills(token, limit=max(10, limit * 3)):
+                successes = int(skill.get("success_count") or 0)
+                failures = int(skill.get("failure_count") or 0)
+                if successes < 1 or successes <= failures:
+                    continue
+                skill_id = int(skill.get("id") or 0)
+                if not skill_id:
+                    continue
+                item = candidates.setdefault(skill_id, dict(skill))
+                item["_query_match_count"] = int(
+                    item.get("_query_match_count") or 0
+                ) + 1
+
+        ranked = sorted(
+            candidates.values(),
+            key=lambda item: (
+                int(item.get("_query_match_count") or 0),
+                int(item.get("success_count") or 0)
+                / max(
+                    1,
+                    int(item.get("success_count") or 0)
+                    + int(item.get("failure_count") or 0),
+                ),
+                int(item.get("success_count") or 0),
+                str(item.get("updated_at") or ""),
+            ),
+            reverse=True,
+        )
+        for item in ranked:
+            item.pop("_query_match_count", None)
+        return ranked[:max(1, min(20, int(limit)))]
