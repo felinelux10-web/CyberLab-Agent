@@ -306,7 +306,7 @@ def test_targetless_cyber_explanation_bypasses_response_cache(monkeypatch):
         "اشرح أكثر",
         route_decision=RouteDecision(
             route="P-TOOL", intent=Intent.CYBER_EXPLAIN,
-            evidence_scope="project_state", provider_allowed=True,
+            evidence_scope="none", provider_allowed=True,
         ),
         ask_provider=orchestrator_module.ask,
     )
