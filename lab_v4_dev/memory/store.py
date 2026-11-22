@@ -17,6 +17,8 @@ class MemoryStore:
     def __init__(self, db: Database):
         if db is None:
             raise ValueError("MemoryStore requires a Database instance")
+        if getattr(db, "conn", None) is None:
+            db.connect()
         self.db = db
         self.session = Session(db)
         self.tasks = TaskHistory(db)
