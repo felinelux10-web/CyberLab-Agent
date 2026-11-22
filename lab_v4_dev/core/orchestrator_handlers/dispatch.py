@@ -253,6 +253,27 @@ def route_request(
                 "executed": False,
                 "text": "قرار التوجيه لا يحدد نطاق أدلة محفوظًا صالحًا لهذا المخرج.",
             }
+    reusable_skills = []
+    if (
+        route_decision.route == "L-EXEC"
+        and bool(route_decision.provider_allowed)
+    ):
+        memory = getattr(getattr(orchestrator, "agent", None), "memory", None)
+        search_reusable_skills = getattr(
+            memory, "search_relevant_skills", None
+        )
+        if callable(search_reusable_skills):
+            try:
+                skill_query = " ".join(
+                    str(value or "")
+                    for value in (intent_value, target, raw)
+                ).strip()
+                reusable_skills = search_reusable_skills(
+                    skill_query, limit=3
+                ) or []
+            except Exception:
+                reusable_skills = []
+
     def authorized_ask(*args, **kwargs):
         if route_decision is None or not bool(
             getattr(route_decision, "provider_allowed", False)
@@ -266,6 +287,27 @@ def route_request(
                 "status": "unavailable",
                 "message": "provider gateway capability unavailable",
             }
+        if reusable_skills:
+            skill_lines = [
+                "Verified reusable procedures from prior successful runs:",
+                "Treat these as advisory reference only. Check their preconditions,",
+                "do not expand the user's requested scope, and never claim a step",
+                "was executed unless the current handler actually executed it.",
+            ]
+            for skill in reusable_skills:
+                skill_lines.append(
+                    f"Skill {skill.get('id')}: {skill.get('name') or 'unnamed'}"
+                )
+                if skill.get("description"):
+                    skill_lines.append(f"Description: {skill['description']}")
+                for precondition in skill.get("preconditions") or []:
+                    skill_lines.append(f"Precondition: {precondition}")
+                for step_index, step in enumerate(skill.get("steps") or [], 1):
+                    skill_lines.append(f"Step {step_index}: {step}")
+            existing_system = str(kwargs.get("system") or "")
+            kwargs["system"] = (
+                existing_system + "\\n\\n" + "\\n".join(skill_lines)
+            ).strip()
         kwargs.setdefault("provider_allowed", True)
         return ask_provider(*args, **kwargs)
 
@@ -293,6 +335,19 @@ def route_request(
         context_transition=context_transition,
     )
     if _handled is not None:
+        if isinstance(_handled, dict) and reusable_skills:
+            _handled.setdefault(
+                "reusable_skill_candidates",
+                [
+                    {
+                        "id": item.get("id"),
+                        "name": item.get("name"),
+                        "success_count": item.get("success_count", 0),
+                        "failure_count": item.get("failure_count", 0),
+                    }
+                    for item in reusable_skills
+                ],
+            )
         return _handled
 
     # Every supported intent, including provider-backed work, is owned
