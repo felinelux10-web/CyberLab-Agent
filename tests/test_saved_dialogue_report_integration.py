@@ -1,9 +1,11 @@
+import sqlite3
 from types import SimpleNamespace
 
 from lab_v4_dev.core.contracts import RouteDecision, SessionRef
 from lab_v4_dev.core.orchestrator_handlers.sessions import handle_session_restore
 from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.memory import session_state
+from lab_v4_dev.memory.conversation_archive import ConversationArchive
 from lab_v4_dev.memory.dialogue_knowledge import (
     analyze_dialogue_session,
     format_dialogue_analysis_report,
@@ -206,4 +208,69 @@ def test_saved_report_accepts_nested_dialogue_id_only_with_consistent_provenance
     assert "مفك براغ" in result["text"]
     assert "معرّف الجلسة: live-dialogue-72" in result["text"]
     assert result["provider_synthesis_attempted"] is False
+
+def test_full_saved_report_merges_sqlite_history_beyond_bounded_checkpoint(monkeypatch):
+    session = _report_session()
+    session_id = session["session_id"]
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    archive = ConversationArchive(SimpleNamespace(conn=connection))
+
+    migration = archive.migrate_legacy_dialogue_sessions([session])
+    assert migration["imported_exchanges"] == 5
+    new_exchange_id = archive.append_exchange(
+        session_id=session_id,
+        user_text="أستخدم ورق صنفرة ناعمًا لتسوية بعض الحواف بعد الجفاف.",
+        assistant_text="يمكن استخدامه بحذر لتنعيم الحواف دون إزالة تفاصيل البروز.",
+        source="conversation",
+        intent="personal_chat",
+        topic="لوحة جبسية بارزة",
+        status="success",
+        metadata={"route": "L-LIVE", "evidence_scope": "live_exchanges"},
+    )
+
+    monkeypatch.setattr(session_state, "get_session_index", lambda: [session])
+    monkeypatch.setattr(
+        session_state, "get_session_by_number",
+        lambda number: session if number == 72 else {},
+    )
+    monkeypatch.setattr(
+        session_state, "get_session_by_id",
+        lambda value: session if value == session_id else {},
+    )
+    monkeypatch.setattr(session_state, "load_session", lambda: {})
+    monkeypatch.setattr(
+        session_state, "recoverable_work_checkpoint", lambda _record: None
+    )
+
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id=session_id, number=72),
+        output_kind="report",
+        evidence_scope="saved_session",
+        provider_allowed=False,
+        intent=Intent.SESSION_RESTORE,
+    )
+    result = handle_session_restore(
+        SimpleNamespace(services=SimpleNamespace(
+            memory=SimpleNamespace(conversations=archive),
+        )),
+        Intent.SESSION_RESTORE,
+        raw="اكتب تقريرًا تحليليًا عن الجلسة رقم 72",
+        route_decision=decision,
+        session_selector={
+            "kind": "number",
+            "number": 72,
+            "report_mode": "full",
+            "output_kind": "report",
+        },
+    )
+
+    assert result["status"] == "success", result
+    assert result["session_id"] == session_id
+    assert len(result["evidence_exchange_ids"]) == 6
+    assert new_exchange_id in result["evidence_exchange_ids"]
+    assert "ورق صنفرة ناعمًا" in result["text"]
+    assert "عدد التبادلات الأصلية: 6" in result["text"]
 
