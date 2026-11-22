@@ -988,47 +988,20 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
             )
 
             report_data = dict(s)
+            report_data["session_id"] = dialogue_id or str(s.get("session_id") or "")
+            report_data["saved_session_id"] = str(s.get("session_id") or selected_id or "")
             report_dialogue_state = dict(dialogue_state)
-            topic_filter = str(selector.get("topic_filter") or "").strip()
-            if topic_filter:
-                normalized_filter = " ".join(
-                    topic_filter.casefold()
-                    .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
-                    .replace("ى", "ي").split()
-                )
-                report_filter_terms = [
-                    term.strip("؟?!.,،؛:()[]{}\\\\\\\"'")
-                    for term in normalized_filter.split()
-                    if term.strip("؟?!.,،؛:()[]{}\\\\\\\"'")
-                    and term not in {
-                        "ما", "ماذا", "علاقة", "علاقه", "بين", "في",
-                        "عن", "كيف", "يرتبط", "بشكل", "بطريقة", "بطريقه",
-                        "مبسط", "مبسطة", "المبسطة", "هل",
-                    }
-                ]
-
-                def matches_report_topic(exchange):
-                    searchable = " ".join(
-                        str(exchange.get(field) or "")
-                        for field in (
-                            "target", "user", "assistant", "semantic_summary",
-                            "summary", "gist", "key_points", "topics_discussed",
-                        )
-                    ).casefold()
-                    return any(
-                        term and term in searchable for term in report_filter_terms
-                    )
-
-                report_dialogue_state["transcript_archive"] = completed_exchanges
-                report_dialogue_state["exchange_archive"] = completed_exchanges[-32:]
-                for archive_key in (
-                    "failed_transcript_archive", "failed_exchange_archive",
-                ):
-                    failed_items = report_dialogue_state.get(archive_key)
-                    report_dialogue_state[archive_key] = [
-                        item for item in (failed_items if isinstance(failed_items, list) else [])
-                        if isinstance(item, dict) and matches_report_topic(item)
-                    ]
+            report_dialogue_state["session_id"] = dialogue_id or str(
+                dialogue_state.get("session_id") or ""
+            )
+            completed_archive = [
+                item for item in all_dialogue_exchanges
+                if not item.get("response_failed")
+            ]
+            report_dialogue_state["transcript_archive"] = completed_archive
+            report_dialogue_state["exchange_archive"] = completed_archive[-32:]
+            report_dialogue_state["failed_transcript_archive"] = failed_exchanges
+            report_dialogue_state["failed_exchange_archive"] = failed_exchanges[-32:]
             report_data["dialogue_state"] = report_dialogue_state
             report_analysis = analyze_dialogue_session(report_data)
             report_evidence_ids = [
