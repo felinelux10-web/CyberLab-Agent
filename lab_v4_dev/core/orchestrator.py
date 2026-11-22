@@ -276,41 +276,6 @@ class Orchestrator:
                         "text": "قرار التوجيه لا يحدد نطاق أدلة محفوظًا صالحًا لهذا المخرج.",
                     }
 
-        # Route explicitly prepared execution payloads through EventLoop.
-        # Legacy handler dispatch remains available for operations that have
-        # not yet been migrated to the prepared action/parameters contract.
-        prepared_execution = (parsed or {}).get("prepared_execution")
-        if (
-            authorized_route == "L-EXEC"
-            and isinstance(prepared_execution, dict)
-        ):
-            prepared_result = self._submit_prepared_execution(
-                intent=(parsed or {}).get("intent"),
-                target=(parsed or {}).get("target"),
-                context=Context.from_store(self.context),
-                request_id=request.request_id,
-                execution=prepared_execution,
-                route_decision=route_decision,
-            )
-            if isinstance(prepared_result, dict):
-                prepared_result.setdefault("source", "event_loop_prepared")
-                prepared_result.setdefault("executed", prepared_result.get("status") == "executed")
-                self._record_skill_outcome(
-                    (parsed or {}).get("intent"),
-                    (parsed or {}).get("target"),
-                    prepared_result,
-                    route_decision,
-                )
-            self.history.append({
-                "timestamp": datetime.now().isoformat(),
-                "request": raw_request,
-                "intent": (parsed or {}).get("intent"),
-                "target": (parsed or {}).get("target", ""),
-                "context": "prepared_execution",
-                "status": (prepared_result or {}).get("status", "failed"),
-            })
-            return prepared_result
-
         # DNI-10: task chains are executable work and may run only when the
         # immutable route explicitly grants execution ownership.
         from lab_v4_dev.core.task_chain import is_chain, detect_chain, execute_chain
