@@ -152,6 +152,13 @@ class ConversationArchive:
         }
         return mapping.get(verb, "states"), remainder
 
+    def migration_complete(self, migration_key: str) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM memory_migrations WHERE migration_key=?",
+            (str(migration_key),),
+        ).fetchone()
+        return bool(row)
+
     def migrate_legacy_dialogue_sessions(self, records: list[dict]) -> dict:
         """Import legacy JSON dialogue transcripts once, without altering source files."""
         migration_key = "legacy_dialogue_transcripts_v1"
