@@ -41,6 +41,10 @@ def build_handler_services(orchestrator, intent=None) -> HandlerServices:
             "dialogue_memory", "restore_session_snapshot",
             "restore_session_context", "metadata",
         })
+    if intent in {Intent.RESUME, Intent.SESSION_RESTORE}:
+        # Saved-dialogue reports may need the append-only SQLite transcript
+        # beyond the bounded JSON checkpoint window.
+        fields.add("memory")
     if intent in {Intent.ANALYZE_CODE, Intent.MODIFY_CODE}:
         fields.add("analyzed_files")
     if intent in {
