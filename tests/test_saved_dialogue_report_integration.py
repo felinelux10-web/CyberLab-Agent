@@ -146,3 +146,64 @@ def test_user_requests_are_not_misreported_as_user_facts_and_report_sources_are_
     assert "طلبات المستخدم" in report
     assert "request-source-1" in report
     assert "الثقة" in report
+
+def test_saved_report_accepts_nested_dialogue_id_only_with_consistent_provenance(monkeypatch):
+    session = _report_session()
+    saved_id = "saved-checkpoint-72"
+    dialogue_id = "live-dialogue-72"
+    session["session_id"] = saved_id
+    dialogue = session["dialogue_state"]
+    dialogue["session_id"] = dialogue_id
+    for archive_name in ("transcript_archive", "exchange_archive"):
+        for exchange in dialogue[archive_name]:
+            exchange["session_id"] = dialogue_id
+            exchange["context_kind"] = "dialogue"
+            exchange["conversation_domain"] = "general"
+
+    monkeypatch.setattr(session_state, "get_session_index", lambda: [session])
+    monkeypatch.setattr(
+        session_state, "get_session_by_number",
+        lambda number: session if number == 72 else {},
+    )
+    monkeypatch.setattr(
+        session_state, "get_session_by_id",
+        lambda value: session if value == saved_id else {},
+    )
+    monkeypatch.setattr(session_state, "load_session", lambda: {})
+    monkeypatch.setattr(
+        session_state, "recoverable_work_checkpoint", lambda _record: None
+    )
+
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id=saved_id, number=72),
+        output_kind="report",
+        evidence_scope="saved_session",
+        provider_allowed=False,
+        intent=Intent.SESSION_RESTORE,
+    )
+    result = handle_session_restore(
+        SimpleNamespace(services=SimpleNamespace()),
+        Intent.SESSION_RESTORE,
+        raw="اكتب تقريرًا تحليليًا عن الجلسة رقم 72",
+        route_decision=decision,
+        session_selector={
+            "kind": "number",
+            "number": 72,
+            "report_mode": "full",
+            "output_kind": "report",
+        },
+    )
+
+    assert result["status"] == "success", result
+    assert result["session_id"] == saved_id
+    assert result["evidence_exchange_ids"] == [
+        "report-exchange-1", "report-exchange-2", "report-exchange-3",
+        "report-exchange-4", "report-exchange-5",
+    ]
+    assert "3 سم" in result["text"]
+    assert "مفك براغ" in result["text"]
+    assert "معرّف الجلسة: live-dialogue-72" in result["text"]
+    assert result["provider_synthesis_attempted"] is False
+
