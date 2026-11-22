@@ -74,6 +74,33 @@ class Agent:
         # P07 — canonical Memory ownership
         self.memory = MemoryStore(self.db)
 
+        # Import existing dialogue transcripts once. Legacy JSON remains the
+        # source file and is never deleted or rewritten by this migration.
+        try:
+            from lab_v4_dev.memory.session_state import get_session_index, get_session_by_id
+            legacy_dialogues = []
+            for item in get_session_index():
+                session_id = str(item.get("session_id") or "").strip()
+                if not session_id:
+                    continue
+                saved = get_session_by_id(session_id)
+                if (
+                    isinstance(saved, dict)
+                    and str(saved.get("session_type") or "").casefold() == "dialogue"
+                ):
+                    legacy_dialogues.append(saved)
+            migration = self.memory.conversations.migrate_legacy_dialogue_sessions(
+                legacy_dialogues
+            )
+            if migration.get("imported_exchanges"):
+                self._boot_ui.row(
+                    "MEMORY",
+                    f"Imported {migration['imported_exchanges']} legacy dialogue exchanges",
+                    "INFO",
+                )
+        except Exception as migration_error:
+            log.warning(f"Legacy dialogue archive migration skipped: {migration_error}")
+
         # 4. health check
         health = check_health(self.state)
         if not health["healthy"]:
