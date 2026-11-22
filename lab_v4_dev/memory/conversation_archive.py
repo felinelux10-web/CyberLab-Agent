@@ -123,7 +123,7 @@ class ConversationArchive:
         if not value or len(value) > 500 or "?" in value or "؟" in value:
             return None
         arabic = re.match(
-            r"^(?:(?:أنا|انا)\s+)?(أستخدم|استخدم|أستعمل|استعمل|أفضل|افضل|أفضّل|أعمل|اعمل|أدرس|ادرس|أتعلم|اتعلم|أعيش|اعيش|أسكن|اسكن|أملك|املك|أمتلك|امتلك)\s+(.+?)\s*[.!،]*$",
+            r"^(?:(?:أنا|انا)\s+)?(أستخدم|استخدم|أستعمل|استعمل|أفضل|افضل|أفضّل|أعمل|اعمل|أدرس|ادرس|أتعلم|اتعلم|أعيش|اعيش|أسكن|اسكن|أملك|املك|أمتلك|امتلك|أصب|اصب|أسكب|اسكب|أضيف|اضيف|أنتظر|انتظر|أشكل|اشكل|أطلي|اطلي|ألون|الون)\s+(.+?)\s*[.!،]*$",
             value,
             flags=re.IGNORECASE,
         )
@@ -149,6 +149,11 @@ class ConversationArchive:
             "أعيش": "lives_in", "اعيش": "lives_in", "live in": "lives_in",
             "أسكن": "lives_in", "اسكن": "lives_in",
             "أملك": "owns", "املك": "owns", "أمتلك": "owns", "امتلك": "owns", "own": "owns",
+            "أصب": "pours", "اصب": "pours", "أسكب": "pours", "اسكب": "pours",
+            "أضيف": "adds", "اضيف": "adds",
+            "أنتظر": "waits", "انتظر": "waits",
+            "أشكل": "shapes", "اشكل": "shapes",
+            "أطلي": "paints", "اطلي": "paints", "ألون": "paints", "الون": "paints",
         }
         return mapping.get(verb, "states"), remainder
 
