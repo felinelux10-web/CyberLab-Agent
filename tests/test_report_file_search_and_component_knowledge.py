@@ -122,6 +122,8 @@ def test_component_retrieval_rejects_generic_words_and_unknown_component():
 def test_file_search_rejects_parent_absolute_and_symlink_escape(tmp_path, monkeypatch):
     import os
     from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.core.contracts import RouteDecision
+from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
     from lab_v4_dev.context.context_store import ContextStore
     from lab_v4_dev.intent.intents import Intent
 
@@ -140,7 +142,16 @@ def test_file_search_rejects_parent_absolute_and_symlink_escape(tmp_path, monkey
     monkeypatch.setattr("lab_v4_dev.core.project_context.get_active_project_root", lambda: str(root))
     orchestrator = Orchestrator(type("Agent", (), {"runtime": None})(), context=ContextStore())
     for target in ("../outside.py", str(outside)) + (("link.py",) if link else ()):
-        result = orchestrator._route(Intent.SEARCH_CODE, target, "file_operation", target)
+        result = route_request(
+            orchestrator,
+            Intent.SEARCH_CODE,
+            target,
+            target,
+            route_decision=RouteDecision(
+                route="P-TOOL", intent=Intent.SEARCH_CODE,
+                evidence_scope="project_state", provider_allowed=False,
+            ),
+        )
         assert "غير موجود" in result["text"]
 
 

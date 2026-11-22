@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.core.orchestrator_handlers.policy import pre_handler_policy
 from lab_v4_dev.intent.intents import Intent
 
 
@@ -24,7 +25,7 @@ def test_profile_load_failure_keeps_conservative_modify_gate(monkeypatch):
     monkeypatch.setattr(profile_loader, "load_profile", unavailable)
     orchestrator = _orchestrator()
 
-    result = orchestrator._pre_handler_policy(
+    result = pre_handler_policy(orchestrator, 
         Intent.MODIFY_CODE,
         "src/module.py",
         "عدّل src/module.py",
@@ -46,7 +47,7 @@ def test_allow_guessing_false_rejects_implicit_context_file_selection(monkeypatc
     })
     orchestrator = _orchestrator(current_file="src/previous.py")
 
-    result = orchestrator._pre_handler_policy(
+    result = pre_handler_policy(orchestrator, 
         Intent.MODIFY_CODE,
         None,
         "عدّل الملف",
@@ -74,7 +75,7 @@ def test_impact_analysis_exception_fails_closed(monkeypatch):
     monkeypatch.setattr(dependency_map, "get_impact", fail)
     orchestrator = _orchestrator()
 
-    result = orchestrator._pre_handler_policy(
+    result = pre_handler_policy(orchestrator, 
         Intent.MODIFY_CODE,
         "src/module.py",
         "عدّل src/module.py",
@@ -104,7 +105,7 @@ def test_unknown_impact_result_is_not_cached_as_a_successful_analysis(monkeypatc
     )
     orchestrator = _orchestrator()
 
-    result = orchestrator._pre_handler_policy(
+    result = pre_handler_policy(orchestrator, 
         Intent.MODIFY_CODE,
         "src/module.py",
         "عدّل src/module.py",
@@ -139,7 +140,7 @@ def test_successful_impact_analysis_is_cached_for_the_exact_target(monkeypatch):
     )
     orchestrator = _orchestrator()
 
-    assert orchestrator._pre_handler_policy(
+    assert pre_handler_policy(orchestrator, 
         Intent.MODIFY_CODE, "src/module.py", "عدّل src/module.py"
     ) is None
     assert calls == ["src/module.py"]
@@ -158,7 +159,7 @@ def test_allow_guessing_false_requires_explicit_pending_repair_selection(monkeyp
     })
     orchestrator = _orchestrator()
 
-    result = orchestrator._pre_handler_policy(
+    result = pre_handler_policy(orchestrator, 
         Intent.REPAIR_APPROVE,
         None,
         "وافق على الإصلاح",

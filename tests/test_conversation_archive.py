@@ -144,7 +144,7 @@ def test_saved_session_view_merges_sqlite_transcript_without_losing_legacy_data(
         """INSERT INTO conversation_messages
            (session_id,exchange_id,exchange_index,speaker,content,source,intent,
             topic,metadata_json,created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
         [
             ("saved-72", "sqlite-1", 1, "user", "I used gypsum.", "conversation",
              "personal_chat", "relief art", "{}", "2026-11-01T10:00:00"),

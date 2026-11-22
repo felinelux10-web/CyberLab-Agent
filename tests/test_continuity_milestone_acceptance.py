@@ -339,6 +339,7 @@ def test_bare_verify_asks_for_a_target_instead_of_becoming_unsupported(monkeypat
 def test_provider_failure_does_not_offer_to_save_missing_explanation(monkeypatch):
     from lab_v4_dev.core import orchestrator as orchestrator_module
     from lab_v4_dev.core.orchestrator import Orchestrator
+    from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
     from lab_v4_dev.core.contracts import RouteDecision
     from lab_v4_dev.intent.intents import Intent
 
@@ -357,14 +358,18 @@ def test_provider_failure_does_not_offer_to_save_missing_explanation(monkeypatch
     instance = Orchestrator.__new__(Orchestrator)
     instance.context = ContextStore()
 
-    result = instance._route(
+    result = route_request(
+        instance,
         Intent.CYBER_EXPLAIN,
         "SQL Injection",
-        "general",
         "اشرح SQL Injection",
         response_attributes={"dialogue_response_mode": "answer"},
         context_transition="new_independent",
-        route_decision=RouteDecision(route="P-TOOL", intent=Intent.CYBER_EXPLAIN, provider_allowed=True),
+        route_decision=RouteDecision(
+            route="P-TOOL", intent=Intent.CYBER_EXPLAIN,
+            evidence_scope="project_state", provider_allowed=True,
+        ),
+        ask_provider=orchestrator_module.ask,
     )
 
     assert result["status"] == "error"
@@ -395,14 +400,18 @@ def test_privacy_block_is_not_reported_as_provider_outage(monkeypatch):
     instance = Orchestrator.__new__(Orchestrator)
     instance.context = ContextStore()
 
-    result = instance._route(
+    result = route_request(
+        instance,
         Intent.CYBER_EXPLAIN,
         "SQL Injection",
-        "general",
         "اشرح SQL Injection",
         response_attributes={"dialogue_response_mode": "answer"},
         context_transition="new_independent",
-        route_decision=RouteDecision(route="P-TOOL", intent=Intent.CYBER_EXPLAIN, provider_allowed=True),
+        route_decision=RouteDecision(
+            route="P-TOOL", intent=Intent.CYBER_EXPLAIN,
+            evidence_scope="project_state", provider_allowed=True,
+        ),
+        ask_provider=orchestrator_module.ask,
     )
 
     assert result["status"] == "error"

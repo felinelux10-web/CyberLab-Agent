@@ -2,6 +2,8 @@ from types import SimpleNamespace
 import importlib
 
 from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.core.contracts import RouteDecision
+from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
 from lab_v4_dev.core.orchestrator_handlers import project_analysis
 from lab_v4_dev.intent.intents import Intent
 
@@ -20,11 +22,16 @@ def test_response_cache_precedes_registered_handler_dispatch(monkeypatch):
     )
 
     orchestrator = object.__new__(Orchestrator)
-    result = orchestrator._route(
+    result = route_request(
+        orchestrator,
         Intent.ANALYZE_CODE,
         "lab_v4_dev/core/agent.py",
-        "project_level",
         "حلل ملف agent.py",
+        route_decision=RouteDecision(
+            route="P-TOOL", intent=Intent.ANALYZE_CODE,
+            evidence_scope="project_state", provider_allowed=True,
+        ),
+        ask_provider=lambda *_a, **_k: None,
     )
 
     assert result["status"] == "success"

@@ -9,6 +9,8 @@ from lab_v4_dev.core.orchestrator_handlers.dispatch import (
     registered_intents,
 )
 from lab_v4_dev.intent.intents import Intent
+from lab_v4_dev.core.contracts import RouteDecision
+from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
 
 
 def test_read_only_pilot_intents_have_exactly_one_registered_owner():
@@ -55,6 +57,11 @@ def test_read_only_pilot_intents_have_exactly_one_registered_owner():
         Intent.SELF_DIAGNOSE, Intent.FULL_DIAGNOSE, Intent.CLEAN_DEVICE,
         Intent.DELETE_FILE, Intent.MODIFY_CODE, Intent.RUN_SCRIPT,
         Intent.REPAIR_ANALYZE, Intent.REPAIR_APPROVE,
+        Intent.DIAGNOSE, Intent.PROPOSE_SOLUTION, Intent.PROPOSE_FIX,
+        Intent.RISK_ANALYSIS, Intent.PLAN, Intent.DECOMPOSE,
+        Intent.REFACTOR_FILE, Intent.OPTIMIZE_CODE, Intent.GENERATE_TEST,
+        Intent.PROJECT_PURPOSE, Intent.ARCHITECTURE, Intent.MODULES,
+        Intent.EXECUTION_FLOW,
     }
     assert registered_intents() == expected
     assert isinstance(HANDLER_REGISTRY, MappingProxyType)
@@ -102,11 +109,81 @@ def _fake_orchestrator():
     return orchestrator
 
 
+
+
+_PROVIDER_INTENTS = {
+    Intent.DIAGNOSE, Intent.PROPOSE_SOLUTION, Intent.PROPOSE_FIX,
+    Intent.RISK_ANALYSIS, Intent.PLAN, Intent.DECOMPOSE, Intent.REFACTOR_FILE,
+    Intent.OPTIMIZE_CODE, Intent.GENERATE_TEST, Intent.PROJECT_PURPOSE,
+    Intent.ARCHITECTURE, Intent.MODULES, Intent.EXECUTION_FLOW,
+    Intent.CYBER_EXPLAIN, Intent.COMPARE_FILES, Intent.PROJECT_REPORT,
+    Intent.ANALYZE_RELEASE, Intent.COMPARE_VERSIONS, Intent.ANALYZE_CODE,
+    Intent.GENERATE_CODE,
+}
+_EXECUTION_INTENTS = {
+    Intent.CLEAN_DEVICE, Intent.DELETE_FILE, Intent.MODIFY_CODE,
+    Intent.RUN_SCRIPT, Intent.REPAIR_ANALYZE, Intent.REPAIR_APPROVE,
+    Intent.SESSION_SAVE, Intent.SWITCH_PROJECT, Intent.RETURN_BASE_PROJECT,
+    Intent.CLEAN, Intent.CLEANUP_CODE, Intent.PLAN_CHANGE,
+    Intent.REPAIR_REJECT, Intent.SAVE_KB, Intent.SKIP_KB, Intent.GENERATE_CODE,
+}
+_SESSION_INTENTS = {Intent.RESUME, Intent.SESSION_RESTORE}
+
+
+def _test_decision(intent):
+    if intent in _SESSION_INTENTS:
+        route, scope = "L-SESSION", "none"
+    elif intent in _EXECUTION_INTENTS:
+        route, scope = "L-EXEC", "work_state"
+    else:
+        route, scope = "P-TOOL", "project_state"
+    return RouteDecision(
+        route=route,
+        intent=intent,
+        evidence_scope=scope,
+        provider_allowed=intent in _PROVIDER_INTENTS,
+    )
+
+
+def _authorized_test_ask(*args, **kwargs):
+    from lab_v4_dev.core import orchestrator as orchestrator_module
+    return orchestrator_module.ask(*args, **kwargs)
+
+
+def _dispatch_through_registry(orchestrator, intent, target, context, raw, **kwargs):
+    decision = kwargs.get("route_decision")
+    if decision is None:
+        decision = _test_decision(intent)
+    elif not isinstance(decision, RouteDecision):
+        route = str(getattr(decision, "route", "P-TOOL") or "P-TOOL")
+        scope = "work_state" if route == "L-EXEC" else (
+            "none" if route == "L-SESSION" else "project_state"
+        )
+        decision = RouteDecision(
+            route=route,
+            intent=intent,
+            evidence_scope=scope,
+            provider_allowed=bool(getattr(decision, "provider_allowed", False)),
+        )
+    return route_request(
+        orchestrator,
+        intent,
+        target,
+        raw,
+        response_attributes=kwargs.get("response_attributes"),
+        conversation_history=kwargs.get("conversation_history"),
+        context_transition=kwargs.get("context_transition"),
+        session_selector=kwargs.get("session_selector"),
+        route_decision=decision,
+        ask_provider=_authorized_test_ask,
+    )
+
+
 def test_route_delegates_space_to_registered_handler():
     from lab_v4_dev.core.orchestrator import Orchestrator
 
     orchestrator = _fake_orchestrator()
-    result = Orchestrator._route(orchestrator, Intent.SPACE, None, None, "")
+    result = _dispatch_through_registry(orchestrator, Intent.SPACE, None, None, "")
     assert result["status"] == "success"
     assert result["intent"] == Intent.SPACE
     assert {"total", "used", "free"} <= result.keys()
@@ -116,7 +193,7 @@ def test_route_delegates_status_without_changing_result_contract():
     from lab_v4_dev.core.orchestrator import Orchestrator
 
     orchestrator = _fake_orchestrator()
-    result = Orchestrator._route(orchestrator, Intent.STATUS, None, None, "")
+    result = _dispatch_through_registry(orchestrator, Intent.STATUS, None, None, "")
     assert result == {
         "status": "success", "intent": Intent.STATUS,
         "text": chr(10).join(["الوضع     : test", "المهام    : 7", "الأخطاء   : 1", "الإخفاقات : 2"]),
@@ -136,8 +213,8 @@ def test_route_delegates_health_and_system_status(monkeypatch):
     })
     orchestrator = _fake_orchestrator()
 
-    health = Orchestrator._route(orchestrator, Intent.HEALTH, None, None, "")
-    system = Orchestrator._route(orchestrator, Intent.SYSTEM_STATUS, None, None, "")
+    health = _dispatch_through_registry(orchestrator, Intent.HEALTH, None, None, "")
+    system = _dispatch_through_registry(orchestrator, Intent.SYSTEM_STATUS, None, None, "")
 
     assert health["health"]["healthy"] is True
     assert system["health"]["healthy"] is True
@@ -153,7 +230,7 @@ def test_route_delegates_memory_status(monkeypatch):
     monkeypatch.setattr(handler_module, "load_memory", lambda: {
         "total_files": 19, "last_updated": "test-time",
     })
-    result = Orchestrator._route(_fake_orchestrator(), Intent.MEMORY_STATUS, None, None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.MEMORY_STATUS, None, None, "")
     assert result == {
         "status": "success", "intent": Intent.MEMORY_STATUS,
         "total_files": 19, "last_updated": "test-time",
@@ -170,7 +247,7 @@ def test_response_cache_precedes_health_handler(monkeypatch):
         health_module, "check_health",
         lambda state: (_ for _ in ()).throw(AssertionError("handler must not run before cache")),
     )
-    result = Orchestrator._route(_fake_orchestrator(), Intent.HEALTH, None, None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.HEALTH, None, None, "")
     assert result == {
         "status": "success", "intent": Intent.HEALTH,
         "source": "cache", "text": "cached-health",
@@ -186,7 +263,7 @@ def test_route_delegates_audit_log(monkeypatch):
         "event": "file.updated", "source": "test", "timestamp": "2026-11-13T07:00:00",
         "context": {"file_path": "demo.py"}, "details": {"reason": "test"},
     }])
-    result = Orchestrator._route(_fake_orchestrator(), Intent.AUDIT_LOG, None, None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.AUDIT_LOG, None, None, "")
     assert result["status"] == "success"
     assert "file.updated [test]" in result["text"]
     assert "demo.py" in result["text"]
@@ -200,7 +277,7 @@ def test_route_delegates_security_log(monkeypatch):
         "timestamp": "2026-11-13T07:00:00", "type": "test", "value": "blocked value",
         "matched": "policy",
     }])
-    result = Orchestrator._route(_fake_orchestrator(), Intent.SECURITY_LOG, None, None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.SECURITY_LOG, None, None, "")
     assert result["status"] == "success"
     assert "blocked value" in result["text"]
     assert "تطابق: policy" in result["text"]
@@ -220,7 +297,7 @@ def test_route_delegates_read_file_using_project_index_candidate(monkeypatch, tm
     monkeypatch.setattr(index_module, "search_index", lambda target: [{"path": "src/inside.py"}])
     monkeypatch.setattr(audit_module, "emit_event", lambda *args, **kwargs: None)
 
-    result = Orchestrator._route(_fake_orchestrator(), Intent.READ_FILE, "inside.py", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.READ_FILE, "inside.py", None, "")
     assert result["status"] == "success"
     assert result["file"] == str(source)
     assert result["output"] == "print('inside')"
@@ -238,7 +315,7 @@ def test_read_file_rejects_project_index_candidate_outside_active_root(monkeypat
     monkeypatch.setattr(project_module, "get_active_project_root", lambda: str(project_root))
     monkeypatch.setattr(index_module, "search_index", lambda target: [{"path": "../outside.py"}])
 
-    result = Orchestrator._route(_fake_orchestrator(), Intent.READ_FILE, "missing.py", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.READ_FILE, "missing.py", None, "")
     assert result["status"] == "failed"
     assert "غير موجود" in result["message"]
 
@@ -253,7 +330,7 @@ def test_project_scan_registered_project_count_uses_unique_roots(monkeypatch):
         {"name": "two", "root": "/projects/two"},
         {"name": "invalid", "root": ""},
     ])
-    result = Orchestrator._route(_fake_orchestrator(), Intent.PROJECT_SCAN, "", None, "كم مشروع")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.PROJECT_SCAN, "", None, "كم مشروع")
     assert result == {
         "status": "success", "intent": Intent.PROJECT_SCAN,
         "source": "local", "text": "عدد المشاريع المسجلة: 2",
@@ -278,7 +355,7 @@ def test_project_scan_returns_local_snapshot_and_audit_event(monkeypatch):
     events = []
     monkeypatch.setattr(audit_module, "emit_event", lambda *args, **kwargs: events.append((args, kwargs)))
 
-    result = Orchestrator._route(_fake_orchestrator(), Intent.PROJECT_SCAN, "", None, "افحص المشروع")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.PROJECT_SCAN, "", None, "افحص المشروع")
     assert result["status"] == "success"
     assert result["source"] == "local"
     assert result["total_files"] == 3
@@ -298,7 +375,7 @@ def test_project_index_counts_unique_registered_projects(monkeypatch):
         {"name": "one-copy", "root": "/projects/one"},
         {"name": "two", "root": "/projects/two"},
     ])
-    result = Orchestrator._route(_fake_orchestrator(), Intent.PROJECT_INDEX, "", None, "عدد المشاريع")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.PROJECT_INDEX, "", None, "عدد المشاريع")
     assert result["status"] == "success"
     assert result["text"] == "عدد المشاريع المسجلة: 2"
 
@@ -308,7 +385,7 @@ def test_project_index_default_route_returns_layer_map(monkeypatch):
     import lab_v4_dev.awareness.project_index as index_module
 
     monkeypatch.setattr(index_module, "get_layer_map", lambda: {"core": ["a.py", "b.py"]})
-    result = Orchestrator._route(_fake_orchestrator(), Intent.PROJECT_INDEX, "", None, "خريطة المشروع")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.PROJECT_INDEX, "", None, "خريطة المشروع")
     assert result["status"] == "success"
     assert "خريطة المشروع:" in result["text"]
     assert "core" in result["text"]
@@ -326,7 +403,7 @@ def test_search_handler_reads_inventory_and_returns_matching_files(monkeypatch):
         {"path": "core/orchestrator.py", "filename": "orchestrator.py"},
     ]}
     monkeypatch.setattr(builtins, "open", lambda *args, **kwargs: io.StringIO(json.dumps(inventory)))
-    result = Orchestrator._route(_fake_orchestrator(), Intent.SEARCH, "agent", None, "ابحث عن agent")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.SEARCH, "agent", None, "ابحث عن agent")
     assert result["status"] == "success"
     assert "core/agent.py" in result["text"]
 
@@ -338,7 +415,7 @@ def test_search_handler_reports_missing_inventory_match(monkeypatch):
     from lab_v4_dev.core.orchestrator import Orchestrator
 
     monkeypatch.setattr(builtins, "open", lambda *args, **kwargs: io.StringIO(json.dumps({"files": []})))
-    result = Orchestrator._route(_fake_orchestrator(), Intent.SEARCH, "not-there", None, "ابحث عن not-there")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.SEARCH, "not-there", None, "ابحث عن not-there")
     assert result["status"] == "success"
     assert "غير موجود" in result["text"]
 
@@ -365,7 +442,7 @@ def test_search_code_explicit_path_uses_filesystem_and_local_index(monkeypatch, 
     monkeypatch.setattr(index_module, "search_index", lambda query: [])
     monkeypatch.setattr(index_module, "save_index", lambda: None)
 
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         _fake_orchestrator(), Intent.SEARCH_CODE, "src/main.py", None,
         "ابحث عن src/main.py",
     )
@@ -393,7 +470,7 @@ def test_search_code_provider_call_remains_behind_authorized_ask(monkeypatch, tm
     )
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
 
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         _fake_orchestrator(), Intent.SEARCH_CODE, "", None,
         "ابحث عن ملفات التشغيل",
         route_decision=decision,
@@ -416,7 +493,7 @@ def test_dependency_map_uses_existing_index_and_returns_critical_and_orphan_file
     monkeypatch.setattr(map_module, "get_critical_files", lambda: [{"file": "core.py", "used_by": 4}])
     monkeypatch.setattr(map_module, "get_orphans", lambda: ["unused.py"])
 
-    result = Orchestrator._route(_fake_orchestrator(), Intent.DEPENDENCY_MAP, "", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.DEPENDENCY_MAP, "", None, "")
     assert result["status"] == "success"
     assert "core.py" in result["text"]
     assert "unused.py" in result["text"]
@@ -429,7 +506,7 @@ def test_entry_point_query_returns_entry_points_and_critical_files(monkeypatch):
     monkeypatch.setattr(engine_module, "index_missing", lambda: False)
     monkeypatch.setattr(engine_module, "get_entry_points", lambda: ["run.py"])
     monkeypatch.setattr(engine_module, "get_critical_files", lambda: ["core.py"])
-    result = Orchestrator._route(_fake_orchestrator(), Intent.ENTRY_POINT_QUERY, "", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.ENTRY_POINT_QUERY, "", None, "")
     assert "run.py" in result["text"]
     assert "core.py" in result["text"]
 
@@ -439,7 +516,7 @@ def test_dependents_query_uses_dependency_engine(monkeypatch):
     import lab_v4_dev.awareness.dependency_engine as engine_module
 
     monkeypatch.setattr(engine_module, "who_depends_on", lambda path: ["a.py", "b.py"])
-    result = Orchestrator._route(_fake_orchestrator(), Intent.DEPENDENTS_QUERY, "", None, "من يستورد core.py")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.DEPENDENTS_QUERY, "", None, "من يستورد core.py")
     assert "a.py" in result["text"] and "b.py" in result["text"]
 
 
@@ -448,7 +525,7 @@ def test_dependencies_query_uses_dependency_engine(monkeypatch):
     import lab_v4_dev.awareness.dependency_engine as engine_module
 
     monkeypatch.setattr(engine_module, "what_imports", lambda path: ["os", "pathlib"])
-    result = Orchestrator._route(_fake_orchestrator(), Intent.DEPENDENCIES, "", None, "ما اعتمادات core.py")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.DEPENDENCIES, "", None, "ما اعتمادات core.py")
     assert "os" in result["text"] and "pathlib" in result["text"]
 
 
@@ -459,7 +536,7 @@ def test_impact_chain_query_preserves_direct_and_indirect_results(monkeypatch):
     monkeypatch.setattr(engine_module, "get_impact_chain", lambda path: {
         "direct": ["a.py"], "indirect": ["b.py", "c.py"], "total_affected": 3,
     })
-    result = Orchestrator._route(_fake_orchestrator(), Intent.IMPACT_CHAIN_QUERY, "", None, "حلل تأثير core.py")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.IMPACT_CHAIN_QUERY, "", None, "حلل تأثير core.py")
     assert "a.py" in result["text"]
     assert "b.py" in result["text"]
     assert "إجمالي الملفات المتأثرة: 3" in result["text"]
@@ -474,7 +551,7 @@ def test_criticality_query_preserves_risk_report(monkeypatch):
         "direct_dependencies": ["a.py"], "indirect_dependencies": ["b.py"],
         "total_affected": 2, "is_entry_point": True,
     })
-    result = Orchestrator._route(_fake_orchestrator(), Intent.CRITICALITY_QUERY, "", None, "ما خطورة core.py")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.CRITICALITY_QUERY, "", None, "ما خطورة core.py")
     assert "75/100" in result["text"]
     assert "نقطة دخول رئيسية" in result["text"]
 
@@ -486,7 +563,7 @@ def test_impact_analysis_records_analyzed_target(monkeypatch):
     monkeypatch.setattr(impact_module, "analyze_impact", lambda target: {"files": ["a.py"]})
     orchestrator = _fake_orchestrator()
     orchestrator._impact_analyzed = set()
-    result = Orchestrator._route(orchestrator, Intent.IMPACT_ANALYSIS, "core.py", None, "")
+    result = _dispatch_through_registry(orchestrator, Intent.IMPACT_ANALYSIS, "core.py", None, "")
     assert result["status"] == "success"
     assert result["impact"] == {"files": ["a.py"]}
     assert "core.py" in orchestrator._impact_analyzed
@@ -504,7 +581,7 @@ def test_file_impact_specialized_dependency_question_keeps_priority(monkeypatch,
     monkeypatch.setattr(project_module, "project_index_dir", lambda root: str(index_dir))
     monkeypatch.setattr(map_module, "get_impact", lambda query: {"imported_by": ["consumer.py"]})
 
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         _fake_orchestrator(), Intent.FILE_IMPACT, "core.py", None,
         "من يستورد core.py",
     )
@@ -533,7 +610,7 @@ def test_file_impact_general_question_keeps_full_impact_report(monkeypatch, tmp_
     orchestrator = _fake_orchestrator()
     orchestrator._impact_analyzed = set()
 
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         orchestrator, Intent.FILE_IMPACT, "core.py", None,
         "ما تأثير تعديل core.py",
     )
@@ -568,7 +645,7 @@ def test_compare_files_uses_authorized_provider_callback(monkeypatch, tmp_path):
         },
     )
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=True)
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         _fake_orchestrator(), Intent.COMPARE_FILES, "", None,
         "قارن بين a.py و b.py",
         route_decision=decision,
@@ -589,7 +666,7 @@ def test_compare_files_provider_denial_does_not_call_gateway(monkeypatch, tmp_pa
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
     )
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         _fake_orchestrator(), Intent.COMPARE_FILES, "", None,
         "قارن بين a.py و b.py",
         route_decision=decision,
@@ -600,7 +677,7 @@ def test_compare_files_provider_denial_does_not_call_gateway(monkeypatch, tmp_pa
 def test_session_report_keeps_current_session_summary_contract():
     from lab_v4_dev.core.orchestrator import Orchestrator
 
-    result = Orchestrator._route(_fake_orchestrator(), Intent.REPORT, "", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.REPORT, "", None, "")
     assert result["status"] == "success"
     assert result["intent"] == Intent.REPORT
     assert result["session"] == {"tasks_done": 7, "error_count": 1}
@@ -617,7 +694,7 @@ def test_project_report_provider_permission_is_enforced(monkeypatch):
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
     )
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         _fake_orchestrator(), Intent.PROJECT_REPORT, "", None, "اكتب تقرير المشروع",
         route_decision=decision,
     )
@@ -640,7 +717,7 @@ def test_context_report_keeps_project_metadata_and_task_snapshot(monkeypatch, tm
     ))
     orchestrator = _fake_orchestrator()
     orchestrator.agent.memory.recent_tasks = lambda limit: [{"status": "success", "intent": "READ_FILE"}]
-    result = Orchestrator._route(orchestrator, Intent.CONTEXT_REPORT, "", None, "")
+    result = _dispatch_through_registry(orchestrator, Intent.CONTEXT_REPORT, "", None, "")
     assert result["version"] == "1.0"
     assert result["focus"] == "demo"
     assert result["releases"] == ["v1"]
@@ -652,7 +729,7 @@ def test_history_report_reads_recent_tasks():
 
     orchestrator = _fake_orchestrator()
     orchestrator.agent.memory.recent_tasks = lambda limit: [{"status": "success", "intent": "SEARCH"}]
-    result = Orchestrator._route(orchestrator, Intent.HISTORY, "", None, "")
+    result = _dispatch_through_registry(orchestrator, Intent.HISTORY, "", None, "")
     assert result["tasks"] == [{"status": "success", "intent": "SEARCH"}]
 
 
@@ -667,9 +744,9 @@ def test_work_tracking_handlers_keep_three_output_modes(monkeypatch):
     monkeypatch.setattr(tracker_module, "get_next_task", lambda: "B")
     monkeypatch.setattr(tracker_module, "get_remaining", lambda: ["B", "C"])
 
-    work = Orchestrator._route(_fake_orchestrator(), Intent.WORK_STATUS, "", None, "")
-    next_task = Orchestrator._route(_fake_orchestrator(), Intent.NEXT_TASK, "", None, "")
-    remaining = Orchestrator._route(_fake_orchestrator(), Intent.REMAINING_TASKS, "", None, "")
+    work = _dispatch_through_registry(_fake_orchestrator(), Intent.WORK_STATUS, "", None, "")
+    next_task = _dispatch_through_registry(_fake_orchestrator(), Intent.NEXT_TASK, "", None, "")
+    remaining = _dispatch_through_registry(_fake_orchestrator(), Intent.REMAINING_TASKS, "", None, "")
     assert "الإصدار: 1.0" in work["text"] and "محظور" in work["text"]
     assert "المهمة التالية: B" == next_task["text"]
     assert "B" in remaining["text"] and "C" in remaining["text"]
@@ -684,7 +761,7 @@ def test_work_context_reports_live_tasks_and_pending_repairs(monkeypatch):
         {"status": "success", "intent": "READ_FILE", "plan": "read project file"},
     ]
     monkeypatch.setattr(approval_module, "list_pending", lambda: [{"fix": "repair.py"}])
-    result = Orchestrator._route(orchestrator, Intent.WORK_CONTEXT, "", None, "")
+    result = _dispatch_through_registry(orchestrator, Intent.WORK_CONTEXT, "", None, "")
     assert "read project file" in result["text"]
     assert "repair.py" in result["text"]
 
@@ -694,7 +771,7 @@ def test_show_last_result_uses_context_last_result():
 
     orchestrator = _fake_orchestrator()
     orchestrator.context.last_result = {"text": "previous output"}
-    result = Orchestrator._route(orchestrator, "show_last_result", "", None, "")
+    result = _dispatch_through_registry(orchestrator, "show_last_result", "", None, "")
     assert result["text"] == "previous output"
 
 
@@ -712,7 +789,7 @@ def test_needs_llm_fallback_remains_explicit_and_provider_gated(monkeypatch):
     monkeypatch.setattr(prompt_module, "build_project_context", lambda **kwargs: "test context")
     monkeypatch.setattr(retriever_module, "resolve_project_scope", lambda *args, **kwargs: None)
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         _fake_orchestrator(), Intent.ARCHITECTURE, "", None,
         "اشرح معمارية النظام",
         route_decision=decision,
@@ -729,7 +806,7 @@ def test_capabilities_handler_reports_active_project_and_memory(monkeypatch):
 
     monkeypatch.setattr(project_module, "get_active_project", lambda: SimpleNamespace(name="demo"))
     monkeypatch.setattr(memory_module, "load_memory", lambda: {"total_files": 17})
-    result = Orchestrator._route(_fake_orchestrator(), Intent.CAPABILITIES, "", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.CAPABILITIES, "", None, "")
     assert result["status"] == "success"
     assert result["source"] == "local"
     assert "demo (17 ملف)" in result["text"]
@@ -744,7 +821,7 @@ def test_save_kb_persists_only_confirmed_pending_explanation(monkeypatch):
     orchestrator = _fake_orchestrator()
     orchestrator.context.pending_save = "topic"
     orchestrator.context.last_result = {"text": "verified explanation"}
-    result = Orchestrator._route(orchestrator, Intent.SAVE_KB, "", None, "")
+    result = _dispatch_through_registry(orchestrator, Intent.SAVE_KB, "", None, "")
     assert result["status"] == "success"
     assert calls == [(("topic", "verified explanation"), {"confirmed": True, "confidence": "EXPLICIT"})]
     assert orchestrator.context.pending_save is None
@@ -760,7 +837,7 @@ def test_skip_kb_clears_pending_confirmation_without_writing(monkeypatch):
     )
     orchestrator = _fake_orchestrator()
     orchestrator.context.pending_save = "topic"
-    result = Orchestrator._route(orchestrator, Intent.SKIP_KB, "", None, "")
+    result = _dispatch_through_registry(orchestrator, Intent.SKIP_KB, "", None, "")
     assert result["status"] == "success"
     assert orchestrator.context.pending_save is None
 
@@ -778,7 +855,7 @@ def test_cyber_explain_uses_local_knowledge_before_provider(monkeypatch):
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("local cache should win")),
     )
     orchestrator = _fake_orchestrator()
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         orchestrator, Intent.CYBER_EXPLAIN, "", None, "اشرح HTTP",
         response_attributes=None, conversation_history=[], context_transition=None,
     )
@@ -802,7 +879,7 @@ def test_cyber_explain_provider_denial_is_enforced(monkeypatch):
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
     )
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         _fake_orchestrator(), Intent.CYBER_EXPLAIN, "", None, "اشرح HTTP",
         route_decision=decision, response_attributes=None,
         conversation_history=[], context_transition=None,
@@ -826,7 +903,7 @@ def test_cyber_explain_success_sets_pending_save_confirmation(monkeypatch):
     })
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=True)
     orchestrator = _fake_orchestrator()
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         orchestrator, Intent.CYBER_EXPLAIN, "", None, "اشرح HTTP",
         route_decision=decision, response_attributes=None,
         conversation_history=[], context_transition=None,
@@ -846,7 +923,7 @@ def test_last_project_handler_returns_saved_project_history(monkeypatch):
         "last_project": "demo", "last_root": "/projects/demo",
         "history": [{"name": "demo", "last_used": "2026-11-13"}],
     })
-    result = Orchestrator._route(_fake_orchestrator(), Intent.LAST_PROJECT, "", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.LAST_PROJECT, "", None, "")
     assert "آخر مشروع: demo" in result["text"]
     assert "/projects/demo" in result["text"]
 
@@ -859,8 +936,8 @@ def test_current_version_and_release_index_handlers(monkeypatch):
 
     monkeypatch.setattr(metadata_module, "ProjectMetadata", lambda: SimpleNamespace(get_version=lambda: "4.7"))
     monkeypatch.setattr(release_module, "get_available_versions", lambda: ["v4.6", "v4.7"])
-    version = Orchestrator._route(_fake_orchestrator(), Intent.CURRENT_VERSION, "", None, "")
-    index = Orchestrator._route(_fake_orchestrator(), Intent.RELEASE_INDEX, "", None, "")
+    version = _dispatch_through_registry(_fake_orchestrator(), Intent.CURRENT_VERSION, "", None, "")
+    index = _dispatch_through_registry(_fake_orchestrator(), Intent.RELEASE_INDEX, "", None, "")
     assert "4.7" in version["text"]
     assert index["versions"] == ["v4.6", "v4.7"]
 
@@ -880,7 +957,7 @@ def test_analyze_release_uses_authorized_provider_callback(monkeypatch):
     })
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=True)
     orchestrator = _fake_orchestrator()
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         orchestrator, Intent.ANALYZE_RELEASE, "", None, "حلل الإصدار 4.7",
         route_decision=decision,
     )
@@ -904,7 +981,7 @@ def test_compare_versions_provider_denial_is_enforced(monkeypatch):
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
     )
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         _fake_orchestrator(), Intent.COMPARE_VERSIONS, "", None,
         "قارن بين 4.6 و 4.7",
         route_decision=decision,
@@ -922,7 +999,7 @@ def test_project_timeline_uses_version_specific_events(monkeypatch):
     monkeypatch.setattr(timeline_module, "get_full_history", lambda: "all history")
     orchestrator = _fake_orchestrator()
     orchestrator.context.current_version = "v4.6"
-    result = Orchestrator._route(orchestrator, Intent.PROJECT_TIMELINE, "", None, "")
+    result = _dispatch_through_registry(orchestrator, Intent.PROJECT_TIMELINE, "", None, "")
     assert "أحداث v4.6" in result["text"]
     assert "released" in result["text"]
     assert calls == ["init"]
@@ -966,7 +1043,7 @@ def test_switch_project_preserves_index_build_history_and_audit(monkeypatch, tmp
     monkeypatch.setattr(knowledge_module, "save_project_history", lambda value: calls["history"].append(value))
     monkeypatch.setattr(audit_module, "emit_event", lambda *args, **kwargs: calls["audit"].append((args, kwargs)))
 
-    result = Orchestrator._route(_fake_orchestrator(), Intent.SWITCH_PROJECT, "", None, str(root))
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.SWITCH_PROJECT, "", None, str(root))
     assert result["status"] == "success"
     assert calls["set"] == [str(root)]
     assert calls["scan"] == calls["graph"] == calls["outputs"] == 1
@@ -986,7 +1063,7 @@ def test_return_base_project_uses_base_root_and_propagates_failure(monkeypatch, 
     monkeypatch.setattr(project_module, "set_active_project", lambda path: (
         calls.append(path) or {"status": "failed", "message": "denied"}
     ))
-    result = Orchestrator._route(_fake_orchestrator(), Intent.RETURN_BASE_PROJECT, "", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.RETURN_BASE_PROJECT, "", None, "")
     assert calls == [base_root]
     assert result["status"] == "failed"
     assert result["text"] == "denied"
@@ -1014,7 +1091,7 @@ def test_session_save_persists_work_and_dialogue_records_separately(monkeypatch)
     orchestrator.agent._meta = SimpleNamespace(get_version=lambda: "v1")
     orchestrator.agent.dialogue_memory = SimpleNamespace(snapshot=lambda: {"exchanges": []})
 
-    result = Orchestrator._route(orchestrator, Intent.SESSION_SAVE, "", None, "")
+    result = _dispatch_through_registry(orchestrator, Intent.SESSION_SAVE, "", None, "")
     assert result["status"] == "success"
     assert result["work_session_id"] == "work-1"
     assert result["dialogue_session_id"] == "dialogue-1"
@@ -1033,7 +1110,7 @@ def test_list_scripts_uses_workspace_folders(monkeypatch, tmp_path):
         directory.mkdir(parents=True, exist_ok=True)
         (directory / filename).write_text("x", encoding="utf-8")
     monkeypatch.setattr(project_module, "CYBERLAB_ROOT", str(tmp_path))
-    result = Orchestrator._route(_fake_orchestrator(), Intent.LIST_SCRIPTS, "", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.LIST_SCRIPTS, "", None, "")
     assert result["status"] == "success"
     assert "scripts/a.py" in result["text"]
     assert "modified/b.py" in result["text"]
@@ -1047,7 +1124,7 @@ def test_error_report_handler_formats_recent_errors(monkeypatch):
     monkeypatch.setattr(sandbox_module, "list_error_reports", lambda: [
         {"approved": False, "file": "bad.py", "error": "SyntaxError"},
     ])
-    result = Orchestrator._route(_fake_orchestrator(), Intent.ERROR_REPORT, "", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.ERROR_REPORT, "", None, "")
     assert result["status"] == "success"
     assert "bad.py" in result["text"]
     assert "SyntaxError" in result["text"]
@@ -1063,7 +1140,7 @@ def test_dry_run_handler_uses_latest_workspace_script(monkeypatch, tmp_path):
     (scripts / "latest.py").write_text("print('ok')", encoding="utf-8")
     monkeypatch.setattr(project_module, "CYBERLAB_ROOT", str(tmp_path))
     monkeypatch.setattr(sandbox_module, "dry_run", lambda path: {"status": "ok", "message": "safe"})
-    result = Orchestrator._route(_fake_orchestrator(), Intent.DRY_RUN, "", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.DRY_RUN, "", None, "")
     assert result["status"] == "success"
     assert "latest.py" in result["text"]
     assert "safe" in result["text"]
@@ -1076,7 +1153,7 @@ def test_run_history_handler_uses_execution_history_service(monkeypatch):
     monkeypatch.setattr(history_module, "get_history", lambda limit: [
         {"status": "success", "script": "/workspace/a.py", "duration": 1.2},
     ])
-    result = Orchestrator._route(_fake_orchestrator(), Intent.RUN_HISTORY, "", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.RUN_HISTORY, "", None, "")
     assert result["status"] == "success"
     assert "a.py" in result["text"]
 
@@ -1089,7 +1166,7 @@ def test_analyze_code_vague_target_requests_clarification_without_provider(monke
         orchestrator_module, "ask",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("vague request must not call provider")),
     )
-    result = Orchestrator._route(_fake_orchestrator(), Intent.ANALYZE_CODE, "", None, "هذا الملف")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.ANALYZE_CODE, "", None, "هذا الملف")
     assert result["status"] == "needs_clarification"
     assert "أي ملف" in result["text"]
 
@@ -1110,7 +1187,7 @@ def test_analyze_code_uses_authorized_provider_and_updates_context(monkeypatch, 
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=True)
     orchestrator = _fake_orchestrator()
     orchestrator._analyzed_files = set()
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         orchestrator, Intent.ANALYZE_CODE, str(source), None, "حلل هذا الملف",
         route_decision=decision,
     )
@@ -1134,7 +1211,7 @@ def test_analyze_code_provider_denial_does_not_call_gateway(monkeypatch, tmp_pat
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider gate bypassed")),
     )
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         _fake_orchestrator(), Intent.ANALYZE_CODE, str(source), None, "حلل هذا الملف",
         route_decision=decision,
     )
@@ -1149,7 +1226,7 @@ def test_show_changes_reports_recent_operation_history():
         {"status": "success", "intent": "READ_FILE"},
         {"status": "failed", "intent": "RUN_SCRIPT"},
     ]
-    result = Orchestrator._route(orchestrator, Intent.SHOW_CHANGES, "", None, "")
+    result = _dispatch_through_registry(orchestrator, Intent.SHOW_CHANGES, "", None, "")
     assert "آخر التعديلات" in result["text"]
     assert "✅ READ_FILE" in result["text"]
     assert "❌ RUN_SCRIPT" in result["text"]
@@ -1158,7 +1235,7 @@ def test_show_changes_reports_recent_operation_history():
 def test_clean_intent_requests_scope_without_cleaning():
     from lab_v4_dev.core.orchestrator import Orchestrator
 
-    result = Orchestrator._route(_fake_orchestrator(), Intent.CLEAN, "", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.CLEAN, "", None, "")
     assert result["status"] == "needs_clarification"
     assert "حدّد الهدف" in result["text"]
 
@@ -1172,7 +1249,7 @@ def test_cleanup_code_creates_review_only_plan(monkeypatch):
     monkeypatch.setattr(planner_module, "Planner", lambda: SimpleNamespace(from_actions=lambda *args, **kwargs: (
         calls.append((args, kwargs)) or SimpleNamespace(to_dict=lambda: {"plan_id": kwargs["plan_id"]})
     )))
-    result = Orchestrator._route(_fake_orchestrator(), Intent.CLEANUP_CODE, "src/", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.CLEANUP_CODE, "src/", None, "")
     assert result["status"] == "needs_clarification"
     assert result["plan_only"] is True
     assert result["executed"] is False
@@ -1190,7 +1267,7 @@ def test_plan_change_creates_preview_without_applying_edits(monkeypatch):
         SimpleNamespace(parameters={"file": "src/consumer.py", "priority": "high"}, action="review"),
     ])
     monkeypatch.setattr(router_module, "create_p10_plan_from_change", lambda *args, **kwargs: plan)
-    result = Orchestrator._route(_fake_orchestrator(), Intent.PLAN_CHANGE, "", None, "خطط لتعديل src/core.py")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.PLAN_CHANGE, "", None, "خطط لتعديل src/core.py")
     assert result["status"] == "success"
     assert result["source"] == "pie"
     assert "src/consumer.py" in result["text"]
@@ -1202,7 +1279,7 @@ def test_repair_reject_clears_last_result_without_file_changes():
 
     orchestrator = _fake_orchestrator()
     orchestrator.context.last_result = {"pending": "fix"}
-    result = Orchestrator._route(orchestrator, Intent.REPAIR_REJECT, "", None, "")
+    result = _dispatch_through_registry(orchestrator, Intent.REPAIR_REJECT, "", None, "")
     assert result["status"] == "success"
     assert orchestrator.context.last_result is None
     assert "لم يتم تعديل أي شيء" in result["text"]
@@ -1213,7 +1290,7 @@ def test_pending_fixes_lists_only_pending_repairs(monkeypatch):
     import lab_v4_dev.core.repair.diff_approval as approval_module
 
     monkeypatch.setattr(approval_module, "list_pending", lambda: [{"fix": "main.py"}])
-    result = Orchestrator._route(_fake_orchestrator(), Intent.PENDING_FIXES, "", None, "")
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.PENDING_FIXES, "", None, "")
     assert result["status"] == "success"
     assert "main.py" in result["text"]
 
@@ -1238,7 +1315,7 @@ def test_read_external_project_switches_scope_and_emits_audit(monkeypatch, tmp_p
     })
     monkeypatch.setattr(audit_module, "emit_event", lambda *args, **kwargs: calls["events"].append((args, kwargs)))
 
-    result = Orchestrator._route(_fake_orchestrator(), Intent.READ_EXTERNAL_PROJECT, "", None, str(root))
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.READ_EXTERNAL_PROJECT, "", None, str(root))
     assert result["status"] == "success"
     assert "تم قراءة المشروع" in result["text"]
     assert calls["switch"] == [str(root)]
@@ -1252,7 +1329,7 @@ def test_read_external_project_missing_path_does_not_switch(monkeypatch, tmp_pat
     calls = []
     monkeypatch.setattr(project_module, "set_active_project", lambda path: calls.append(path))
     missing = str(tmp_path / "missing")
-    result = Orchestrator._route(_fake_orchestrator(), Intent.READ_EXTERNAL_PROJECT, "", None, missing)
+    result = _dispatch_through_registry(_fake_orchestrator(), Intent.READ_EXTERNAL_PROJECT, "", None, missing)
     assert result["status"] == "success"
     assert missing in result["text"]
     assert calls == []
@@ -1270,7 +1347,7 @@ def test_generate_code_template_works_without_provider_permission(monkeypatch):
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("template must not call provider")),
     )
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         _fake_orchestrator(), Intent.GENERATE_CODE, "", None, "اكتب لعبة تخمين",
         route_decision=decision,
     )
@@ -1290,7 +1367,7 @@ def test_generate_code_non_template_requires_authorized_provider(monkeypatch):
     )
     monkeypatch.setattr(engine_module, "save_file", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not save without generated code")))
     decision = SimpleNamespace(route="L-EXEC", provider_allowed=False)
-    result = Orchestrator._route(
+    result = _dispatch_through_registry(
         _fake_orchestrator(), Intent.GENERATE_CODE, "", None, "اكتب دالة لمعالجة JSON",
         route_decision=decision,
     )

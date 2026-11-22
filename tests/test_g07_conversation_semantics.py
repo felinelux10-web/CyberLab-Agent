@@ -178,8 +178,9 @@ def test_explicit_technical_topic_with_style_reaches_orchestrator_and_formats_re
         SimpleNamespace(runtime=None),
         context=context,
     )
-    monkeypatch.setattr(orchestrator, "_pre_handler_policy", lambda *_a, **_k: None)
-    monkeypatch.setattr(orchestrator, "_apply_profile", lambda result, _intent: result)
+    from lab_v4_dev.core.orchestrator_handlers import policy as policy_module
+    monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
+    monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
     manager = ConversationManager(orchestrator, DialogueMemory(context))
 
     result = manager.process("اشرح CSRF بأسلوب أكاديمي")

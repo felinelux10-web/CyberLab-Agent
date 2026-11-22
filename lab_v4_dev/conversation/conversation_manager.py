@@ -2493,8 +2493,9 @@ class ConversationManager:
             and not self._same_topic(active_dialogue_target, current_dialogue_target)
         )
         about_match = re.match(
-            r"^(?:و)?ماذا عن[ \\t]*(.+?)[؟?!.،]*$",
-            normalized_bare_topic,
+            r"^(?:و)?ماذا عن *(.*?)[؟?!.،]*$",
+            str(user_input or "").strip(),
+            flags=re.IGNORECASE,
         )
         about_subject = (
             str(about_match.group(1) or "").strip(" .،؟?!")
@@ -2511,7 +2512,7 @@ class ConversationManager:
         )
         about_subject_is_technical = bool(
             about_subject
-            and any(marker in about_subject for marker in cyber_subject_markers)
+            and any(marker in about_subject.casefold() for marker in cyber_subject_markers)
         )
         about_subject_changed = bool(
             active_dialogue_target
@@ -4408,11 +4409,12 @@ class ConversationManager:
             }
 
         resolved["route_decision"] = child_decision
-        return self.orchestrator.handle(
+        return self._dispatch(
             raw,
-            parsed=resolved,
-            context_resolved=True,
-            route_decision=child_decision,
+            "EXECUTION",
+            resolved,
+            user_question=raw,
+            context_transition=ContextTransition.NEW_INDEPENDENT.value,
         )
 
     def _safe_parse(self, text: str, *, context_entity: dict | None = None) -> dict:

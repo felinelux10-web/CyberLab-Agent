@@ -327,6 +327,14 @@ class Orchestrator:
         # Semantic Router remains available for compatibility elsewhere,
         # but it is not permitted to re-classify this request here.
 
+        # Apply profile and impact policy before context binding. This is
+        # important: an implicit current-file binding must not disguise an
+        # unselected target when the profile forbids guessing.
+        from lab_v4_dev.core.orchestrator_handlers.policy import pre_handler_policy
+        blocked = pre_handler_policy(self, intent, target, raw_request)
+        if blocked:
+            return blocked
+
         operational_context = Context.from_store(self.context)
         bound = bind_context(intent, raw_request, self.context)
         if context_resolved and bound.get("injected"):
@@ -334,11 +342,6 @@ class Orchestrator:
 
         if bound.get("target") and not target:
             target = bound["target"]
-        # ─── Pre-handler Policy ───
-        from lab_v4_dev.core.orchestrator_handlers.policy import pre_handler_policy
-        blocked = pre_handler_policy(self, intent, target, raw_request)
-        if blocked:
-            return blocked
         # ─── Runtime Execution (Series 9) ───
         _rt = getattr(self.agent, "runtime", None)
         if _rt:
@@ -418,55 +421,6 @@ class Orchestrator:
 
         log.debug(f"Orch[{self.phase}]: {intent} → {entry['status']}")
         return result
-
-    def _route(self, intent, target, context, raw, **kwargs):
-        """Narrow compatibility adapter for legacy read-only callers.
-
-        Production dispatch enters through ConversationManager.handle() with
-        its finalized RouteDecision. This adapter accepts an existing decision;
-        without one it permits only the legacy local SEARCH_CODE inspection.
-        It never manufactures execution or provider permission.
-        """
-        route_decision = kwargs.get("route_decision")
-        if route_decision is None:
-            if intent != Intent.SEARCH_CODE:
-                return {
-                    "status": "denied",
-                    "intent": intent,
-                    "source": "route_decision_required",
-                    "executed": False,
-                    "text": "لا يمكن اختيار مسار دون قرار التوجيه النهائي.",
-                }
-            route_decision = RouteDecision(
-                route="L-FACT",
-                intent=intent,
-                evidence_scope="project_state",
-                provider_allowed=False,
-            )
-        elif not isinstance(route_decision, RouteDecision):
-            return {
-                "status": "denied",
-                "intent": intent,
-                "source": "invalid_route_decision",
-                "executed": False,
-                "text": "قرار التوجيه غير صالح.",
-            }
-
-        from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
-        return route_request(
-            self,
-            intent,
-            target,
-            raw,
-            response_attributes=kwargs.get("response_attributes"),
-            conversation_history=kwargs.get("conversation_history"),
-            context_transition=kwargs.get("context_transition"),
-            session_selector=kwargs.get("session_selector"),
-            route_decision=route_decision,
-            ask_provider=lambda *args, **call_kwargs: self._authorized_provider_ask(
-                route_decision, *args, **call_kwargs
-            ),
-        )
 
     def get_last(self)    -> dict: return self.history[-1] if self.history else {}
     def get_history(self) -> list: return self.history

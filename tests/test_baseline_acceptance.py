@@ -3,6 +3,7 @@ from pathlib import Path
 
 from lab_v4_dev.context.context_store import ContextStore
 from lab_v4_dev.core.orchestrator import Orchestrator
+from lab_v4_dev.core.contracts import RouteDecision
 from lab_v4_dev.intent.intent_parser import parse
 from lab_v4_dev.intent.intents import Intent
 
@@ -65,12 +66,26 @@ def test_modify_uses_current_generated_file_without_named_symbol(tmp_path, monke
             return {"status": "success"}
 
     monkeypatch.setattr("lab_v4_dev.core.orchestrator.SafePipeline", Pipeline)
+    monkeypatch.setattr("lab_v4_dev.user_data.profile_loader.load_profile", lambda: {
+        "trust_policy": {"allow_guessing": True},
+        "engineering_style": {
+            "analyze_before_modify": False,
+            "require_impact_analysis": False,
+        },
+    })
 
-    result = orchestrator._route(
-        Intent.MODIFY_CODE,
-        "",
-        "general",
+    result = orchestrator.handle(
         "أضف ألوانًا إلى اللعبة",
+        parsed={
+            "intent": Intent.MODIFY_CODE,
+            "target": "",
+            "context": "general",
+        },
+        context_resolved=False,
+        route_decision=RouteDecision(
+            route="L-EXEC", intent=Intent.MODIFY_CODE,
+            evidence_scope="work_state", provider_allowed=False,
+        ),
     )
 
     assert result["status"] == "success"

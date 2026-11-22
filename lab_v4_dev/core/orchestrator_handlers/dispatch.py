@@ -3,6 +3,7 @@
 from types import MappingProxyType
 
 from lab_v4_dev.intent.intents import Intent
+from lab_v4_dev.core.contracts import RouteDecision
 from . import system_inspection, project_inspection, project_analysis, reports, knowledge, releases, sessions, execution, code_authoring, maintenance, planning, repair, provider_fallback
 
 
@@ -171,12 +172,30 @@ def route_request(
     route_decision=None,
     ask_provider=None,
 ) -> dict:
-    if route_decision is None:
+    if not isinstance(route_decision, RouteDecision):
         return {
             "status": "denied", "intent": intent,
             "source": "route_decision_required_at_dispatch",
             "executed": False,
-            "text": "لا يمكن اختيار مالك تنفيذ دون قرار التوجيه النهائي.",
+            "text": "لا يمكن اختيار مالك تنفيذ دون قرار توجيه نهائي صالح.",
+        }
+    intent_value = str(getattr(intent, "value", intent) or "").casefold()
+    authorized_intent = str(
+        getattr(route_decision.intent, "value", route_decision.intent) or ""
+    ).casefold()
+    if intent_value != authorized_intent:
+        return {
+            "status": "denied", "intent": intent,
+            "source": "route_decision_intent_mismatch",
+            "executed": False,
+            "text": "النية المطلوب تنفيذها لا تطابق النية التي أجازها قرار التوجيه.",
+        }
+    if route_decision.route not in {"L-EXEC", "L-SESSION", "P-TOOL"}:
+        return {
+            "status": "denied", "intent": intent,
+            "source": "route_decision_owner_mismatch",
+            "executed": False,
+            "text": "هذا المسار لا يملك صلاحية استدعاء معالجات Orchestrator.",
         }
     def authorized_ask(*args, **kwargs):
         if route_decision is None or not bool(
