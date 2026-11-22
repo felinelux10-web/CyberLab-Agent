@@ -328,3 +328,43 @@ def test_full_saved_report_merges_sqlite_history_beyond_bounded_checkpoint(monke
     assert "حالة الرد: تعذر إكماله" in transcript["text"]
     assert transcript["provider_synthesis_attempted"] is False
 
+def test_saved_session_route_rejects_number_mismatch_even_when_id_matches(monkeypatch):
+    session = _report_session()
+    session_id = session["session_id"]
+    monkeypatch.setattr(session_state, "get_session_index", lambda: [session])
+    monkeypatch.setattr(
+        session_state, "get_session_by_number",
+        lambda number: session if number == 72 else {},
+    )
+    monkeypatch.setattr(
+        session_state, "get_session_by_id",
+        lambda value: session if value == session_id else {},
+    )
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id=session_id, number=73),
+        output_kind="report",
+        evidence_scope="saved_session",
+        provider_allowed=False,
+        intent=Intent.SESSION_RESTORE,
+    )
+
+    result = handle_session_restore(
+        SimpleNamespace(services=SimpleNamespace()),
+        Intent.SESSION_RESTORE,
+        raw="اكتب تقريرًا عن الجلسة رقم 72",
+        route_decision=decision,
+        session_selector={
+            "kind": "number",
+            "number": 72,
+            "report_mode": "full",
+            "output_kind": "report",
+        },
+    )
+
+    assert result["status"] == "denied"
+    assert result["source"] == "route_decision_session_number_guard"
+    assert result["requested_session_number"] == 72
+    assert result["authorized_session_number"] == 73
+
