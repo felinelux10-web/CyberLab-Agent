@@ -116,3 +116,64 @@ def test_legacy_dialogue_migration_is_idempotent_and_searchable():
     assert facts and facts[0]["value"] == "الصباغة المائية"
     second = archive.migrate_legacy_dialogue_sessions([record])
     assert second["already_migrated"] is True
+
+
+def test_saved_session_view_merges_sqlite_transcript_without_losing_legacy_data(tmp_path, monkeypatch):
+    import sqlite3
+    from lab_v4_dev.memory import db as memory_db
+    from lab_v4_dev.memory.session_state import _attach_sqlite_dialogue_transcript
+
+    database_path = tmp_path / "archive.db"
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        """CREATE TABLE conversation_messages (
+            id INTEGER PRIMARY KEY,
+            session_id TEXT,
+            exchange_id TEXT,
+            exchange_index INTEGER,
+            speaker TEXT,
+            content TEXT,
+            source TEXT,
+            intent TEXT,
+            topic TEXT,
+            metadata_json TEXT,
+            created_at TEXT
+        )"""
+    )
+    connection.executemany(
+        """INSERT INTO conversation_messages
+           (session_id,exchange_id,exchange_index,speaker,content,source,intent,
+            topic,metadata_json,created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        [
+            ("saved-72", "sqlite-1", 1, "user", "I used gypsum.", "conversation",
+             "personal_chat", "relief art", "{}", "2026-11-01T10:00:00"),
+            ("saved-72", "sqlite-1", 1, "assistant", "You used gypsum.", "conversation",
+             "personal_chat", "relief art", "{}", "2026-11-01T10:00:00"),
+        ],
+    )
+    connection.commit()
+    connection.close()
+    monkeypatch.setattr(memory_db, "DB_PATH", str(database_path))
+
+    legacy = {
+        "session_id": "saved-72",
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": "saved-72",
+            "exchange_archive": [
+                {
+                    "session_id": "saved-72",
+                    "user": "Earlier legacy exchange",
+                    "assistant": "Earlier response",
+                    "timestamp": "2026-10-31T10:00:00",
+                }
+            ],
+        },
+    }
+    merged = _attach_sqlite_dialogue_transcript(legacy, "saved-72")
+    transcript = merged["dialogue_state"]["transcript_archive"]
+    assert len(transcript) == 2
+    assert transcript[0]["user"] == "Earlier legacy exchange"
+    assert transcript[1]["user"] == "I used gypsum."
+    assert merged["_transcript_source"] == "legacy+sqlite"
