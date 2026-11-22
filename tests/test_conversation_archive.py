@@ -217,3 +217,35 @@ def test_agent_archives_provider_backed_dialogue_as_conversation_evidence():
     assert calls[0]["assistant_text"] == "شرح محفوظ من مزود المعرفة."
     assert calls[0]["status"] == "success"
 
+def test_personal_fact_search_excludes_assistant_suggestions():
+    archive = make_archive()
+    archive.save_user_fact(
+        subject="user",
+        predicate="uses_material",
+        value="الصباغة المائية",
+        source_session_id="session-72",
+        source_exchange_id="user-fact-1",
+        confidence=0.94,
+    )
+    archive.save_assistant_suggestion(
+        subject="user",
+        predicate="recommended_material",
+        value="الصباغة الزيتية",
+        source_session_id="session-72",
+        source_exchange_id="assistant-suggestion-1",
+        confidence=0.90,
+    )
+
+    personal_facts = archive.search_relevant_facts(
+        "ما الصباغة التي أستخدمها؟"
+    )
+    assistant_suggestions = archive.search_facts(
+        "الصباغة", speaker="assistant"
+    )
+
+    assert personal_facts
+    assert all(item["speaker"] == "user" for item in personal_facts)
+    assert any(item["value"] == "الصباغة المائية" for item in personal_facts)
+    assert not any(item["value"] == "الصباغة الزيتية" for item in personal_facts)
+    assert any(item["value"] == "الصباغة الزيتية" for item in assistant_suggestions)
+
