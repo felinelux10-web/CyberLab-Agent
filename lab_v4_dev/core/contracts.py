@@ -247,6 +247,7 @@ EVIDENCE_SCOPES = frozenset({
     "saved_sessions",
     "project_state",
     "work_state",
+    "user_memory",
 })
 
 
