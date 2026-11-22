@@ -367,7 +367,7 @@ def test_provider_failure_does_not_offer_to_save_missing_explanation(monkeypatch
         context_transition="new_independent",
         route_decision=RouteDecision(
             route="P-TOOL", intent=Intent.CYBER_EXPLAIN,
-            evidence_scope="project_state", provider_allowed=True,
+            evidence_scope="none", provider_allowed=True,
         ),
         ask_provider=orchestrator_module.ask,
     )
@@ -410,7 +410,7 @@ def test_privacy_block_is_not_reported_as_provider_outage(monkeypatch):
         context_transition="new_independent",
         route_decision=RouteDecision(
             route="P-TOOL", intent=Intent.CYBER_EXPLAIN,
-            evidence_scope="project_state", provider_allowed=True,
+            evidence_scope="none", provider_allowed=True,
         ),
         ask_provider=orchestrator_module.ask,
     )
