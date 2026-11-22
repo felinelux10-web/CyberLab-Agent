@@ -77,3 +77,26 @@ def test_dispatch_rejects_saved_report_without_exact_session_identity():
 
     assert result["status"] == "denied"
     assert result["source"] == "route_decision_evidence_scope_guard"
+
+def test_dispatch_rejects_provider_route_with_project_state_evidence():
+    decision = RouteDecision(
+        route="P-TOOL",
+        intent=Intent.CYBER_EXPLAIN,
+        evidence_scope="project_state",
+        provider_allowed=True,
+    )
+
+    result = route_request(
+        _orchestrator(),
+        Intent.CYBER_EXPLAIN,
+        "موضوع",
+        "اشرح الموضوع",
+        route_decision=decision,
+        ask_provider=lambda *_args, **_kwargs: {
+            "status": "success", "text": "يجب ألا يصل التنفيذ إلى المزود."
+        },
+    )
+
+    assert result["status"] == "denied"
+    assert result["source"] == "route_decision_provider_evidence_guard"
+
