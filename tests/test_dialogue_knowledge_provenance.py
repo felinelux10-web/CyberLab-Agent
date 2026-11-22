@@ -1293,6 +1293,7 @@ def test_full_saved_dialogue_report_uses_provenance_analysis_not_generic_checkpo
     assert "إطارًا خشبيًا" in result["text"]
     assert "ورق صنفرة" in result["text"]
     assert "التسلسل الزمني" in result["text"]
+    assert result["evidence_exchange_ids"] == ["exchange-1", "exchange-2", "exchange-3"]
     assert result["provider_synthesis_attempted"] is False
 
 def test_report_keeps_user_requests_out_of_fact_inventory_and_labels_sources():
