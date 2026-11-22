@@ -193,9 +193,9 @@ def test_no_context_reference_cannot_use_nlu_or_intent_cache_or_context_store(mo
     monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
     monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
 
-    from lab_v4_dev.core import orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator_handlers import dispatch as dispatch_module
     monkeypatch.setattr(
-        orchestrator_module,
+        dispatch_module,
         "route_request",
         lambda *_args, **_kwargs: routed.append(_args) or {
             "status": "needs_clarification",
@@ -226,9 +226,9 @@ def test_canonical_orchestrator_path_does_not_rebind_context_store_target(monkey
     from lab_v4_dev.core.orchestrator_handlers import policy as policy_module
     monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
     monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
-    from lab_v4_dev.core import orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator_handlers import dispatch as dispatch_module
     monkeypatch.setattr(
-        orchestrator_module,
+        dispatch_module,
         "route_request",
         lambda *_args, **_kwargs: routed.append(_args) or {
             "status": "needs_clarification", "text": "ما الملف؟"
@@ -253,9 +253,9 @@ def test_context_resolved_path_keeps_explicit_repeat_execution_context(monkeypat
     from lab_v4_dev.core.orchestrator_handlers import policy as policy_module
     monkeypatch.setattr(policy_module, "pre_handler_policy", lambda *_a, **_k: None)
     monkeypatch.setattr(policy_module, "apply_profile", lambda result, _intent: result)
-    from lab_v4_dev.core import orchestrator as orchestrator_module
+    from lab_v4_dev.core.orchestrator_handlers import dispatch as dispatch_module
     monkeypatch.setattr(
-        orchestrator_module,
+        dispatch_module,
         "route_request",
         lambda _orchestrator, intent, target, raw, **_kwargs: (
             routed.append((intent, target, raw))
@@ -297,6 +297,7 @@ def test_targetless_cyber_explanation_bypasses_response_cache(monkeypatch):
         SimpleNamespace(runtime=None),
         context=ContextStore(),
     )
+    from lab_v4_dev.core import orchestrator as orchestrator_module
     from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
     result = route_request(
         orchestrator,
