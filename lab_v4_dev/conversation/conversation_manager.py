@@ -7157,11 +7157,22 @@ class ConversationManager:
                 if user_memory_evidence:
                     memory_lines = []
                     for fact in user_memory_evidence:
+                        provenance = [
+                            "نوع المعلومة: " + str(fact.get("predicate") or "fact"),
+                            "مصدر الاستخراج: " + str(fact.get("source_kind") or "غير محدد"),
+                            "الجلسة: " + str(fact.get("source_session_id") or "غير محدد"),
+                            "التبادل: " + str(fact.get("source_exchange_id") or "غير محدد"),
+                        ]
+                        if fact.get("evidence_message_id") is not None:
+                            provenance.append(
+                                "رسالة الدليل: " + str(fact.get("evidence_message_id"))
+                            )
+                        provenance.append(
+                            "الثقة: " + f"{float(fact.get('confidence') or 0):.2f}"
+                        )
                         memory_lines.append(
                             "- " + str(fact.get("value") or "")
-                            + " (نوع المعلومة: " + str(fact.get("predicate") or "fact")
-                            + "، المصدر: " + str(fact.get("source_session_id") or "غير محدد")
-                            + "، الثقة: " + str(fact.get("confidence") or 0) + ")"
+                            + " (" + "؛ ".join(provenance) + ")"
                         )
                     memory_text = (
                         "المعلومات التي صرّحت بها والمحفوظة في الذاكرة الدائمة:\n"
