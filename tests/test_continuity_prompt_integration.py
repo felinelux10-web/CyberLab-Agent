@@ -132,7 +132,7 @@ def test_provider_privacy_error_is_not_rendered_as_debug_dump(monkeypatch):
         context_transition="new_independent",
         route_decision=RouteDecision(
             route="P-TOOL", intent=Intent.CYBER_EXPLAIN,
-            evidence_scope="project_state", provider_allowed=True,
+            evidence_scope="none", provider_allowed=True,
         ),
         ask_provider=orchestrator_module.ask,
     )
