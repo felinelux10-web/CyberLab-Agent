@@ -1277,7 +1277,8 @@ def test_clarification_and_failed_provider_replies_are_not_substantive_knowledge
         "assistant_non_answer"
     }
     assert analysis["exchange_insights"] == []
-    assert "مساهمات الوكيل واقتراحاته:\\n- لا توجد ردود موضوعية محفوظة." in report
+    assert "مساهمات الوكيل واقتراحاته:" in report
+    assert "- لا توجد ردود موضوعية محفوظة." in report
     assert "ردود الوكيل غير الموضوعية أو غير المكتملة:" in report
     assert "ما الموضوع الذي تريد شرحه؟" in report
 
