@@ -365,7 +365,7 @@ class ConversationArchive:
     def search_relevant_facts(self, query: str, *, limit: int = 12) -> list[dict]:
         """Retrieve user facts using meaningful query terms and verb synonyms."""
         text = str(query or "")
-        tokens = re.findall(r"[\\w\\u0600-\\u06ff]+", text, flags=re.UNICODE)
+        tokens = re.findall(r"[\w\u0600-\u06ff]+", text, flags=re.UNICODE)
         stop = {
             "ما", "ماذا", "هل", "انا", "أنا", "انت", "أنت", "الذي", "التي",
             "هو", "هي", "من", "في", "عن", "على", "الى", "إلى", "مع",
