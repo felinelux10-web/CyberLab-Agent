@@ -197,14 +197,32 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
             }
     if selector.get("kind") == "number":
         candidates = get_session_index()
-        number = int(selector.get("number") or 0)
-        if number < 1 or number > len(candidates):
-            return {"status": "needs_clarification", "intent": intent,
-                    "text": f"لا توجد جلسة محفوظة بالرقم {number}. اختر رقمًا من 1 إلى {len(candidates)}."}
-        numbered_session = get_session_by_number(number)
+        try:
+            number = int(selector.get("number") or 0)
+        except (TypeError, ValueError, OverflowError):
+            number = 0
+        # The session-state resolver owns the stable numbering contract.
+        # Do not pre-empt it with a second count-based check here: alternate
+        # indexes, migrated records, and injected stores may resolve a stable
+        # number even when the visible candidate collection is filtered.
+        numbered_session = (
+            get_session_by_number(number) if number > 0 else {}
+        )
         selected_id = str(
             (numbered_session or {}).get("session_id") or ""
         ).strip()
+        if not selected_id:
+            total = len(candidates)
+            return {
+                "status": "needs_clarification",
+                "intent": intent,
+                "source": "saved_session_number_not_found",
+                "executed": False,
+                "text": (
+                    f"لا توجد جلسة محفوظة بالرقم {number}. "
+                    f"عدد الجلسات الظاهرة حاليًا: {total}."
+                ),
+            }
         if not selected_id:
             return {
                 "status": "needs_clarification",
