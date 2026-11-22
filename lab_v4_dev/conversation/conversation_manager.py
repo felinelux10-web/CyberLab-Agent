@@ -6956,8 +6956,8 @@ class ConversationManager:
                             + "، الثقة: " + str(fact.get("confidence") or 0) + ")"
                         )
                     memory_text = (
-                        "المعلومات التي صرّحت بها والمحفوظة في الذاكرة الدائمة:\\n"
-                        + "\\n".join(memory_lines)
+                        "المعلومات التي صرّحت بها والمحفوظة في الذاكرة الدائمة:\n"
+                        + "\n".join(memory_lines)
                     )
                 else:
                     memory_text = (
