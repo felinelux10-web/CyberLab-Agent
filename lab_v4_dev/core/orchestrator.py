@@ -377,9 +377,14 @@ class Orchestrator:
                         "intent:" + self._intent_value(intent), limit=1
                     )
                     if reusable:
-                        # Advisory only: handlers may inspect the proven pattern,
-                        # but must still enforce current route and execution policy.
-                        response_attributes["reusable_skill"] = reusable[0]
+                        skill = reusable[0]
+                        successes = int(skill.get("success_count") or 0)
+                        failures = int(skill.get("failure_count") or 0)
+                        if successes >= 2 and successes >= (failures * 2):
+                            # Advisory only: handlers may inspect the repeatedly
+                            # successful pattern, but must still enforce current
+                            # route, target and execution policy.
+                            response_attributes["reusable_skill"] = skill
             except Exception as exc:
                 log.warning(f"Reusable skill lookup skipped: {exc}")
         from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
