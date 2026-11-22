@@ -1,6 +1,8 @@
 import sqlite3
 from types import SimpleNamespace
 
+from lab_v4_dev.core.agent import Agent
+from lab_v4_dev.intent.intents import Intent
 from lab_v4_dev.memory.conversation_archive import ConversationArchive
 
 
@@ -177,3 +179,41 @@ def test_saved_session_view_merges_sqlite_transcript_without_losing_legacy_data(
     assert transcript[0]["user"] == "Earlier legacy exchange"
     assert transcript[1]["user"] == "I used gypsum."
     assert merged["_transcript_source"] == "legacy+sqlite"
+
+def test_agent_archives_provider_backed_dialogue_as_conversation_evidence():
+    calls = []
+    session_id = "provider-dialogue-session"
+    result = {
+        "status": "success",
+        "executed": False,
+        "intent": Intent.CYBER_EXPLAIN,
+        "text": "شرح محفوظ من مزود المعرفة.",
+        "route_decision": SimpleNamespace(
+            route="P-TOOL",
+            evidence_scope="none",
+        ),
+    }
+    agent = object.__new__(Agent)
+    agent.loop = True
+    agent.state = SimpleNamespace(mode="normal")
+    agent.conv_manager = SimpleNamespace(process=lambda _text: result)
+    agent.dialogue_memory = SimpleNamespace(
+        snapshot=lambda: {"session_id": session_id, "last_topic": "شرح تقني"},
+        state=SimpleNamespace(session_id=session_id),
+    )
+    agent.memory = SimpleNamespace(
+        conversations=SimpleNamespace(
+            append_exchange=lambda **exchange: calls.append(exchange) or "exchange-1"
+        )
+    )
+    agent.session = SimpleNamespace(session_id=session_id)
+
+    returned = agent.run("اشرح موضوعًا تقنيًا")
+
+    assert returned is result
+    assert len(calls) == 1
+    assert calls[0]["session_id"] == session_id
+    assert calls[0]["user_text"] == "اشرح موضوعًا تقنيًا"
+    assert calls[0]["assistant_text"] == "شرح محفوظ من مزود المعرفة."
+    assert calls[0]["status"] == "success"
+
