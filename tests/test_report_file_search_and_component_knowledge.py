@@ -122,8 +122,8 @@ def test_component_retrieval_rejects_generic_words_and_unknown_component():
 def test_file_search_rejects_parent_absolute_and_symlink_escape(tmp_path, monkeypatch):
     import os
     from lab_v4_dev.core.orchestrator import Orchestrator
-from lab_v4_dev.core.contracts import RouteDecision
-from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
+    from lab_v4_dev.core.contracts import RouteDecision
+    from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
     from lab_v4_dev.context.context_store import ContextStore
     from lab_v4_dev.intent.intents import Intent
 
