@@ -125,6 +125,15 @@ class MemoryStore:
     def save_fact(self, **fact):
         return self.conversations.save_fact(**fact)
 
+    def save_user_fact(self, **fact):
+        return self.conversations.save_user_fact(**fact)
+
+    def save_agent_knowledge(self, **fact):
+        return self.conversations.save_agent_knowledge(**fact)
+
+    def save_assistant_suggestion(self, **fact):
+        return self.conversations.save_assistant_suggestion(**fact)
+
     def search_facts(self, query: str = "", **filters):
         return self.conversations.search_facts(query, **filters)
 
