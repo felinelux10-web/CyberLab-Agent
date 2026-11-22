@@ -6872,6 +6872,12 @@ class ConversationManager:
                 and (
                     response_attributes.get("dialogue_recall")
                     or response_attributes.get("history_query")
+                    or str((parsed or {}).get("conversation_act") or "").upper()
+                    in {"CONVERSATION_CONTINUATION", "TOPIC_CONTINUATION_QUERY", "TOPIC_RETURN"}
+                    or bool(
+                        callable(getattr(self.dialogue_memory, "active_restored_session", None))
+                        and self.dialogue_memory.active_restored_session()
+                    )
                 )
             ):
                 try:
