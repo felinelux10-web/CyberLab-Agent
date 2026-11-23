@@ -350,3 +350,24 @@ def test_reusable_skill_search_requires_a_better_than_failed_run_history():
     assert unvalidated_id not in result_ids
     assert failed_id not in result_ids
 
+
+
+def test_message_search_falls_back_when_existing_fts_index_is_incomplete():
+    archive = make_archive()
+    assert archive.fts_available
+    archive.append_exchange(
+        session_id="fts-fallback-session",
+        user_text="أنا أستخدم الصباغة المائية في اللوحة.",
+        assistant_text="سجلت نوع الصباغة الذي ذكرته.",
+    )
+    archive.conn.execute("DELETE FROM conversation_messages_fts")
+    archive.conn.commit()
+
+    hits = archive.search_messages(
+        "الصباغة المائية",
+        session_id="fts-fallback-session",
+    )
+
+    assert len(hits) == 1
+    assert hits[0]["speaker"] == "user"
+    assert "الصباغة المائية" in hits[0]["content"]
