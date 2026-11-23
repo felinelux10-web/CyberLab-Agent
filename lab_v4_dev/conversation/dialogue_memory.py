@@ -419,11 +419,14 @@ class DialogueMemory:
                 "context_kind": context_kind,
                 "context_transition": relation,
                 "session_id": self.state.session_id,
-                "knowledge_version": 2,
+                "knowledge_version": KNOWLEDGE_SCHEMA_VERSION,
                 "recall_only": True,
                 "response_failed": True,
             }
-            from lab_v4_dev.memory.dialogue_knowledge import extract_exchange_knowledge
+            from lab_v4_dev.memory.dialogue_knowledge import (
+                KNOWLEDGE_SCHEMA_VERSION,
+                extract_exchange_knowledge,
+            )
             failed_exchange["knowledge"] = extract_exchange_knowledge(
                 failed_exchange,
                 session_id=self.state.session_id,
@@ -503,8 +506,11 @@ class DialogueMemory:
                 "context_transition": relation,
                 "session_id": self.state.session_id,
             }
-            from lab_v4_dev.memory.dialogue_knowledge import extract_exchange_knowledge
-            exchange["knowledge_version"] = 2
+            from lab_v4_dev.memory.dialogue_knowledge import (
+                KNOWLEDGE_SCHEMA_VERSION,
+                extract_exchange_knowledge,
+            )
+            exchange["knowledge_version"] = KNOWLEDGE_SCHEMA_VERSION
             exchange["knowledge"] = extract_exchange_knowledge(
                 exchange,
                 session_id=self.state.session_id,
@@ -539,11 +545,14 @@ class DialogueMemory:
                 "context_kind": context_kind,
                 "context_transition": relation,
                 "session_id": self.state.session_id,
-                "knowledge_version": 2,
+                "knowledge_version": KNOWLEDGE_SCHEMA_VERSION,
                 "response_status": "needs_clarification",
                 "recall_only": True,
             }
-            from lab_v4_dev.memory.dialogue_knowledge import extract_exchange_knowledge
+            from lab_v4_dev.memory.dialogue_knowledge import (
+                KNOWLEDGE_SCHEMA_VERSION,
+                extract_exchange_knowledge,
+            )
             exchange["knowledge"] = extract_exchange_knowledge(
                 exchange,
                 session_id=self.state.session_id,

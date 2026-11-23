@@ -11,6 +11,9 @@ import hashlib as _hashlib
 from typing import Any
 
 
+KNOWLEDGE_SCHEMA_VERSION = 3
+
+
 _STOP_WORDS = {
     "ما", "ماذا", "من", "هل", "كيف", "اين", "متى", "كم", "اي", "هي", "هو",
     "الذي", "التي", "في", "عن", "على", "الى", "مع", "بين", "لك", "لي", "لنا",
@@ -275,6 +278,94 @@ def _classify_knowledge_sentence(speaker: str, sentence: str) -> tuple[str, floa
     return "user_fact", 0.56
 
 
+def _extract_structured_facts(sentence: str) -> list[dict]:
+    """Extract narrow, explicit attribute/value pairs without inferring unstated facts."""
+    text = " ".join(str(sentence or "").split()).strip()
+    if not text:
+        return []
+    facts = []
+    seen = set()
+
+    def add(attribute: str, value: str, confidence: float = 0.90) -> None:
+        cleaned = " ".join(str(value or "").split()).strip(" ،؛:.-")
+        key = (attribute, cleaned.casefold())
+        if cleaned and key not in seen:
+            seen.add(key)
+            facts.append({
+                "attribute": attribute,
+                "value": cleaned,
+                "confidence": confidence,
+                "evidence_text": text,
+            })
+
+    thickness = re.search(
+        r"(?:بسماكة|بسمك|سماكة|سمك)\s+(?:حوالي\s+|نحو\s+)?"
+        r"(?P<value>[^،؛.!؟?]+)",
+        text,
+    )
+    if thickness:
+        value = thickness.group("value").strip()
+        # Remove a leading nominal subject when the speaker says "thickness of X".
+        value = re.sub(r"^(?:طبقة\s+(?:الجبس|الجص)\s+)", "", value)
+        add("thickness", value, 0.96)
+
+    frame = re.search(
+        r"(?:إطار|اطار)(?:ًا|ا|اً)?\s+(?:من\s+)?(?P<value>[^\s،؛.!؟?]+)",
+        text,
+    )
+    if frame:
+        value = frame.group("value")
+        normalized = _normalize(value)
+        if any(normalized.startswith(prefix) for prefix in (
+            "خشبي", "معدني", "بلاستيكي", "زجاجي", "حجري", "كرتوني",
+        )):
+            add("frame_material", value, 0.92)
+
+    material = re.search(
+        r"(?:صببت|أصب|اصب|سكبت|أسكب|اسكب)\s+(?:طبقة\s+)?"
+        r"(?P<value>الجبس|الجص|الاسمنت|الإسمنت|الراتنج|الخشب)",
+        text,
+    )
+    if material:
+        add("material", material.group("value"), 0.94)
+
+    tool_match = re.search(
+        r"(?:استخدمت|أستخدم|استخدم|استعملت|أستعمل|سأستخدم|"
+        r"سوف\s+أستخدم|باستخدام)\s+(?P<value>.+?)"
+        r"(?=\s+(?:لتشكيل|لتنعيم|لصنع|لعمل|من\s+أجل|حتى|ثم)\b|[.!؟?؛]|$)",
+        text,
+    )
+    if tool_match:
+        tool_text = tool_match.group("value")
+        tool_items = re.split(
+            r"\s*[,،؛]\s*|\s+و(?=[\w\u0600-\u06ff])",
+            tool_text,
+        )
+        for item in tool_items:
+            item = re.sub(r"^(?:و|ثم)\s*", "", item).strip()
+            if item:
+                add("tool", item, 0.90)
+
+    paint = re.search(
+        r"(?:الصباغة|الطلاء|الدهان)\s+(?:ال)?"
+        r"(المائية|المائي|الزيتية|الزيتي|الأكريليك|اكريليك)",
+        text,
+    )
+    if paint:
+        add("paint_type", paint.group(0), 0.94)
+
+    colors = (
+        "ذهبي", "ذهبية", "فضي", "فضية", "أبيض", "بيضاء",
+        "أسود", "سوداء", "أزرق", "زرقاء", "أخضر", "خضراء",
+        "أحمر", "حمراء",
+    )
+    for color in colors:
+        if re.search(r"(?<!\w)" + re.escape(color) + r"(?!\w)", text):
+            add("color", color, 0.86)
+
+    return facts
+
+
 def extract_exchange_knowledge(
     exchange: dict,
     *,
@@ -312,6 +403,7 @@ def extract_exchange_knowledge(
                 "speaker": speaker,
                 "knowledge_type": kind,
                 "content": sentence,
+                "structured_facts": _extract_structured_facts(sentence),
                 "topic_id": target or None,
                 "concept_links": [target] if target else [],
                 "temporal_order": [int(exchange_index or 0) + 1, sentence_index],
@@ -598,7 +690,7 @@ def analyze_dialogue_session(data: dict) -> dict:
         stored = exchange.get("knowledge")
         source_fingerprint = _exchange_source_fingerprint(exchange)
         stored_is_valid = (
-            exchange.get("knowledge_version") == 2
+            exchange.get("knowledge_version") == KNOWLEDGE_SCHEMA_VERSION
             and isinstance(stored, list)
             and bool(stored)
             and all(
@@ -726,9 +818,33 @@ def analyze_dialogue_session(data: dict) -> dict:
             if item.get("knowledge_type") == "assistant_suggestion":
                 previous_suggestion = item
 
+    structured_facts = [
+        {
+            **fact,
+            "speaker": item.get("speaker"),
+            "knowledge_id": item.get("knowledge_id"),
+            "source_exchange_id": item.get("source_exchange_id"),
+            "source_exchange_index": item.get("source_exchange_index"),
+            "topic_id": item.get("topic_id"),
+            "confidence": min(
+                float(item.get("confidence") or 0.0),
+                float(fact.get("confidence") or 0.0),
+            ),
+        }
+        for item in knowledge
+        for fact in (item.get("structured_facts") or [])
+        if isinstance(fact, dict)
+    ]
     return {
         "session_id": session_id,
         "exchange_count": len(exchanges),
+        "structured_facts": structured_facts,
+        "user_structured_facts": [
+            item for item in structured_facts if item.get("speaker") == "user"
+        ],
+        "assistant_structured_facts": [
+            item for item in structured_facts if item.get("speaker") == "assistant"
+        ],
         "knowledge": knowledge,
         "timeline": timeline,
         "topics": topics,
@@ -840,6 +956,20 @@ def format_dialogue_analysis_report(data: dict) -> str:
     )
     if not user_fact_items:
         lines.append("- لا توجد عبارات تقريرية كافية لاستخراج معلومات المستخدم.")
+    lines.extend(["", "التفاصيل المنظمة المستخرجة من أقوال المستخدم:"])
+    for item in analysis["user_structured_facts"]:
+        lines.append(
+            f"- {evidence_label(item)} {item['attribute']}: {item['value']}"
+        )
+    if not analysis["user_structured_facts"]:
+        lines.append("- لا توجد تفاصيل منظمة إضافية مؤكدة من أقوال المستخدم.")
+    lines.extend(["", "التفاصيل المنظمة من مساهمات الوكيل:"])
+    for item in analysis["assistant_structured_facts"]:
+        lines.append(
+            f"- {evidence_label(item)} {item['attribute']}: {item['value']}"
+        )
+    if not analysis["assistant_structured_facts"]:
+        lines.append("- لا توجد تفاصيل منظمة إضافية من مساهمات الوكيل.")
     lines.extend(["", "طلبات المستخدم:"])
     lines.extend(
         f"- {evidence_label(item)} {item['content']}"

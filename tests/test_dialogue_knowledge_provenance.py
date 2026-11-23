@@ -81,6 +81,31 @@ def test_new_detail_question_retrieves_original_exchange_with_provenance():
     assert any(item["exchange_id"] == "exchange-2" for item in evidence)
 
 
+def test_structured_facts_preserve_value_speaker_and_exchange_provenance():
+    analysis = analyze_dialogue_session(_saved_session())
+    user_facts = analysis["user_structured_facts"]
+
+    assert any(
+        item["attribute"] == "thickness"
+        and item["value"] == "ثلاثة سنتيمترات"
+        and item["source_exchange_id"] == "exchange-1"
+        for item in user_facts
+    )
+    assert any(
+        item["attribute"] == "frame_material"
+        and item["source_exchange_id"] == "exchange-1"
+        for item in user_facts
+    )
+    tools = [
+        item["value"] for item in user_facts
+        if item["attribute"] == "tool"
+        and item["source_exchange_id"] == "exchange-2"
+    ]
+    assert any("سكينًا" in item for item in tools)
+    assert any("مفك" in item for item in tools)
+    assert any("ملعقة" in item for item in tools)
+
+
 def test_full_analysis_report_separates_user_and_assistant_contributions():
     report = format_dialogue_analysis_report(_saved_session())
 
@@ -88,6 +113,8 @@ def test_full_analysis_report_separates_user_and_assistant_contributions():
     assert "مساهمات الوكيل واقتراحاته" in report
     assert "إطارًا خشبيًا" in report
     assert "ورق صنفرة" in report
+    assert "التفاصيل المنظمة المستخرجة من أقوال المستخدم" in report
+    assert "ثلاثة سنتيمترات" in report
     assert "التسلسل الزمني" in report
 
 
@@ -123,7 +150,7 @@ def test_dialogue_memory_persists_exchange_identity_and_derived_knowledge():
     exchange = memory.state.exchange_archive[-1]
     assert exchange["exchange_id"]
     assert exchange["timestamp"]
-    assert exchange["knowledge_version"] == 2
+    assert exchange["knowledge_version"] == 3
     assert exchange["knowledge"]
     assert all(item["source_exchange_id"] == exchange["exchange_id"] for item in exchange["knowledge"])
     assert exchange["exchange_index"] == 1
