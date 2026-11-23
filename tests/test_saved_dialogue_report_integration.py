@@ -368,3 +368,84 @@ def test_saved_session_route_rejects_number_mismatch_even_when_id_matches(monkey
     assert result["requested_session_number"] == 72
     assert result["authorized_session_number"] == 73
 
+
+
+def test_session_72_style_thirteen_exchange_report_preserves_all_user_details(monkeypatch):
+    session = _report_session()
+    session_id = session["session_id"]
+    details = [
+        "أستعمل إطارًا خشبيًا قديمًا للعمل على اللوحة.",
+        "أصب الجبس بسماكة تقارب 3 سم داخل الإطار.",
+        "أنتظر حتى تجف طبقة الجبس قبل تشكيلها.",
+        "أستعمل سكينًا لتشكيل سطح الجبس.",
+        "أستعمل مفك براغٍ لإضافة تفاصيل بارزة.",
+        "أستعمل ملعقة لتشكيل أجزاء أخرى من السطح.",
+        "أضع طبقة أساس سوداء على اللوحة.",
+        "أضيف اللون الذهبي فوق القاعدة السوداء.",
+        "أضيف الأبيض والأزرق بتدرجات متناسقة.",
+        "أستعمل صباغة مائية.",
+        "أختار الصباغة المائية لأنها صديقة للبيئة.",
+        "أريد أن يظهر العمل بمظهر عتيق.",
+        "أضع في النهاية طبقة كولا شفافة تشبه ورنيش الخشب للحماية.",
+    ]
+    exchanges = [
+        {
+            "session_id": session_id,
+            "exchange_id": f"session-72-evidence-{index:02d}",
+            "target": "لوحة الجبس البارزة",
+            "user": detail,
+            "assistant": (
+                "هذه معلومة ذكرتها عن طريقة تنفيذ اللوحة."
+                if index % 2
+                else "يمكن التفكير في هذه الخطوة مع الحفاظ على تفاصيل العمل."
+            ),
+            "context_kind": "dialogue",
+            "conversation_domain": "general",
+        }
+        for index, detail in enumerate(details, 1)
+    ]
+    session["dialogue_state"]["transcript_archive"] = exchanges
+    session["dialogue_state"]["exchange_archive"] = exchanges
+
+    monkeypatch.setattr(session_state, "get_session_index", lambda: [session])
+    monkeypatch.setattr(
+        session_state, "get_session_by_number",
+        lambda number: session if number == 72 else {},
+    )
+    monkeypatch.setattr(
+        session_state, "get_session_by_id",
+        lambda value: session if value == session_id else {},
+    )
+    monkeypatch.setattr(session_state, "load_session", lambda: {})
+    monkeypatch.setattr(
+        session_state, "recoverable_work_checkpoint", lambda _record: None
+    )
+
+    decision = RouteDecision(
+        route="L-SESSION",
+        session_scope="saved_number",
+        session_ref=SessionRef(session_id=session_id, number=72),
+        output_kind="report",
+        evidence_scope="saved_session",
+        provider_allowed=False,
+        intent=Intent.SESSION_RESTORE,
+    )
+    result = handle_session_restore(
+        SimpleNamespace(services=SimpleNamespace()),
+        Intent.SESSION_RESTORE,
+        raw="اكتب تقريرًا تحليليًا عن الجلسة رقم 72",
+        route_decision=decision,
+        session_selector={
+            "kind": "number",
+            "number": 72,
+            "report_mode": "full",
+            "output_kind": "report",
+        },
+    )
+
+    assert result["status"] == "success", result
+    assert result["session_id"] == session_id
+    assert len(result["evidence_exchange_ids"]) == 13
+    for detail in details:
+        assert detail in result["text"]
+    assert result["provider_synthesis_attempted"] is False
