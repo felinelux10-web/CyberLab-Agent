@@ -288,6 +288,27 @@ class Agent:
         if self.state.mode == "frozen":
             return {"status": "frozen", "reason": "manual intervention required"}
 
+        # Reconcile old DialogueMemory snapshots with the durable SQLite
+        # high-water mark before creating a new exchange. Older snapshots may
+        # not contain exchange_sequence/exchange_index yet.
+        try:
+            dialogue_memory = getattr(self, "dialogue_memory", None)
+            archive = getattr(getattr(self, "memory", None), "conversations", None)
+            dialogue_state = getattr(dialogue_memory, "state", None)
+            session_id = str(getattr(dialogue_state, "session_id", "") or "").strip()
+            max_index = getattr(archive, "max_exchange_index", None)
+            if session_id and callable(max_index):
+                current_index = int(
+                    getattr(dialogue_state, "exchange_sequence", 0) or 0
+                )
+                dialogue_state.exchange_sequence = max(
+                    current_index, int(max_index(session_id) or 0)
+                )
+        except (TypeError, ValueError, OverflowError) as sequence_error:
+            log.warning(f"Dialogue exchange sequence reconciliation skipped: {sequence_error}")
+        except Exception as sequence_error:
+            log.warning(f"Dialogue exchange sequence reconciliation failed: {sequence_error}")
+
         # Conversation Layer هو المسار الرئيسي (H.8.5)
         dialogue_before = (
             self.dialogue_memory.snapshot()

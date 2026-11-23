@@ -325,6 +325,7 @@ def test_append_exchange_is_idempotent_and_preserves_canonical_identity():
     assert len(rows) == 2
     assert {row["exchange_id"] for row in rows} == {"stable-exchange-id"}
     assert {row["exchange_index"] for row in rows} == {7}
+    assert archive.max_exchange_index("canonical-session") == 7
     assert all("conversation_domain" in row["metadata_json"] for row in rows)
     structured = archive.conn.execute(
         """SELECT predicate, value, status FROM memory_facts
@@ -405,6 +406,42 @@ def test_structured_correction_supersedes_only_the_prior_topic_fact():
     assert by_exchange["old-thickness"]["status"] == "superseded"
     assert by_exchange["new-thickness"]["status"] == "active"
     assert by_exchange["new-thickness"]["value"] == "خمسة سنتيمترات"
+
+
+def test_agent_reconciles_old_live_sequence_with_sqlite_high_water_mark():
+    observed = []
+    session_id = "sequence-reconcile-session"
+    result = {
+        "status": "success",
+        "executed": False,
+        "intent": Intent.CYBER_EXPLAIN,
+        "text": "إجابة محلية.",
+        "route_decision": SimpleNamespace(route="L-FACT", evidence_scope="live_exchanges"),
+    }
+    snapshot = {"session_id": session_id, "exchange_archive": []}
+    agent = object.__new__(Agent)
+    agent.loop = True
+    agent.state = SimpleNamespace(mode="normal")
+    dialogue_state = SimpleNamespace(session_id=session_id, exchange_sequence=0)
+    agent.dialogue_memory = SimpleNamespace(
+        snapshot=lambda: dict(snapshot),
+        state=dialogue_state,
+    )
+    agent.conv_manager = SimpleNamespace(
+        process=lambda _text: (observed.append(dialogue_state.exchange_sequence) or result)
+    )
+    agent.memory = SimpleNamespace(
+        conversations=SimpleNamespace(
+            max_exchange_index=lambda sid: 448 if sid == session_id else 0,
+            append_exchange=lambda **_exchange: None,
+        )
+    )
+    agent.session = SimpleNamespace(session_id=session_id)
+
+    agent.run("سؤال عادي")
+
+    assert observed == [448]
+    assert dialogue_state.exchange_sequence == 448
 
 
 def test_agent_does_not_persist_read_only_history_without_new_exchange():

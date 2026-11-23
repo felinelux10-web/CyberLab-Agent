@@ -626,6 +626,20 @@ class ConversationArchive:
             "imported_facts": imported_facts,
         }
 
+    def max_exchange_index(self, session_id: str) -> int:
+        """Return the durable per-session exchange high-water mark."""
+        sid = str(session_id or "").strip()
+        if not sid:
+            return 0
+        row = self.conn.execute(
+            "SELECT COALESCE(MAX(exchange_index), 0) FROM conversation_messages WHERE session_id=?",
+            (sid,),
+        ).fetchone()
+        try:
+            return max(0, int(row[0] if row else 0))
+        except (TypeError, ValueError, OverflowError):
+            return 0
+
     def append_exchange(
         self, *, session_id: str, user_text: str, assistant_text: str,
         source: str = "conversation", intent: str | None = None,
