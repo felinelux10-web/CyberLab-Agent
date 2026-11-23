@@ -194,7 +194,14 @@ class ConversationArchive:
             transcript = dialogue.get("transcript_archive")
             if not isinstance(transcript, list) or not transcript:
                 transcript = dialogue.get("exchange_archive")
-            return isinstance(transcript, list) and bool(transcript)
+            failed = dialogue.get("failed_transcript_archive")
+            if not isinstance(failed, list) or not failed:
+                failed = dialogue.get("failed_exchange_archive")
+            return (
+                isinstance(transcript, list) and bool(transcript)
+            ) or (
+                isinstance(failed, list) and bool(failed)
+            )
 
         pending_dialogue_records = [
             item for item in dialogue_records if not has_transcript(item)
@@ -228,7 +235,28 @@ class ConversationArchive:
                 exchanges = dialogue.get("transcript_archive")
                 if not isinstance(exchanges, list) or not exchanges:
                     exchanges = dialogue.get("exchange_archive") or []
-                if not isinstance(exchanges, list) or not exchanges:
+                if not isinstance(exchanges, list):
+                    exchanges = []
+                failed_exchanges = dialogue.get("failed_transcript_archive")
+                if not isinstance(failed_exchanges, list) or not failed_exchanges:
+                    failed_exchanges = dialogue.get("failed_exchange_archive") or []
+                if not isinstance(failed_exchanges, list):
+                    failed_exchanges = []
+                known_exchange_ids = {
+                    str(item.get("exchange_id") or "")
+                    for item in exchanges if isinstance(item, dict)
+                }
+                exchanges = list(exchanges)
+                for failed_item in failed_exchanges:
+                    if not isinstance(failed_item, dict):
+                        continue
+                    failed_id = str(failed_item.get("exchange_id") or "")
+                    if failed_id and failed_id in known_exchange_ids:
+                        continue
+                    exchanges.append(failed_item)
+                    if failed_id:
+                        known_exchange_ids.add(failed_id)
+                if not exchanges:
                     continue
 
                 self.conn.execute(
@@ -278,14 +306,27 @@ class ConversationArchive:
                     created_at = str(
                         exchange.get("timestamp") or exchange.get("created_at") or now
                     )
-                    meta = _json({
+                    meta_values = dict(exchange.get("metadata") or {})
+                    if not isinstance(meta_values, dict):
+                        meta_values = {}
+                    meta_values.update({
                         "source": "legacy_session_import",
                         "legacy": True,
                         "context_kind": context_kind or None,
                         "conversation_domain": conversation_domain or None,
+                        "conversation_act": str(exchange.get("conversation_act") or ""),
+                        "context_transition": str(exchange.get("context_transition") or ""),
+                        "knowledge_version": exchange.get("knowledge_version"),
                         "response_status": str(exchange.get("response_status") or ""),
                         "response_failed": bool(exchange.get("response_failed")),
                         "failure_message": str(exchange.get("failure_message") or ""),
+                        "recall_only": bool(exchange.get("recall_only")),
+                        "state_boundary_only": bool(exchange.get("state_boundary_only")),
+                        "confidence": exchange.get("confidence"),
+                    })
+                    meta = _json({
+                        key: value for key, value in meta_values.items()
+                        if value is not None and value != ""
                     })
                     user_message_id = None
                     exchange_inserted = False
@@ -365,19 +406,28 @@ class ConversationArchive:
         self, *, session_id: str, user_text: str, assistant_text: str,
         source: str = "conversation", intent: str | None = None,
         topic: str | None = None, status: str | None = None,
-        metadata: dict | None = None,
+        metadata: dict | None = None, exchange_id: str | None = None,
+        exchange_index: int | None = None, created_at: str | None = None,
     ) -> str | None:
-        """Append both sides of one exchange exactly once under a unique ID."""
+        """Persist one canonical exchange idempotently, preserving its source identity."""
         sid = str(session_id or "").strip()
         user = str(user_text or "").strip()
         assistant = str(assistant_text or "").strip()
         if not sid or not (user or assistant):
             return None
-        exchange_id = uuid.uuid4().hex
-        now = _now()
+        canonical_id = str(exchange_id or uuid.uuid4().hex).strip()
+        if not canonical_id:
+            return None
+        now = str(created_at or _now())
         meta = dict(metadata or {})
         if status:
-            meta["status"] = str(status)
+            meta.setdefault("status", str(status))
+            meta.setdefault("response_status", str(status))
+        try:
+            requested_index = int(exchange_index) if exchange_index is not None else 0
+        except (TypeError, ValueError, OverflowError):
+            requested_index = 0
+
         self.conn.execute("BEGIN")
         try:
             self.conn.execute(
@@ -386,47 +436,106 @@ class ConversationArchive:
                    VALUES (?, ?, ?, ?)""",
                 (sid, (user[:120] if user else "Conversation"), now, now),
             )
-            row = self.conn.execute(
-                "SELECT COALESCE(MAX(exchange_index), 0) + 1 FROM conversation_messages WHERE session_id=?",
-                (sid,),
-            ).fetchone()
-            exchange_index = int(row[0] if row else 1)
+            existing_rows = self.conn.execute(
+                """SELECT speaker, content, exchange_index, created_at, metadata_json
+                   FROM conversation_messages
+                   WHERE session_id=? AND exchange_id=?""",
+                (sid, canonical_id),
+            ).fetchall()
+            existing = {str(row["speaker"]): dict(row) for row in existing_rows}
+            for speaker, body in (("user", user), ("assistant", assistant)):
+                prior = existing.get(speaker)
+                if body and prior and str(prior.get("content") or "") != body:
+                    raise ValueError(
+                        f"exchange identity collision for {sid}/{canonical_id}/{speaker}"
+                    )
+
+            if existing_rows:
+                persisted_index = int(existing_rows[0]["exchange_index"] or 0)
+                if persisted_index > 0:
+                    requested_index = persisted_index
+                persisted_time = str(existing_rows[0]["created_at"] or "")
+                if persisted_time:
+                    now = persisted_time
+            if requested_index <= 0:
+                row = self.conn.execute(
+                    "SELECT COALESCE(MAX(exchange_index), 0) + 1 "
+                    "FROM conversation_messages WHERE session_id=?",
+                    (sid,),
+                ).fetchone()
+                requested_index = int(row[0] if row else 1)
+
             user_message_id = None
+            user_inserted = False
             for speaker, body in (("user", user), ("assistant", assistant)):
                 if not body:
                     continue
+                prior = existing.get(speaker)
+                if prior:
+                    try:
+                        prior_meta = json.loads(prior.get("metadata_json") or "{}")
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        prior_meta = {}
+                    if not isinstance(prior_meta, dict):
+                        prior_meta = {}
+                    merged_meta = {**prior_meta, **meta}
+                    if merged_meta != prior_meta:
+                        self.conn.execute(
+                            """UPDATE conversation_messages SET metadata_json=?
+                               WHERE session_id=? AND exchange_id=? AND speaker=?""",
+                            (_json(merged_meta), sid, canonical_id, speaker),
+                        )
+                    if speaker == "user":
+                        row = self.conn.execute(
+                            """SELECT id FROM conversation_messages
+                               WHERE session_id=? AND exchange_id=? AND speaker='user'""",
+                            (sid, canonical_id),
+                        ).fetchone()
+                        user_message_id = int(row[0]) if row else None
+                    continue
                 cursor = self.conn.execute(
-                    """INSERT INTO conversation_messages
+                    """INSERT OR IGNORE INTO conversation_messages
                        (session_id, exchange_id, exchange_index, speaker, content,
                         source, intent, topic, metadata_json, created_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (sid, exchange_id, exchange_index, speaker, body,
-                     str(source), str(intent) if intent is not None else None,
-                     str(topic) if topic is not None else None, _json(meta), now),
+                    (
+                        sid, canonical_id, requested_index, speaker, body,
+                        str(source), str(intent) if intent is not None else None,
+                        str(topic) if topic is not None else None, _json(meta), now,
+                    ),
                 )
-                message_id = int(cursor.lastrowid)
-                if speaker == "user":
-                    user_message_id = message_id
-                if self.fts_available:
+                if cursor.rowcount > 0:
+                    message_id = int(cursor.lastrowid)
+                    if speaker == "user":
+                        user_message_id = message_id
+                        user_inserted = True
+                    if self.fts_available:
+                        self.conn.execute(
+                            """INSERT OR IGNORE INTO conversation_messages_fts
+                               (rowid, content, session_id, speaker)
+                               VALUES (?, ?, ?, ?)""",
+                            (message_id, body, sid, speaker),
+                        )
+
+            # Explicit facts are attached only when the canonical user message
+            # is first inserted; retries cannot create duplicate fact records.
+            if user_inserted and user_message_id is not None:
+                explicit_fact = self._extract_explicit_user_fact(user)
+                if explicit_fact:
+                    predicate, fact_value = explicit_fact
                     self.conn.execute(
-                        """INSERT INTO conversation_messages_fts
-                           (rowid, content, session_id, speaker)
-                           VALUES (?, ?, ?, ?)""",
-                        (message_id, body, sid, speaker),
+                        """INSERT INTO memory_facts
+                           (subject,predicate,value,speaker,source_kind,source_session_id,
+                            source_exchange_id,evidence_message_id,confidence,status,
+                            metadata_json,created_at,updated_at)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            "user", predicate, fact_value, "user", "explicit",
+                            sid, canonical_id, user_message_id, 0.94, "active",
+                            _json({"extraction": "first_person_assertion"}),
+                            now, now,
+                        ),
                     )
-            explicit_fact = self._extract_explicit_user_fact(user)
-            if explicit_fact and user_message_id is not None:
-                predicate, fact_value = explicit_fact
-                self.conn.execute(
-                    """INSERT INTO memory_facts
-                       (subject,predicate,value,speaker,source_kind,source_session_id,
-                        source_exchange_id,evidence_message_id,confidence,status,
-                        metadata_json,created_at,updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    ("user", predicate, fact_value, "user", "explicit", sid,
-                     exchange_id, user_message_id, 0.94, "active",
-                     _json({"extraction": "first_person_assertion"}), now, now),
-                )
             self.conn.execute(
                 """UPDATE conversation_sessions
                    SET updated_at=?, message_count=(
@@ -436,7 +545,7 @@ class ConversationArchive:
                 (now, sid, user, user[:120], sid),
             )
             self.conn.commit()
-            return exchange_id
+            return canonical_id
         except Exception:
             self.conn.rollback()
             raise
@@ -545,7 +654,9 @@ class ConversationArchive:
                 metadata = {}
             if not isinstance(metadata, dict):
                 metadata = {}
-            response_status = str(metadata.get("status") or "").casefold()
+            response_status = str(
+                metadata.get("response_status") or metadata.get("status") or ""
+            ).casefold()
             response_failed = response_status in {
                 "error", "failed", "denied", "unsupported",
             } or bool(metadata.get("response_failed"))
@@ -561,6 +672,13 @@ class ConversationArchive:
                     "timestamp": item.get("created_at"),
                     "source": item.get("source"),
                     "metadata": metadata,
+                    "context_kind": metadata.get("context_kind"),
+                    "conversation_domain": metadata.get("conversation_domain"),
+                    "conversation_act": metadata.get("conversation_act"),
+                    "context_transition": metadata.get("context_transition"),
+                    "knowledge_version": metadata.get("knowledge_version"),
+                    "recall_only": bool(metadata.get("recall_only")),
+                    "state_boundary_only": bool(metadata.get("state_boundary_only")),
                     "response_status": response_status,
                     "response_failed": response_failed,
                     "failure_message": str(

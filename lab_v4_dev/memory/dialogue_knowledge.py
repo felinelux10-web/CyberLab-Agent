@@ -199,7 +199,7 @@ def _split_knowledge_sentences(value: Any) -> list[str]:
     text = str(value or "").strip()
     if not text:
         return []
-    parts = re.split(r"(?<=[.!؟?])\s+|\n+", text)
+    parts = re.split(r"(?<=[.!؟?؛])\s+|(?<=،)\s+|\n+", text)
     return [part.strip(" \t\r\n-•") for part in parts if part.strip(" \t\r\n-•")]
 
 

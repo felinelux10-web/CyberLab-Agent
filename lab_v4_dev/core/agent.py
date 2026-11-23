@@ -293,51 +293,82 @@ class Agent:
         if dialogue_after is not None and dialogue_after != dialogue_before:
             self._save_dialogue_checkpoint()
 
-        # Durable transcript: persist the raw user/assistant exchange after
-        # checkpoint identity normalization, before bounded history rotates.
+        # Persist the exact exchange created by DialogueMemory. Reuse its
+        # canonical ID, sequence and timestamp; read-only history retrieval
+        # does not create a new archive entry.
         try:
             archive = getattr(getattr(self, "memory", None), "conversations", None)
-            state = getattr(getattr(self, "dialogue_memory", None), "state", None)
             snapshot = (
                 self.dialogue_memory.snapshot()
-                if getattr(self, "dialogue_memory", None)
-                else {}
+                if getattr(self, "dialogue_memory", None) else {}
             )
-            session_id = (
-                snapshot.get("session_id")
-                if isinstance(snapshot, dict) else None
-            ) or getattr(state, "session_id", None) or getattr(self.session, "session_id", None)
+            session_id = str(snapshot.get("session_id") or "").strip()
             result_data = result if isinstance(result, dict) else {}
             route_decision = result_data.get("route_decision")
             dialogue_route = getattr(route_decision, "route", None)
+            before_ids = {
+                str(item.get("exchange_id") or "")
+                for source in (
+                    (dialogue_before or {}).get("exchange_archive", []),
+                    (dialogue_before or {}).get("failed_exchange_archive", []),
+                )
+                for item in (source or [])
+                if isinstance(item, dict)
+            }
+            new_exchanges = []
+            for source_name in ("exchange_archive", "failed_exchange_archive"):
+                for item in (snapshot.get(source_name) or []):
+                    if not isinstance(item, dict):
+                        continue
+                    exchange_id = str(item.get("exchange_id") or "").strip()
+                    if (
+                        exchange_id
+                        and exchange_id not in before_ids
+                        and str(item.get("session_id") or session_id) == session_id
+                        and str(item.get("user") or "") == request.raw_text
+                        and not item.get("state_boundary_only")
+                    ):
+                        new_exchanges.append(item)
+            canonical_exchange = new_exchanges[-1] if new_exchanges else None
             if (
                 archive is not None
                 and session_id
+                and canonical_exchange is not None
                 and dialogue_route in {"L-SOCIAL", "L-LIVE", "L-FACT", "P-TOOL"}
             ):
                 result_intent = result_data.get("intent")
                 result_intent = getattr(result_intent, "value", result_intent)
+                exchange_metadata = {
+                    "route": dialogue_route,
+                    "evidence_scope": getattr(route_decision, "evidence_scope", None),
+                    "context_kind": canonical_exchange.get("context_kind"),
+                    "conversation_domain": canonical_exchange.get("conversation_domain"),
+                    "conversation_act": canonical_exchange.get("conversation_act"),
+                    "context_transition": canonical_exchange.get("context_transition"),
+                    "knowledge_version": canonical_exchange.get("knowledge_version"),
+                    "recall_only": bool(canonical_exchange.get("recall_only")),
+                    "state_boundary_only": bool(canonical_exchange.get("state_boundary_only")),
+                    "response_failed": bool(canonical_exchange.get("response_failed")),
+                    "response_status": canonical_exchange.get("response_status") or result_data.get("status"),
+                    "failure_message": canonical_exchange.get("failure_message"),
+                    "confidence": canonical_exchange.get("confidence"),
+                }
+                exchange_metadata = {
+                    key: value for key, value in exchange_metadata.items()
+                    if value is not None
+                }
                 archive.append_exchange(
-                    session_id=str(session_id),
-                    user_text=request.raw_text,
-                    assistant_text=(
-                        result_data.get("text")
-                        or result_data.get("output")
-                        or result_data.get("message")
-                        or ""
-                    ),
+                    session_id=session_id,
+                    exchange_id=canonical_exchange["exchange_id"],
+                    exchange_index=canonical_exchange.get("exchange_index"),
+                    created_at=canonical_exchange.get("timestamp"),
+                    user_text=canonical_exchange.get("user") or "",
+                    assistant_text=canonical_exchange.get("assistant") or "",
                     source=str(result_data.get("source") or "conversation"),
                     intent=str(result_intent) if result_intent is not None else None,
-                    topic=(
-                        result_data.get("target")
-                        or (snapshot.get("last_topic") if isinstance(snapshot, dict) else None)
-                        or (snapshot.get("last_target") if isinstance(snapshot, dict) else None)
-                    ),
-                    status=result_data.get("status"),
-                    metadata={
-                        "route": getattr(route_decision, "route", None),
-                        "evidence_scope": getattr(route_decision, "evidence_scope", None),
-                    },
+                    topic=canonical_exchange.get("target") or result_data.get("target"),
+                    status=canonical_exchange.get("response_status") or result_data.get("status"),
+                    metadata=exchange_metadata,
                 )
         except Exception as exc:
             log.warning(f"Durable conversation archive skipped: {exc}")

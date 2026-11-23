@@ -91,6 +91,19 @@ def test_full_analysis_report_separates_user_and_assistant_contributions():
     assert "التسلسل الزمني" in report
 
 
+def test_arabic_comma_and_semicolon_split_knowledge_units():
+    from lab_v4_dev.memory.dialogue_knowledge import _split_knowledge_sentences
+
+    parts = _split_knowledge_sentences(
+        "صببت الجبس بسماكة ثلاثة سنتيمترات، ثم انتظرت حتى يجف؛ "
+        "واستخدمت سكينًا ومفكًا وملعقة."
+    )
+    assert len(parts) == 3
+    assert "ثلاثة سنتيمترات" in parts[0]
+    assert "انتظرت" in parts[1]
+    assert "سكينًا" in parts[2]
+
+
 def test_dialogue_memory_persists_exchange_identity_and_derived_knowledge():
     memory = DialogueMemory(SimpleNamespace())
     memory.update(
@@ -111,6 +124,72 @@ def test_dialogue_memory_persists_exchange_identity_and_derived_knowledge():
     assert exchange["knowledge_version"] == 2
     assert exchange["knowledge"]
     assert all(item["source_exchange_id"] == exchange["exchange_id"] for item in exchange["knowledge"])
+    assert exchange["exchange_index"] == 1
+    assert memory.snapshot()["exchange_sequence"] == 1
+
+
+def test_dialogue_exchange_sequence_survives_bounded_window_and_restore():
+    memory = DialogueMemory(SimpleNamespace())
+    for index in range(35):
+        memory.update(
+            f"أستخدم أداة رقم {index}.",
+            {"status": "success", "text": f"تم تسجيل الأداة رقم {index}."},
+            parsed={
+                "intent": "personal_chat",
+                "conversation_domain": "general",
+                "conversation_act": "CASUAL_CONVERSATION",
+            },
+            context_transition="continue",
+        )
+    assert len(memory.state.exchange_archive) == 32
+    assert memory.state.exchange_sequence == 35
+    assert memory.state.exchange_archive[0]["exchange_index"] == 4
+    assert memory.state.exchange_archive[-1]["exchange_index"] == 35
+    restored = DialogueMemory(SimpleNamespace())
+    assert restored.restore_snapshot(memory.snapshot(), explicit_saved_session=False)
+    assert restored.state.exchange_sequence == 35
+    restored.update(
+        "أستخدم أداة إضافية.",
+        {"status": "success", "text": "تم تسجيلها."},
+        parsed={"intent": "personal_chat", "conversation_domain": "general"},
+        context_transition="continue",
+    )
+    assert restored.state.exchange_archive[-1]["exchange_index"] == 36
+
+
+def test_sqlite_merge_deduplicates_legacy_exchange_with_new_writer_id(monkeypatch):
+    sid = "merge-identity-session"
+    legacy = {
+        "session_id": sid,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": sid,
+            "transcript_archive": [{
+                "session_id": sid,
+                "exchange_id": "legacy-json-id",
+                "timestamp": "2026-11-23T12:00:00+00:00",
+                "target": "الجبس",
+                "user": "صببت الجبس بسماكة ثلاثة سنتيمترات.",
+                "assistant": "تم تسجيل السماكة.",
+            }],
+        },
+    }
+    monkeypatch.setattr(
+        session_state, "_load_sqlite_dialogue_exchanges",
+        lambda _sid: [{
+            "session_id": sid,
+            "exchange_id": "sqlite-generated-id",
+            "timestamp": "2026-11-23T12:00:02+00:00",
+            "target": "الجبس",
+            "user": "صببت الجبس بسماكة ثلاثة سنتيمترات.",
+            "assistant": "تم تسجيل السماكة.",
+        }],
+    )
+    merged = session_state._attach_sqlite_dialogue_transcript(legacy, sid)
+    transcript = merged["dialogue_state"]["transcript_archive"]
+    assert len(transcript) == 1
+    assert transcript[0]["exchange_id"] == "legacy-json-id"
+    assert "sqlite-generated-id" in transcript[0]["merged_exchange_ids"]
 
 
 def test_missing_detail_file_is_marked_as_compact_index_only(monkeypatch):

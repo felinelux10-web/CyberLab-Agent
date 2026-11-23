@@ -125,7 +125,7 @@ class DialogueMemory:
             "last_target", "last_entity_type", "last_confidence",
             "first_assistant_response", "last_assistant_response",
             "pending_clarification", "last_items", "context_history",
-            "exchange_archive", "failed_exchange_archive",
+            "exchange_archive", "failed_exchange_archive", "exchange_sequence",
         ):
             if field in snapshot:
                 setattr(restored, field, snapshot[field])
@@ -153,6 +153,23 @@ class DialogueMemory:
             and str(item.get("session_id") or "") == restored.session_id
             and item.get("response_failed")
         ][-32:]
+        try:
+            restored.exchange_sequence = max(0, int(snapshot.get("exchange_sequence") or 0))
+        except (TypeError, ValueError, OverflowError):
+            restored.exchange_sequence = 0
+        for item in [
+            *(full_transcript_source if isinstance(full_transcript_source, list) else []),
+            *restored.exchange_archive,
+            *restored.failed_exchange_archive,
+        ]:
+            if not isinstance(item, dict):
+                continue
+            try:
+                restored.exchange_sequence = max(
+                    restored.exchange_sequence, int(item.get("exchange_index") or 0)
+                )
+            except (TypeError, ValueError, OverflowError):
+                continue
         for turn in (snapshot.get("history") or [])[-8:]:
             if not isinstance(turn, dict) or not turn.get("role"):
                 continue
@@ -231,6 +248,13 @@ class DialogueMemory:
             restored.active_restored_topic = None
         self.state = restored
         return True
+
+    def _next_exchange_index(self) -> int:
+        """Allocate a monotonic sequence independent of the bounded live archive."""
+        self.state.exchange_sequence = int(
+            getattr(self.state, "exchange_sequence", 0) or 0
+        ) + 1
+        return self.state.exchange_sequence
 
     def update(
         self,
@@ -383,7 +407,8 @@ class DialogueMemory:
             ]
             failed_exchange = {
                 "exchange_id": uuid.uuid4().hex,
-                "timestamp": datetime.now().isoformat(),
+                "exchange_index": self._next_exchange_index(),
+                "timestamp": datetime.now().astimezone().isoformat(),
                 "user": str(text),
                 "assistant": "",
                 "failure_message": str(result.get("text") or result.get("message") or ""),
@@ -402,7 +427,7 @@ class DialogueMemory:
             failed_exchange["knowledge"] = extract_exchange_knowledge(
                 failed_exchange,
                 session_id=self.state.session_id,
-                exchange_index=len(self.state.exchange_archive) + len(archive),
+                exchange_index=failed_exchange["exchange_index"] - 1,
             )
             archive.append(failed_exchange)
             setattr(self.state, archive_name, archive[-32:])
@@ -439,6 +464,9 @@ class DialogueMemory:
                     and str(item.get("session_id") or "") == self.state.session_id
                 ]
                 archive.append({
+                    "exchange_id": uuid.uuid4().hex,
+                    "exchange_index": self._next_exchange_index(),
+                    "timestamp": datetime.now().astimezone().isoformat(),
                     "user": "",
                     "assistant": "",
                     "intent": getattr(turn_intent, "value", turn_intent),
@@ -463,7 +491,8 @@ class DialogueMemory:
         ):
             exchange = {
                 "exchange_id": uuid.uuid4().hex,
-                "timestamp": datetime.now().isoformat(),
+                "exchange_index": self._next_exchange_index(),
+                "timestamp": datetime.now().astimezone().isoformat(),
                 "user": str(text),
                 "assistant": str(result.get("text")),
                 "intent": getattr(turn_intent, "value", turn_intent),
@@ -479,7 +508,7 @@ class DialogueMemory:
             exchange["knowledge"] = extract_exchange_knowledge(
                 exchange,
                 session_id=self.state.session_id,
-                exchange_index=len(self.state.exchange_archive),
+                exchange_index=exchange["exchange_index"] - 1,
             )
             archive = [
                 item for item in (getattr(self.state, "exchange_archive", []) or [])
@@ -499,7 +528,8 @@ class DialogueMemory:
             # transcript while excluding them from answer retrieval/resumption.
             exchange = {
                 "exchange_id": uuid.uuid4().hex,
-                "timestamp": datetime.now().isoformat(),
+                "exchange_index": self._next_exchange_index(),
+                "timestamp": datetime.now().astimezone().isoformat(),
                 "user": str(text),
                 "assistant": str(result.get("text") or result.get("message") or ""),
                 "intent": getattr(turn_intent, "value", turn_intent),
@@ -517,7 +547,7 @@ class DialogueMemory:
             exchange["knowledge"] = extract_exchange_knowledge(
                 exchange,
                 session_id=self.state.session_id,
-                exchange_index=len(self.state.exchange_archive),
+                exchange_index=exchange["exchange_index"] - 1,
             )
             archive = [
                 item for item in (getattr(self.state, "exchange_archive", []) or [])

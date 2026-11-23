@@ -197,8 +197,45 @@ def test_agent_archives_provider_backed_dialogue_as_conversation_evidence():
     agent.loop = True
     agent.state = SimpleNamespace(mode="normal")
     agent.conv_manager = SimpleNamespace(process=lambda _text: result)
+    snapshots = [
+        {"session_id": session_id, "last_topic": "شرح تقني", "exchange_archive": []},
+        {
+            "session_id": session_id, "last_topic": "شرح تقني",
+            "exchange_archive": [{
+                "session_id": session_id,
+                "exchange_id": "canonical-provider-exchange",
+                "exchange_index": 1,
+                "timestamp": "2026-11-23T12:00:00+00:00",
+                "user": "اشرح موضوعًا تقنيًا",
+                "assistant": "شرح محفوظ من مزود المعرفة.",
+                "target": "شرح تقني",
+                "context_kind": "dialogue",
+                "conversation_domain": "technical",
+                "conversation_act": "TOPIC_QUERY",
+                "context_transition": "new_independent",
+                "knowledge_version": 2,
+            }],
+        },
+        {
+            "session_id": session_id, "last_topic": "شرح تقني",
+            "exchange_archive": [{
+                "session_id": session_id,
+                "exchange_id": "canonical-provider-exchange",
+                "exchange_index": 1,
+                "timestamp": "2026-11-23T12:00:00+00:00",
+                "user": "اشرح موضوعًا تقنيًا",
+                "assistant": "شرح محفوظ من مزود المعرفة.",
+                "target": "شرح تقني",
+                "context_kind": "dialogue",
+                "conversation_domain": "technical",
+                "conversation_act": "TOPIC_QUERY",
+                "context_transition": "new_independent",
+                "knowledge_version": 2,
+            }],
+        },
+    ]
     agent.dialogue_memory = SimpleNamespace(
-        snapshot=lambda: {"session_id": session_id, "last_topic": "شرح تقني"},
+        snapshot=lambda: snapshots.pop(0),
         state=SimpleNamespace(session_id=session_id),
     )
     agent.memory = SimpleNamespace(
@@ -216,6 +253,38 @@ def test_agent_archives_provider_backed_dialogue_as_conversation_evidence():
     assert calls[0]["user_text"] == "اشرح موضوعًا تقنيًا"
     assert calls[0]["assistant_text"] == "شرح محفوظ من مزود المعرفة."
     assert calls[0]["status"] == "success"
+    assert calls[0]["exchange_id"] == "canonical-provider-exchange"
+    assert calls[0]["exchange_index"] == 1
+    assert calls[0]["created_at"] == "2026-11-23T12:00:00+00:00"
+    assert calls[0]["metadata"]["conversation_domain"] == "technical"
+
+def test_append_exchange_is_idempotent_and_preserves_canonical_identity():
+    archive = make_archive()
+    kwargs = {
+        "session_id": "canonical-session",
+        "exchange_id": "stable-exchange-id",
+        "exchange_index": 7,
+        "created_at": "2026-11-23T12:00:00+00:00",
+        "user_text": "أصب الجبس بسماكة ثلاثة سنتيمترات.",
+        "assistant_text": "تم تسجيل السماكة.",
+        "metadata": {
+            "context_kind": "dialogue",
+            "conversation_domain": "technical",
+            "conversation_act": "TOPIC_QUERY",
+            "recall_only": False,
+        },
+    }
+    first = archive.append_exchange(**kwargs)
+    second = archive.append_exchange(**kwargs)
+    assert first == second == "stable-exchange-id"
+    rows = archive.conn.execute(
+        "SELECT * FROM conversation_messages WHERE session_id=?",
+        ("canonical-session",),
+    ).fetchall()
+    assert len(rows) == 2
+    assert {row["exchange_id"] for row in rows} == {"stable-exchange-id"}
+    assert {row["exchange_index"] for row in rows} == {7}
+    assert all("conversation_domain" in row["metadata_json"] for row in rows)
 
 def test_personal_fact_search_excludes_assistant_suggestions():
     archive = make_archive()

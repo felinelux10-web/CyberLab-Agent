@@ -75,6 +75,8 @@ class DialogueState:
     # Compact exchange archive used for recall; prompt history remains bounded
     # separately so long conversations do not leak unbounded context.
     exchange_archive: list[dict[str, Any]] = field(default_factory=list)
+    # Monotonic per-session sequence, independent of the bounded 32-exchange window.
+    exchange_sequence: int = 0
     # Failed turns are preserved separately as raw unresolved evidence; they
     # must never enter the successful-answer retrieval or live prompt archive.
     failed_exchange_archive: list[dict[str, Any]] = field(default_factory=list)
@@ -139,5 +141,6 @@ class DialogueState:
             "last_items": list(self.last_items),
             "context_history": [dict(item) for item in self.context_history],
             "exchange_archive": [dict(item) for item in self.exchange_archive],
+            "exchange_sequence": int(self.exchange_sequence or 0),
             "failed_exchange_archive": [dict(item) for item in self.failed_exchange_archive],
         }

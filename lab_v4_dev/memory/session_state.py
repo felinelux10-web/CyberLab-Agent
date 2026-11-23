@@ -220,8 +220,20 @@ def _load_sqlite_dialogue_exchanges(session_id: str) -> list[dict]:
                     "timestamp": item.get("created_at"),
                     "source": item.get("source"),
                     "metadata": metadata,
+                    "context_kind": metadata.get("context_kind"),
+                    "conversation_domain": metadata.get("conversation_domain"),
+                    "conversation_act": metadata.get("conversation_act"),
+                    "context_transition": metadata.get("context_transition"),
+                    "knowledge_version": metadata.get("knowledge_version"),
                     "response_status": response_status,
                     "response_failed": response_failed,
+                    "failure_message": str(
+                        metadata.get("failure_message")
+                        or metadata.get("error_message")
+                        or ""
+                    ),
+                    "recall_only": bool(metadata.get("recall_only")),
+                    "state_boundary_only": bool(metadata.get("state_boundary_only")),
                     "failure_message": str(
                         metadata.get("failure_message")
                         or metadata.get("error_message")
@@ -271,25 +283,64 @@ def _attach_sqlite_dialogue_transcript(record: dict, session_id: str) -> dict:
     if not isinstance(legacy, list) or not legacy:
         legacy = dialogue.get("exchange_archive")
     merged = []
-    seen = set()
+    seen_ids = {}
+    fingerprints = {}
     for item in [*(legacy if isinstance(legacy, list) else []), *exchanges]:
         if not isinstance(item, dict):
             continue
         item_session = str(item.get("session_id") or dialogue_id).strip()
         if item_session != dialogue_id:
             continue
-        identity = (
-            str(item.get("timestamp") or ""),
-            str(item.get("user") or ""),
-            str(item.get("assistant") or ""),
-        )
-        if not any(identity):
-            identity = str(item.get("exchange_id") or "")
-        if identity in seen:
+        current = dict(item)
+        exchange_id = str(current.get("exchange_id") or "").strip()
+        normalized_user = " ".join(str(current.get("user") or "").split()).casefold()
+        normalized_assistant = " ".join(str(current.get("assistant") or "").split()).casefold()
+        normalized_target = " ".join(str(current.get("target") or "").split()).casefold()
+        fingerprint = (normalized_user, normalized_assistant, normalized_target)
+        duplicate_index = seen_ids.get(exchange_id) if exchange_id else None
+        if duplicate_index is None and any(fingerprint):
+            try:
+                from datetime import datetime
+                current_time = datetime.fromisoformat(
+                    str(current.get("timestamp") or current.get("created_at") or "")
+                )
+            except (TypeError, ValueError):
+                current_time = None
+            for candidate_index in fingerprints.get(fingerprint, []):
+                candidate = merged[candidate_index]
+                try:
+                    candidate_time = datetime.fromisoformat(
+                        str(candidate.get("timestamp") or candidate.get("created_at") or "")
+                    )
+                except (TypeError, ValueError):
+                    candidate_time = None
+                if current_time is not None and candidate_time is not None:
+                    if abs((current_time - candidate_time).total_seconds()) <= 5:
+                        duplicate_index = candidate_index
+                        break
+        if duplicate_index is not None:
+            prior = merged[duplicate_index]
+            aliases = list(prior.get("merged_exchange_ids") or [])
+            for alias in (exchange_id, *list(current.get("merged_exchange_ids") or [])):
+                if alias and alias != str(prior.get("exchange_id") or "") and alias not in aliases:
+                    aliases.append(alias)
+            for key, value in current.items():
+                if key not in prior or prior.get(key) in (None, "", [], {}):
+                    prior[key] = value
+            if aliases:
+                prior["merged_exchange_ids"] = aliases
             continue
-        seen.add(identity)
-        merged.append(dict(item))
-    merged.sort(key=lambda item: str(item.get("timestamp") or ""))
+        if exchange_id:
+            seen_ids[exchange_id] = len(merged)
+        if any(fingerprint):
+            fingerprints.setdefault(fingerprint, []).append(len(merged))
+        merged.append(current)
+    merged.sort(
+        key=lambda item: (
+            str(item.get("timestamp") or item.get("created_at") or ""),
+            int(item.get("exchange_index") or 0),
+        )
+    )
     dialogue["session_id"] = dialogue_id
     dialogue["transcript_archive"] = merged
     result["dialogue_state"] = dialogue
