@@ -274,6 +274,10 @@ class DialogueMemory:
             or bool(result.get("error"))
         )
         parsed = parsed or {}
+        from lab_v4_dev.memory.dialogue_knowledge import (
+            KNOWLEDGE_SCHEMA_VERSION,
+            extract_exchange_knowledge,
+        )
         previous_context = self.active_context_entity()
 
         semantic = result.get("semantic_request") or {}
@@ -423,10 +427,6 @@ class DialogueMemory:
                 "recall_only": True,
                 "response_failed": True,
             }
-            from lab_v4_dev.memory.dialogue_knowledge import (
-                KNOWLEDGE_SCHEMA_VERSION,
-                extract_exchange_knowledge,
-            )
             failed_exchange["knowledge"] = extract_exchange_knowledge(
                 failed_exchange,
                 session_id=self.state.session_id,
@@ -506,10 +506,6 @@ class DialogueMemory:
                 "context_transition": relation,
                 "session_id": self.state.session_id,
             }
-            from lab_v4_dev.memory.dialogue_knowledge import (
-                KNOWLEDGE_SCHEMA_VERSION,
-                extract_exchange_knowledge,
-            )
             exchange["knowledge_version"] = KNOWLEDGE_SCHEMA_VERSION
             exchange["knowledge"] = extract_exchange_knowledge(
                 exchange,
@@ -549,10 +545,6 @@ class DialogueMemory:
                 "response_status": "needs_clarification",
                 "recall_only": True,
             }
-            from lab_v4_dev.memory.dialogue_knowledge import (
-                KNOWLEDGE_SCHEMA_VERSION,
-                extract_exchange_knowledge,
-            )
             exchange["knowledge"] = extract_exchange_knowledge(
                 exchange,
                 session_id=self.state.session_id,
