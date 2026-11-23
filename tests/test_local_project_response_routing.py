@@ -220,15 +220,11 @@ def test_explicit_project_execution_request_still_uses_orchestrator():
         "شغل الاختبارات",
         "FOLLOW_UP",
         {
-            "intent": Intent.RUN_SCRIPT,
+            "intent": Intent.CYBER_EXPLAIN,
             "target": "CyberLab Agent",
             "entity_type": "PROJECT",
             "conversation_domain": "project",
-            "conversation_act": "EXECUTABLE_REQUEST",
-            "route_decision": RouteDecision(
-                route="L-EXEC", intent=Intent.RUN_SCRIPT,
-                evidence_scope="work_state", provider_allowed=False,
-            ),
+            "conversation_act": "CONVERSATION_CONTINUATION",
         },
         user_question="شغل الاختبارات",
         context_transition=ContextTransition.CONTINUE.value,
