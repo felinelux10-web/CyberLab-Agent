@@ -96,6 +96,11 @@ class ConversationManager:
         self.active_report_topic_filter = None
         self.active_live_output_kind = None
         self.context_lock = ContextLock()
+        # Instance-only compatibility aliases keep old integrations working
+        # without restoring legacy class-level routing branches.
+        self._handle_task = lambda text, *args, **kwargs: self.process(text, *args, **kwargs)
+        self._handle_system = lambda text, *args, **kwargs: self.process(text, *args, **kwargs)
+        self._handle_follow_up = lambda text, *args, **kwargs: self.process(text, *args, **kwargs)
 
     def finalize_route(
         self,
@@ -7532,18 +7537,6 @@ class ConversationManager:
                 "error": error_code or str(e) or type(e).__name__,
                 "executed": False,
             }
-
-    # Compatibility entry points retained for callers from the pre-unified
-    # dialogue lifecycle. They deliberately contain no routing logic: process()
-    # remains the single canonical implementation.
-    def _handle_task(self, text: str, *args, **kwargs) -> dict:
-        return self.process(text, *args, **kwargs)
-
-    def _handle_system(self, text: str, *args, **kwargs) -> dict:
-        return self.process(text, *args, **kwargs)
-
-    def _handle_follow_up(self, text: str, *args, **kwargs) -> dict:
-        return self.process(text, *args, **kwargs)
 
     def switch_topic(
         self,
