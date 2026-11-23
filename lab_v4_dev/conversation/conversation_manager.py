@@ -3890,23 +3890,25 @@ class ConversationManager:
             }, route_decision)
 
         if route_decision.route == "CLARIFY":
-            # CLARIFY is a terminal route owner, not a hint to continue through
-            # generic chat or Orchestrator dispatch. Returning here also prevents
-            # stale context from being written back as a new active topic.
-            clarification_text = (
-                "لم يتحدد الموضوع الذي تريد شرحه. اذكر اسم الموضوع أو التقنية صراحة."
-                if str(getattr(parsed.get("intent"), "value", parsed.get("intent")) or "").casefold()
-                    == "cyber_explain"
-                else "لم تتضح الإشارة أو المعلومات اللازمة لتنفيذ الطلب. وضّح المقصود."
+            # CLARIFY is terminal, but it still crosses the shared route
+            # boundary. That boundary returns before handler lookup, provider
+            # access, or Orchestrator execution.
+            from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
+            clarification = route_request(
+                self.orchestrator,
+                parsed.get("intent") or Intent.PERSONAL_CHAT,
+                parsed.get("target") or "",
+                user_input,
+                response_attributes=parsed.get("response_attributes"),
+                conversation_history=chat_history,
+                context_transition=transition.value,
+                session_selector=selected_session,
+                route_decision=route_decision,
+                ask_provider=None,
             )
-            return self._attach_route_decision({
-                "status": "needs_clarification",
-                "intent": parsed.get("intent") or Intent.PERSONAL_CHAT,
-                "source": "route_clarification",
-                "executed": False,
-                "text": clarification_text,
-                "semantic_request": semantic.as_dict(),
-            }, route_decision)
+            clarification = dict(clarification or {})
+            clarification["semantic_request"] = semantic.as_dict()
+            return self._attach_route_decision(clarification, route_decision)
 
         # A generic return with no recoverable dialogue branch must fail
         # closed instead of being treated as a successful chat response.
