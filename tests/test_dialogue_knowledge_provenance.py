@@ -12,6 +12,7 @@ from lab_v4_dev.memory.dialogue_knowledge import (
     analyze_dialogue_session,
     extract_exchange_knowledge,
     format_dialogue_analysis_report,
+    format_dialogue_evidence_answer,
     retrieve_dialogue_evidence,
 )
 
@@ -104,6 +105,25 @@ def test_structured_facts_preserve_value_speaker_and_exchange_provenance():
     assert any("سكينًا" in item for item in tools)
     assert any("مفك" in item for item in tools)
     assert any("ملعقة" in item for item in tools)
+
+
+def test_detail_recall_answer_surfaces_structured_facts_with_original_provenance():
+    answer = format_dialogue_evidence_answer(
+        _saved_session(),
+        "ما سماكة طبقة الجبس؟",
+    )
+    assert "تفاصيل منظمة مطابقة للسؤال" in answer
+    assert "المستخدم" in answer
+    assert "السماكة: ثلاثة سنتيمترات" in answer
+    assert "exchange-1" in answer
+
+    tools_answer = format_dialogue_evidence_answer(
+        _saved_session(),
+        "ما الأدوات التي استخدمتها؟",
+    )
+    assert "الأداة: سكينًا" in tools_answer
+    assert "الأداة: مفك براغٍ" in tools_answer
+    assert "الأداة: ملعقة" in tools_answer
 
 
 def test_full_analysis_report_separates_user_and_assistant_contributions():

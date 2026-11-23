@@ -921,6 +921,12 @@ def format_dialogue_analysis_report(data: dict) -> str:
     """Render a local, evidence-indexed report with explicit source attribution."""
     analysis = analyze_dialogue_session(data)
 
+    attribute_labels = {
+        "thickness": "السماكة", "frame_material": "مادة الإطار",
+        "material": "المادة", "tool": "الأداة",
+        "paint_type": "نوع الطلاء", "color": "اللون",
+    }
+
     def evidence_label(item: dict) -> str:
         parts = [f"التبادل {item.get('source_exchange_index', item.get('exchange_index', '?'))}"]
         source_id = str(item.get("source_exchange_id") or item.get("exchange_id") or "").strip()
@@ -959,14 +965,14 @@ def format_dialogue_analysis_report(data: dict) -> str:
     lines.extend(["", "التفاصيل المنظمة المستخرجة من أقوال المستخدم:"])
     for item in analysis["user_structured_facts"]:
         lines.append(
-            f"- {evidence_label(item)} {item['attribute']}: {item['value']}"
+            f"- {evidence_label(item)} {attribute_labels.get(item['attribute'], item['attribute'])}: {item['value']}"
         )
     if not analysis["user_structured_facts"]:
         lines.append("- لا توجد تفاصيل منظمة إضافية مؤكدة من أقوال المستخدم.")
     lines.extend(["", "التفاصيل المنظمة من مساهمات الوكيل:"])
     for item in analysis["assistant_structured_facts"]:
         lines.append(
-            f"- {evidence_label(item)} {item['attribute']}: {item['value']}"
+            f"- {evidence_label(item)} {attribute_labels.get(item['attribute'], item['attribute'])}: {item['value']}"
         )
     if not analysis["assistant_structured_facts"]:
         lines.append("- لا توجد تفاصيل منظمة إضافية من مساهمات الوكيل.")
@@ -1241,16 +1247,86 @@ def format_dialogue_evidence_answer(
     limit: int = 8,
     evidence: list[dict] | None = None,
 ) -> str:
-    """Present the original matching exchanges with provenance and speaker ownership."""
+    """Present source exchanges plus narrowly extracted, speaker-attributed details."""
     if evidence is None:
         evidence = retrieve_dialogue_evidence(data, query, limit=limit)
     if not evidence:
         return ""
+
+    normalized_query = _normalize(query)
+    wanted_attributes = None
+    if any(term in normalized_query for term in ("سماكه", "سمك")):
+        wanted_attributes = {"thickness"}
+    elif any(term in normalized_query for term in ("ادوات", "اداه", "معدات", "وسائل")):
+        wanted_attributes = {"tool"}
+    elif any(term in normalized_query for term in ("الوان", "لون")):
+        wanted_attributes = {"color"}
+    elif any(term in normalized_query for term in ("ماده", "مواد")):
+        wanted_attributes = {"material", "paint_type"}
+    elif "اطار" in normalized_query:
+        wanted_attributes = {"frame_material"}
+    elif any(term in normalized_query for term in ("طلاء", "صباغه", "دهان")):
+        wanted_attributes = {"paint_type"}
+
+    speaker_filter = None
+    if any(term in normalized_query for term in ("الوكيل", "اقترح", "اقتراح", "نصيحه")):
+        speaker_filter = "assistant"
+    elif any(term in normalized_query for term in ("المستخدم", "ذكرت", "قلت", "استعملت", "استخدمت")):
+        speaker_filter = "user"
+
+    structured = []
+    seen_facts = set()
+    for item in evidence:
+        derived = extract_exchange_knowledge(
+            item,
+            session_id=str(item.get("session_id") or ""),
+            exchange_index=max(0, int(item.get("exchange_index") or 1) - 1),
+        )
+        for record in derived:
+            speaker = str(record.get("speaker") or "")
+            if speaker_filter and speaker != speaker_filter:
+                continue
+            for fact in (record.get("structured_facts") or []):
+                attribute = str(fact.get("attribute") or "")
+                if wanted_attributes and attribute not in wanted_attributes:
+                    continue
+                identity = (
+                    speaker, attribute, str(fact.get("value") or "").casefold(),
+                    str(item.get("exchange_id") or ""),
+                )
+                if identity in seen_facts:
+                    continue
+                seen_facts.add(identity)
+                structured.append({
+                    **fact, "speaker": speaker,
+                    "exchange_id": item.get("exchange_id"),
+                    "exchange_index": item.get("exchange_index"),
+                })
+    structured.sort(
+        key=lambda fact: (
+            0 if fact.get("speaker") == "user" else 1,
+            int(fact.get("exchange_index") or 0),
+        )
+    )
+    attribute_labels = {
+        "thickness": "السماكة", "frame_material": "مادة الإطار",
+        "material": "المادة", "tool": "الأداة",
+        "paint_type": "نوع الطلاء", "color": "اللون",
+    }
+    speaker_labels = {"user": "المستخدم", "assistant": "الوكيل"}
     lines = [
         "الإجابة المستندة إلى أدلة الجلسة المحفوظة:",
         f"معرّف الجلسة: {evidence[0]['session_id']}",
         "مصدر الإجابة هو التبادلات الأصلية؛ لم يُستخدم ملخص مشتق بديلًا عنها.",
     ]
+    if structured:
+        lines.extend(["", "تفاصيل منظمة مطابقة للسؤال:"])
+        for fact in structured:
+            lines.append(
+                f"- {speaker_labels.get(fact['speaker'], fact['speaker'])} "
+                f"[التبادل {fact['exchange_index']} | المصدر {fact['exchange_id']}] "
+                f"{attribute_labels.get(fact['attribute'], fact['attribute'])}: {fact['value']}"
+            )
     for item in evidence:
         lines.extend([
             "",
