@@ -354,7 +354,13 @@ def _extract_structured_facts(sentence: str) -> list[dict]:
             tool_text,
         )
         for item in tool_items:
-            item = re.sub(r"^(?:و|ثم)\s*", "", item).strip()
+            item = item.strip()
+            if item.startswith("و") and not item.startswith(
+                ("ورق", "ورقة", "وعاء", "وحدة", "وسادة", "وتد")
+            ):
+                item = item[1:].strip()
+            elif item.startswith("ثم "):
+                item = item[3:].strip()
             if item:
                 add("tool", item, 0.90)
 
