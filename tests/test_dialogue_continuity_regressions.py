@@ -1429,3 +1429,61 @@ def test_saved_session_report_provider_permission_comes_from_manager_policy(monk
     assert result_without_permission["status"] == "success", result_without_permission
     assert decision_without_permission.route == "L-SESSION"
     assert decision_without_permission.provider_allowed is False
+
+
+def test_mesopotamia_followup_after_failed_egypt_turn_ignores_stale_sql_entity(monkeypatch):
+    from lab_v4_dev.intent import llm_intent_resolver
+    from lab_v4_dev.intent.intents import Intent
+    from lab_v4_dev.nlu import context_resolver
+
+    manager, memory, orchestrator, _ = _manager(monkeypatch)
+    stale_sql_entity = {
+        "action": "cyber_explain",
+        "entity": "SQL Injection",
+        "entity_type": "CONCEPT",
+        "timestamp": 1_790_665_000,
+    }
+    monkeypatch.setattr(
+        context_resolver, "get_last_entity", lambda: dict(stale_sql_entity)
+    )
+    monkeypatch.setattr(context_resolver, "save_state", lambda *a, **k: None)
+    monkeypatch.setattr(
+        llm_intent_resolver, "resolve", lambda _text: Intent.UNCLEAR
+    )
+
+    prompts = []
+
+    def gateway(prompt, **kwargs):
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            return {
+                "status": "error",
+                "message": "provider unavailable",
+                "error": {"code": "NO_PROVIDER_AVAILABLE"},
+            }
+        return {
+            "status": "success",
+            "text": "بلاد الرافدين من أقدم مراكز نشوء المدن والكتابة.",
+            "provider_used": "test",
+        }
+
+    monkeypatch.setattr(
+        "lab_v4_dev.conversation.conversation_manager.gateway_ask", gateway
+    )
+
+    first = manager.process("لنتحدث عن مصر القديمة والأهرامات.")
+    assert any(
+        "مصر القديمة والأهرامات" in str(item.get("user") or "")
+        for item in memory.state.failed_exchange_archive
+    ), first
+
+    second = manager.process("وماذا عن بلاد الرافدين؟")
+
+    assert second["status"] == "success", second
+    assert getattr(second.get("route_decision"), "route", None) == "L-LIVE"
+    assert "بلاد الرافدين" in second["text"]
+    assert len(prompts) >= 2
+    assert "SQL Injection" not in prompts[-1]
+    assert "بلاد الرافدين" in prompts[-1]
+    assert memory.state.last_topic != "SQL Injection"
+    assert orchestrator.calls == []
