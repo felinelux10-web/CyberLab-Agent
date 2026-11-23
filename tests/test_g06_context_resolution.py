@@ -197,7 +197,9 @@ def test_no_context_reference_cannot_use_nlu_or_intent_cache_or_context_store(mo
     monkeypatch.setattr(
         dispatch_module,
         "route_request",
-        lambda *_args, **_kwargs: routed.append(_args) or {
+        lambda _orchestrator, intent, target, raw, **_kwargs: routed.append(
+            (intent, target, "general", raw)
+        ) or {
             "status": "needs_clarification",
             "text": "ما الموضوع الذي تقصده؟",
         },
@@ -230,7 +232,9 @@ def test_canonical_orchestrator_path_does_not_rebind_context_store_target(monkey
     monkeypatch.setattr(
         dispatch_module,
         "route_request",
-        lambda *_args, **_kwargs: routed.append(_args) or {
+        lambda _orchestrator, intent, target, raw, **_kwargs: routed.append(
+            (intent, target, "general", raw)
+        ) or {
             "status": "needs_clarification", "text": "ما الملف؟"
         },
     )
@@ -258,7 +262,7 @@ def test_context_resolved_path_keeps_explicit_repeat_execution_context(monkeypat
         dispatch_module,
         "route_request",
         lambda _orchestrator, intent, target, raw, **_kwargs: (
-            routed.append((intent, target, raw))
+            routed.append((intent, target, "general", raw))
             or {"status": "success", "intent": intent, "text": "repeated"}
         ),
     )
