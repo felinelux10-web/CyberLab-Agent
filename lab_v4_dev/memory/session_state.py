@@ -300,9 +300,14 @@ def _attach_sqlite_dialogue_transcript(record: dict, session_id: str) -> dict:
         duplicate_index = seen_ids.get(exchange_id) if exchange_id else None
         if duplicate_index is None and any(fingerprint):
             try:
-                from datetime import datetime
+                from datetime import datetime, timezone
                 current_time = datetime.fromisoformat(
                     str(current.get("timestamp") or current.get("created_at") or "")
+                )
+                current_time = (
+                    current_time.replace(tzinfo=timezone.utc)
+                    if current_time.tzinfo is None
+                    else current_time.astimezone(timezone.utc)
                 )
             except (TypeError, ValueError):
                 current_time = None
@@ -312,10 +317,21 @@ def _attach_sqlite_dialogue_transcript(record: dict, session_id: str) -> dict:
                     candidate_time = datetime.fromisoformat(
                         str(candidate.get("timestamp") or candidate.get("created_at") or "")
                     )
+                    candidate_time = (
+                        candidate_time.replace(tzinfo=timezone.utc)
+                        if candidate_time.tzinfo is None
+                        else candidate_time.astimezone(timezone.utc)
+                    )
                 except (TypeError, ValueError):
                     candidate_time = None
                 if current_time is not None and candidate_time is not None:
-                    if abs((current_time - candidate_time).total_seconds()) <= 5:
+                    try:
+                        within_duplicate_window = (
+                            abs((current_time - candidate_time).total_seconds()) <= 5
+                        )
+                    except TypeError:
+                        within_duplicate_window = False
+                    if within_duplicate_window:
                         duplicate_index = candidate_index
                         break
         if duplicate_index is not None:

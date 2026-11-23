@@ -102,6 +102,8 @@ def test_arabic_comma_and_semicolon_split_knowledge_units():
     assert "ثلاثة سنتيمترات" in parts[0]
     assert "انتظرت" in parts[1]
     assert "سكينًا" in parts[2]
+    correction = _split_knowledge_sentences("بل، التصحيح أن السماكة خمسة سنتيمترات.")
+    assert correction == ["بل، التصحيح أن السماكة خمسة سنتيمترات."]
 
 
 def test_dialogue_memory_persists_exchange_identity_and_derived_knowledge():
@@ -179,7 +181,7 @@ def test_sqlite_merge_deduplicates_legacy_exchange_with_new_writer_id(monkeypatc
         lambda _sid: [{
             "session_id": sid,
             "exchange_id": "sqlite-generated-id",
-            "timestamp": "2026-11-23T12:00:02+00:00",
+            "timestamp": "2026-11-23T12:00:02",
             "target": "الجبس",
             "user": "صببت الجبس بسماكة ثلاثة سنتيمترات.",
             "assistant": "تم تسجيل السماكة.",

@@ -196,6 +196,7 @@ def test_agent_archives_provider_backed_dialogue_as_conversation_evidence():
     agent = object.__new__(Agent)
     agent.loop = True
     agent.state = SimpleNamespace(mode="normal")
+    agent._save_dialogue_checkpoint = lambda: None
     agent.conv_manager = SimpleNamespace(process=lambda _text: result)
     snapshots = [
         {"session_id": session_id, "last_topic": "شرح تقني", "exchange_archive": []},
@@ -285,6 +286,46 @@ def test_append_exchange_is_idempotent_and_preserves_canonical_identity():
     assert {row["exchange_id"] for row in rows} == {"stable-exchange-id"}
     assert {row["exchange_index"] for row in rows} == {7}
     assert all("conversation_domain" in row["metadata_json"] for row in rows)
+
+def test_agent_does_not_persist_read_only_history_without_new_exchange():
+    calls = []
+    session_id = "read-only-history-session"
+    snapshot = {
+        "session_id": session_id,
+        "exchange_archive": [{
+            "session_id": session_id,
+            "exchange_id": "existing-exchange",
+            "user": "ما الذي ناقشناه سابقًا؟",
+            "assistant": "تحدثنا عن الجبس.",
+        }],
+    }
+    result = {
+        "status": "success",
+        "executed": False,
+        "intent": Intent.CYBER_EXPLAIN,
+        "text": "تحدثنا عن الجبس.",
+        "route_decision": SimpleNamespace(route="L-FACT", evidence_scope="live_exchanges"),
+    }
+    agent = object.__new__(Agent)
+    agent.loop = True
+    agent.state = SimpleNamespace(mode="normal")
+    agent.conv_manager = SimpleNamespace(process=lambda _text: result)
+    agent.dialogue_memory = SimpleNamespace(
+        snapshot=lambda: dict(snapshot),
+        state=SimpleNamespace(session_id=session_id),
+    )
+    agent.memory = SimpleNamespace(
+        conversations=SimpleNamespace(
+            append_exchange=lambda **exchange: calls.append(exchange)
+        )
+    )
+    agent.session = SimpleNamespace(session_id=session_id)
+
+    returned = agent.run("ما الذي ناقشناه سابقًا؟")
+
+    assert returned is result
+    assert calls == []
+
 
 def test_personal_fact_search_excludes_assistant_suggestions():
     archive = make_archive()
