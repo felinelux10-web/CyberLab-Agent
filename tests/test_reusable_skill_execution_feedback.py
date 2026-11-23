@@ -1,9 +1,11 @@
 from types import SimpleNamespace
 
-import pytest
-
 from lab_v4_dev.core.contracts import RouteDecision
-from lab_v4_dev.core.orchestrator_handlers import dispatch as dispatch_module
+import importlib
+
+dispatch_module = importlib.import_module(
+    "lab_v4_dev.core.orchestrator_handlers.dispatch"
+)
 from lab_v4_dev.intent.intents import Intent
 
 
