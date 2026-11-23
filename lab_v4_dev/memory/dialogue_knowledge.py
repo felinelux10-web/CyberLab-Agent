@@ -281,7 +281,10 @@ def _classify_knowledge_sentence(speaker: str, sentence: str) -> tuple[str, floa
 def _extract_structured_facts(sentence: str) -> list[dict]:
     """Extract narrow, explicit attribute/value pairs without inferring unstated facts."""
     text = " ".join(str(sentence or "").split()).strip()
-    if not text:
+    if not text or "؟" in text or "?" in text:
+        return []
+    normalized_sentence = _normalize(text)
+    if re.match(r"^(?:ما|ماذا|كم|هل|كيف|اين|من)\s", normalized_sentence):
         return []
     facts = []
     seen = set()
@@ -299,7 +302,7 @@ def _extract_structured_facts(sentence: str) -> list[dict]:
             })
 
     thickness = re.search(
-        r"(?:بسماكة|بسمك|سماكة|سمك)\s+(?:حوالي\s+|نحو\s+)?"
+        r"(?:بسماكة|بسمك|السماكة|السمك|سماكة|سمك)\s+(?:حوالي\s+|نحو\s+)?"
         r"(?P<value>[^،؛.!؟?]+)",
         text,
     )
@@ -331,7 +334,7 @@ def _extract_structured_facts(sentence: str) -> list[dict]:
 
     tool_match = re.search(
         r"(?:استخدمت|أستخدم|استخدم|استعملت|أستعمل|سأستخدم|"
-        r"سوف\s+أستخدم|باستخدام)\s+(?P<value>.+?)"
+        r"سوف\s+أستخدم|باستخدام|(?:يمكنك\s+)?استخدام)\s+(?P<value>.+?)"
         r"(?=\s+(?:لتشكيل|لتنعيم|لصنع|لعمل|من\s+أجل|حتى|ثم)\b|[.!؟?؛]|$)",
         text,
     )

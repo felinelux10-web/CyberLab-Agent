@@ -373,6 +373,42 @@ class ConversationArchive:
                                 created_at, created_at,
                             ),
                         )
+                    if user_message_id is None and user:
+                        existing_user = self.conn.execute(
+                            """SELECT id FROM conversation_messages
+                               WHERE session_id=? AND exchange_id=? AND speaker='user'""",
+                            (session_id, legacy_id),
+                        ).fetchone()
+                        user_message_id = int(existing_user[0]) if existing_user else None
+                    existing_assistant = self.conn.execute(
+                        """SELECT id FROM conversation_messages
+                           WHERE session_id=? AND exchange_id=? AND speaker='assistant'""",
+                        (session_id, legacy_id),
+                    ).fetchone()
+                    assistant_message_id = (
+                        int(existing_assistant[0]) if existing_assistant else None
+                    )
+                    if not exchange.get("recall_only") and not exchange.get("state_boundary_only"):
+                        normalized_user = " ".join(user.split())
+                        user_correction = bool(
+                            re.match(r"^(?:بل|التصحيح|أصحح|اصحح|أقصد|اقصد)\b", normalized_user)
+                            or "التصحيح أن" in normalized_user
+                            or "التصحيح هو" in normalized_user
+                        )
+                        self._store_structured_facts(
+                            session_id=session_id, exchange_id=legacy_id, speaker="user",
+                            text=user, topic=str(exchange.get("target") or "") or None,
+                            evidence_message_id=user_message_id, created_at=created_at,
+                            correction=user_correction,
+                        )
+                        if assistant and not exchange.get("response_failed") and str(
+                            exchange.get("response_status") or ""
+                        ).casefold() != "needs_clarification":
+                            self._store_structured_facts(
+                                session_id=session_id, exchange_id=legacy_id, speaker="assistant",
+                                text=assistant, topic=str(exchange.get("target") or "") or None,
+                                evidence_message_id=assistant_message_id, created_at=created_at,
+                            )
                     if exchange_inserted:
                         imported_exchanges += 1
                 if session_imported:
@@ -401,6 +437,73 @@ class ConversationArchive:
             "imported_sessions": imported_sessions,
             "imported_exchanges": imported_exchanges,
         }
+
+    def _store_structured_facts(
+        self, *, session_id: str, exchange_id: str, speaker: str,
+        text: str, topic: str | None, evidence_message_id: int | None,
+        created_at: str, correction: bool = False,
+    ) -> int:
+        """Persist conservative attribute/value facts with exchange-level provenance."""
+        if not text or not evidence_message_id or speaker not in {"user", "assistant"}:
+            return 0
+        from lab_v4_dev.memory.dialogue_knowledge import _extract_structured_facts
+
+        inserted = 0
+        for fact in _extract_structured_facts(text):
+            predicate = str(fact.get("attribute") or "").strip()
+            value = str(fact.get("value") or "").strip()
+            if not predicate or not value:
+                continue
+            if correction and speaker == "user" and topic:
+                prior_rows = self.conn.execute(
+                    """SELECT id, metadata_json FROM memory_facts
+                       WHERE source_session_id=? AND speaker='user'
+                         AND predicate=? AND status='active'
+                         AND source_exchange_id<>?""",
+                    (session_id, predicate, exchange_id),
+                ).fetchall()
+                for prior in prior_rows:
+                    try:
+                        prior_meta = json.loads(prior["metadata_json"] or "{}")
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        prior_meta = {}
+                    if isinstance(prior_meta, dict) and str(
+                        prior_meta.get("topic_id") or ""
+                    ) == str(topic):
+                        self.conn.execute(
+                            "UPDATE memory_facts SET status='superseded', updated_at=? WHERE id=?",
+                            (created_at, int(prior["id"])),
+                        )
+            exists = self.conn.execute(
+                """SELECT 1 FROM memory_facts
+                   WHERE source_session_id=? AND source_exchange_id=?
+                     AND speaker=? AND predicate=? AND value=? LIMIT 1""",
+                (session_id, exchange_id, speaker, predicate, value),
+            ).fetchone()
+            if exists:
+                continue
+            self.conn.execute(
+                """INSERT INTO memory_facts
+                   (subject,predicate,value,speaker,source_kind,source_session_id,
+                    source_exchange_id,evidence_message_id,confidence,status,
+                    metadata_json,created_at,updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    "user" if speaker == "user" else "assistant",
+                    predicate, value, speaker, "structured",
+                    session_id, exchange_id, evidence_message_id,
+                    float(fact.get("confidence") or 0.75), "active",
+                    _json({
+                        "attribute": predicate,
+                        "topic_id": topic,
+                        "evidence_text": fact.get("evidence_text") or text,
+                        "extraction": "dialogue_knowledge_v3",
+                    }),
+                    created_at, created_at,
+                ),
+            )
+            inserted += 1
+        return inserted
 
     def append_exchange(
         self, *, session_id: str, user_text: str, assistant_text: str,
@@ -466,6 +569,7 @@ class ConversationArchive:
                 requested_index = int(row[0] if row else 1)
 
             user_message_id = None
+            assistant_message_id = None
             user_inserted = False
             for speaker, body in (("user", user), ("assistant", assistant)):
                 if not body:
@@ -485,13 +589,15 @@ class ConversationArchive:
                                WHERE session_id=? AND exchange_id=? AND speaker=?""",
                             (_json(merged_meta), sid, canonical_id, speaker),
                         )
+                    row = self.conn.execute(
+                        """SELECT id FROM conversation_messages
+                           WHERE session_id=? AND exchange_id=? AND speaker=?""",
+                        (sid, canonical_id, speaker),
+                    ).fetchone()
                     if speaker == "user":
-                        row = self.conn.execute(
-                            """SELECT id FROM conversation_messages
-                               WHERE session_id=? AND exchange_id=? AND speaker='user'""",
-                            (sid, canonical_id),
-                        ).fetchone()
                         user_message_id = int(row[0]) if row else None
+                    else:
+                        assistant_message_id = int(row[0]) if row else None
                     continue
                 cursor = self.conn.execute(
                     """INSERT OR IGNORE INTO conversation_messages
@@ -509,6 +615,8 @@ class ConversationArchive:
                     if speaker == "user":
                         user_message_id = message_id
                         user_inserted = True
+                    else:
+                        assistant_message_id = message_id
                     if self.fts_available:
                         self.conn.execute(
                             """INSERT OR IGNORE INTO conversation_messages_fts
@@ -535,6 +643,27 @@ class ConversationArchive:
                             _json({"extraction": "first_person_assertion"}),
                             now, now,
                         ),
+                    )
+            if not meta.get("recall_only") and not meta.get("state_boundary_only"):
+                normalized_user = " ".join(user.split())
+                user_correction = bool(
+                    re.match(r"^(?:بل|التصحيح|أصحح|اصحح|أقصد|اقصد)\b", normalized_user)
+                    or "التصحيح أن" in normalized_user
+                    or "التصحيح هو" in normalized_user
+                )
+                self._store_structured_facts(
+                    session_id=sid, exchange_id=canonical_id, speaker="user",
+                    text=user, topic=str(topic or "") or None,
+                    evidence_message_id=user_message_id, created_at=now,
+                    correction=user_correction,
+                )
+                if assistant and not meta.get("response_failed") and str(
+                    meta.get("response_status") or status or ""
+                ).casefold() != "needs_clarification":
+                    self._store_structured_facts(
+                        session_id=sid, exchange_id=canonical_id, speaker="assistant",
+                        text=assistant, topic=str(topic or "") or None,
+                        evidence_message_id=assistant_message_id, created_at=now,
                     )
             self.conn.execute(
                 """UPDATE conversation_sessions
