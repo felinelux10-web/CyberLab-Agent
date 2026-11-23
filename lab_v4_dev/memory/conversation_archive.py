@@ -474,8 +474,18 @@ class ConversationArchive:
                 sql += " ORDER BY m.id DESC LIMIT ?"
                 params.append(cap)
                 try:
-                    return [dict(row) for row in self.conn.execute(sql, params).fetchall()]
+                    indexed = [
+                        dict(row)
+                        for row in self.conn.execute(sql, params).fetchall()
+                    ]
+                    # An existing but incomplete/stale FTS index is not proof
+                    # that no evidence exists. Fall through to the SQL LIKE
+                    # path when FTS returns no rows.
+                    if indexed:
+                        return indexed
                 except Exception:
+                    # Preserve the bounded LIKE fallback for SQLite builds
+                    # without a working FTS5 tokenizer/index.
                     pass
         tokens = re.findall(r"[\w\u0600-\u06ff]+", needle, flags=re.UNICODE)[:20]
         tokens = tokens or [needle]
