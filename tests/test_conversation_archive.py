@@ -254,7 +254,7 @@ def test_agent_archives_provider_backed_dialogue_as_conversation_evidence():
                 "conversation_domain": "technical",
                 "conversation_act": "TOPIC_QUERY",
                 "context_transition": "new_independent",
-                "knowledge_version": 3,
+                "knowledge_version": 4,
             }],
         },
         {
@@ -271,7 +271,7 @@ def test_agent_archives_provider_backed_dialogue_as_conversation_evidence():
                 "conversation_domain": "technical",
                 "conversation_act": "TOPIC_QUERY",
                 "context_transition": "new_independent",
-                "knowledge_version": 3,
+                "knowledge_version": 4,
             }],
         },
     ]
@@ -306,7 +306,7 @@ def test_append_exchange_is_idempotent_and_preserves_canonical_identity():
         "exchange_id": "stable-exchange-id",
         "exchange_index": 7,
         "created_at": "2026-11-23T12:00:00+00:00",
-        "user_text": "أصب الجبس بسماكة ثلاثة سنتيمترات.",
+        "user_text": "أصب الجبس بسماكة ثلاثة سنتيمترات، واستخدمت سكينًا، ومفكًا، وملعقة لتشكيله.",
         "assistant_text": "تم تسجيل السماكة.",
         "metadata": {
             "context_kind": "dialogue",
@@ -331,9 +331,14 @@ def test_append_exchange_is_idempotent_and_preserves_canonical_identity():
            WHERE source_session_id=? AND source_exchange_id=? AND source_kind='structured'""",
         ("canonical-session", "stable-exchange-id"),
     ).fetchall()
-    assert {(row["predicate"], row["value"]) for row in structured} == {
+    assert {
+        (row["predicate"], row["value"]) for row in structured
+    } == {
         ("thickness", "ثلاثة سنتيمترات"),
         ("material", "الجبس"),
+        ("tool", "سكينًا"),
+        ("tool", "مفكًا"),
+        ("tool", "ملعقة"),
     }
     assert all(row["status"] == "active" for row in structured)
     assert any(

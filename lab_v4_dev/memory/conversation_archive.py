@@ -461,7 +461,7 @@ class ConversationArchive:
             _split_knowledge_sentences,
         )
         inserted = 0
-        sentences = _split_knowledge_sentences(text) or [text]
+        sentences = [text, *_split_knowledge_sentences(text)]
         for sentence in sentences:
             for fact in _extract_structured_facts(sentence):
                 predicate = str(fact.get("attribute") or "").strip()
@@ -511,7 +511,7 @@ class ConversationArchive:
                             "attribute": predicate,
                             "topic_id": topic,
                             "evidence_text": fact.get("evidence_text") or sentence,
-                            "extraction": "dialogue_knowledge_v3",
+                            "extraction": "dialogue_knowledge_v4",
                         }),
                         created_at, created_at,
                     ),
@@ -521,7 +521,7 @@ class ConversationArchive:
 
     def migrate_structured_dialogue_facts(self) -> dict:
         """Backfill the versioned structured-fact index from canonical SQLite exchanges."""
-        migration_key = "dialogue_structured_facts_v3"
+        migration_key = "dialogue_structured_facts_v4"
         if self.migration_complete(migration_key):
             return {
                 "already_migrated": True,

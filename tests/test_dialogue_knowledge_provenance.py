@@ -149,6 +149,21 @@ def test_arabic_comma_and_semicolon_split_knowledge_units():
     assert "ثلاثة سنتيمترات" in parts[0]
     assert "انتظرت" in parts[1]
     assert "سكينًا" in parts[2]
+    comma_records = extract_exchange_knowledge(
+        {
+            "session_id": "comma-tools-session",
+            "exchange_id": "comma-tools-exchange",
+            "user": "استخدمت سكينًا، ومفكًا، وملعقة لتشكيل الجبس.",
+        },
+        session_id="comma-tools-session",
+    )
+    comma_tools = {
+        fact["value"]
+        for record in comma_records
+        for fact in record.get("structured_facts", [])
+        if fact.get("attribute") == "tool"
+    }
+    assert {"سكينًا", "مفكًا", "ملعقة"} <= comma_tools
     correction = _split_knowledge_sentences("بل، التصحيح أن السماكة خمسة سنتيمترات.")
     assert correction == ["بل، التصحيح أن السماكة خمسة سنتيمترات."]
 
@@ -170,7 +185,7 @@ def test_dialogue_memory_persists_exchange_identity_and_derived_knowledge():
     exchange = memory.state.exchange_archive[-1]
     assert exchange["exchange_id"]
     assert exchange["timestamp"]
-    assert exchange["knowledge_version"] == 3
+    assert exchange["knowledge_version"] == 4
     assert exchange["knowledge"]
     assert all(item["source_exchange_id"] == exchange["exchange_id"] for item in exchange["knowledge"])
     assert exchange["exchange_index"] == 1

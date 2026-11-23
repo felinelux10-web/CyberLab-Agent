@@ -11,7 +11,7 @@ import hashlib as _hashlib
 from typing import Any
 
 
-KNOWLEDGE_SCHEMA_VERSION = 3
+KNOWLEDGE_SCHEMA_VERSION = 4
 
 
 _STOP_WORDS = {
@@ -407,13 +407,14 @@ def extract_exchange_knowledge(
     }
     for speaker, field in (("user", "user"), ("assistant", "assistant")):
         raw_text = str(exchange.get(field) or "").strip()
+        speaker_records = []
         for sentence_index, sentence in enumerate(_split_knowledge_sentences(raw_text), 1):
             kind, confidence = (
                 ("assistant_non_answer", 0.90)
                 if speaker == "assistant" and assistant_incomplete
                 else _classify_knowledge_sentence(speaker, sentence)
             )
-            records.append({
+            record = {
                 "knowledge_id": f"{exchange_id}:{speaker}:{sentence_index}",
                 "session_id": sid,
                 "source_exchange_id": exchange_id,
@@ -430,7 +431,26 @@ def extract_exchange_knowledge(
                 "confidence": confidence,
                 "extraction_method": "speaker_attributed_sentence_rules",
                 "status": "derived",
-            })
+            }
+            records.append(record)
+            speaker_records.append(record)
+        if speaker_records:
+            known_facts = {
+                (
+                    str(fact.get("attribute") or ""),
+                    str(fact.get("value") or "").casefold(),
+                )
+                for record in speaker_records
+                for fact in (record.get("structured_facts") or [])
+            }
+            for fact in _extract_structured_facts(raw_text):
+                identity = (
+                    str(fact.get("attribute") or ""),
+                    str(fact.get("value") or "").casefold(),
+                )
+                if identity not in known_facts:
+                    speaker_records[0]["structured_facts"].append(fact)
+                    known_facts.add(identity)
     return records
 
 
