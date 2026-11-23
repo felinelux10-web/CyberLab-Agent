@@ -98,11 +98,21 @@ def test_second_parse_is_only_for_explicit_contextual_reresolution(monkeypatch):
     }
 
 
-def test_legacy_mode_handlers_are_not_reintroduced():
+def test_compatibility_handlers_delegate_to_process(monkeypatch):
     manager = ConversationManager(RecordingOrchestrator())
-    assert callable(manager.process)
+    calls = []
+
+    def canonical_process(text):
+        calls.append(text)
+        return {"status": "canonical", "text": text}
+
+    monkeypatch.setattr(manager, "process", canonical_process)
+
     for handler_name in ("_handle_task", "_handle_system", "_handle_follow_up"):
-        assert not hasattr(manager, handler_name)
+        result = getattr(manager, handler_name)("sample request")
+        assert result == {"status": "canonical", "text": "sample request"}
+
+    assert calls == ["sample request"] * 3
 
 
 def test_independent_topic_without_valid_entity_cannot_authorize_followup(monkeypatch):
