@@ -4368,12 +4368,22 @@ class ConversationManager:
                 "route_decision": route_decision,
             }
         if route == "CLARIFY":
-            return {
-                "status": "needs_clarification", "intent": intent,
-                "source": "route_decision", "executed": False,
-                "text": "يلزم تحديد السياق أو الجلسة المقصودة قبل المتابعة.",
-                "route_decision": route_decision,
-            }
+            # CLARIFY is handled by the same authoritative route boundary as
+            # executable owners, but route_request returns before any handler
+            # lookup or provider invocation.
+            from lab_v4_dev.core.orchestrator_handlers.dispatch import route_request
+            return route_request(
+                self.orchestrator,
+                intent,
+                (parsed or {}).get("target"),
+                text,
+                response_attributes=(parsed or {}).get("response_attributes"),
+                conversation_history=chat_history,
+                context_transition=context_transition,
+                session_selector=(parsed or {}).get("session_selector"),
+                route_decision=route_decision,
+                ask_provider=None,
+            )
         if (
             route in {"L-SOCIAL", "L-LIVE"}
             and intent in (Intent.UNSUPPORTED, "unsupported")
