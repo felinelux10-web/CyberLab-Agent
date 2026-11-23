@@ -358,7 +358,7 @@ def test_message_search_falls_back_when_existing_fts_index_is_incomplete():
     archive.append_exchange(
         session_id="fts-fallback-session",
         user_text="أنا أستخدم الصباغة المائية في اللوحة.",
-        assistant_text="سجلت نوع الصباغة الذي ذكرته.",
+        assistant_text="سجلت المعلومة.",
     )
     archive.conn.execute("DELETE FROM conversation_messages_fts")
     archive.conn.commit()
