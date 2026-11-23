@@ -179,16 +179,6 @@ def route_request(
             "executed": False,
             "text": "لا يمكن اختيار مالك تنفيذ دون قرار توجيه نهائي صالح.",
         }
-    if route_decision.route == "CLARIFY":
-        return {
-            "status": "needs_clarification",
-            "intent": intent,
-            "source": "route_clarification",
-            "executed": False,
-            "route_decision": route_decision,
-            "text": "يلزم تحديد السياق أو الجلسة المقصودة قبل المتابعة.",
-        }
-
     intent_value = str(getattr(intent, "value", intent) or "").casefold()
     authorized_intent = str(
         getattr(route_decision.intent, "value", route_decision.intent) or ""
@@ -199,6 +189,16 @@ def route_request(
             "source": "route_decision_intent_mismatch",
             "executed": False,
             "text": "النية المطلوب تنفيذها لا تطابق النية التي أجازها قرار التوجيه.",
+        }
+
+    if route_decision.route == "CLARIFY":
+        return {
+            "status": "needs_clarification",
+            "intent": intent,
+            "source": "route_clarification",
+            "executed": False,
+            "route_decision": route_decision,
+            "text": "يلزم تحديد السياق أو الجلسة المقصودة قبل المتابعة.",
         }
     if route_decision.route not in {"L-EXEC", "L-SESSION", "P-TOOL"}:
         return {
