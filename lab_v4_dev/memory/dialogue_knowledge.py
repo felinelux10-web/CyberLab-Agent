@@ -11,7 +11,7 @@ import hashlib as _hashlib
 from typing import Any
 
 
-KNOWLEDGE_SCHEMA_VERSION = 4
+KNOWLEDGE_SCHEMA_VERSION = 5
 
 
 _STOP_WORDS = {
@@ -344,7 +344,7 @@ def _extract_structured_facts(sentence: str) -> list[dict]:
     tool_match = re.search(
         r"(?:استخدمت|أستخدم|استخدم|استعملت|أستعمل|سأستخدم|"
         r"سوف\s+أستخدم|باستخدام|(?:يمكنك\s+)?استخدام)\s+(?P<value>.+?)"
-        r"(?=\s+(?:لتشكيل|لتنعيم|لصنع|لعمل|من\s+أجل|حتى|ثم)\b|[.!؟?؛]|$)",
+        r"(?=\s+(?:لتشكيل\w*|لتنعيم\w*|لصنع\w*|لعمل\w*|من\s+أجل|حتى|ثم)\b|[.!؟?؛]|$)",
         text,
     )
     if tool_match:

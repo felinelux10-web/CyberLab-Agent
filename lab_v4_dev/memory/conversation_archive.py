@@ -511,7 +511,7 @@ class ConversationArchive:
                             "attribute": predicate,
                             "topic_id": topic,
                             "evidence_text": fact.get("evidence_text") or sentence,
-                            "extraction": "dialogue_knowledge_v4",
+                            "extraction": "dialogue_knowledge_v5",
                         }),
                         created_at, created_at,
                     ),
@@ -521,7 +521,7 @@ class ConversationArchive:
 
     def migrate_structured_dialogue_facts(self) -> dict:
         """Backfill the versioned structured-fact index from canonical SQLite exchanges."""
-        migration_key = "dialogue_structured_facts_v4"
+        migration_key = "dialogue_structured_facts_v5"
         if self.migration_complete(migration_key):
             return {
                 "already_migrated": True,

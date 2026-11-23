@@ -185,7 +185,7 @@ def test_dialogue_memory_persists_exchange_identity_and_derived_knowledge():
     exchange = memory.state.exchange_archive[-1]
     assert exchange["exchange_id"]
     assert exchange["timestamp"]
-    assert exchange["knowledge_version"] == 4
+    assert exchange["knowledge_version"] == 5
     assert exchange["knowledge"]
     assert all(item["source_exchange_id"] == exchange["exchange_id"] for item in exchange["knowledge"])
     assert exchange["exchange_index"] == 1

@@ -254,7 +254,7 @@ def test_agent_archives_provider_backed_dialogue_as_conversation_evidence():
                 "conversation_domain": "technical",
                 "conversation_act": "TOPIC_QUERY",
                 "context_transition": "new_independent",
-                "knowledge_version": 4,
+                "knowledge_version": 5,
             }],
         },
         {
@@ -271,7 +271,7 @@ def test_agent_archives_provider_backed_dialogue_as_conversation_evidence():
                 "conversation_domain": "technical",
                 "conversation_act": "TOPIC_QUERY",
                 "context_transition": "new_independent",
-                "knowledge_version": 4,
+                "knowledge_version": 5,
             }],
         },
     ]
