@@ -372,7 +372,9 @@ def test_saved_session_route_rejects_number_mismatch_even_when_id_matches(monkey
 
 def test_session_72_style_thirteen_exchange_report_preserves_all_user_details(monkeypatch):
     session = _report_session()
-    session_id = session["session_id"]
+    session_id = "7ccd0498d634430080dcf5d4c27ceb96"
+    session["session_id"] = session_id
+    session["dialogue_state"]["session_id"] = session_id
     details = [
         "أستعمل إطارًا خشبيًا قديمًا للعمل على اللوحة.",
         "أصب الجبس بسماكة تقارب 3 سم داخل الإطار.",
@@ -407,7 +409,15 @@ def test_session_72_style_thirteen_exchange_report_preserves_all_user_details(mo
     session["dialogue_state"]["transcript_archive"] = exchanges
     session["dialogue_state"]["exchange_archive"] = exchanges
 
-    monkeypatch.setattr(session_state, "get_session_index", lambda: [session])
+    monkeypatch.setattr(
+        session_state,
+        "get_session_index",
+        lambda: [
+            session,
+            {"session_id": "unrelated-session-73", "session_type": "dialogue",
+             "title": "موضوع غير متعلق", "number": 73},
+        ],
+    )
     monkeypatch.setattr(
         session_state, "get_session_by_number",
         lambda number: session if number == 72 else {},
@@ -445,7 +455,10 @@ def test_session_72_style_thirteen_exchange_report_preserves_all_user_details(mo
 
     assert result["status"] == "success", result
     assert result["session_id"] == session_id
-    assert len(result["evidence_exchange_ids"]) == 13
+    assert result["evidence_exchange_ids"] == [
+        f"session-72-evidence-{index:02d}" for index in range(1, 14)
+    ]
+    assert "unrelated-session-73" not in result["evidence_exchange_ids"]
     for detail in details:
         assert detail in result["text"]
     assert result["provider_synthesis_attempted"] is False
