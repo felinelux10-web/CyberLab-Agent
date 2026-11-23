@@ -309,6 +309,15 @@ def test_append_exchange_is_idempotent_and_preserves_canonical_identity():
 
 
 def test_structured_facts_keep_assistant_suggestions_out_of_user_memory():
+    from lab_v4_dev.memory.dialogue_knowledge import _extract_structured_facts
+
+    extracted = _extract_structured_facts(
+        "يمكنك استخدام ورق الصنفرة لتنعيم الحواف."
+    )
+    assert any(
+        item["attribute"] == "tool" and item["value"] == "ورق الصنفرة"
+        for item in extracted
+    )
     archive = make_archive()
     archive.append_exchange(
         session_id="speaker-separated-session",

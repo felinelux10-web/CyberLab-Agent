@@ -444,7 +444,16 @@ class ConversationArchive:
         created_at: str, correction: bool = False,
     ) -> int:
         """Persist conservative attribute/value facts with exchange-level provenance."""
-        if not text or not evidence_message_id or speaker not in {"user", "assistant"}:
+        if not text or speaker not in {"user", "assistant"}:
+            return 0
+        if not evidence_message_id:
+            row = self.conn.execute(
+                """SELECT id FROM conversation_messages
+                   WHERE session_id=? AND exchange_id=? AND speaker=?""",
+                (session_id, exchange_id, speaker),
+            ).fetchone()
+            evidence_message_id = int(row[0]) if row else None
+        if not evidence_message_id:
             return 0
         from lab_v4_dev.memory.dialogue_knowledge import _extract_structured_facts
 
