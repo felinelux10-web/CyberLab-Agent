@@ -196,6 +196,18 @@ def _load_sqlite_dialogue_exchanges(session_id: str) -> list[dict]:
             exchange_id = str(item.get("exchange_id") or "")
             if not exchange_id:
                 continue
+            try:
+                metadata = json.loads(item.get("metadata_json") or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                metadata = {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            response_status = str(
+                metadata.get("response_status") or metadata.get("status") or ""
+            ).casefold()
+            response_failed = bool(metadata.get("response_failed")) or response_status in {
+                "error", "failed", "denied", "unsupported",
+            }
             if exchange_id not in grouped:
                 grouped[exchange_id] = {
                     "session_id": str(session_id),
@@ -207,6 +219,16 @@ def _load_sqlite_dialogue_exchanges(session_id: str) -> list[dict]:
                     "intent": item.get("intent"),
                     "timestamp": item.get("created_at"),
                     "source": item.get("source"),
+                    "metadata": metadata,
+                    "response_status": response_status,
+                    "response_failed": response_failed,
+                    "failure_message": str(
+                        metadata.get("failure_message")
+                        or metadata.get("error_message")
+                        or ""
+                    ),
+                    "recall_only": bool(metadata.get("recall_only")),
+                    "state_boundary_only": bool(metadata.get("state_boundary_only")),
                 }
                 order.append(exchange_id)
             if item.get("speaker") == "user":
