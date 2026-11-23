@@ -81,6 +81,40 @@ def test_explicit_first_person_statement_becomes_provenance_fact():
     assert facts[0]["evidence_message_id"] is not None
 
 
+def test_structured_fact_backfill_migrates_existing_sqlite_exchanges_once():
+    archive = make_archive()
+    sid = "preexisting-sqlite-dialogue"
+    exchange_id = "preexisting-raw-exchange"
+    archive.conn.execute(
+        """INSERT INTO conversation_sessions
+           (session_id,title,created_at,updated_at) VALUES (?,?,?,?)""",
+        (sid, "Existing dialogue", "2026-11-01T10:00:00", "2026-11-01T10:00:00"),
+    )
+    archive.conn.executemany(
+        """INSERT INTO conversation_messages
+           (session_id,exchange_id,exchange_index,speaker,content,source,intent,
+            topic,metadata_json,created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        [
+            (sid, exchange_id, 1, "user", "أصب الجبس بسماكة ثلاثة سنتيمترات.",
+             "legacy_json", "personal_chat", "لوحة الجبس", "{}", "2026-11-01T10:00:00"),
+            (sid, exchange_id, 1, "assistant", "سجلت السماكة.",
+             "legacy_json", "personal_chat", "لوحة الجبس", "{}", "2026-11-01T10:00:00"),
+        ],
+    )
+    archive.conn.commit()
+
+    result = archive.migrate_structured_dialogue_facts()
+    assert result["imported_sessions"] == 1
+    assert result["imported_exchanges"] == 1
+    assert result["imported_facts"] >= 2
+    assert any(
+        item["value"] == "ثلاثة سنتيمترات"
+        for item in archive.search_relevant_facts("ثلاثة سنتيمترات")
+    )
+    assert archive.migrate_structured_dialogue_facts()["already_migrated"] is True
+
+
 def test_legacy_dialogue_migration_is_idempotent_and_searchable():
     archive = make_archive()
     record = {

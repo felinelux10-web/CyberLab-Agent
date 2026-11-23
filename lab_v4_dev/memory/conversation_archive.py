@@ -455,64 +455,176 @@ class ConversationArchive:
             evidence_message_id = int(row[0]) if row else None
         if not evidence_message_id:
             return 0
-        from lab_v4_dev.memory.dialogue_knowledge import _extract_structured_facts
 
+        from lab_v4_dev.memory.dialogue_knowledge import (
+            _extract_structured_facts,
+            _split_knowledge_sentences,
+        )
         inserted = 0
-        for fact in _extract_structured_facts(text):
-            predicate = str(fact.get("attribute") or "").strip()
-            value = str(fact.get("value") or "").strip()
-            if not predicate or not value:
-                continue
-            if correction and speaker == "user" and topic:
-                prior_rows = self.conn.execute(
-                    """SELECT id, metadata_json FROM memory_facts
-                       WHERE source_session_id=? AND speaker='user'
-                         AND predicate=? AND status='active'
-                         AND source_exchange_id<>?""",
-                    (session_id, predicate, exchange_id),
-                ).fetchall()
-                for prior in prior_rows:
-                    try:
-                        prior_meta = json.loads(prior["metadata_json"] or "{}")
-                    except (TypeError, ValueError, json.JSONDecodeError):
-                        prior_meta = {}
-                    if isinstance(prior_meta, dict) and str(
-                        prior_meta.get("topic_id") or ""
-                    ) == str(topic):
-                        self.conn.execute(
-                            "UPDATE memory_facts SET status='superseded', updated_at=? WHERE id=?",
-                            (created_at, int(prior["id"])),
-                        )
-            exists = self.conn.execute(
-                """SELECT 1 FROM memory_facts
-                   WHERE source_session_id=? AND source_exchange_id=?
-                     AND speaker=? AND predicate=? AND value=? LIMIT 1""",
-                (session_id, exchange_id, speaker, predicate, value),
-            ).fetchone()
-            if exists:
-                continue
-            self.conn.execute(
-                """INSERT INTO memory_facts
-                   (subject,predicate,value,speaker,source_kind,source_session_id,
-                    source_exchange_id,evidence_message_id,confidence,status,
-                    metadata_json,created_at,updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    "user" if speaker == "user" else "assistant",
-                    predicate, value, speaker, "structured",
-                    session_id, exchange_id, evidence_message_id,
-                    float(fact.get("confidence") or 0.75), "active",
-                    _json({
-                        "attribute": predicate,
-                        "topic_id": topic,
-                        "evidence_text": fact.get("evidence_text") or text,
-                        "extraction": "dialogue_knowledge_v3",
-                    }),
-                    created_at, created_at,
-                ),
-            )
-            inserted += 1
+        sentences = _split_knowledge_sentences(text) or [text]
+        for sentence in sentences:
+            for fact in _extract_structured_facts(sentence):
+                predicate = str(fact.get("attribute") or "").strip()
+                value = str(fact.get("value") or "").strip()
+                if not predicate or not value:
+                    continue
+                if correction and speaker == "user" and topic:
+                    prior_rows = self.conn.execute(
+                        """SELECT id, metadata_json FROM memory_facts
+                           WHERE source_session_id=? AND speaker='user'
+                             AND predicate=? AND status='active'
+                             AND source_exchange_id<>?""",
+                        (session_id, predicate, exchange_id),
+                    ).fetchall()
+                    for prior in prior_rows:
+                        try:
+                            prior_meta = json.loads(prior["metadata_json"] or "{}")
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            prior_meta = {}
+                        if isinstance(prior_meta, dict) and str(
+                            prior_meta.get("topic_id") or ""
+                        ) == str(topic):
+                            self.conn.execute(
+                                "UPDATE memory_facts SET status='superseded', updated_at=? WHERE id=?",
+                                (created_at, int(prior["id"])),
+                            )
+                exists = self.conn.execute(
+                    """SELECT 1 FROM memory_facts
+                       WHERE source_session_id=? AND source_exchange_id=?
+                         AND speaker=? AND predicate=? AND value=? LIMIT 1""",
+                    (session_id, exchange_id, speaker, predicate, value),
+                ).fetchone()
+                if exists:
+                    continue
+                self.conn.execute(
+                    """INSERT INTO memory_facts
+                       (subject,predicate,value,speaker,source_kind,source_session_id,
+                        source_exchange_id,evidence_message_id,confidence,status,
+                        metadata_json,created_at,updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        "user" if speaker == "user" else "assistant",
+                        predicate, value, speaker, "structured",
+                        session_id, exchange_id, evidence_message_id,
+                        float(fact.get("confidence") or 0.75), "active",
+                        _json({
+                            "attribute": predicate,
+                            "topic_id": topic,
+                            "evidence_text": fact.get("evidence_text") or sentence,
+                            "extraction": "dialogue_knowledge_v3",
+                        }),
+                        created_at, created_at,
+                    ),
+                )
+                inserted += 1
         return inserted
+
+    def migrate_structured_dialogue_facts(self) -> dict:
+        """Backfill the versioned structured-fact index from canonical SQLite exchanges."""
+        migration_key = "dialogue_structured_facts_v3"
+        if self.migration_complete(migration_key):
+            return {
+                "already_migrated": True,
+                "imported_sessions": 0,
+                "imported_exchanges": 0,
+                "imported_facts": 0,
+            }
+        session_rows = self.conn.execute(
+            "SELECT DISTINCT session_id FROM conversation_messages ORDER BY session_id"
+        ).fetchall()
+        session_ids = [
+            str(row[0] or "").strip()
+            for row in session_rows
+            if str(row[0] or "").strip()
+        ]
+        if not session_ids:
+            return {
+                "status": "no_dialogue_records",
+                "imported_sessions": 0,
+                "imported_exchanges": 0,
+                "imported_facts": 0,
+            }
+
+        now = _now()
+        imported_exchanges = 0
+        imported_facts = 0
+        self.conn.execute("BEGIN")
+        try:
+            for sid in session_ids:
+                for exchange in self.load_exchanges(sid):
+                    exchange_id = str(exchange.get("exchange_id") or "").strip()
+                    if not exchange_id:
+                        continue
+                    if exchange.get("recall_only") or exchange.get("state_boundary_only"):
+                        continue
+                    user_text = str(exchange.get("user") or "")
+                    assistant_text = str(exchange.get("assistant") or "")
+                    created_at = str(exchange.get("timestamp") or now)
+                    topic = str(exchange.get("target") or "").strip() or None
+                    user_row = self.conn.execute(
+                        """SELECT id FROM conversation_messages
+                           WHERE session_id=? AND exchange_id=? AND speaker='user'""",
+                        (sid, exchange_id),
+                    ).fetchone()
+                    assistant_row = self.conn.execute(
+                        """SELECT id FROM conversation_messages
+                           WHERE session_id=? AND exchange_id=? AND speaker='assistant'""",
+                        (sid, exchange_id),
+                    ).fetchone()
+                    normalized_user = " ".join(user_text.split())
+                    user_correction = bool(
+                        re.match(
+                            r"^(?:بل|التصحيح|أصحح|اصحح|أقصد|اقصد)\b",
+                            normalized_user,
+                        )
+                        or "التصحيح أن" in normalized_user
+                        or "التصحيح هو" in normalized_user
+                    )
+                    imported_facts += self._store_structured_facts(
+                        session_id=sid,
+                        exchange_id=exchange_id,
+                        speaker="user",
+                        text=user_text,
+                        topic=topic,
+                        evidence_message_id=int(user_row[0]) if user_row else None,
+                        created_at=created_at,
+                        correction=user_correction,
+                    )
+                    response_status = str(exchange.get("response_status") or "").casefold()
+                    if (
+                        assistant_text
+                        and not exchange.get("response_failed")
+                        and response_status != "needs_clarification"
+                    ):
+                        imported_facts += self._store_structured_facts(
+                            session_id=sid,
+                            exchange_id=exchange_id,
+                            speaker="assistant",
+                            text=assistant_text,
+                            topic=topic,
+                            evidence_message_id=(
+                                int(assistant_row[0]) if assistant_row else None
+                            ),
+                            created_at=created_at,
+                        )
+                    imported_exchanges += 1
+            self.conn.execute(
+                """INSERT INTO memory_migrations
+                   (migration_key,completed_at,imported_sessions,imported_exchanges)
+                   VALUES (?,?,?,?)""",
+                (migration_key, now, len(session_ids), imported_exchanges),
+            )
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        return {
+            "already_migrated": False,
+            "status": "migrated",
+            "imported_sessions": len(session_ids),
+            "imported_exchanges": imported_exchanges,
+            "imported_facts": imported_facts,
+        }
 
     def append_exchange(
         self, *, session_id: str, user_text: str, assistant_text: str,

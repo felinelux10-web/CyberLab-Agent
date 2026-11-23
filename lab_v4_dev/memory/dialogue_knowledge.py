@@ -284,7 +284,10 @@ def _extract_structured_facts(sentence: str) -> list[dict]:
     if not text or "؟" in text or "?" in text:
         return []
     normalized_sentence = _normalize(text)
-    if re.match(r"^(?:ما|ماذا|كم|هل|كيف|اين|من)\s", normalized_sentence):
+    if re.match(
+        r"^(?:ما|ماذا|كم|هل|كيف|اين|من|استرجع|استعد|تذكر|اذكر|اعطني|اخبرني)\s",
+        normalized_sentence,
+    ):
         return []
     facts = []
     seen = set()
@@ -310,7 +313,13 @@ def _extract_structured_facts(sentence: str) -> list[dict]:
         value = thickness.group("value").strip()
         # Remove a leading nominal subject when the speaker says "thickness of X".
         value = re.sub(r"^(?:طبقة\s+(?:الجبس|الجص)\s+)", "", value)
-        add("thickness", value, 0.96)
+        normalized_value = _normalize(value)
+        if re.search(
+            r"(?:\d|واحد|واحده|اثنان|ثلاثه|اربعه|خمسه|سته|سبعه|ثمانيه|"
+            r"تسعه|عشره|سنتيمتر|سم|ملم|مليمتر|متر|بوصه)",
+            normalized_value,
+        ):
+            add("thickness", value, 0.96)
 
     frame = re.search(
         r"(?:إطار|اطار)(?:ًا|ا|اً)?\s+(?:من\s+)?(?P<value>[^\s،؛.!؟?]+)",

@@ -104,6 +104,17 @@ class Agent:
                         f"Imported {migration['imported_exchanges']} legacy dialogue exchanges",
                         "INFO",
                     )
+            structured_migration = (
+                archive.migrate_structured_dialogue_facts()
+                if callable(getattr(archive, "migrate_structured_dialogue_facts", None))
+                else {}
+            )
+            if structured_migration.get("imported_facts"):
+                self._boot_ui.row(
+                    "MEMORY",
+                    f"Indexed {structured_migration['imported_facts']} structured dialogue facts",
+                    "INFO",
+                )
         except Exception as migration_error:
             log.warning(f"Legacy dialogue archive migration skipped: {migration_error}")
 
