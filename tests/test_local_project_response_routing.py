@@ -225,6 +225,10 @@ def test_explicit_project_execution_request_still_uses_orchestrator():
             "entity_type": "PROJECT",
             "conversation_domain": "project",
             "conversation_act": "CONVERSATION_CONTINUATION",
+            "route_decision": RouteDecision(
+                route="L-EXEC", intent=Intent.CYBER_EXPLAIN,
+                evidence_scope="work_state", provider_allowed=False,
+            ),
         },
         user_question="شغل الاختبارات",
         context_transition=ContextTransition.CONTINUE.value,
