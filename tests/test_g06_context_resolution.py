@@ -208,7 +208,7 @@ def test_no_context_reference_cannot_use_nlu_or_intent_cache_or_context_store(mo
 
     assert result["semantic_request"]["context_transition"] == "ambiguous"
     assert result["semantic_request"]["requires_context"] is False
-    assert routed == []
+    assert routed == [(Intent.CYBER_EXPLAIN, "", "general", "فيه")]
     assert memory.active_context_entity() is None
     assert memory.last_topic is None
 
@@ -239,7 +239,7 @@ def test_canonical_orchestrator_path_does_not_rebind_context_store_target(monkey
     result = manager.process("اشرح هذا الأمر")
 
     assert result["semantic_request"]["context_transition"] == "ambiguous"
-    assert routed == []
+    assert routed == [(Intent.CYBER_EXPLAIN, "", "general", "اشرح هذا الأمر")]
     assert memory.active_context_entity() is None
 
 
@@ -270,7 +270,7 @@ def test_context_resolved_path_keeps_explicit_repeat_execution_context(monkeypat
         route_decision=RouteDecision(route="L-EXEC", evidence_scope="work_state", intent=Intent.READ_FILE),
     )
 
-    assert routed == [(Intent.READ_FILE, "saved-result.py", "كرر")]
+    assert routed == [(Intent.READ_FILE, "saved-result.py", "general", "كرر")]
 
 
 def test_targetless_cyber_explanation_bypasses_response_cache(monkeypatch):
