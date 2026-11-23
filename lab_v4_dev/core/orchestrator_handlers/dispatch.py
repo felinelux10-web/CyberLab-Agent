@@ -179,6 +179,16 @@ def route_request(
             "executed": False,
             "text": "لا يمكن اختيار مالك تنفيذ دون قرار توجيه نهائي صالح.",
         }
+    if route_decision.route == "CLARIFY":
+        return {
+            "status": "needs_clarification",
+            "intent": intent,
+            "source": "route_clarification",
+            "executed": False,
+            "route_decision": route_decision,
+            "text": "يلزم تحديد السياق أو الجلسة المقصودة قبل المتابعة.",
+        }
+
     intent_value = str(getattr(intent, "value", intent) or "").casefold()
     authorized_intent = str(
         getattr(route_decision.intent, "value", route_decision.intent) or ""
