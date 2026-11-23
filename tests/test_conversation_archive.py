@@ -371,3 +371,21 @@ def test_message_search_falls_back_when_existing_fts_index_is_incomplete():
     assert len(hits) == 1
     assert hits[0]["speaker"] == "user"
     assert "الصباغة المائية" in hits[0]["content"]
+
+
+def test_relevant_skill_requires_a_positive_success_majority():
+    archive = make_archive()
+    skill_id = archive.save_skill(
+        name="verified-archive-export",
+        description="Export a saved archive without changing its source.",
+        steps=["read archive", "write a separate export", "verify output"],
+        preconditions=["archive exists"],
+    )
+
+    assert archive.search_relevant_skills("archive export") == []
+
+    archive.record_skill_run(skill_id, success=True, notes="verified")
+    assert archive.search_relevant_skills("archive export")
+
+    archive.record_skill_run(skill_id, success=False, notes="verification failed")
+    assert archive.search_relevant_skills("archive export") == []
