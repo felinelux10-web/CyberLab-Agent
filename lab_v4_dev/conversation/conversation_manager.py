@@ -7533,6 +7533,18 @@ class ConversationManager:
                 "executed": False,
             }
 
+    # Compatibility entry points retained for callers from the pre-unified
+    # dialogue lifecycle. They deliberately contain no routing logic: process()
+    # remains the single canonical implementation.
+    def _handle_task(self, text: str, *args, **kwargs) -> dict:
+        return self.process(text, *args, **kwargs)
+
+    def _handle_system(self, text: str, *args, **kwargs) -> dict:
+        return self.process(text, *args, **kwargs)
+
+    def _handle_follow_up(self, text: str, *args, **kwargs) -> dict:
+        return self.process(text, *args, **kwargs)
+
     def switch_topic(
         self,
         current_topic: str,
