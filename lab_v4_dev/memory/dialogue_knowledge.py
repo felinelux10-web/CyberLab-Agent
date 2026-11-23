@@ -341,7 +341,7 @@ def _extract_structured_facts(sentence: str) -> list[dict]:
     if tool_match:
         tool_text = tool_match.group("value")
         tool_items = re.split(
-            r"\s*[,،؛]\s*|\s+و(?=[\w\u0600-\u06ff])",
+            r"\s*[,،؛]\s*|\s+و(?!(?:رق|رقة)\b)(?=[\w\u0600-\u06ff])",
             tool_text,
         )
         for item in tool_items:
