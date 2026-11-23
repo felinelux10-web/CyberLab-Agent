@@ -116,6 +116,12 @@ def test_legacy_dialogue_migration_is_idempotent_and_searchable():
     assert len(transcript) == 2
     facts = archive.search_relevant_facts("ما الصباغة التي أستخدمها؟")
     assert facts and facts[0]["value"] == "الصباغة المائية"
+    structured = archive.conn.execute(
+        """SELECT 1 FROM memory_facts
+           WHERE source_exchange_id='legacy-exchange-2'
+             AND predicate='thickness' AND source_kind='structured'"""
+    ).fetchone()
+    assert structured is not None
     second = archive.migrate_legacy_dialogue_sessions([record])
     assert second["already_migrated"] is True
 
@@ -286,6 +292,72 @@ def test_append_exchange_is_idempotent_and_preserves_canonical_identity():
     assert {row["exchange_id"] for row in rows} == {"stable-exchange-id"}
     assert {row["exchange_index"] for row in rows} == {7}
     assert all("conversation_domain" in row["metadata_json"] for row in rows)
+    structured = archive.conn.execute(
+        """SELECT predicate, value, status FROM memory_facts
+           WHERE source_session_id=? AND source_exchange_id=? AND source_kind='structured'""",
+        ("canonical-session", "stable-exchange-id"),
+    ).fetchall()
+    assert {(row["predicate"], row["value"]) for row in structured} == {
+        ("thickness", "ثلاثة سنتيمترات"),
+        ("material", "الجبس"),
+    }
+    assert all(row["status"] == "active" for row in structured)
+    assert any(
+        item["predicate"] == "thickness"
+        for item in archive.search_relevant_facts("ثلاثة سنتيمترات")
+    )
+
+
+def test_structured_facts_keep_assistant_suggestions_out_of_user_memory():
+    archive = make_archive()
+    archive.append_exchange(
+        session_id="speaker-separated-session",
+        exchange_id="assistant-tool-suggestion",
+        exchange_index=1,
+        user_text="كيف أنعم حواف الجبس؟",
+        assistant_text="يمكنك استخدام ورق الصنفرة لتنعيم الحواف.",
+        topic="تشطيب الجبس",
+    )
+    assistant_facts = archive.search_facts(
+        "ورق الصنفرة", speaker="assistant", source_kind="structured"
+    )
+    assert any(
+        item["subject"] == "assistant"
+        and item["speaker"] == "assistant"
+        and item["value"] == "ورق الصنفرة"
+        for item in assistant_facts
+    )
+    assert not archive.search_relevant_facts("ورق الصنفرة")
+
+
+def test_structured_correction_supersedes_only_the_prior_topic_fact():
+    archive = make_archive()
+    archive.append_exchange(
+        session_id="correction-fact-session",
+        exchange_id="old-thickness",
+        exchange_index=1,
+        user_text="كانت سماكة طبقة الجبس ثلاثة سنتيمترات.",
+        assistant_text="سجلت السماكة.",
+        topic="لوحة الجبس",
+    )
+    archive.append_exchange(
+        session_id="correction-fact-session",
+        exchange_id="new-thickness",
+        exchange_index=2,
+        user_text="بل، التصحيح أن السماكة خمسة سنتيمترات.",
+        assistant_text="تم اعتماد التصحيح.",
+        topic="لوحة الجبس",
+    )
+    rows = archive.conn.execute(
+        """SELECT source_exchange_id, value, status FROM memory_facts
+           WHERE source_session_id=? AND predicate='thickness' AND source_kind='structured'""",
+        ("correction-fact-session",),
+    ).fetchall()
+    by_exchange = {row["source_exchange_id"]: row for row in rows}
+    assert by_exchange["old-thickness"]["status"] == "superseded"
+    assert by_exchange["new-thickness"]["status"] == "active"
+    assert by_exchange["new-thickness"]["value"] == "خمسة سنتيمترات"
+
 
 def test_agent_does_not_persist_read_only_history_without_new_exchange():
     calls = []
