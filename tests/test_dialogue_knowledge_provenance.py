@@ -1307,3 +1307,97 @@ def test_recall_only_exchange_stays_in_timeline_without_duplicating_knowledge():
     assert analysis["knowledge"] == []
     assert analysis["exchange_insights"] == []
 
+
+
+def test_sqlite_session_hydration_preserves_failed_exchange_provenance(monkeypatch, tmp_path):
+    import json
+    import sqlite3
+
+    database_path = tmp_path / "conversation-archive.sqlite3"
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        """CREATE TABLE conversation_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            exchange_id TEXT NOT NULL,
+            exchange_index INTEGER NOT NULL,
+            speaker TEXT NOT NULL,
+            content TEXT NOT NULL,
+            source TEXT NOT NULL,
+            intent TEXT,
+            topic TEXT,
+            metadata_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )"""
+    )
+    session_id = "sqlite-provenance-session"
+    rows = [
+        (
+            session_id, "failed-exchange", 1, "user",
+            "ما الأدوات التي استخدمتها؟", "conversation", "personal_chat",
+            "تنفيذ لوحة بالجبس",
+            {"status": "error", "response_failed": True,
+             "failure_message": "تعذر إنتاج رد صالح."},
+            "2026-11-01T10:00:00",
+        ),
+        (
+            session_id, "failed-exchange", 1, "assistant",
+            "تعذر إنتاج رد صالح.", "conversation", "personal_chat",
+            "تنفيذ لوحة بالجبس",
+            {"status": "error", "response_failed": True,
+             "failure_message": "تعذر إنتاج رد صالح."},
+            "2026-11-01T10:00:00",
+        ),
+        (
+            session_id, "completed-exchange", 2, "user",
+            "استخدمت سكينًا ومفكًا وملعقة.", "conversation", "personal_chat",
+            "تنفيذ لوحة بالجبس", {"status": "success"},
+            "2026-11-01T10:05:00",
+        ),
+        (
+            session_id, "completed-exchange", 2, "assistant",
+            "هذه أدوات منزلية استُخدمت لتشكيل الجبس.", "conversation",
+            "personal_chat", "تنفيذ لوحة بالجبس", {"status": "success"},
+            "2026-11-01T10:05:00",
+        ),
+    ]
+    connection.executemany(
+        """INSERT INTO conversation_messages
+           (session_id, exchange_id, exchange_index, speaker, content,
+            source, intent, topic, metadata_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        [
+            (*row[:8], json.dumps(row[8], ensure_ascii=False), row[9])
+            for row in rows
+        ],
+    )
+    connection.commit()
+    connection.close()
+
+    monkeypatch.setattr("lab_v4_dev.memory.db.DB_PATH", str(database_path))
+    hydrated = session_state._attach_sqlite_dialogue_transcript(
+        {
+            "session_id": session_id,
+            "session_type": "dialogue",
+            "dialogue_state": {"session_id": session_id},
+        },
+        session_id,
+    )
+
+    exchanges = hydrated["dialogue_state"]["transcript_archive"]
+    failed = next(item for item in exchanges if item["exchange_id"] == "failed-exchange")
+    assert failed["response_status"] == "error"
+    assert failed["response_failed"] is True
+    assert failed["failure_message"] == "تعذر إنتاج رد صالح."
+
+    analysis = analyze_dialogue_session(hydrated)
+    assert analysis["exchange_count"] == 2
+    assert any(
+        item["exchange_id"] == "failed-exchange"
+        for item in analysis["failed_exchanges"]
+    )
+
+    evidence = retrieve_dialogue_evidence(hydrated, "ما الأدوات التي استخدمتها؟")
+    assert evidence
+    assert all(item["exchange_id"] != "failed-exchange" for item in evidence)
+    assert any(item["exchange_id"] == "completed-exchange" for item in evidence)
