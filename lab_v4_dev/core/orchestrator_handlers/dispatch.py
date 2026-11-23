@@ -264,13 +264,15 @@ def route_request(
                 "text": "قرار التوجيه لا يحدد نطاق أدلة محفوظًا صالحًا لهذا المخرج.",
             }
     reusable_skills = []
+    skill_memory = None
+    provider_call_count = 0
     if (
         route_decision.route == "L-EXEC"
         and bool(route_decision.provider_allowed)
     ):
-        memory = getattr(getattr(orchestrator, "agent", None), "memory", None)
+        skill_memory = getattr(getattr(orchestrator, "agent", None), "memory", None)
         search_reusable_skills = getattr(
-            memory, "search_relevant_skills", None
+            skill_memory, "search_relevant_skills", None
         )
         if callable(search_reusable_skills):
             try:
@@ -278,13 +280,17 @@ def route_request(
                     str(value or "")
                     for value in (intent_value, target, raw)
                 ).strip()
+                # One verified procedure is supplied per execution so the
+                # resulting outcome can be attributed without guessing which
+                # of several competing skills the provider followed.
                 reusable_skills = search_reusable_skills(
-                    skill_query, limit=3
+                    skill_query, limit=1
                 ) or []
             except Exception:
                 reusable_skills = []
 
     def authorized_ask(*args, **kwargs):
+        nonlocal provider_call_count
         if route_decision is None or not bool(
             getattr(route_decision, "provider_allowed", False)
         ):
@@ -297,6 +303,7 @@ def route_request(
                 "status": "unavailable",
                 "message": "provider gateway capability unavailable",
             }
+        provider_call_count += 1
         if reusable_skills:
             skill_lines = [
                 "Verified reusable procedures from prior successful runs:",
@@ -345,6 +352,46 @@ def route_request(
         context_transition=context_transition,
     )
     if _handled is not None:
+        # Only record a skill trial when its single verified procedure was
+        # actually supplied to a provider call for a mutating code operation.
+        # Analysis-only requests and handlers that never called the provider
+        # must not inflate skill success/failure statistics.
+        skill_execution_intents = {Intent.MODIFY_CODE, Intent.GENERATE_CODE}
+        if (
+            reusable_skills
+            and provider_call_count > 0
+            and intent in skill_execution_intents
+            and isinstance(_handled, dict)
+        ):
+            skill = reusable_skills[0]
+            status = str(_handled.get("status") or "").casefold()
+            successful_execution = (
+                status == "success"
+                and (
+                    bool(_handled.get("verified"))
+                    or bool(_handled.get("saved_to"))
+                )
+            )
+            failed_execution = status in {"failed", "error", "blocked", "denied"}
+            record_skill_run = getattr(skill_memory, "record_skill_run", None)
+            if callable(record_skill_run) and (successful_execution or failed_execution):
+                try:
+                    record_skill_run(
+                        int(skill["id"]),
+                        success=successful_execution,
+                        context={
+                            "intent": intent_value,
+                            "target": str(target or ""),
+                            "route": route_decision.route,
+                        },
+                        notes=(
+                            "verified_execution_success"
+                            if successful_execution
+                            else "authorized_execution_failed"
+                        ),
+                    )
+                except Exception:
+                    pass
         if isinstance(_handled, dict) and reusable_skills:
             _handled.setdefault(
                 "reusable_skill_candidates",
