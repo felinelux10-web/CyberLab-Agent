@@ -135,7 +135,7 @@ CASES = [
     ("temporal", CORRECTION, "هل وردت سماكة ثلاثة سنتيمترات قبل التصحيح؟", {"update-1"}, "user"),
     ("temporal", CORRECTION, "ما النص الذي ذكر التصحيح خمسة سنتيمترات؟", {"update-2"}, "user"),
     # 21–25: update and supersession questions
-    ("knowledge_update", CORRECTION, "ما التصحيح الذي ذكرته؟", {"update-2"}, "user"),
+    ("knowledge_update", CORRECTION, "ما الذي تغير في السماكة؟", {"update-2"}, "user"),
     ("knowledge_update", CORRECTION, "ما السماكة بعد التعديل خمسة سنتيمترات؟", {"update-2"}, "user"),
     ("knowledge_update", CORRECTION, "هل توجد قيمة جديدة خمسة سنتيمترات؟", {"update-2"}, "user"),
     ("knowledge_update", CORRECTION, "ما العلاقة بين ثلاثة وخمسة سنتيمترات؟", {"update-1", "update-2"}, "user"),
