@@ -35,6 +35,8 @@ jobs:
             tests/test_saved_session_selection_regressions.py \
             tests/test_dialogue_knowledge_provenance.py \
             tests/test_conversation_archive.py \
+            tests/test_evidence_retriever_scopes.py \
+            tests/test_saved_dialogue_evidence_followup.py \
             tests/test_saved_session_summary_routing.py \
             tests/test_saved_dialogue_topic_analysis_and_continuation.py \
             tests/test_dialogue_continuity_regressions.py \
