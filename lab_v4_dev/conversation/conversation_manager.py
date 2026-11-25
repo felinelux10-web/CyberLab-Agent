@@ -1218,7 +1218,7 @@ class ConversationManager:
 
         normalized = normalize_text(query).strip(" .!؟?")
         interrogative = re.match(
-            r"^(?:ما|ماذا|كم|هل|أين|اين|متى|كيف|أي|اي|اذكر|حدد|ماهي|ماهو|ما هو|ما هي)\\b",
+            r"^(?:ما|ماذا|كم|هل|أين|اين|متى|كيف|أي|اي|اذكر|حدد|ماهي|ماهو|ما هو|ما هي)\b",
             normalized,
         ) or any(marker in query for marker in ("؟", "?"))
         if not interrogative:
