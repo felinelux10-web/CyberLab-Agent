@@ -413,7 +413,7 @@ class ConversationArchive:
                     explicit_fact = self._extract_explicit_user_fact(user)
                     if explicit_fact and user_message_id is not None:
                         predicate, fact_value = explicit_fact
-                        self.conn.execute(
+                        fact_cursor = self.conn.execute(
                             """INSERT INTO memory_facts
                                (subject,predicate,value,speaker,source_kind,source_session_id,
                                 source_exchange_id,evidence_message_id,confidence,status,
@@ -428,6 +428,7 @@ class ConversationArchive:
                                 "candidate", "user",
                             ),
                         )
+                        self.validate_fact(int(fact_cursor.lastrowid))
                     if user_message_id is None and user:
                         existing_user = self.conn.execute(
                             """SELECT id FROM conversation_messages
@@ -557,7 +558,7 @@ class ConversationArchive:
                 ).fetchone()
                 if exists:
                     continue
-                self.conn.execute(
+                fact_cursor = self.conn.execute(
                     """INSERT INTO memory_facts
                        (subject,predicate,value,speaker,source_kind,source_session_id,
                         source_exchange_id,evidence_message_id,confidence,status,
@@ -580,6 +581,7 @@ class ConversationArchive:
                         "candidate", "user" if speaker == "user" else "assistant",
                     ),
                 )
+                self.validate_fact(int(fact_cursor.lastrowid))
                 inserted += 1
         return inserted
 
@@ -831,7 +833,7 @@ class ConversationArchive:
                 explicit_fact = self._extract_explicit_user_fact(user)
                 if explicit_fact:
                     predicate, fact_value = explicit_fact
-                    self.conn.execute(
+                    fact_cursor = self.conn.execute(
                         """INSERT INTO memory_facts
                            (subject,predicate,value,speaker,source_kind,source_session_id,
                             source_exchange_id,evidence_message_id,confidence,status,
@@ -845,6 +847,7 @@ class ConversationArchive:
                             now, now, now, None, None, "candidate", "user",
                         ),
                     )
+                    self.validate_fact(int(fact_cursor.lastrowid))
             if not meta.get("recall_only") and not meta.get("state_boundary_only"):
                 normalized_user = " ".join(user.split())
                 user_correction = bool(
