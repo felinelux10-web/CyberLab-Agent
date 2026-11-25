@@ -69,6 +69,7 @@ def test_live_scope_ranks_only_exact_session_evidence(monkeypatch):
             "exchange_id": "live-a:1",
             "exchange_index": 1,
             "matched_terms": ["جبس"],
+            "matched_user_terms": ["جبس"],
             "score": 1.2,
         }],
     )
@@ -116,6 +117,7 @@ def test_saved_scope_accepts_valid_nested_dialogue_owner(monkeypatch):
             "exchange_id": "dialogue-owner:4",
             "exchange_index": 4,
             "matched_terms": ["معلومة"],
+            "matched_user_terms": ["معلومة"],
             "score": 0.9,
         }],
     )
