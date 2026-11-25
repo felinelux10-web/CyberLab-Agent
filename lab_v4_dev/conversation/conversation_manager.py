@@ -1225,10 +1225,8 @@ class ConversationManager:
             return None
 
         from lab_v4_dev.memory.session_state import get_session_by_id
-        from lab_v4_dev.memory.dialogue_knowledge import (
-            format_dialogue_evidence_answer,
-            retrieve_dialogue_evidence,
-        )
+        from lab_v4_dev.memory.dialogue_knowledge import format_dialogue_evidence_answer
+        from lab_v4_dev.memory.evidence_retriever import EvidenceRetriever
 
         try:
             saved = get_session_by_id(wanted_session_id)
@@ -1239,14 +1237,9 @@ class ConversationManager:
             ):
                 return None
 
-            evidence = retrieve_dialogue_evidence(saved, query, limit=8)
-            evidence = [
-                item for item in evidence
-                if isinstance(item, dict)
-                and str(item.get("session_id") or "").strip() == wanted_session_id
-                and str(item.get("exchange_id") or "").strip()
-                and item.get("matched_terms")
-            ]
+            evidence = EvidenceRetriever.retrieve(
+                query, scope="saved", session_id=wanted_session_id, limit=8,
+            )
             if not evidence:
                 return None
 
