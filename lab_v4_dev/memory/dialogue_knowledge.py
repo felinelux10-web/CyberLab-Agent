@@ -422,7 +422,17 @@ def extract_exchange_knowledge(
                 "speaker": speaker,
                 "knowledge_type": kind,
                 "content": sentence,
-                "structured_facts": _extract_structured_facts(sentence),
+                "structured_facts": [
+                    {
+                        **fact,
+                        "origin": "user" if speaker == "user" else "assistant",
+                        "verification": "candidate",
+                        "valid_from": timestamp or None,
+                        "invalidated_at": None,
+                        "supersedes": None,
+                    }
+                    for fact in _extract_structured_facts(sentence)
+                ],
                 "topic_id": target or None,
                 "concept_links": [target] if target else [],
                 "temporal_order": [int(exchange_index or 0) + 1, sentence_index],
@@ -830,14 +840,31 @@ def analyze_dialogue_session(data: dict) -> dict:
                 }.values())
                 if matched_prior:
                     superseded_ids = []
+                    invalidation_time = (
+                        item.get("timestamp")
+                        or exchange.get("timestamp")
+                        or exchange.get("created_at")
+                    )
+                    matched_predicates = set(matched_prior_by_predicate)
                     for prior in matched_prior:
                         superseded_ids.append(prior["knowledge_id"])
-                        prior["invalidated_at"] = (
-                            item.get("timestamp")
-                            or exchange.get("timestamp")
-                            or exchange.get("created_at")
-                        )
-                        prior["status"] = "superseded"
+                        for prior_fact in prior.get("structured_facts") or []:
+                            if (
+                                isinstance(prior_fact, dict)
+                                and str(prior_fact.get("attribute") or "") in matched_predicates
+                            ):
+                                prior_fact["invalidated_at"] = invalidation_time
+                                prior_fact["status"] = "superseded"
+                                prior_fact["superseded_by"] = item["knowledge_id"]
+                        prior_facts = [
+                            fact for fact in (prior.get("structured_facts") or [])
+                            if isinstance(fact, dict)
+                        ]
+                        if prior_facts and all(
+                            fact.get("invalidated_at") for fact in prior_facts
+                        ):
+                            prior["invalidated_at"] = invalidation_time
+                            prior["status"] = "superseded"
                         relationships.append({
                             "relation": "corrects",
                             "source_knowledge_id": item["knowledge_id"],
@@ -845,6 +872,14 @@ def analyze_dialogue_session(data: dict) -> dict:
                             "confidence": 0.90,
                             "evidence_exchange_id": exchange_id,
                         })
+                    for current_fact in item.get("structured_facts") or []:
+                        if not isinstance(current_fact, dict):
+                            continue
+                        predicate = str(current_fact.get("attribute") or "")
+                        prior = matched_prior_by_predicate.get(predicate)
+                        if prior:
+                            current_fact["supersedes"] = prior["knowledge_id"]
+                            current_fact["verification"] = "validated"
                     item["supersedes"] = superseded_ids
                     item["verification"] = "validated"
             if kind in {
@@ -915,11 +950,11 @@ def analyze_dialogue_session(data: dict) -> dict:
                 float(item.get("confidence") or 0.0),
                 float(fact.get("confidence") or 0.0),
             ),
-            "origin": item.get("origin"),
-            "verification": item.get("verification"),
-            "valid_from": item.get("valid_from"),
-            "invalidated_at": item.get("invalidated_at"),
-            "supersedes": item.get("supersedes"),
+            "origin": fact.get("origin") or item.get("origin"),
+            "verification": fact.get("verification") or item.get("verification"),
+            "valid_from": fact.get("valid_from") or item.get("valid_from"),
+            "invalidated_at": fact.get("invalidated_at") or item.get("invalidated_at"),
+            "supersedes": fact.get("supersedes") or item.get("supersedes"),
         }
         for item in knowledge
         for fact in (item.get("structured_facts") or [])
