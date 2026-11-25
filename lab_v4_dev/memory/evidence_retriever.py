@@ -6,7 +6,65 @@ selects and ranks evidence; it never rewrites archives or generates answers.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
+
+
+def _query_attribute_is_evidenced(query: str, evidence: dict) -> bool:
+    """Reject topical matches when the question asks for an absent specific attribute."""
+    from lab_v4_dev.memory.dialogue_knowledge import _normalize
+
+    question = _normalize(query)
+    content = _normalize(
+        str(evidence.get("user") or "") + " " + str(evidence.get("assistant") or "")
+    )
+
+    if any(marker in question for marker in (
+        "ساعه", "ساعات", "دقيقه", "دقائق", "مده", "استغرق", "كم يوم",
+    )):
+        return bool(re.search(
+            r"(?:\\d+|واحده?|اثنان|ثلاثه|اربعه|خمسه|عده)\\s*"
+            r"(?:ساعه|ساعات|دقيقه|دقائق|يوم|ايام|اسبوع|اسابيع|شهر|اشهر)",
+            content,
+        ))
+
+    if any(marker in question for marker in (
+        "ماركه", "علامه تجاريه", "اسم الشركه", "الشركه المصنعه",
+    )):
+        return bool(re.search(
+            r"(?:ماركه|علامه تجاريه|الشركه المصنعه|brand)\\s+"
+            r"[a-z0-9ء-ي][a-z0-9ء-ي_-]*",
+            content,
+        ))
+
+    if "نسبه" in question or "نسب" in question:
+        asks_exact_ratio = any(marker in question for marker in (
+            "دقيق", "بالضبط", "كم نسبه", "ما نسبه",
+        ))
+        if asks_exact_ratio:
+            return bool(re.search(
+                r"(?:\\d+(?:[.,]\\d+)?\\s*(?:%|٪|بالمئه|في المئه)|"
+                r"\\d+\\s*[:/]\\s*\\d+)",
+                content,
+            ))
+        return "نسب" in content or bool(re.search(r"\\d+\\s*(?:%|٪)", content))
+
+    if any(marker in question for marker in (
+        "درجه حراره", "حراره الغرفه", "درجه الحراره",
+    )):
+        return bool(re.search(
+            r"(?:\\d+(?:[.,]\\d+)?\\s*(?:درجه|°)|"
+            r"درجه مئويه|سيلسيوس|فهرنهايت)",
+            content,
+        ))
+
+    if any(marker in question for marker in ("موديل", "طراز", "رقم الموديل")):
+        return bool(re.search(
+            r"(?:موديل|طراز|model)\\s+[a-z0-9][a-z0-9_-]*",
+            content,
+        ))
+
+    return True
 
 
 class EvidenceRetriever:
@@ -111,6 +169,7 @@ class EvidenceRetriever:
                     item.get("matched_user_terms")
                     or item.get("matched_assistant_terms")
                 )
+                or not _query_attribute_is_evidenced(query, item)
             ):
                 continue
             result.append({
@@ -275,4 +334,5 @@ class EvidenceRetriever:
                 item.get("matched_user_terms")
                 or item.get("matched_assistant_terms")
             )
+            and _query_attribute_is_evidenced(query, item)
         ]
