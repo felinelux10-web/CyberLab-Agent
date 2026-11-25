@@ -190,3 +190,43 @@ def test_temporal_fact_schema_upgrades_existing_rows_without_replacing_them():
     assert row["verification"] == "candidate"
     assert row["origin"] == "user"
     connection.close()
+
+
+
+def test_fact_validator_rejects_mismatched_source_session():
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    archive = ConversationArchive(SimpleNamespace(conn=connection))
+    cursor = connection.execute(
+        """INSERT INTO conversation_messages
+           (session_id,exchange_id,exchange_index,speaker,content,created_at)
+           VALUES (?,?,?,?,?,?)""",
+        (
+            "actual-session", "actual-exchange", 1, "user",
+            "أستخدم الصباغة المائية.",
+            "2026-04-01T10:00:00",
+        ),
+    )
+
+    fact_id = archive.save_fact(
+        subject="user",
+        predicate="paint_type",
+        value="الصباغة المائية",
+        speaker="user",
+        source_kind="structured",
+        source_session_id="wrong-session",
+        source_exchange_id="actual-exchange",
+        evidence_message_id=int(cursor.lastrowid),
+        origin="user",
+    )
+    fact = connection.execute(
+        "SELECT * FROM memory_facts WHERE id=?",
+        (fact_id,),
+    ).fetchone()
+
+    import json
+    metadata = json.loads(fact["metadata_json"])
+    assert fact["verification"] == "rejected"
+    assert metadata["validation"]["reason"] == "source_session_mismatch"
+    assert archive.search_facts("paint_type", speaker="user") == []
+    connection.close()
