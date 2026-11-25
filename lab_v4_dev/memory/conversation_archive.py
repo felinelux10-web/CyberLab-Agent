@@ -1114,6 +1114,30 @@ class ConversationArchive:
         params.append(max(1, min(200, int(limit))))
         return [dict(row) for row in self.conn.execute(sql, params).fetchall()]
 
+    def get_fact_history(
+        self,
+        *,
+        subject: str | None = None,
+        predicate: str | None = None,
+        source_session_id: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        """Return active and superseded fact versions with their source links."""
+        sql = "SELECT * FROM memory_facts WHERE 1=1"
+        params: list[Any] = []
+        if subject:
+            sql += " AND subject=?"
+            params.append(str(subject))
+        if predicate:
+            sql += " AND predicate=?"
+            params.append(str(predicate))
+        if source_session_id:
+            sql += " AND source_session_id=?"
+            params.append(str(source_session_id))
+        sql += " ORDER BY COALESCE(valid_from,created_at), id LIMIT ?"
+        params.append(max(1, min(500, int(limit))))
+        return [dict(row) for row in self.conn.execute(sql, params).fetchall()]
+
     def search_relevant_facts(self, query: str, *, limit: int = 12) -> list[dict]:
         """Retrieve user facts using meaningful query terms and verb synonyms."""
         text = str(query or "")
