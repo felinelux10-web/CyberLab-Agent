@@ -469,7 +469,13 @@ def handle_session_restore(orchestrator, intent, *, target=None, raw=None, route
             retrieve_dialogue_evidence,
         )
         query = str(raw or "")
-        evidence = retrieve_dialogue_evidence(s, query, limit=8)
+        evidence = retrieve_dialogue_evidence(
+            s,
+            query,
+            limit=8,
+            scope="saved",
+            session_id=str(s.get("session_id") or selected_id or ""),
+        )
         evidence_text = format_dialogue_evidence_answer(
             s, query, limit=8, evidence=evidence
         )
