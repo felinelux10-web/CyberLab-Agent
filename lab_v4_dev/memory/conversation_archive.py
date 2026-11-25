@@ -508,11 +508,13 @@ class ConversationArchive:
                 value = str(fact.get("value") or "").strip()
                 if not predicate or not value:
                     continue
+                superseded_ids = []
                 if correction and speaker == "user" and topic:
                     prior_rows = self.conn.execute(
                         """SELECT id, metadata_json FROM memory_facts
                            WHERE source_session_id=? AND speaker='user'
                              AND predicate=? AND status='active'
+                             AND invalidated_at IS NULL
                              AND source_exchange_id<>?""",
                         (session_id, predicate, exchange_id),
                     ).fetchall()
@@ -524,10 +526,14 @@ class ConversationArchive:
                         if isinstance(prior_meta, dict) and str(
                             prior_meta.get("topic_id") or ""
                         ) == str(topic):
+                            prior_id = int(prior["id"])
                             self.conn.execute(
-                                "UPDATE memory_facts SET status='superseded', updated_at=? WHERE id=?",
-                                (created_at, int(prior["id"])),
+                                """UPDATE memory_facts
+                                   SET status='superseded', invalidated_at=?, updated_at=?
+                                   WHERE id=? AND invalidated_at IS NULL""",
+                                (created_at, created_at, prior_id),
                             )
+                            superseded_ids.append(prior_id)
                 exists = self.conn.execute(
                     """SELECT 1 FROM memory_facts
                        WHERE source_session_id=? AND source_exchange_id=?
@@ -540,8 +546,9 @@ class ConversationArchive:
                     """INSERT INTO memory_facts
                        (subject,predicate,value,speaker,source_kind,source_session_id,
                         source_exchange_id,evidence_message_id,confidence,status,
-                        metadata_json,created_at,updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        metadata_json,created_at,updated_at,valid_from,invalidated_at,
+                        supersedes,verification,origin)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         "user" if speaker == "user" else "assistant",
                         predicate, value, speaker, "structured",
@@ -553,7 +560,9 @@ class ConversationArchive:
                             "evidence_text": fact.get("evidence_text") or sentence,
                             "extraction": "dialogue_knowledge_v5",
                         }),
-                        created_at, created_at,
+                        created_at, created_at, created_at, None,
+                        max(superseded_ids) if superseded_ids else None,
+                        "candidate", "user" if speaker == "user" else "assistant",
                     ),
                 )
                 inserted += 1
