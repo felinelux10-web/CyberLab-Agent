@@ -38,7 +38,7 @@ def _tokens(query: str) -> list[str]:
         "the", "what", "which", "did", "do", "i", "you", "me", "my",
     }
     return [
-        token for token in re.findall(r"[\\w\\u0600-\\u06ff]+", query, flags=re.UNICODE)
+        token for token in re.findall(r"[\w\u0600-\u06ff]+", query, flags=re.UNICODE)
         if token.casefold().replace("أ", "ا").replace("إ", "ا") not in stop
     ][:20]
 
