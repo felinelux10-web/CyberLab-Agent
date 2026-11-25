@@ -7,6 +7,7 @@ These utilities are intentionally separated from normal agent startup.
 - `device_profile.py` reports Android/Termux runtime, memory, storage, Python and SQLite capabilities.
 - `benchmark_conversation_fts.py` measures legacy FTS5 and LIKE search. It opens the database read-only. If the normalized index has been explicitly rebuilt, it also measures normalized FTS5.
 - `evaluate_saved_dialogue.py` runs ten evidence/abstention checks against a saved dialogue. By default it targets the previously investigated session 72; pass `--session-id` to select another dialogue.
+- `audit_memory_store.py` checks SQLite integrity, duplicate exchange rows, fact-source links, temporal metadata consistency and normalized-index completeness. It is read-only.
 
 ## Explicit derived-index rebuild
 
