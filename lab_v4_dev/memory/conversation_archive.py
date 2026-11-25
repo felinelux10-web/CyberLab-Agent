@@ -30,6 +30,7 @@ class ConversationArchive:
         if self.conn is None:
             raise RuntimeError("ConversationArchive requires a connected Database")
         self.fts_available = False
+        self.normalized_fts_available = False
         self._initialize()
 
     def _initialize(self) -> None:
@@ -115,6 +116,15 @@ class ConversationArchive:
             self.fts_available = True
         except Exception:
             self.fts_available = False
+        try:
+            self.conn.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS conversation_messages_normalized_fts
+                USING fts5(normalized_content, session_id UNINDEXED, speaker UNINDEXED,
+                           tokenize='unicode61')
+            """)
+            self.normalized_fts_available = True
+        except Exception:
+            self.normalized_fts_available = False
         self.conn.commit()
 
     def _ensure_memory_fact_temporal_schema(self) -> None:
