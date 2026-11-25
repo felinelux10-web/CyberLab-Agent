@@ -1230,29 +1230,34 @@ class ConversationManager:
             retrieve_dialogue_evidence,
         )
 
-        saved = get_session_by_id(wanted_session_id)
-        if (
-            not isinstance(saved, dict)
-            or str(saved.get("session_id") or "").strip() != wanted_session_id
-            or str(saved.get("session_type") or "").casefold() != "dialogue"
-        ):
-            return None
+        try:
+            saved = get_session_by_id(wanted_session_id)
+            if (
+                not isinstance(saved, dict)
+                or str(saved.get("session_id") or "").strip() != wanted_session_id
+                or str(saved.get("session_type") or "").casefold() != "dialogue"
+            ):
+                return None
 
-        evidence = retrieve_dialogue_evidence(saved, query, limit=8)
-        evidence = [
-            item for item in evidence
-            if isinstance(item, dict)
-            and str(item.get("session_id") or "").strip() == wanted_session_id
-            and str(item.get("exchange_id") or "").strip()
-            and item.get("matched_terms")
-        ]
-        if not evidence:
-            return None
+            evidence = retrieve_dialogue_evidence(saved, query, limit=8)
+            evidence = [
+                item for item in evidence
+                if isinstance(item, dict)
+                and str(item.get("session_id") or "").strip() == wanted_session_id
+                and str(item.get("exchange_id") or "").strip()
+                and item.get("matched_terms")
+            ]
+            if not evidence:
+                return None
 
-        answer = format_dialogue_evidence_answer(
-            saved, query, limit=8, evidence=evidence,
-        )
-        if not str(answer or "").strip():
+            answer = format_dialogue_evidence_answer(
+                saved, query, limit=8, evidence=evidence,
+            )
+            if not str(answer or "").strip():
+                return None
+        except Exception:
+            # A failed saved-session lookup must not break the ordinary turn;
+            # it simply declines to claim evidence it could not retrieve.
             return None
         return {
             "status": "success",
