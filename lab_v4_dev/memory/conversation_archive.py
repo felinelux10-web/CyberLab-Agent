@@ -407,6 +407,9 @@ class ConversationArchive:
                                    VALUES (?,?,?,?)""",
                                 (int(cursor.lastrowid), body, session_id, speaker),
                             )
+                        self._index_normalized_message(
+                            int(cursor.lastrowid), body, session_id, speaker,
+                        )
                     explicit_fact = self._extract_explicit_user_fact(user)
                     if explicit_fact and user_message_id is not None:
                         predicate, fact_value = explicit_fact
@@ -820,6 +823,7 @@ class ConversationArchive:
                                VALUES (?, ?, ?, ?)""",
                             (message_id, body, sid, speaker),
                         )
+                    self._index_normalized_message(message_id, body, sid, speaker)
 
             # Explicit facts are attached only when the canonical user message
             # is first inserted; retries cannot create duplicate fact records.
