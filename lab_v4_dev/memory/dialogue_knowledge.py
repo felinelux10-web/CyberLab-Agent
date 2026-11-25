@@ -61,7 +61,13 @@ def _token_list(value: Any) -> list[str]:
         # "ألوان" and "الألوان" share the same lexical root after
         # normalization; the initial alef can otherwise be mistaken for
         # a removable definite article and produce two different tokens.
-        token = {"وان": "لون", "الوان": "لون"}.get(token, token)
+        token = {
+            "وان": "لون",
+            "الوان": "لون",
+            "اطارا": "اطار",
+            "خشبيا": "خشبي",
+            "قديما": "قديم",
+        }.get(token, token)
         if token and token not in _STOP_WORDS and not token.isdigit():
             result.append(token)
     return result
