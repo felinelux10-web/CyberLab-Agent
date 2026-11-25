@@ -270,3 +270,49 @@ def test_fact_validator_rejects_fabricated_evidence_excerpt():
     assert fact["verification"] == "rejected"
     assert metadata["validation"]["reason"] == "evidence_text_not_present_in_source"
     connection.close()
+
+
+
+def test_change_history_answer_shows_old_and_corrected_values_with_sources():
+    from lab_v4_dev.memory.dialogue_knowledge import format_dialogue_evidence_answer
+
+    session_id = "change-history-session"
+    old = {
+        "session_id": session_id,
+        "exchange_id": "thickness-old",
+        "exchange_index": 1,
+        "timestamp": "2026-05-01T10:00:00",
+        "target": "لوحة الجبس",
+        "user": "كانت سماكة الجبس ثلاثة سنتيمترات.",
+        "assistant": "سجلت السماكة الأولى.",
+    }
+    new = {
+        "session_id": session_id,
+        "exchange_id": "thickness-new",
+        "exchange_index": 2,
+        "timestamp": "2026-05-02T10:00:00",
+        "target": "لوحة الجبس",
+        "user": "بل، التصحيح أن السماكة خمسة سنتيمترات.",
+        "assistant": "سجلت التصحيح.",
+    }
+    data = {
+        "session_id": session_id,
+        "session_type": "dialogue",
+        "dialogue_state": {
+            "session_id": session_id,
+            "transcript_archive": [old, new],
+        },
+    }
+
+    answer = format_dialogue_evidence_answer(
+        data,
+        "ما الذي تغير في السماكة؟",
+        evidence=[new],
+    )
+
+    assert "ثلاثة سنتيمترات" in answer
+    assert "خمسة سنتيمترات" in answer
+    assert "التبادل 1" in answer
+    assert "التبادل 2" in answer
+    assert "قبل التصحيح" in answer
+    assert "بعد التصحيح" in answer
