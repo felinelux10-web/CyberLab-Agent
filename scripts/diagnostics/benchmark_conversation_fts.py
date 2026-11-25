@@ -8,8 +8,13 @@ import json
 import re
 import sqlite3
 import statistics
+import sys
 import time
 from pathlib import Path
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from lab_v4_dev.memory.db import DB_PATH
 from lab_v4_dev.memory.conversation_archive import ConversationArchive
