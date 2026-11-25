@@ -79,6 +79,44 @@ def _run_query(connection, query: str, session_id: str | None, *, fts: bool) -> 
     return len(connection.execute(sql, params).fetchall())
 
 
+def _run_normalized_query(connection, query: str, session_id: str | None) -> int:
+    expression = ConversationArchive._normalized_fts_query(query)
+    if not expression:
+        return 0
+    sql = (
+        "SELECT m.id FROM conversation_messages_normalized_fts f "
+        "JOIN conversation_messages m ON m.id=f.rowid "
+        "WHERE conversation_messages_normalized_fts MATCH ?"
+    )
+    params: list[object] = [expression]
+    if session_id:
+        sql += " AND m.session_id=?"
+        params.append(session_id)
+    sql += " ORDER BY m.id DESC LIMIT 8"
+    return len(connection.execute(sql, params).fetchall())
+
+
+def _measure_normalized(connection, query: str, session_id: str | None, iterations: int) -> dict:
+    start = time.perf_counter()
+    first_count = _run_normalized_query(connection, query, session_id)
+    first_ms = (time.perf_counter() - start) * 1000
+    samples = []
+    counts = []
+    for _ in range(iterations):
+        start = time.perf_counter()
+        counts.append(_run_normalized_query(connection, query, session_id))
+        samples.append((time.perf_counter() - start) * 1000)
+    return {
+        "first_ms": round(first_ms, 3),
+        "median_ms": round(statistics.median(samples), 3) if samples else None,
+        "p95_ms": round(_percentile(samples, 0.95), 3) if samples else None,
+        "iterations": iterations,
+        "first_result_count": first_count,
+        "stable_result_count": len(set(counts)) <= 1,
+        "result_counts": sorted(set(counts)),
+    }
+
+
 def _measure(connection, query: str, session_id: str | None, *, fts: bool, iterations: int) -> dict:
     start = time.perf_counter()
     first_count = _run_query(connection, query, session_id, fts=fts)
@@ -136,6 +174,14 @@ def main() -> int:
             return 3
 
         fts_exists = "conversation_messages_fts" in tables
+        normalized_fts_exists = (
+            "conversation_messages_normalized_fts" in tables
+            and "memory_migrations" in tables
+            and connection.execute(
+                "SELECT 1 FROM memory_migrations WHERE migration_key=?",
+                ("normalized_conversation_fts_v1",),
+            ).fetchone() is not None
+        )
         if args.session_id:
             message_count = connection.execute(
                 "SELECT COUNT(*) FROM conversation_messages WHERE session_id=?",
@@ -153,6 +199,9 @@ def main() -> int:
                     connection, query, args.session_id,
                     fts=fts_exists, iterations=iterations,
                 ) if fts_exists else None,
+                "normalized_fts5": _measure_normalized(
+                    connection, query, args.session_id, iterations,
+                ) if normalized_fts_exists else None,
                 "like": _measure(
                     connection, query, args.session_id,
                     fts=False, iterations=iterations,
@@ -179,6 +228,7 @@ def main() -> int:
             "session_id": args.session_id,
             "message_count_in_scope": int(message_count),
             "fts5_table_present": fts_exists,
+            "normalized_fts5_ready": normalized_fts_exists,
             "sqlite_version": sqlite3.sqlite_version,
             "iterations": iterations,
             "results": results,
