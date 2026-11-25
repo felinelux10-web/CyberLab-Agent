@@ -36,7 +36,8 @@ jobs:
             scripts/diagnostics/benchmark_conversation_fts.py \
             scripts/diagnostics/rebuild_normalized_fts.py \
             scripts/diagnostics/evaluate_saved_dialogue.py \
-            scripts/diagnostics/audit_memory_store.py
+            scripts/diagnostics/audit_memory_store.py \
+            scripts/diagnostics/optimize_memory_db.py
 
       - name: Run dialogue, memory, knowledge, and local-response regressions
         run: |
