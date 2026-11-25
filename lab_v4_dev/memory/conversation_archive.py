@@ -1006,23 +1006,49 @@ class ConversationArchive:
         evidence_message_id: int | None = None,
         confidence: float = 1.0, status: str = "active",
         metadata: dict | None = None,
+        valid_from: str | None = None,
+        invalidated_at: str | None = None,
+        supersedes: int | None = None,
+        verification: str = "candidate",
+        origin: str | None = None,
     ) -> int:
-        """Store a fact with explicit provenance; callers own extraction policy."""
+        """Store a fact with source, verification and temporal provenance."""
         subject, predicate, value = map(lambda x: str(x or "").strip(),
                                         (subject, predicate, value))
         if not subject or not predicate or not value:
             raise ValueError("subject, predicate and value are required")
+        verification = str(verification or "candidate").casefold()
+        if verification not in {"candidate", "validated", "rejected"}:
+            raise ValueError("verification must be candidate, validated or rejected")
+        if origin is None:
+            if str(speaker).casefold() == "user":
+                origin = "user"
+            elif str(source_kind).casefold() in {"project", "project_doc"}:
+                origin = "project_doc"
+            elif str(source_kind).casefold() == "provider":
+                origin = "provider"
+            elif str(speaker).casefold() == "assistant":
+                origin = "assistant"
+            else:
+                origin = "unknown"
+        origin = str(origin).casefold()
+        if origin not in {"user", "project_doc", "provider", "assistant", "unknown"}:
+            raise ValueError("origin must be user, project_doc, provider, assistant or unknown")
         score = max(0.0, min(1.0, float(confidence)))
         now = _now()
+        effective_valid_from = str(valid_from or now)
         cur = self.conn.execute(
             """INSERT INTO memory_facts
                (subject,predicate,value,speaker,source_kind,source_session_id,
                 source_exchange_id,evidence_message_id,confidence,status,
-                metadata_json,created_at,updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                metadata_json,created_at,updated_at,valid_from,invalidated_at,
+                supersedes,verification,origin)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (subject, predicate, value, str(speaker), str(source_kind),
              source_session_id, source_exchange_id, evidence_message_id,
-             score, str(status), _json(metadata or {}), now, now),
+             score, str(status), _json(metadata or {}), now, now,
+             effective_valid_from, invalidated_at, supersedes,
+             verification, origin),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -1057,7 +1083,7 @@ class ConversationArchive:
         source_kind: str | None = None,
         limit: int = 50,
     ) -> list[dict]:
-        sql = "SELECT * FROM memory_facts WHERE status='active'"
+        sql = "SELECT * FROM memory_facts WHERE status='active' AND invalidated_at IS NULL AND verification<>'rejected'"
         params: list[Any] = []
         if subject:
             sql += " AND subject=?"
