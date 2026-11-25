@@ -23,6 +23,7 @@ class EvidenceRetriever:
         session_id: str | None = None,
         live_state: Any = None,
         archive: Any = None,
+        record: dict | None = None,
         limit: int = 8,
     ) -> list[dict]:
         selected_scope = str(scope or "").strip().casefold()
@@ -36,8 +37,9 @@ class EvidenceRetriever:
             wanted = str(session_id or "").strip()
             if not wanted:
                 return []
-            from lab_v4_dev.memory.session_state import get_session_by_id
-            record = get_session_by_id(wanted)
+            if record is None:
+                from lab_v4_dev.memory.session_state import get_session_by_id
+                record = get_session_by_id(wanted)
             if (
                 not isinstance(record, dict)
                 or str(record.get("session_id") or "").strip() != wanted
@@ -92,12 +94,12 @@ class EvidenceRetriever:
     ) -> list[dict]:
         from lab_v4_dev.memory.dialogue_knowledge import (
             retrieve_completed_dialogue_exchanges,
-            retrieve_dialogue_evidence,
+            _retrieve_dialogue_evidence_core,
         )
         evidence_owner_id, _ = retrieve_completed_dialogue_exchanges(record)
         if not evidence_owner_id:
             return []
-        ranked = retrieve_dialogue_evidence(record, query, limit=limit)
+        ranked = _retrieve_dialogue_evidence_core(record, query, limit=limit)
         result = []
         for item in ranked:
             if (
@@ -124,7 +126,7 @@ class EvidenceRetriever:
         archive: Any,
         limit: int,
     ) -> list[dict]:
-        from lab_v4_dev.memory.dialogue_knowledge import retrieve_dialogue_evidence
+        from lab_v4_dev.memory.dialogue_knowledge import _retrieve_dialogue_evidence_core
         from lab_v4_dev.memory.session_state import _load_sqlite_dialogue_exchanges
 
         if isinstance(live_state, dict):
@@ -253,7 +255,7 @@ class EvidenceRetriever:
                 "transcript_archive": list(by_id.values()),
             },
         }
-        ranked = retrieve_dialogue_evidence(data, query, limit=limit)
+        ranked = _retrieve_dialogue_evidence_core(data, query, limit=limit)
         return [
             {
                 **item,
