@@ -11,6 +11,8 @@ def test_arabic_alwan_variants_share_one_search_token():
     assert _token_list("ألوان") == ["لون"]
     assert _token_list("الألوان") == ["لون"]
     assert _token_list("اللون") == ["لون"]
+    assert _token_list("إطارًا") == _token_list("الإطار") == ["اطار"]
+    assert _token_list("خشبيًا") == ["خشبي"]
 
 
 def test_normalized_fts_rebuild_retrieves_inflection_variant_and_is_repeatable():
