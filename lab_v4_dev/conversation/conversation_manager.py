@@ -1204,6 +1204,73 @@ class ConversationManager:
             ],
         }
     @staticmethod
+    def _saved_dialogue_evidence_answer(text: str, session_id: str) -> dict | None:
+        """Answer a factual follow-up from one explicitly active saved dialogue.
+
+        The active report lock supplies the only permitted session identity.
+        Retrieval is read-only and uses original, speaker-attributed exchanges;
+        a weak character-only match is not sufficient to produce an answer.
+        """
+        query = " ".join(str(text or "").split()).strip()
+        wanted_session_id = str(session_id or "").strip()
+        if not query or not wanted_session_id:
+            return None
+
+        normalized = normalize_text(query).strip(" .!؟?")
+        interrogative = re.match(
+            r"^(?:ما|ماذا|كم|هل|أين|اين|متى|كيف|أي|اي|اذكر|حدد|ماهي|ماهو|ما هو|ما هي)\\b",
+            normalized,
+        ) or any(marker in query for marker in ("؟", "?"))
+        if not interrogative:
+            return None
+
+        from lab_v4_dev.memory.session_state import get_session_by_id
+        from lab_v4_dev.memory.dialogue_knowledge import (
+            format_dialogue_evidence_answer,
+            retrieve_dialogue_evidence,
+        )
+
+        saved = get_session_by_id(wanted_session_id)
+        if (
+            not isinstance(saved, dict)
+            or str(saved.get("session_id") or "").strip() != wanted_session_id
+            or str(saved.get("session_type") or "").casefold() != "dialogue"
+        ):
+            return None
+
+        evidence = retrieve_dialogue_evidence(saved, query, limit=8)
+        evidence = [
+            item for item in evidence
+            if isinstance(item, dict)
+            and str(item.get("session_id") or "").strip() == wanted_session_id
+            and str(item.get("exchange_id") or "").strip()
+            and item.get("matched_terms")
+        ]
+        if not evidence:
+            return None
+
+        answer = format_dialogue_evidence_answer(
+            saved, query, limit=8, evidence=evidence,
+        )
+        if not str(answer or "").strip():
+            return None
+        return {
+            "status": "success",
+            "intent": Intent.MEMORY_DUMP,
+            "source": "saved_dialogue_evidence_retriever",
+            "output_kind": "report",
+            "evidence_scope": "saved_session",
+            "context_action": "read_only_report",
+            "session_id": wanted_session_id,
+            "evidence_exchange_ids": [
+                str(item["exchange_id"]) for item in evidence
+            ],
+            "provider_used": False,
+            "executed": False,
+            "text": answer,
+        }
+
+    @staticmethod
     def _continue_saved_dialogue(text: str, session_id: str) -> dict | None:
         """Continue one saved dialogue without importing it into live memory."""
         from lab_v4_dev.memory.session_state import (
@@ -1361,6 +1428,25 @@ class ConversationManager:
         )
         active_report_id = str(self.active_report_session_id or locked_report_id).strip()
         if active_report_id:
+            # A saved-report lock also owns factual detail questions. Resolve
+            # those against the exact saved transcript before releasing the lock
+            # or allowing the live dialogue/provider path to answer.
+            saved_evidence_answer = self._saved_dialogue_evidence_answer(
+                user_input, active_report_id,
+            )
+            if saved_evidence_answer is not None:
+                return self._finalize_direct_result(
+                    saved_evidence_answer,
+                    intent=Intent.MEMORY_DUMP,
+                    route="L-SESSION",
+                    selected_session={
+                        "kind": "id",
+                        "session_id": active_report_id,
+                        "output_kind": "report",
+                    },
+                    saved_session_request=True,
+                    selected_saved_session_id=active_report_id,
+                )
             from lab_v4_dev.memory.session_state import session_route_contract
             explicit_session_selector = session_route_contract(user_input)
             normalized_followup = normalize_text(user_input)
