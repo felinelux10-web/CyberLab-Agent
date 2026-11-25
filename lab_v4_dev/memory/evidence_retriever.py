@@ -107,6 +107,10 @@ class EvidenceRetriever:
                 or str(item.get("session_id") or "").strip() != evidence_owner_id
                 or not str(item.get("exchange_id") or "").strip()
                 or not item.get("matched_terms")
+                or not (
+                    item.get("matched_user_terms")
+                    or item.get("matched_assistant_terms")
+                )
             ):
                 continue
             result.append({
@@ -267,4 +271,8 @@ class EvidenceRetriever:
             and str(item.get("session_id") or "").strip() == wanted
             and str(item.get("exchange_id") or "").strip()
             and item.get("matched_terms")
+            and (
+                item.get("matched_user_terms")
+                or item.get("matched_assistant_terms")
+            )
         ]
