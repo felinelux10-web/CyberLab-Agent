@@ -1212,7 +1212,7 @@ class ConversationManager:
         normalized = normalize_text(query)
         is_question = bool(
             re.match(
-                r"^(?:ما|ماذا|كم|هل|أين|اين|متى|كيف|أي|اي|ماهي|ماهو|ما هو|ما هي)\\b",
+                r"^(?:ما|ماذا|كم|هل|أين|اين|متى|كيف|أي|اي|ماهي|ماهو|ما هو|ما هي)\b",
                 normalized,
             )
             or "؟" in query
@@ -1407,7 +1407,7 @@ class ConversationManager:
             followup_references_active_report = any(marker in normalized_followup for marker in (
                 "ذلك الحوار", "ذلك النقاش", "الجلسة المحفوظة الخاصة بذلك الحوار",
             ))
-            active_report_followup = (
+            active_report_followup = bool(pending_saved_session_selection) or (
                 (
                     explicit_session_selector.get("kind") == "none"
                     or followup_references_active_report
