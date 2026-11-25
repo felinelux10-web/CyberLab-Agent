@@ -63,7 +63,7 @@ def test_live_scope_ranks_only_exact_session_evidence(monkeypatch):
     )
     monkeypatch.setattr(
         dialogue_knowledge,
-        "retrieve_dialogue_evidence",
+        "_retrieve_dialogue_evidence_core",
         lambda data, query, limit=8: [{
             "session_id": data["session_id"],
             "exchange_id": "live-a:1",
@@ -110,7 +110,7 @@ def test_saved_scope_accepts_valid_nested_dialogue_owner(monkeypatch):
     )
     monkeypatch.setattr(
         dialogue_knowledge,
-        "retrieve_dialogue_evidence",
+        "_retrieve_dialogue_evidence_core",
         lambda data, query, limit=8: [{
             "session_id": "dialogue-owner",
             "exchange_id": "dialogue-owner:4",
