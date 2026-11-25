@@ -1424,29 +1424,33 @@ class ConversationManager:
             and self.context_lock.reason == "saved_session_selection"
             else ""
         )
-        active_report_id = str(self.active_report_session_id or locked_report_id).strip()
+        # ContextLock is authoritative. The scalar is only a compatibility
+        # mirror and must never resurrect a stale saved-session owner.
+        active_report_id = str(locked_report_id or "").strip()
         if active_report_id:
-            # A saved-report lock also owns factual detail questions. Resolve
-            # those against the exact saved transcript before releasing the lock
-            # or allowing the live dialogue/provider path to answer.
-            saved_evidence_answer = self._saved_dialogue_evidence_answer(
-                user_input, active_report_id,
-            )
-            if saved_evidence_answer is not None:
-                return self._finalize_direct_result(
-                    saved_evidence_answer,
-                    intent=Intent.MEMORY_DUMP,
-                    route="L-SESSION",
-                    selected_session={
-                        "kind": "id",
-                        "session_id": active_report_id,
-                        "output_kind": "report",
-                    },
-                    saved_session_request=True,
-                    selected_saved_session_id=active_report_id,
-                )
             from lab_v4_dev.memory.session_state import session_route_contract
             explicit_session_selector = session_route_contract(user_input)
+            # A new explicit saved-session selector takes precedence over the
+            # current report lock. Otherwise, factual detail questions are
+            # resolved against the exact locked transcript before the lock can
+            # be released or a live/provider path can consume the turn.
+            if explicit_session_selector.get("kind") in {"none", "reference"}:
+                saved_evidence_answer = self._saved_dialogue_evidence_answer(
+                    user_input, active_report_id,
+                )
+                if saved_evidence_answer is not None:
+                    return self._finalize_direct_result(
+                        saved_evidence_answer,
+                        intent=Intent.MEMORY_DUMP,
+                        route="L-SESSION",
+                        selected_session={
+                            "kind": "id",
+                            "session_id": active_report_id,
+                            "output_kind": "report",
+                        },
+                        saved_session_request=True,
+                        selected_saved_session_id=active_report_id,
+                    )
             normalized_followup = normalize_text(user_input)
             followup_references_active_report = any(marker in normalized_followup for marker in (
                 "ذلك الحوار", "ذلك النقاش", "الجلسة المحفوظة الخاصة بذلك الحوار",
