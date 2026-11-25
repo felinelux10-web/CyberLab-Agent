@@ -404,13 +404,15 @@ class ConversationArchive:
                             """INSERT INTO memory_facts
                                (subject,predicate,value,speaker,source_kind,source_session_id,
                                 source_exchange_id,evidence_message_id,confidence,status,
-                                metadata_json,created_at,updated_at)
-                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                metadata_json,created_at,updated_at,valid_from,invalidated_at,
+                                supersedes,verification,origin)
+                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                             (
                                 "user", predicate, fact_value, "user", "explicit",
                                 session_id, legacy_id, user_message_id, 0.94, "active",
                                 _json({"extraction": "legacy_first_person_assertion"}),
-                                created_at, created_at,
+                                created_at, created_at, created_at, None, None,
+                                "candidate", "user",
                             ),
                         )
                     if user_message_id is None and user:
@@ -819,13 +821,14 @@ class ConversationArchive:
                         """INSERT INTO memory_facts
                            (subject,predicate,value,speaker,source_kind,source_session_id,
                             source_exchange_id,evidence_message_id,confidence,status,
-                            metadata_json,created_at,updated_at)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            metadata_json,created_at,updated_at,valid_from,invalidated_at,
+                            supersedes,verification,origin)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (
                             "user", predicate, fact_value, "user", "explicit",
                             sid, canonical_id, user_message_id, 0.94, "active",
                             _json({"extraction": "first_person_assertion"}),
-                            now, now,
+                            now, now, now, None, None, "candidate", "user",
                         ),
                     )
             if not meta.get("recall_only") and not meta.get("state_boundary_only"):
