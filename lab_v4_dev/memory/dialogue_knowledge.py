@@ -784,6 +784,14 @@ def analyze_dialogue_session(data: dict) -> dict:
             )
             record.setdefault("invalidated_at", None)
             record.setdefault("supersedes", None)
+            for fact in record.get("structured_facts") or []:
+                if not isinstance(fact, dict):
+                    continue
+                fact.setdefault("origin", record.get("origin"))
+                fact.setdefault("verification", record.get("verification"))
+                fact.setdefault("valid_from", record.get("valid_from"))
+                fact.setdefault("invalidated_at", None)
+                fact.setdefault("supersedes", None)
             temporal_order = record.get("temporal_order")
             if isinstance(temporal_order, list) and temporal_order:
                 record["temporal_order"] = [index + 1, *temporal_order[1:]]
