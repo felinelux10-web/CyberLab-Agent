@@ -164,10 +164,11 @@ class EvidenceRetriever:
 
         # The durable archive supplements the bounded live snapshot. Search
         # and read neighboring messages only inside the exact owning session.
-        durable_candidates_found = False
+        durable_search_available = False
         if archive is not None:
             try:
                 hits = archive.search_messages(query, session_id=wanted, limit=limit)
+                durable_search_available = True
                 messages = {}
                 for hit in hits:
                     for message in archive.read_context(
@@ -219,16 +220,15 @@ class EvidenceRetriever:
                     elif message.get("speaker") == "assistant":
                         exchange["assistant"] = message.get("content") or ""
                 candidates.extend(grouped.values())
-                durable_candidates_found = bool(grouped)
             except Exception:
                 # The JSON/DialogueMemory snapshot remains a valid fallback;
                 # an unavailable SQLite search must not widen the scope.
-                pass
+                durable_search_available = False
 
-        # Avoid loading the entire SQLite transcript when FTS/LIKE already
-        # supplied bounded source exchanges. Full-session loading is a fallback
-        # only when durable search is unavailable or returns no candidates.
-        if not durable_candidates_found:
+        # Load the complete SQLite transcript only when the indexed search
+        # mechanism itself is unavailable, not merely because a valid query
+        # returned zero hits. Empty search results must remain bounded.
+        if not durable_search_available:
             try:
                 candidates.extend(_load_sqlite_dialogue_exchanges(wanted))
             except Exception:
