@@ -58,6 +58,29 @@ def test_saved_detail_question_uses_exact_saved_session_evidence(monkeypatch):
     assert "3 سم" in result["text"]
 
 
+def test_saved_detail_formatter_extracts_the_user_stated_thickness():
+    from lab_v4_dev.memory.dialogue_knowledge import format_dialogue_evidence_answer
+
+    saved = _saved_dialogue("saved-72")
+    evidence = [{
+        "session_id": "saved-72",
+        "exchange_id": "saved-72:6",
+        "exchange_index": 6,
+        "user": "أصب الجبس في الإطار الخشبي بسماكة نحو 3 سم.",
+        "assistant": "يمكنك تركه حتى يجف.",
+        "matched_terms": ["جبس", "سماكة"],
+        "score": 2.4,
+    }]
+
+    answer = format_dialogue_evidence_answer(
+        saved, "ما سماكة الجبس؟", evidence=evidence,
+    )
+
+    assert "السماكة: 3 سم" in answer
+    assert "[التبادل 6" in answer
+    assert "ما قاله المستخدم" in answer
+
+
 def test_saved_detail_retrieval_rejects_cross_session_evidence(monkeypatch):
     from lab_v4_dev.memory import session_state, dialogue_knowledge
 
