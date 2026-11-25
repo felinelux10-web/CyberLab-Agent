@@ -21,7 +21,7 @@ def _query_attribute_is_evidenced(query: str, evidence: dict) -> bool:
 
     if any(marker in question for marker in (
         "ساعه", "ساعات", "دقيقه", "دقائق", "مده", "استغرق", "كم يوم",
-    )):
+        )):
         return bool(re.search(
             r"(?:\d+|واحده?|اثنان|ثلاثه|اربعه|خمسه|عده)\s*"
             r"(?:ساعه|ساعات|دقيقه|دقائق|يوم|ايام|اسبوع|اسابيع|شهر|اشهر)",
@@ -30,7 +30,7 @@ def _query_attribute_is_evidenced(query: str, evidence: dict) -> bool:
 
     if any(marker in question for marker in (
         "ماركه", "علامه تجاريه", "اسم الشركه", "الشركه المصنعه",
-    )):
+        )):
         return bool(re.search(
             r"(?:ماركه|علامه تجاريه|الشركه المصنعه|brand)\s+"
             r"[a-z0-9ء-ي][a-z0-9ء-ي_-]*",
@@ -51,7 +51,7 @@ def _query_attribute_is_evidenced(query: str, evidence: dict) -> bool:
 
     if any(marker in question for marker in (
         "درجه حراره", "حراره الغرفه", "درجه الحراره",
-    )):
+        )):
         return bool(re.search(
             r"(?:\d+(?:[.,]\d+)?\s*(?:درجه|°)|"
             r"درجه مئويه|سيلسيوس|فهرنهايت)",
