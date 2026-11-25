@@ -1186,8 +1186,9 @@ class ConversationArchive:
                     str(metadata.get("evidence_text") or "")
                     if isinstance(metadata, dict) else ""
                 ) or str(fact.get("message_content") or "")
-                normalized_value = self._normalized_search_text(str(fact.get("value") or ""))
-                normalized_source = self._normalized_search_text(source_text)
+                from lab_v4_dev.memory.dialogue_knowledge import _normalize
+                normalized_value = _normalize(str(fact.get("value") or "")).strip()
+                normalized_source = _normalize(source_text)
                 if not normalized_value or normalized_value not in normalized_source:
                     reason = "value_not_present_in_source"
 
