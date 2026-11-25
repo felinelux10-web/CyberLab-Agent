@@ -1486,11 +1486,71 @@ def format_dialogue_evidence_answer(
         "paint_type": "نوع الطلاء", "color": "اللون",
     }
     speaker_labels = {"user": "المستخدم", "assistant": "الوكيل"}
+    correction_history = []
+    correction_query = any(term in normalized_query for term in (
+        "تغير", "تصحيح", "تعديل", "استبدال", "قبل وبعد",
+    ))
+    if correction_query:
+        analysis = analyze_dialogue_session(data)
+        knowledge_by_id = {
+            str(item.get("knowledge_id") or ""): item
+            for item in analysis.get("knowledge", [])
+            if isinstance(item, dict) and item.get("knowledge_id")
+        }
+        for relation in analysis.get("relationships", []):
+            if relation.get("relation") != "corrects":
+                continue
+            old_id = str(relation.get("target_knowledge_id") or "")
+            new_id = str(relation.get("source_knowledge_id") or "")
+            old_record = knowledge_by_id.get(old_id)
+            new_record = knowledge_by_id.get(new_id)
+            if not old_record or not new_record:
+                continue
+            if old_record.get("speaker") != "user" or new_record.get("speaker") != "user":
+                continue
+            old_facts = {
+                str(fact.get("attribute") or ""): fact
+                for fact in old_record.get("structured_facts", [])
+                if isinstance(fact, dict) and fact.get("attribute")
+            }
+            new_facts = {
+                str(fact.get("attribute") or ""): fact
+                for fact in new_record.get("structured_facts", [])
+                if isinstance(fact, dict) and fact.get("attribute")
+            }
+            for attribute in old_facts.keys() & new_facts.keys():
+                if wanted_attributes and attribute not in wanted_attributes:
+                    continue
+                old_fact = old_facts[attribute]
+                new_fact = new_facts[attribute]
+                if (
+                    old_fact.get("invalidated_at")
+                    or new_fact.get("supersedes") == old_id
+                ):
+                    correction_history.append({
+                        "attribute": attribute,
+                        "old_value": old_fact.get("value"),
+                        "new_value": new_fact.get("value"),
+                        "old_exchange_index": old_record.get("source_exchange_index"),
+                        "new_exchange_index": new_record.get("source_exchange_index"),
+                        "old_exchange_id": old_record.get("source_exchange_id"),
+                        "new_exchange_id": new_record.get("source_exchange_id"),
+                    })
     lines = [
         "الإجابة المستندة إلى أدلة الجلسة المحفوظة:",
         f"معرّف الجلسة: {evidence[0]['session_id']}",
         "مصدر الإجابة هو التبادلات الأصلية؛ لم يُستخدم ملخص مشتق بديلًا عنها.",
     ]
+    if correction_history:
+        lines.extend(["", "التغييرات والتصحيحات المثبتة في سجل المستخدم:"])
+        for change in correction_history:
+            lines.append(
+                f"- {attribute_labels.get(change['attribute'], change['attribute'])}: "
+                f"قبل التصحيح «{change['old_value']}» "
+                f"[التبادل {change['old_exchange_index']} | المصدر {change['old_exchange_id']}]؛ "
+                f"بعد التصحيح «{change['new_value']}» "
+                f"[التبادل {change['new_exchange_index']} | المصدر {change['new_exchange_id']}]"
+            )
     if structured:
         lines.extend(["", "تفاصيل منظمة مطابقة للسؤال:"])
         for fact in structured:
