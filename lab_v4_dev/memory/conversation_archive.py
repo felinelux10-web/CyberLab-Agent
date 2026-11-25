@@ -1182,15 +1182,21 @@ class ConversationArchive:
                     metadata = json.loads(fact.get("metadata_json") or "{}")
                 except (TypeError, ValueError, json.JSONDecodeError):
                     metadata = {}
-                source_text = (
+                message_text = str(fact.get("message_content") or "")
+                evidence_text = (
                     str(metadata.get("evidence_text") or "")
                     if isinstance(metadata, dict) else ""
-                ) or str(fact.get("message_content") or "")
+                )
                 from lab_v4_dev.memory.dialogue_knowledge import _normalize
-                normalized_value = _normalize(str(fact.get("value") or "")).strip()
-                normalized_source = _normalize(source_text)
-                if not normalized_value or normalized_value not in normalized_source:
-                    reason = "value_not_present_in_source"
+                normalized_message = _normalize(message_text)
+                if evidence_text and _normalize(evidence_text) not in normalized_message:
+                    reason = "evidence_text_not_present_in_source"
+                else:
+                    source_text = evidence_text or message_text
+                    normalized_value = _normalize(str(fact.get("value") or "")).strip()
+                    normalized_source = _normalize(source_text)
+                    if not normalized_value or normalized_value not in normalized_source:
+                        reason = "value_not_present_in_source"
 
         verification = "rejected" if reason else "validated"
         try:
