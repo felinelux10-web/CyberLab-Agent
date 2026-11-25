@@ -1385,9 +1385,12 @@ class ConversationManager:
             and self.context_lock.reason == "saved_session_selection"
             else ""
         )
-        # ContextLock is authoritative. The scalar is only a compatibility
-        # mirror and must never resurrect a stale saved-session owner.
+        # An active ContextLock is authoritative. Preserve the scalar only
+        # for legacy callers that set the report owner before creating a lock;
+        # never let it override a different active context owner.
         active_report_id = str(locked_report_id or "").strip()
+        if not active_report_id and not self.context_lock.active:
+            active_report_id = str(self.active_report_session_id or "").strip()
         if active_report_id:
             from lab_v4_dev.memory.session_state import session_route_contract
             explicit_session_selector = session_route_contract(user_input)
