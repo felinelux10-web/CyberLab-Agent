@@ -5424,7 +5424,7 @@ class ConversationManager:
         # Use the same evidence retriever as saved-session follow-ups. The
         # scope is explicitly live and bound to the active dialogue identity.
         try:
-            from lab_v4_dev.memory.evidence_retriever import EvidenceRetriever
+            from lab_v4_dev.memory.dialogue_knowledge import retrieve_dialogue_evidence
             agent = getattr(self.orchestrator, "agent", None)
             memory = getattr(agent, "memory", None)
             archive = getattr(memory, "conversations", None)
@@ -5438,7 +5438,8 @@ class ConversationManager:
                 else state
             )
             if archive_session_id:
-                retrieved_evidence = EvidenceRetriever.retrieve(
+                retrieved_evidence = retrieve_dialogue_evidence(
+                    {},
                     text,
                     scope="live",
                     session_id=archive_session_id,
