@@ -1134,6 +1134,110 @@ class ConversationArchive:
                 grouped[exchange_id]["assistant"] = item.get("content") or ""
         return [grouped[key] for key in order]
 
+    def validate_fact(self, fact_id: int) -> dict:
+        """Validate fact provenance against its exact source message before prompt use."""
+        row = self.conn.execute(
+            """SELECT f.*,m.session_id AS message_session_id,
+                      m.exchange_id AS message_exchange_id,
+                      m.speaker AS message_speaker,
+                      m.content AS message_content
+               FROM memory_facts f
+               LEFT JOIN conversation_messages m ON m.id=f.evidence_message_id
+               WHERE f.id=?""",
+            (int(fact_id),),
+        ).fetchone()
+        if row is None:
+            return {"status": "missing", "fact_id": int(fact_id)}
+        fact = dict(row)
+        reason = None
+        if not fact.get("evidence_message_id") or fact.get("message_content") is None:
+            reason = "missing_source_message"
+        elif str(fact.get("source_session_id") or "") != str(fact.get("message_session_id") or ""):
+            reason = "source_session_mismatch"
+        elif (
+            fact.get("source_exchange_id")
+            and str(fact.get("source_exchange_id")) != str(fact.get("message_exchange_id") or "")
+        ):
+            reason = "source_exchange_mismatch"
+        elif str(fact.get("speaker") or "") != str(fact.get("message_speaker") or ""):
+            reason = "source_speaker_mismatch"
+        else:
+            expected_origin = {
+                "user": "user",
+                "assistant": "assistant",
+            }.get(str(fact.get("speaker") or "").casefold())
+            origin = str(fact.get("origin") or "unknown").casefold()
+            source_kind = str(fact.get("source_kind") or "").casefold()
+            if expected_origin and origin not in {expected_origin, "provider"}:
+                reason = "origin_speaker_mismatch"
+            elif origin == "project_doc" and source_kind not in {"project", "project_doc"}:
+                reason = "origin_source_kind_mismatch"
+            elif origin == "provider" and source_kind != "provider":
+                reason = "origin_source_kind_mismatch"
+            else:
+                try:
+                    metadata = json.loads(fact.get("metadata_json") or "{}")
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    metadata = {}
+                source_text = (
+                    str(metadata.get("evidence_text") or "")
+                    if isinstance(metadata, dict) else ""
+                ) or str(fact.get("message_content") or "")
+                normalized_value = self._normalized_search_text(str(fact.get("value") or ""))
+                normalized_source = self._normalized_search_text(source_text)
+                if not normalized_value or normalized_value not in normalized_source:
+                    reason = "value_not_present_in_source"
+
+        verification = "rejected" if reason else "validated"
+        try:
+            metadata = json.loads(fact.get("metadata_json") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            metadata = {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        metadata["validation"] = {
+            "status": verification,
+            "reason": reason,
+            "validated_at": _now(),
+        }
+        self.conn.execute(
+            """UPDATE memory_facts
+               SET verification=?, metadata_json=?, updated_at=?
+               WHERE id=?""",
+            (verification, _json(metadata), _now(), int(fact_id)),
+        )
+        return {
+            "status": verification,
+            "reason": reason,
+            "fact_id": int(fact_id),
+        }
+
+    def validate_candidate_facts(
+        self,
+        *,
+        source_session_id: str | None = None,
+        limit: int = 200,
+    ) -> dict:
+        """Validate a bounded batch of candidate facts with exact source links."""
+        sql = "SELECT id FROM memory_facts WHERE verification='candidate'"
+        params: list[Any] = []
+        if source_session_id:
+            sql += " AND source_session_id=?"
+            params.append(str(source_session_id))
+        sql += " ORDER BY id LIMIT ?"
+        params.append(max(1, min(200, int(limit))))
+        ids = [
+            int(row[0])
+            for row in self.conn.execute(sql, params).fetchall()
+        ]
+        results = [self.validate_fact(fact_id) for fact_id in ids]
+        return {
+            "checked": len(results),
+            "validated": sum(item["status"] == "validated" for item in results),
+            "rejected": sum(item["status"] == "rejected" for item in results),
+            "candidate": sum(item["status"] == "candidate" for item in results),
+        }
+
     def save_fact(
         self, *, subject: str, predicate: str, value: str,
         speaker: str = "user", source_kind: str = "explicit",
