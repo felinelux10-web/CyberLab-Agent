@@ -5,6 +5,7 @@ selects and ranks evidence; it never rewrites archives or generates answers.
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 
@@ -157,6 +158,7 @@ class EvidenceRetriever:
 
         # The durable archive supplements the bounded live snapshot. Search
         # and read neighboring messages only inside the exact owning session.
+        durable_candidates_found = False
         if archive is not None:
             try:
                 hits = archive.search_messages(query, session_id=wanted, limit=limit)
@@ -180,6 +182,14 @@ class EvidenceRetriever:
                     exchange_id = str(message.get("exchange_id") or "").strip()
                     if not exchange_id:
                         continue
+                    metadata = message.get("metadata")
+                    if not isinstance(metadata, dict):
+                        try:
+                            metadata = json.loads(message.get("metadata_json") or "{}")
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            metadata = {}
+                    if not isinstance(metadata, dict):
+                        metadata = {}
                     exchange = grouped.setdefault(exchange_id, {
                         "session_id": wanted,
                         "exchange_id": exchange_id,
@@ -189,21 +199,34 @@ class EvidenceRetriever:
                         "target": message.get("topic"),
                         "intent": message.get("intent"),
                         "timestamp": message.get("created_at"),
+                        "metadata": metadata,
+                        "context_kind": metadata.get("context_kind"),
+                        "conversation_domain": metadata.get("conversation_domain"),
+                        "conversation_act": metadata.get("conversation_act"),
+                        "recall_only": bool(metadata.get("recall_only")),
+                        "state_boundary_only": bool(metadata.get("state_boundary_only")),
+                        "response_failed": bool(metadata.get("response_failed")),
+                        "response_status": metadata.get("response_status") or metadata.get("status"),
                     })
                     if message.get("speaker") == "user":
                         exchange["user"] = message.get("content") or ""
                     elif message.get("speaker") == "assistant":
                         exchange["assistant"] = message.get("content") or ""
                 candidates.extend(grouped.values())
+                durable_candidates_found = bool(grouped)
             except Exception:
                 # The JSON/DialogueMemory snapshot remains a valid fallback;
                 # an unavailable SQLite search must not widen the scope.
                 pass
 
-        try:
-            candidates.extend(_load_sqlite_dialogue_exchanges(wanted))
-        except Exception:
-            pass
+        # Avoid loading the entire SQLite transcript when FTS/LIKE already
+        # supplied bounded source exchanges. Full-session loading is a fallback
+        # only when durable search is unavailable or returns no candidates.
+        if not durable_candidates_found:
+            try:
+                candidates.extend(_load_sqlite_dialogue_exchanges(wanted))
+            except Exception:
+                pass
 
         by_id = {}
         for item in candidates:
