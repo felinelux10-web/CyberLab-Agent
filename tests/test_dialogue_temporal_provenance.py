@@ -146,3 +146,46 @@ def test_sqlite_fact_correction_keeps_old_value_and_records_temporal_link():
     assert [item["status"] for item in history] == ["superseded", "active"]
     assert history[0]["invalidated_at"] == history[1]["valid_from"]
     connection.close()
+
+
+
+def test_temporal_fact_schema_upgrades_existing_rows_without_replacing_them():
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.execute(
+        """CREATE TABLE memory_facts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject TEXT NOT NULL,
+            predicate TEXT NOT NULL,
+            value TEXT NOT NULL,
+            speaker TEXT NOT NULL DEFAULT 'user',
+            source_kind TEXT NOT NULL DEFAULT 'explicit',
+            source_session_id TEXT,
+            source_exchange_id TEXT,
+            evidence_message_id INTEGER,
+            confidence REAL NOT NULL DEFAULT 1.0,
+            status TEXT NOT NULL DEFAULT 'active',
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )"""
+    )
+    connection.execute(
+        """INSERT INTO memory_facts
+           (subject,predicate,value,speaker,source_kind,created_at,updated_at)
+           VALUES ('user','paint_type','الصباغة المائية','user','structured',
+                   '2026-01-01T10:00:00','2026-01-01T10:00:00')"""
+    )
+
+    ConversationArchive(SimpleNamespace(conn=connection))
+    row = connection.execute(
+        "SELECT * FROM memory_facts WHERE predicate='paint_type'"
+    ).fetchone()
+
+    assert row["value"] == "الصباغة المائية"
+    assert row["valid_from"] == "2026-01-01T10:00:00"
+    assert row["invalidated_at"] is None
+    assert row["supersedes"] is None
+    assert row["verification"] == "candidate"
+    assert row["origin"] == "user"
+    connection.close()
