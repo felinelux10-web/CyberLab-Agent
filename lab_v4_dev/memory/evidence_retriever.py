@@ -22,8 +22,8 @@ def _query_attribute_is_evidenced(query: str, evidence: dict) -> bool:
     if any(marker in question for marker in (
         "ساعه", "ساعات", "دقيقه", "دقائق", "مده", "استغرق", "كم يوم",
     )):
+        return bool(re.search(
             r"(?:\d+|واحده?|اثنان|ثلاثه|اربعه|خمسه|عده)\s*"
-            r"(?:ساعه|ساعات|دقيقه|دقائق|يوم|ايام|اسبوع|اسابيع|شهر|اشهر)"
             r"(?:ساعه|ساعات|دقيقه|دقائق|يوم|ايام|اسبوع|اسابيع|شهر|اشهر)",
             content,
         ))
@@ -31,8 +31,8 @@ def _query_attribute_is_evidenced(query: str, evidence: dict) -> bool:
     if any(marker in question for marker in (
         "ماركه", "علامه تجاريه", "اسم الشركه", "الشركه المصنعه",
     )):
+        return bool(re.search(
             r"(?:ماركه|علامه تجاريه|الشركه المصنعه|brand)\s+"
-            r"[a-z0-9ء-ي][a-z0-9ء-ي_-]*"
             r"[a-z0-9ء-ي][a-z0-9ء-ي_-]*",
             content,
         ))
@@ -44,28 +44,27 @@ def _query_attribute_is_evidenced(query: str, evidence: dict) -> bool:
         if asks_exact_ratio:
             return bool(re.search(
                 r"(?:\d+(?:[.,]\d+)?\s*(?:%|٪|بالمئه|في المئه)|"
-                r"\d+\s*[:/]\s*\d+)"
+                r"\d+\s*[:/]\s*\d+)",
                 content,
+            ))
         return "نسب" in content or bool(re.search(r"\d+\s*(?:%|٪)", content))
-        return "نسب" in content or bool(re.search(r"\\d+\\s*(?:%|٪)", content))
 
     if any(marker in question for marker in (
         "درجه حراره", "حراره الغرفه", "درجه الحراره",
     )):
         return bool(re.search(
-            r"(?:\\d+(?:[.,]\\d+)?\\s*(?:درجه|°)|"
+            r"(?:\d+(?:[.,]\d+)?\s*(?:درجه|°)|"
             r"درجه مئويه|سيلسيوس|فهرنهايت)",
             content,
-            r"(?:\d+(?:[.,]\d+)?\s*(?:درجه|°)|"
-            r"درجه مئويه|سيلسيوس|فهرنهايت)"
+        ))
+
     if any(marker in question for marker in ("موديل", "طراز", "رقم الموديل")):
         return bool(re.search(
-            r"(?:موديل|طراز|model)\\s+[a-z0-9][a-z0-9_-]*",
-            r"(?:موديل|طراز|model)\s+[a-z0-9][a-z0-9_-]*"
+            r"(?:موديل|طراز|model)\s+[a-z0-9][a-z0-9_-]*",
+            content,
         ))
 
     return True
-
 
 class EvidenceRetriever:
     """Retrieve provenance-preserving exchanges from one declared scope."""
