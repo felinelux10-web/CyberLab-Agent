@@ -130,3 +130,41 @@ def test_saved_scope_accepts_valid_nested_dialogue_owner(monkeypatch):
     assert result[0]["session_id"] == "dialogue-owner"
     assert result[0]["source_session_id"] == "saved-checkpoint"
     assert result[0]["evidence_scope"] == "saved"
+
+
+
+def test_live_zero_hit_index_search_does_not_load_the_entire_sqlite_transcript(monkeypatch):
+    from lab_v4_dev.memory import dialogue_knowledge
+
+    class EmptyArchive:
+        def search_messages(self, query, *, session_id=None, limit=20):
+            assert session_id == "live-empty"
+            return []
+
+        def read_context(self, message_id, *, before=2, after=2):
+            raise AssertionError("read_context must not run without search hits")
+
+    monkeypatch.setattr(
+        "lab_v4_dev.memory.session_state._load_sqlite_dialogue_exchanges",
+        lambda session_id: (_ for _ in ()).throw(
+            AssertionError("full transcript load must not run after a valid zero-hit search")
+        ),
+    )
+    monkeypatch.setattr(
+        dialogue_knowledge,
+        "_retrieve_dialogue_evidence_core",
+        lambda data, query, limit=8: [],
+    )
+
+    result = EvidenceRetriever.retrieve(
+        "سؤال لا يطابق الأرشيف",
+        scope="live",
+        session_id="live-empty",
+        live_state={
+            "session_id": "live-empty",
+            "exchange_archive": [],
+        },
+        archive=EmptyArchive(),
+    )
+
+    assert result == []
