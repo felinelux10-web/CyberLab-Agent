@@ -58,6 +58,10 @@ def _token_list(value: Any) -> list[str]:
             token = token[1:]
         if len(token) > 3 and token.endswith(("ها", "هم", "كم")):
             token = token[:-2]
+        # "ألوان" and "الألوان" share the same lexical root after
+        # normalization; the initial alef can otherwise be mistaken for
+        # a removable definite article and produce two different tokens.
+        token = {"وان": "لون", "الوان": "لون"}.get(token, token)
         if token and token not in _STOP_WORDS and not token.isdigit():
             result.append(token)
     return result
