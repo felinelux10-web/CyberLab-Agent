@@ -903,7 +903,7 @@ class ConversationArchive:
         )
 
     def rebuild_normalized_search_index(self, *, batch_size: int = 200) -> dict:
-        """Explicitly rebuild the derived normalized FTS index in resumable batches."""
+        """Explicitly rebuild the derived normalized FTS index in bounded batches."""
         if not self.normalized_fts_available:
             return {
                 "status": "fts5_unavailable",
@@ -948,8 +948,8 @@ class ConversationArchive:
             self.conn.execute(
                 """INSERT INTO memory_migrations
                    (migration_key,completed_at,imported_sessions,imported_exchanges)
-                   VALUES (?,?,0,?)""",
-                (migration_key, _now(), indexed),
+                   VALUES (?,?,0,0)""",
+                (migration_key, _now()),
             )
             self.conn.commit()
         except Exception:
