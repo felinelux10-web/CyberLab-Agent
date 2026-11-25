@@ -29,6 +29,14 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pytest requests PyYAML psutil
 
+      - name: Compile Android diagnostics
+        run: |
+          python -m py_compile \
+            scripts/diagnostics/device_profile.py \
+            scripts/diagnostics/benchmark_conversation_fts.py \
+            scripts/diagnostics/rebuild_normalized_fts.py \
+            scripts/diagnostics/evaluate_saved_dialogue.py
+
       - name: Run dialogue, memory, knowledge, and local-response regressions
         run: |
           python -m pytest -q \
