@@ -38,6 +38,7 @@ jobs:
             tests/test_dialogue_restore_persistence.py \
             tests/test_dialogue_temporal_provenance.py \
             tests/test_evidence_retriever_scopes.py \
+            tests/test_normalized_conversation_fts.py \
             tests/test_saved_dialogue_evidence_followup.py \
             tests/test_saved_session_summary_routing.py \
             tests/test_saved_dialogue_topic_analysis_and_continuation.py \
