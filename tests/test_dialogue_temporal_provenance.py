@@ -133,7 +133,8 @@ def test_sqlite_fact_correction_keeps_old_value_and_records_temporal_link():
     assert new["valid_from"] == "2026-01-02T10:00:00"
     assert new["invalidated_at"] is None
     assert new["supersedes"] == old["id"]
-    assert new["verification"] == "candidate"
+    assert old["verification"] == "validated"
+    assert new["verification"] == "validated"
     assert new["origin"] == "user"
 
     active = archive.search_facts(
