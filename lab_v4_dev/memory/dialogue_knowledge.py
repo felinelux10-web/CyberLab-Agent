@@ -430,6 +430,11 @@ def extract_exchange_knowledge(
                 "source_fingerprint": source_fingerprint,
                 "confidence": confidence,
                 "extraction_method": "speaker_attributed_sentence_rules",
+                "origin": "user" if speaker == "user" else "assistant",
+                "verification": "candidate",
+                "valid_from": timestamp or None,
+                "invalidated_at": None,
+                "supersedes": None,
                 "status": "derived",
             }
             records.append(record)
@@ -707,7 +712,7 @@ def analyze_dialogue_session(data: dict) -> dict:
     knowledge = []
     timeline = []
     topics = []
-    previous_user_fact = None
+    previous_user_facts = []
     previous_suggestion = None
     relationships = []
     unresolved = []
@@ -758,6 +763,17 @@ def analyze_dialogue_session(data: dict) -> dict:
             records = []
         for record in records:
             record["source_exchange_index"] = index + 1
+            record.setdefault(
+                "origin",
+                "user" if str(record.get("speaker") or "") == "user" else "assistant",
+            )
+            record.setdefault("verification", "candidate")
+            record.setdefault(
+                "valid_from",
+                record.get("timestamp") or exchange.get("timestamp") or exchange.get("created_at"),
+            )
+            record.setdefault("invalidated_at", None)
+            record.setdefault("supersedes", None)
             temporal_order = record.get("temporal_order")
             if isinstance(temporal_order, list) and temporal_order:
                 record["temporal_order"] = [index + 1, *temporal_order[1:]]
@@ -786,25 +802,56 @@ def analyze_dialogue_session(data: dict) -> dict:
         for item in user_records:
             kind = str(item.get("knowledge_type") or "")
             normalized = _normalize(item.get("content"))
-            if kind == "user_correction" and previous_user_fact:
-                same_topic = (
-                    not item.get("topic_id")
-                    or not previous_user_fact.get("topic_id")
-                    or item.get("topic_id") == previous_user_fact.get("topic_id")
-                )
-                if same_topic:
-                    relationships.append({
-                        "relation": "corrects",
-                        "source_knowledge_id": item["knowledge_id"],
-                        "target_knowledge_id": previous_user_fact["knowledge_id"],
-                        "confidence": 0.55,
-                        "evidence_exchange_id": exchange_id,
-                    })
+            if kind == "user_correction":
+                current_predicates = {
+                    str(fact.get("attribute") or "")
+                    for fact in (item.get("structured_facts") or [])
+                    if isinstance(fact, dict) and str(fact.get("attribute") or "")
+                }
+                matched_prior_by_predicate = {}
+                for prior in reversed(previous_user_facts):
+                    same_topic = (
+                        not item.get("topic_id")
+                        or not prior.get("topic_id")
+                        or item.get("topic_id") == prior.get("topic_id")
+                    )
+                    if not same_topic:
+                        continue
+                    prior_predicates = {
+                        str(fact.get("attribute") or "")
+                        for fact in (prior.get("structured_facts") or [])
+                        if isinstance(fact, dict) and str(fact.get("attribute") or "")
+                    }
+                    for predicate in current_predicates & prior_predicates:
+                        matched_prior_by_predicate.setdefault(predicate, prior)
+                matched_prior = list({
+                    prior["knowledge_id"]: prior
+                    for prior in matched_prior_by_predicate.values()
+                }.values())
+                if matched_prior:
+                    superseded_ids = []
+                    for prior in matched_prior:
+                        superseded_ids.append(prior["knowledge_id"])
+                        prior["invalidated_at"] = (
+                            item.get("timestamp")
+                            or exchange.get("timestamp")
+                            or exchange.get("created_at")
+                        )
+                        prior["status"] = "superseded"
+                        relationships.append({
+                            "relation": "corrects",
+                            "source_knowledge_id": item["knowledge_id"],
+                            "target_knowledge_id": prior["knowledge_id"],
+                            "confidence": 0.90,
+                            "evidence_exchange_id": exchange_id,
+                        })
+                    item["supersedes"] = superseded_ids
+                    item["verification"] = "validated"
             if kind in {
-                "user_fact", "decision", "preference", "constraint",
-                "planned_action", "observation",
+                "user_fact", "user_correction", "decision", "preference",
+                "constraint", "planned_action", "observation",
             }:
-                previous_user_fact = item
+                previous_user_facts.append(item)
             same_suggestion_topic = bool(
                 previous_suggestion
                 and (
@@ -868,6 +915,11 @@ def analyze_dialogue_session(data: dict) -> dict:
                 float(item.get("confidence") or 0.0),
                 float(fact.get("confidence") or 0.0),
             ),
+            "origin": item.get("origin"),
+            "verification": item.get("verification"),
+            "valid_from": item.get("valid_from"),
+            "invalidated_at": item.get("invalidated_at"),
+            "supersedes": item.get("supersedes"),
         }
         for item in knowledge
         for fact in (item.get("structured_facts") or [])
