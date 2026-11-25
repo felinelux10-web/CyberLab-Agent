@@ -140,4 +140,9 @@ def test_sqlite_fact_correction_keeps_old_value_and_records_temporal_link():
         "thickness", speaker="user", source_kind="structured",
     )
     assert [item["id"] for item in active] == [new["id"]]
+    history = archive.get_fact_history(
+        source_session_id=session_id, predicate="thickness",
+    )
+    assert [item["status"] for item in history] == ["superseded", "active"]
+    assert history[0]["invalidated_at"] == history[1]["valid_from"]
     connection.close()
