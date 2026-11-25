@@ -105,6 +105,7 @@ class ConversationArchive:
         CREATE INDEX IF NOT EXISTS idx_skill_runs_skill
             ON skill_runs(skill_id, id DESC);
         """)
+        self._ensure_memory_fact_temporal_schema()
         try:
             self.conn.execute("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS conversation_messages_fts
@@ -115,6 +116,45 @@ class ConversationArchive:
         except Exception:
             self.fts_available = False
         self.conn.commit()
+
+    def _ensure_memory_fact_temporal_schema(self) -> None:
+        """Add temporal/provenance fields to the existing fact index, without rebuilding it."""
+        columns = {
+            str(row[1])
+            for row in self.conn.execute("PRAGMA table_info(memory_facts)").fetchall()
+        }
+        additions = {
+            "valid_from": "TEXT",
+            "invalidated_at": "TEXT",
+            "supersedes": "INTEGER",
+            "verification": "TEXT NOT NULL DEFAULT 'candidate'",
+            "origin": "TEXT NOT NULL DEFAULT 'unknown'",
+        }
+        for name, declaration in additions.items():
+            if name not in columns:
+                self.conn.execute(
+                    f"ALTER TABLE memory_facts ADD COLUMN {name} {declaration}"
+                )
+        self.conn.execute(
+            """UPDATE memory_facts
+               SET valid_from=COALESCE(NULLIF(valid_from,''), created_at)
+               WHERE valid_from IS NULL OR valid_from=''"""
+        )
+        self.conn.execute(
+            """UPDATE memory_facts
+               SET origin=CASE
+                   WHEN speaker='user' THEN 'user'
+                   WHEN source_kind IN ('project_doc','project') THEN 'project_doc'
+                   WHEN source_kind='provider' THEN 'provider'
+                   WHEN speaker='assistant' THEN 'assistant'
+                   ELSE 'unknown'
+               END
+               WHERE origin IS NULL OR origin='' OR origin='unknown'"""
+        )
+        self.conn.execute(
+            """CREATE INDEX IF NOT EXISTS idx_memory_facts_temporal
+               ON memory_facts(source_session_id,predicate,valid_from,invalidated_at)"""
+        )
 
     @staticmethod
     def _extract_explicit_user_fact(text: str) -> tuple[str, str] | None:
