@@ -877,6 +877,92 @@ class ConversationArchive:
             raise
 
     @staticmethod
+    def _normalized_search_text(value: str) -> str:
+        from lab_v4_dev.memory.dialogue_knowledge import _token_list
+        return " ".join(_token_list(value))
+
+    @classmethod
+    def _normalized_fts_query(cls, query: str) -> str:
+        tokens = cls._normalized_search_text(query).split()
+        return " OR ".join(
+            '"' + token.replace('"', '""') + '"'
+            for token in tokens[:20]
+        )
+
+    def _index_normalized_message(
+        self, message_id: int, content: str, session_id: str, speaker: str,
+    ) -> None:
+        if not self.normalized_fts_available:
+            return
+        normalized = self._normalized_search_text(content)
+        self.conn.execute(
+            """INSERT OR REPLACE INTO conversation_messages_normalized_fts
+               (rowid,normalized_content,session_id,speaker)
+               VALUES (?,?,?,?)""",
+            (int(message_id), normalized, str(session_id), str(speaker)),
+        )
+
+    def rebuild_normalized_search_index(self, *, batch_size: int = 200) -> dict:
+        """Explicitly rebuild the derived normalized FTS index in resumable batches."""
+        if not self.normalized_fts_available:
+            return {
+                "status": "fts5_unavailable",
+                "indexed_messages": 0,
+                "complete": False,
+            }
+        cap = max(1, min(2000, int(batch_size)))
+        migration_key = "normalized_conversation_fts_v1"
+        self.conn.execute("DELETE FROM memory_migrations WHERE migration_key=?", (migration_key,))
+        self.conn.execute("DELETE FROM conversation_messages_normalized_fts")
+        self.conn.commit()
+
+        last_id = 0
+        indexed = 0
+        try:
+            while True:
+                rows = self.conn.execute(
+                    """SELECT id,content,session_id,speaker
+                       FROM conversation_messages WHERE id>?
+                       ORDER BY id LIMIT ?""",
+                    (last_id, cap),
+                ).fetchall()
+                if not rows:
+                    break
+                entries = []
+                for row in rows:
+                    entries.append((
+                        int(row[0]),
+                        self._normalized_search_text(str(row[1] or "")),
+                        str(row[2] or ""),
+                        str(row[3] or ""),
+                    ))
+                self.conn.executemany(
+                    """INSERT OR REPLACE INTO conversation_messages_normalized_fts
+                       (rowid,normalized_content,session_id,speaker)
+                       VALUES (?,?,?,?)""",
+                    entries,
+                )
+                self.conn.commit()
+                last_id = int(rows[-1][0])
+                indexed += len(entries)
+            self.conn.execute(
+                """INSERT INTO memory_migrations
+                   (migration_key,completed_at,imported_sessions,imported_exchanges)
+                   VALUES (?,?,0,?)""",
+                (migration_key, _now(), indexed),
+            )
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        return {
+            "status": "completed",
+            "indexed_messages": indexed,
+            "complete": True,
+            "batch_size": cap,
+        }
+
+    @staticmethod
     def _fts_query(query: str) -> str:
         tokens = re.findall(r"[\w\u0600-\u06ff]+", str(query or ""), flags=re.UNICODE)
         stop = {
