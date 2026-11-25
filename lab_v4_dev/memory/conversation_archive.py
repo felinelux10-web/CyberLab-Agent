@@ -986,6 +986,30 @@ class ConversationArchive:
         if not needle:
             return []
         cap = max(1, min(100, int(limit)))
+        if (
+            self.normalized_fts_available
+            and self.migration_complete("normalized_conversation_fts_v1")
+        ):
+            expression = self._normalized_fts_query(needle)
+            if expression:
+                sql = """SELECT m.* FROM conversation_messages_normalized_fts f
+                         JOIN conversation_messages m ON m.id=f.rowid
+                         WHERE conversation_messages_normalized_fts MATCH ?"""
+                params: list[Any] = [expression]
+                if session_id:
+                    sql += " AND m.session_id=?"
+                    params.append(str(session_id))
+                sql += " ORDER BY m.id DESC LIMIT ?"
+                params.append(cap)
+                try:
+                    indexed = [
+                        dict(row)
+                        for row in self.conn.execute(sql, params).fetchall()
+                    ]
+                    if indexed:
+                        return indexed
+                except Exception:
+                    pass
         if self.fts_available:
             expression = self._fts_query(needle)
             if expression:
