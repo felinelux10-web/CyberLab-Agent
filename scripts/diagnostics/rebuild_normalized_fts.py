@@ -12,7 +12,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from lab_v4_dev.memory.db import Database
+from lab_v4_dev.memory.db import DB_PATH, Database
 from lab_v4_dev.memory.conversation_archive import ConversationArchive
 
 
@@ -39,7 +39,7 @@ def main() -> int:
             **result,
             "source_messages_modified": False,
             "legacy_fts_modified": False,
-            "database_path": str(database.__class__.__module__),
+            "database_path": str(DB_PATH),
         }, ensure_ascii=False, indent=2))
         return 0 if result.get("complete") else 2
     finally:
