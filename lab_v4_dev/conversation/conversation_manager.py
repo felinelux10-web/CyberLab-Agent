@@ -5465,10 +5465,10 @@ class ConversationManager:
                 or str(item.get("session_id") or "") == current_session_id
             )
         ]
-        # Expand bounded dialogue state with exact-session SQLite evidence
-        # for explicit history questions. Search first, then read neighboring
-        # messages; never substitute another session when the active ID is absent.
+        # Use the same evidence retriever as saved-session follow-ups. The
+        # scope is explicitly live and bound to the active dialogue identity.
         try:
+            from lab_v4_dev.memory.evidence_retriever import EvidenceRetriever
             agent = getattr(self.orchestrator, "agent", None)
             memory = getattr(agent, "memory", None)
             archive = getattr(memory, "conversations", None)
@@ -5476,57 +5476,37 @@ class ConversationManager:
             archive_session_id = str(
                 (restored_owner or {}).get("session_id") or current_session_id or ""
             ).strip()
-            if archive is not None and archive_session_id:
-                hits = archive.search_messages(
-                    text, session_id=archive_session_id, limit=8
+            live_snapshot = (
+                self.dialogue_memory.snapshot()
+                if self.dialogue_memory and callable(getattr(self.dialogue_memory, "snapshot", None))
+                else state
+            )
+            if archive_session_id:
+                retrieved_evidence = EvidenceRetriever.retrieve(
+                    text,
+                    scope="live",
+                    session_id=archive_session_id,
+                    live_state=live_snapshot,
+                    archive=archive,
+                    limit=8,
                 )
-                retrieved_messages = {}
-                for hit in hits:
-                    for message in archive.read_context(hit["id"], before=2, after=2):
-                        retrieved_messages[int(message["id"])] = message
-                if retrieved_messages:
-                    grouped = {}
-                    for message in sorted(
-                        retrieved_messages.values(),
-                        key=lambda item: (
-                            int(item.get("exchange_index") or 0),
-                            0 if item.get("speaker") == "user" else 1,
-                            int(item.get("id") or 0),
-                        ),
-                    ):
-                        exchange_id = str(message.get("exchange_id") or "")
-                        if not exchange_id:
-                            continue
-                        exchange = grouped.setdefault(exchange_id, {
-                            "session_id": archive_session_id,
-                            "exchange_id": exchange_id,
-                            "exchange_index": int(message.get("exchange_index") or 0),
-                            "user": "",
-                            "assistant": "",
-                            "target": message.get("topic"),
-                            "intent": message.get("intent"),
-                            "timestamp": message.get("created_at"),
-                            "context_kind": "dialogue",
-                            "conversation_domain": "general",
-                        })
-                        if message.get("speaker") == "user":
-                            exchange["user"] = message.get("content") or ""
-                        elif message.get("speaker") == "assistant":
-                            exchange["assistant"] = message.get("content") or ""
-                    seen_exchange_ids = {
-                        str(item.get("exchange_id") or "")
-                        for item in exchanges if isinstance(item, dict)
-                    }
-                    exchanges.extend(
-                        item for key, item in grouped.items()
-                        if key not in seen_exchange_ids
+                seen_exchange_ids = {
+                    str(item.get("exchange_id") or "")
+                    for item in exchanges if isinstance(item, dict)
+                }
+                exchanges.extend(
+                    item for item in retrieved_evidence
+                    if str(item.get("exchange_id") or "") not in seen_exchange_ids
+                )
+                exchanges.sort(
+                    key=lambda item: (
+                        str(item.get("timestamp") or ""),
+                        int(item.get("exchange_index") or 0),
                     )
-                    exchanges.sort(
-                        key=lambda item: str(item.get("timestamp") or "")
-                    )
+                )
         except Exception as archive_error:
             from lab_v4_dev.core.logger import log
-            log.warning(f"Dialogue history SQLite retrieval skipped: {archive_error}")
+            log.warning(f"Unified dialogue evidence retrieval skipped: {archive_error}")
 
         response_attributes = dict((parsed or {}).get("response_attributes") or {})
         topic_list_request = any(marker in normalized_query for marker in (
