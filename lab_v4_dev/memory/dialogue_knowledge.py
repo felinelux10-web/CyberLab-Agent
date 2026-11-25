@@ -1164,7 +1164,7 @@ def _bm25_score(query_terms: set[str], document_terms: list[str], document_frequ
     return score
 
 
-def retrieve_dialogue_evidence(
+def _retrieve_dialogue_evidence_core(
     data: dict,
     query: str,
     *,
@@ -1276,6 +1276,31 @@ def retrieve_dialogue_evidence(
     selected = ranked[:max(1, int(limit))]
     selected.sort(key=lambda item: item["exchange_index"])
     return selected
+
+
+def retrieve_dialogue_evidence(
+    data: dict,
+    query: str,
+    *,
+    limit: int = 8,
+    scope: str | None = None,
+    session_id: str | None = None,
+    live_state: Any = None,
+    archive: Any = None,
+) -> list[dict]:
+    """Compatibility entry point; explicit scopes delegate to EvidenceRetriever."""
+    if scope is None:
+        return _retrieve_dialogue_evidence_core(data, query, limit=limit)
+    from lab_v4_dev.memory.evidence_retriever import EvidenceRetriever
+    return EvidenceRetriever.retrieve(
+        query,
+        scope=scope,
+        session_id=session_id,
+        live_state=live_state,
+        archive=archive,
+        record=data if scope == "saved" else None,
+        limit=limit,
+    )
 
 
 def format_dialogue_evidence_answer(
