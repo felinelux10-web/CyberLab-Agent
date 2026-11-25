@@ -1235,6 +1235,7 @@ class ConversationArchive:
             for row in self.conn.execute(sql, params).fetchall()
         ]
         results = [self.validate_fact(fact_id) for fact_id in ids]
+        self.conn.commit()
         return {
             "checked": len(results),
             "validated": sum(item["status"] == "validated" for item in results),
