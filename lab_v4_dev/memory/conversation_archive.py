@@ -1290,8 +1290,11 @@ class ConversationArchive:
              effective_valid_from, invalidated_at, supersedes,
              verification, origin),
         )
+        fact_id = int(cur.lastrowid)
+        if evidence_message_id:
+            self.validate_fact(fact_id)
         self.conn.commit()
-        return int(cur.lastrowid)
+        return fact_id
 
     def save_user_fact(self, *, subject: str = "user", predicate: str,
                        value: str, **provenance) -> int:
