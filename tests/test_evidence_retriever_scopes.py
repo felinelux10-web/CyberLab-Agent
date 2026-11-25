@@ -168,3 +168,33 @@ def test_live_zero_hit_index_search_does_not_load_the_entire_sqlite_transcript(m
     )
 
     assert result == []
+
+
+
+def test_attribute_aware_abstention_rejects_unrecorded_precision():
+    from lab_v4_dev.memory.evidence_retriever import _query_attribute_is_evidenced
+
+    evidence = {
+        "user": (
+            "أصب الجبس بسماكة نحو 3 سم. أضيف الألوان الذهبية والبيضاء والزرقاء "
+            "بنسب وتدرجات متفاوتة. أستخدم سكينًا ومفكًا وملعقة."
+        ),
+        "assistant": "يمكن ترك الجبس حتى يجف، ويمكن وضع طبقة حماية.",
+    }
+
+    assert _query_attribute_is_evidenced("ما سماكة الجبس؟", evidence)
+    assert not _query_attribute_is_evidenced(
+        "كم ساعة استغرق تجفيف الجبس؟", evidence,
+    )
+    assert not _query_attribute_is_evidenced(
+        "ما اسم ماركة الصباغة؟", evidence,
+    )
+    assert not _query_attribute_is_evidenced(
+        "ما النسبة الدقيقة لكل لون؟", evidence,
+    )
+    assert not _query_attribute_is_evidenced(
+        "ما درجة حرارة الغرفة؟", evidence,
+    )
+    assert not _query_attribute_is_evidenced(
+        "ما موديل المفك؟", evidence,
+    )
