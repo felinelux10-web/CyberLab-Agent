@@ -59,7 +59,7 @@ CASES = [
     {
         "category": "assistant_suggestion",
         "query": "ما الذي اقترحه المساعد عن صنفرة الإطار؟",
-        "expected_exchange_indices": [5],
+        "expected_exchange_indices": [6],
         "expected_speaker": "assistant",
     },
     {
